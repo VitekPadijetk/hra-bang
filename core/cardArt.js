@@ -1,0 +1,38 @@
+// Čisté mapování karta → textury nového vykreslování (sdílený art + skládané marky).
+// BEZ závislosti na Phaseru/DOM. Izomorfní: v prohlížeči <script> vytvoří globály,
+// v Node/testech se importuje přes require('./core/cardArt.js').
+//
+// Nové vykreslování: v assetech je jeden art-obrázek na DRUH karty (assets/card_art/<art>.png,
+// pole `art` v cards.json) a malé průhledné marky hodnoty/barvy (assets/card_marks/*.png).
+// Klient je při startu složí do textury `card_<id>` (viz buildCardTextures v game.js);
+// když art/marky pro daný druh chybí, spadne na starou kartu playing_cards/<id>.png.
+
+// Mapa suit → slug souboru marky barvy.
+const SUIT_SLUG = { HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades' };
+
+// Texturový klíč art-obrázku druhu karty ('art_bang', …). null když karta nemá `art`.
+function artKey(card) {
+    return card && card.art ? 'art_' + card.art : null;
+}
+
+// Texturový klíč marky hodnoty ('value_Q', 'value_10', …).
+function valueMarkKey(card) {
+    return card && card.value != null ? 'value_' + card.value : null;
+}
+
+// Texturový klíč marky barvy ('suit_hearts', …). null pro neznámý suit.
+function suitMarkKey(card) {
+    const slug = card && SUIT_SLUG[card.suit];
+    return slug ? 'suit_' + slug : null;
+}
+
+// Unikátní art slugy napříč daty karet (pro preload). Vrací pole slugů (bez prefixu).
+function distinctArtKeys(cardData) {
+    const set = new Set();
+    (cardData || []).forEach(c => { if (c && c.art) set.add(c.art); });
+    return [...set];
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { SUIT_SLUG, artKey, valueMarkKey, suitMarkKey, distinctArtKeys };
+}

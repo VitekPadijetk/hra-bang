@@ -1,0 +1,109 @@
+// server/anim.js — animační a auto-tah helpery: emit card_animation/reshuffle_anim,
+// smrt (Vulture Sam vs odhoz), automatické ukončení tahu po smrti, reshuffle broadcast.
+// Factory installAnimService(ctx): bere { io, broadcastRoomDelayed } z ctx. Bez listenu.
+module.exports = function installAnimService(ctx) {
+    const { io, broadcastRoomDelayed } = ctx;
+
+    function emitAnim(room, data) {
+        // V DEBUG hře sdílí jeden socket VÍC hráčů (room.players mají stejný socketId) –
+        // dedup přes seen, jinak by tentýž socket dostal animaci N× (= N překrývajících se letů).
+        const seen = new Set();
+        room.players.forEach(rp => {
+            if (seen.has(rp.socketId)) return;
+            seen.add(rp.socketId);
+            const s = io.sockets.sockets.get(rp.socketId);
+            if (s) s.emit('card_animation', data);
+        });
+        io.to(room.id + '_spectators').emit('card_animation', data);
+    }
+
+    // Animace, kde majitel karty vidí jiný payload než ostatní (reveal vlastní
+    // líznuté karty): majiteli `ownerData` (s cardId pro flip rub→líc), ostatním
+    // hráčům i divákům `othersData` (jen rub, identita karty zůstává skrytá).
+    function emitAnimPrivate(room, ownerPlayerIdx, ownerData, othersData) {
+        const ownerSocketId = room.players.find(rp => rp.playerIdx === ownerPlayerIdx)?.socketId;
+        // Majitelovu socketu pošli reveal payload jako PRVNÍ a označ ho za vyřízený –
+        // v DEBUG hře sdílí jeden socket víc hráčů, takže by ho jinak „ostatní" varianta
+        // přepsala (a hráč by viděl líznutí letět k soupeři místo do vlastní ruky).
+        const seen = new Set();
+        if (ownerSocketId) {
+            const os = io.sockets.sockets.get(ownerSocketId);
+            if (os) os.emit('card_animation', ownerData);
+            seen.add(ownerSocketId);
+        }
+        room.players.forEach(rp => {
+            if (seen.has(rp.socketId)) return;
+            seen.add(rp.socketId);
+            const s = io.sockets.sockets.get(rp.socketId);
+            if (s) s.emit('card_animation', othersData);
+        });
+        io.to(room.id + '_spectators').emit('card_animation', othersData);
+    }
+
+    function emitDeathAnim(room, gs, deadIdx) {
+        // Idempotentní: data se nastaví jednou v handlePlayerDeath a po emitu smažou.
+        // Druhé volání pro stejnou smrt (např. explicitní emit + handleAutoEndTurn při
+        // úmrtí hráče na vlastním tahu – duel) by jinak poslalo prázdný odhoz, který na
+        // klientovi spustí falešný fade-out Coltu .45. Bez dat tedy nic neemitujeme.
+        const info = gs._deathAnimData?.[deadIdx];
+        if (!info) return;
+        const blue = info.blue || [], weapon = info.weapon || null, hand = info.hand || [];
+        const vultureIdx = gs.players.findIndex(
+            (p, idx) => idx !== deadIdx && p.character === "Vulture Sam" && p.health > 0
+        );
+        if (vultureIdx !== -1) {
+            emitAnim(room, { type: 'vulture_sam_steal', fromPlayerIdx: deadIdx, toPlayerIdx: vultureIdx, blue, weapon, hand });
+        } else {
+            emitAnim(room, { type: 'player_death_discard', playerIdx: deadIdx, blue, weapon, hand });
+        }
+        if (gs._deathAnimData) delete gs._deathAnimData[deadIdx];
+    }
+
+    function handleAutoEndTurn(room, gs) {
+        if (gs._autoEndTurnPending && !gs.winner) {
+            const deadIdx = gs._deadPlayerIdx;
+            gs._autoEndTurnPending = false;
+            gs._deadPlayerIdx = undefined;
+            gs._deathAnimPlayerIdx = null;
+            if (deadIdx !== undefined) {
+                emitDeathAnim(room, gs, deadIdx);
+            }
+            gs.nextTurn?.();
+        }
+    }
+
+    function handleReshuffleAndBroadcast(room, gs, baseDelay = 400) {
+        if (gs.deck._reshuffleOccurred) {
+            const count = gs.deck._reshuffleCount || 20;
+            const isProactive = gs.deck._reshuffleWasProactive === true;
+            const topCardId = gs.deck.discardPile.length > 0
+                ? gs.deck.discardPile[gs.deck.discardPile.length - 1].id
+                : null;
+            gs.deck._reshuffleOccurred = false;
+            gs.deck._reshuffleCount = 0;
+            gs.deck._reshuffleWasProactive = false;
+            // Klientská míchací cinematika běží ~5,5 s (viz reshuffle_anim). Boti na ni musí
+            // počkat, i když je zamíchání proaktivní (broadcast odejde hned) – jinak by hráli
+            // „přes" animaci. scheduleBotTick tento čas respektuje (viz server/bots.js).
+            room._reshuffleBlockUntil = Date.now() + 5700;
+            const seen = new Set();
+            room.players.forEach(rp => {
+                if (seen.has(rp.socketId)) return;   // debug: jeden socket = víc hráčů
+                seen.add(rp.socketId);
+                const s = io.sockets.sockets.get(rp.socketId);
+                if (s) s.emit('reshuffle_anim', { cardCount: count, proactive: isProactive, topCardId });
+            });
+            io.to(room.id + '_spectators').emit('reshuffle_anim', { cardCount: count, proactive: isProactive, topCardId });
+            if (isProactive) {
+                broadcastRoomDelayed(room, baseDelay);
+            } else {
+                broadcastRoomDelayed(room, 5700);
+            }
+        } else {
+            broadcastRoomDelayed(room, baseDelay);
+        }
+    }
+
+    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn, handleReshuffleAndBroadcast });
+    return ctx;
+};

@@ -1,0 +1,260 @@
+// logic/response.js — mixin GameState: reakce na útok (Vedle!/Bang! u duelu),
+// záchrana posledního života Pivem/Sidem, postup po reakci. handleResponse je
+// hlavní vyhodnocení RESPOND fáze. Připojuje se na GameState.prototype. Viz CLAUDE.md.
+(function () {
+const ResponseMixin = {
+    // ── PIVO jako záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE) ──
+    beerLastLifeSave(playerIdx, cardIdx) {
+        const p = this.players[playerIdx];
+        if (!p || p.health !== 1) return false;
+        const card = p.hand[cardIdx];
+        if (!card || card.type !== CardType.BEER) return false;
+        const aliveCount = this.players.filter(pl => pl.health > 0).length;
+        if (aliveCount <= 2) return false;
+
+        this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+        this.checkSuzyLafayette(p);
+
+        if (this.phase === "DYNAMITE_DAMAGE") {
+            const pdd = this.pendingDynamiteDamage;
+            if (!pdd || pdd.playerIdx !== playerIdx) return false;
+            pdd.hitsLeft--;
+            if (pdd.hitsLeft <= 0) {
+                this.pendingDynamiteDamage = null;
+                this.handleStartOfTurnChecks();
+            }
+            return true;
+        }
+
+        if (this.phase === "RESPOND") {
+            const pr = this.pendingResponse;
+            if (!pr?.active || pr.targetIdx !== playerIdx) return false;
+            this._advanceAfterLastLifeSave(playerIdx);
+            return true;
+        }
+
+        return false;
+    },
+
+    // ── SID KETCHUM záchrana při posledním životě ──────────────────────────────
+    sidLastLifeSave(playerIdx, cardIdx1, cardIdx2) {
+        const p = this.players[playerIdx];
+        if (!p || p.health !== 1 || effectiveCharacter(p) !== "Sid Ketchum") return false;
+        const aliveCount = this.players.filter(pl => pl.health > 0).length;
+        if (aliveCount <= 2) return false;
+        if (p.hand.length < 2) return false;
+
+        const indices = [cardIdx1, cardIdx2].sort((a, b) => b - a);
+        if (indices[0] >= p.hand.length || indices[1] < 0 || indices[0] === indices[1]) return false;
+        indices.forEach(idx => {
+            if (p.hand[idx]) this.deck.discardPile.push(p.hand.splice(idx, 1)[0]);
+        });
+        this.checkSuzyLafayette(p);
+
+        if (this.phase === "DYNAMITE_DAMAGE") {
+            const pdd = this.pendingDynamiteDamage;
+            if (!pdd || pdd.playerIdx !== playerIdx) return false;
+            pdd.hitsLeft--;
+            if (pdd.hitsLeft <= 0) {
+                this.pendingDynamiteDamage = null;
+                this.handleStartOfTurnChecks();
+            }
+            return true;
+        }
+
+        if (this.phase === "RESPOND") {
+            this._advanceAfterLastLifeSave(playerIdx);
+            return true;
+        }
+
+        return false;
+    },
+
+    // ── Pokračuj v RESPOND po záchraně (beer nebo Sid) ────────────────────────
+    _advanceAfterLastLifeSave(playerIdx) {
+        const pr = this.pendingResponse;
+        if (!pr) return;
+        pr.active = false;
+        pr.responded.push(playerIdx);
+
+        if (pr.sourceCard === CardType.DUEL) {
+            // Pivo/Sid zachránilo život – duel končí (target přežil)
+            const originator = this.players[pr.originatorIdx];
+            const initialTarget = this.players[pr.initialTargetIdx];
+            if (originator) this.checkSuzyLafayette(originator);
+            if (initialTarget) this.checkSuzyLafayette(initialTarget);
+            this.phase = "PLAY";
+            this._releaseMollyDeferred();   // Duel skončil → uvolni Mollyiny odložené náhrady
+            this._processSpecialQueue();
+        } else if (pr.sourceCard === CardType.GATLING || pr.sourceCard === CardType.INDIANS) {
+            this._advanceMassAttack(playerIdx, pr.originatorIdx, pr.sourceCard);
+            this._processSpecialQueue();
+        } else {
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+            this.targetPlayer = null;
+            this.currentAttacker = null;
+        }
+    },
+
+    // ── Molly Stark (Dodge City): mimo svůj tah lízne 1 za každou dobrovolně zahranou/
+    // odhozenou kartu. Během Duelu se náhrady odloží až do konce Duelu. ────────────
+    _mollyPlayedOutOfTurn(playerIdx, isDuel) {
+        const p = this.players[playerIdx];
+        if (!p || effectiveCharacter(p) !== "Molly Stark") return;
+        if (this.currentPlayerIndex === playerIdx) return;   // jen mimo její tah
+        if (isDuel) {
+            this._mollyDeferred = (this._mollyDeferred || 0) + 1;
+            this._mollyDeferredIdx = playerIdx;
+        } else {
+            this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 1 });
+        }
+    },
+
+    _releaseMollyDeferred() {
+        if (this._mollyDeferred && this._mollyDeferredIdx != null) {
+            for (let k = 0; k < this._mollyDeferred; k++) {
+                this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: this._mollyDeferredIdx, cardsNeeded: 1 });
+            }
+        }
+        this._mollyDeferred = 0;
+        this._mollyDeferredIdx = null;
+    },
+
+    handleResponse(playerIdx, cardIdx, boardCardId = null) {
+        if (this.phase !== "RESPOND") return;
+        if (!this.pendingResponse || !this.pendingResponse.active || this.pendingResponse.targetIdx !== playerIdx) return;
+
+        const player = this.players[playerIdx];
+        let respondedWithCard = false;
+
+        if (cardIdx === null && boardCardId == null) {
+            if (this.pendingResponse.partialMisses?.length > 0) {
+                this.pendingResponse.partialMisses.forEach(pm => {
+                    const di = this.deck.discardPile.findIndex(c => c.id === pm.card.id);
+                    if (di !== -1) this.deck.discardPile.splice(di, 1);
+                    this.players[pm.playerIdx].hand.push(pm.card);
+                });
+                this.pendingResponse.partialMisses = [];
+                this.missesPlayed = 0;
+            }
+            if (this.pendingResponse.sourceCard === CardType.BANG ||
+                this.pendingResponse.sourceCard === CardType.GATLING ||
+                this.pendingResponse.sourceCard === CardType.INDIANS) {
+                const orig = this.players[this.pendingResponse.originatorIdx];
+                if (orig) {
+                    orig.stats.bangsHit++;
+                }
+            }
+            this.handleDamage(playerIdx, this.pendingResponse.originatorIdx);
+
+            if (this.winner) {
+                this.pendingResponse.active = false;
+                return;
+            }
+
+            this.pendingResponse.responded.push(playerIdx);
+            respondedWithCard = false;
+        } else {
+            // Karta obrany může přijít z ruky (cardIdx) NEBO ze stolu jako zelená
+            // Vedle!-karta (boardCardId: Železný plát/Stetson/Sombrero/Bible).
+            const fromBoard = boardCardId != null;
+            const sourceArr = fromBoard ? player.board : player.hand;
+            const sourceIdx = fromBoard ? player.board.findIndex(c => c.id === boardCardId) : cardIdx;
+            const card = sourceArr[sourceIdx];
+            if (!card) return;
+
+            let isValid = false;
+            if (fromBoard) {
+                // Zelená Vedle!-karta se počítá jako Vedle! (jen proti požadavku „Vedle!").
+                // Belle Star útočí → cizí karty na stole (i zelené) na jejím tahu neplatí.
+                isValid = card.green && card.activate === 'miss' &&
+                        this.pendingResponse.requiredCard === CardType.MISSED &&
+                        !this._belleIgnoresBoard(this.pendingResponse.originatorIdx);
+            } else if (this.pendingResponse.requiredCard === CardType.MISSED) {
+                // Elena Fuente (Dodge City): smí použít jako Vedle! LIBOVOLNOU kartu z ruky.
+                isValid = card.type === CardType.MISSED || card.type === CardType.UHYB ||
+                        (effectiveCharacter(player) === "Calamity Janet" && card.type === CardType.BANG) ||
+                        effectiveCharacter(player) === "Elena Fuente";
+            } else if (this.pendingResponse.requiredCard === CardType.BANG) {
+                isValid = card.type === CardType.BANG ||
+                        (effectiveCharacter(player) === "Calamity Janet" && card.type === CardType.MISSED);
+            }
+
+            if (!isValid) return;
+
+            const playedCard = sourceArr.splice(sourceIdx, 1)[0];
+            respondedWithCard = true;
+
+            // Úhyb (a zelené karty s draw): kromě uhnutí si majitel lízne kartu/y.
+            // Konzistentně s Bartem/Suzy to NEděláme automaticky – zařadíme líznutí do
+            // fronty (UHYB_DRAW) a hráč si pak klikne na balíček (viz _processSpecialQueue).
+            if (playedCard.draw) {
+                for (let k = 0; k < playedCard.draw; k++) {
+                    this.specialActionQueue.push({ type: 'UHYB_DRAW', playerIdx });
+                }
+            }
+
+            if (this.pendingResponse.requiredCard === CardType.MISSED && this.pendingResponse.sourceCard !== CardType.DUEL) {
+                if (!this.pendingResponse.partialMisses) this.pendingResponse.partialMisses = [];
+                this.pendingResponse.partialMisses.push({ card: playedCard, playerIdx });
+                this.deck.discardPile.push(playedCard);
+                this.missesPlayed = (this.missesPlayed || 0) + 1;
+                this._mollyPlayedOutOfTurn(playerIdx, false);   // Molly: lízne za každé Vedle! mimo tah
+                const required = this.missesRequired || 1;
+                if (this.missesPlayed < required) return;
+                this.pendingResponse.partialMisses = [];
+                this.missesPlayed = 0;
+                this.missesRequired = 1;
+                this.checkSuzyLafayette(player);
+            } else {
+                this.deck.discardPile.push(playedCard);
+                if (this.pendingResponse.sourceCard !== CardType.DUEL) {
+                    this.checkSuzyLafayette(player);
+                }
+                // Molly: Bang! v Duelu mimo její tah → náhrada odložena do konce Duelu.
+                this._mollyPlayedOutOfTurn(playerIdx, this.pendingResponse.sourceCard === CardType.DUEL);
+            }
+
+            this.pendingResponse.responded.push(playerIdx);
+        }
+
+        if (this.pendingResponse.sourceCard === CardType.DUEL) {
+            if (respondedWithCard) {
+                if (playerIdx === this.pendingResponse.originatorIdx) {
+                    this.pendingResponse.targetIdx = this.pendingResponse.initialTargetIdx;
+                } else {
+                    this.pendingResponse.targetIdx = this.pendingResponse.originatorIdx;
+                }
+                this.pendingResponse.responded = [];
+            } else {
+                const originator = this.players[this.pendingResponse.originatorIdx];
+                const initialTarget = this.players[this.pendingResponse.initialTargetIdx];
+                if (originator) this.checkSuzyLafayette(originator);
+                if (initialTarget) this.checkSuzyLafayette(initialTarget);
+                this.pendingResponse.active = false;
+                this.phase = "PLAY";
+                this._releaseMollyDeferred();   // Duel skončil → uvolni Mollyiny odložené náhrady
+                this._processSpecialQueue();
+            }
+        }
+        else if (this.pendingResponse.sourceCard === CardType.GATLING || this.pendingResponse.sourceCard === CardType.INDIANS) {
+            this._advanceMassAttack(playerIdx, this.pendingResponse.originatorIdx, this.pendingResponse.sourceCard);
+            this._processSpecialQueue();
+        }
+        else {
+            this.pendingResponse.active = false;
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+            this.targetPlayer = null;
+            this.currentAttacker = null;
+        }
+    }
+};
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ResponseMixin;
+} else {
+    Object.assign(GameState.prototype, ResponseMixin);
+}
+})();

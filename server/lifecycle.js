@@ -1,0 +1,122 @@
+// server/lifecycle.js — start hry a další hry: setup GameState, rotující šerif,
+// přeskočení intra pro debug/singleChar/přeživší, spuštění intro sekvence.
+// Factory installLifecycle(ctx): bere { cardData, GameState, broadcastRoom,
+// broadcastLobbyList, emitIntro, runIntroSequence } z ctx. Bez listenu.
+module.exports = function installLifecycle(ctx) {
+    const { cardData, dodgeCityCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
+
+    function startGame(room) {
+        const gs = room.gameState;
+        gs.cardData = cardData;
+        gs.dodgeCityCardData = dodgeCityCardData;
+        const names = room.players.map(p => p.name);
+        gs.setupGame(room.maxPlayers, names, room.options || {});
+        ctx.initLedger?.(room);   // nová hra → čistý ledger chování (dedukce rolí boty)
+        room.phase = 'char_select';
+        // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
+        room._botStartupSettle = true;
+        room._introPlaying = false;
+        broadcastLobbyList();
+        // debug, singleChar nebo hra jen botů: preskocime intro
+        if (gs.isDebug || room.options?.singleChar || room.options?.botGame) {
+            if (room.options?.singleChar) {
+                gs.autoSelectAllCharacters();
+                if (gs.phase !== 'CHARACTER_SELECT') room.phase = 'playing';
+            }
+            broadcastRoom(room);
+            return;
+        }
+        // broadcastRoom posle room_update s roomPhase='char_select' -> klient prerenderuje z lobby na intro
+        broadcastRoom(room);
+        // Intro běží: boti nehrají herní akce (líznutí/karty) dokud nepřijde 'done' (intro.js).
+        room._introPlaying = true;
+        // intro_phase 'init' musi prijet AZ PO room_update (jinak roomPhase stale 'lobby')
+        setTimeout(() => {
+            emitIntro(room, { sub: 'init', playerCount: room.players.length });
+            runIntroSequence(room);
+        }, 50);
+    }
+
+    function startNextGame(room) {
+        // Zruš případný běžící „další hra" odpočet z leader_start_next. Když leader
+        // spustí hru přes check_start_next, startNextGame vynuluje wantsNext – kdyby
+        // interval běžel dál, po vypršení by viděl, že nikdo nemá wantsNext===true,
+        // a poslal by go_to_menu VŠEM (vyhodil by celou rozjetou hru).
+        if (room._nextGameTimerInterval) {
+            clearInterval(room._nextGameTimerInterval);
+            room._nextGameTimerInterval = null;
+        }
+        room.nextGameTimer = null;
+
+        const gs = room.gameState;
+        const playerNames = room.players.map(p => p.name);
+        const prevSurvivorChars = {};
+        room.players.forEach((rp, i) => {
+            if (!rp.wasOriginalSurvivor) return;
+            const gsPlayer = gs.players.find(p => p.name === rp.name);
+            if (gsPlayer && gsPlayer.health > 0) {
+                prevSurvivorChars[i] = gsPlayer.character;
+            }
+        });
+
+        // Rotující šerif: najdeme jméno hráče napravo od současného šerifa
+        let nextSheriffName = null;
+        if (room.options?.rotatingSheriff) {
+            const currentSheriffName = room.lastSheriffName;
+            if (currentSheriffName) {
+                const names = room.players.map(p => p.name);
+                const sheriffIdx = names.indexOf(currentSheriffName);
+                if (sheriffIdx !== -1) {
+                    // Posouvá se DOPRAVA (tedy na hráče s vyšším indexem, konec → začátek)
+                    const nextIdx = (sheriffIdx + 1) % names.length;
+                    nextSheriffName = names[nextIdx];
+                    console.log(`👑 Rotující šerif: ${currentSheriffName} → ${nextSheriffName}`);
+                }
+            }
+            // Zapamatujeme si budoucího šerifa pro příští rotaci
+            room.lastSheriffName = nextSheriffName || null;
+        }
+
+        room.gameState = new GameState();
+        room.gameState.cardData = cardData;
+        room.gameState.dodgeCityCardData = dodgeCityCardData;
+        room.gameState.setupNextGame(playerNames, prevSurvivorChars, room.options || {}, nextSheriffName);
+        ctx.initLedger?.(room);   // další hra → čistý ledger chování
+        room.nextGameVotes = {};
+        room.survivorKeepVotes = {};
+        room.players.forEach(p => { p.wantsNext = null; p.wasOriginalSurvivor = false; });
+        room.phase = 'char_select';
+        // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
+        room._botStartupSettle = true;
+        room._introPlaying = false;
+
+        // singleChar: přeskočíme výběr pro hráče bez survivora
+        if (room.options?.singleChar) {
+            room.gameState.autoSelectAllCharacters();
+            if (room.gameState.phase !== 'CHARACTER_SELECT') room.phase = 'playing';
+        }
+
+        // Zapamatuji šerifa pro příští rotaci (pokud rotující šerif zapnut)
+        if (room.options?.rotatingSheriff) {
+            const sheriffPlayer = room.gameState.players.find(p => p.role === 'Sheriff');
+            if (sheriffPlayer) room.lastSheriffName = sheriffPlayer.name;
+        }
+
+        // Pokud jsou prezivsi hraci nebo debug/singleChar/botGame: preskocime intro
+        if (room.gameState.isDebug || room.options?.singleChar || room.options?.botGame ||
+            room.gameState.players.some(p => p._awaitingKeepChoice)) {
+            broadcastRoom(room);
+            return;
+        }
+        broadcastRoom(room);
+        // Intro běží: boti nehrají herní akce (líznutí/karty) dokud nepřijde 'done' (intro.js).
+        room._introPlaying = true;
+        setTimeout(() => {
+            emitIntro(room, { sub: 'init', playerCount: room.players.length });
+            runIntroSequence(room);
+        }, 50);
+    }
+
+    Object.assign(ctx, { startGame, startNextGame });
+    return ctx;
+};

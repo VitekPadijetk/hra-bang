@@ -1,0 +1,433 @@
+// logic/play.js — mixin GameState: hraní karet (playCard router, Bang!, speciální
+// karty, modré karty, barel-check, výběr cílové karty, hromadné útoky).
+// Připojuje se na GameState.prototype. Viz „Mixin pattern" v CLAUDE.md.
+(function () {
+const PlayMixin = {
+    playCard(cardIndex) {
+        if (this.phase !== "PLAY") return;
+        const player = this.getCurrentPlayer();
+        const card = player.hand[cardIndex];
+        if (!card) return;
+
+        // Karty „odhoď další kartu" (Springfield/Tequila/Whisky/Ragtime/Rvačka) se
+        // NEhrají přes play_card – hráč nejdřív zvolí cíl (viz startDiscardExtra),
+        // proto sem discardExtra karta nechodí; případný omyl je bezpečný no-op.
+        if (card.discardExtra) return;
+
+        // Zelené karty (Dodge City) se vykládají na stůl jako modré – aktivují se až
+        // příští tah ze stolu (viz activateGreenCard). Nelze mít 2 stejného jména (D7).
+        if (card.green) {
+            const before = player.board.length;
+            this.playBoardCard(player, cardIndex);
+            if (player.board.length > before) this._trackCard(this.currentPlayerIndex, card.type);
+            this.checkSuzyLafayette(player);
+            this._processSpecialQueue();
+            return;
+        }
+
+        const cardEffects = {
+            [CardType.BEER]: () => {
+                if (player.health < player.maxHealth) {
+                    // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
+                    const gain = effectiveCharacter(player) === "Tequila Joe" ? 2 : 1;
+                    player.health = Math.min(player.health + gain, player.maxHealth);
+                    return true;
+                }
+                return false;
+            },
+            [CardType.SALOON]: () => {
+                const anyDamaged = this.players.some(p => p.health > 0 && p.health < p.maxHealth);
+                if (!anyDamaged) return false;
+                this.players.forEach(p => { if (p.health > 0 && p.health < p.maxHealth) p.health++; });
+                return true;
+            },
+            [CardType.STAGECOACH]: () => {
+                this.drawPhaseState = { active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 2, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false };
+                this.phase = "DRAW";
+                return true;
+            },
+            [CardType.WELLS_FARGO]: () => {
+                this.drawPhaseState = { active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 3, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false };
+                this.phase = "DRAW";
+                return true;
+            },
+            [CardType.WEAPON]: () => {
+                if (player.weapon.id !== -1) {
+                    this.deck.discardPile.push(player.weapon);
+                    player.stats.weaponsCycled++;
+                }
+                player.weapon = player.hand.splice(cardIndex, 1)[0];
+                return false;
+            },
+            [CardType.EQUIPMENT]: () => this.playBoardCard(player, cardIndex),
+            [CardType.BARREL]: () => this.playBoardCard(player, cardIndex),
+            [CardType.DYNAMITE]: () => this.playBoardCard(player, cardIndex),
+            [CardType.INDIANS]: () => { this._massAttackSuit = card.suit; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.INDIANS); return true; },
+            [CardType.GATLING]: () => { this._massAttackSuit = card.suit; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.GATLING); return true; },
+            [CardType.STORE]: () => { this.openStore(); return true; }
+        };
+
+        const effect = cardEffects[card.type];
+        if (effect) {
+            const shouldDiscard = effect();
+            if (shouldDiscard === false) {
+                // Karta nebyla sehrána
+            } else {
+                this._trackCard(this.currentPlayerIndex, card.type);
+            }
+            if (shouldDiscard) {
+                this.deck.discardPile.push(player.hand.splice(cardIndex, 1)[0]);
+            }
+            if (this.phase !== "STORE" && this.phase !== "DRAW") {
+                this.checkSuzyLafayette(player);
+            }
+        }
+        this._processSpecialQueue();
+    },
+
+    playBang(attackerIdx, targetIdx, cardIdx) {
+        const attacker = this.players[attackerIdx];
+        const target = this.players[targetIdx];
+        const card = attacker?.hand[cardIdx];
+        if (!attacker || !target || !card) return;
+        if (target.health <= 0) return;
+
+        // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
+        // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
+        const isEffect = !!card.bangEffect;
+        const isWilly = effectiveCharacter(attacker) === "Willy the Kid";
+        const hasVolcanic = attacker.weapon && attacker.weapon.name.includes("Volcanic");
+
+        if (!isEffect && !isWilly && !hasVolcanic && attacker.bangsPlayedThisTurn >= 1) {
+            return;
+        }
+
+        if (!isEffect) attacker.bangsPlayedThisTurn++;
+        attacker.stats.bangsFired++;
+        this._trackCard(attackerIdx, card?.type || 'Bang!');
+        console.log(`🎯 Bang! od ${attacker.name} → ${this.players[targetIdx]?.name}`);
+        this.deck.discardPile.push(attacker.hand.splice(cardIdx, 1)[0]);
+        this.currentAttacker = attackerIdx;
+        this.checkSuzyLafayette(attacker);
+
+        // Apache Kid: kárový Bang!/bang-efekt na něj nemá efekt (Bang! se „zahrál" naprázdno).
+        if (this._apacheImmune(targetIdx, card.suit, attackerIdx)) {
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+            return;
+        }
+
+        this._beginBangResolution(attackerIdx, targetIdx, isEffect);
+        this._processSpecialQueue();
+    },
+
+    // Barel-check + fáze RESPOND pro Bang!/bang-efekt. Sdílí playBang i Springfield
+    // (bang-efekt „any" po odhození další karty). isEffect = bez limitu/Slaba.
+    _beginBangResolution(attackerIdx, targetIdx, isEffect = false) {
+        const attacker = this.players[attackerIdx];
+        const target = this.players[targetIdx];
+
+        let barrelChecksLeft = 0;
+        let barrelReason = "BARREL";
+
+        // Belle Star útočí → cizí Barel (karta na stole) neplatí; Jourdonnaisova vrozená
+        // schopnost (ne karta) zůstává.
+        const hasBarrelCard = !this._belleIgnoresBoard(attackerIdx) && target.board.some(c => c.type === CardType.BARREL);
+
+        if (effectiveCharacter(target) === "Jourdonnais" && hasBarrelCard) {
+            barrelChecksLeft = 2;
+            barrelReason = "JOURDONNAIS";
+        } else if (effectiveCharacter(target) === "Jourdonnais") {
+            barrelChecksLeft = 1;
+            barrelReason = "JOURDONNAIS";
+        } else if (hasBarrelCard) {
+            barrelChecksLeft = 1;
+            barrelReason = "BARREL";
+        }
+
+        if (barrelChecksLeft > 0) {
+            this.pendingBarrelCheck = {
+                active: true,
+                targetIdx,
+                attackerIdx,
+                checksLeft: barrelChecksLeft,
+                reason: barrelReason,
+                sourceCard: CardType.BANG,
+                bangEffect: isEffect
+            };
+            this.phase = "BARREL_DRAW";
+        } else {
+            this.pendingResponse = {
+                active: true,
+                originatorIdx: attackerIdx,
+                targetIdx: targetIdx,
+                requiredCard: CardType.MISSED,
+                sourceCard: CardType.BANG,
+                bangEffect: isEffect,
+                responded: []
+            };
+            this.phase = "RESPOND";
+            this.missesRequired = (!isEffect && effectiveCharacter(attacker) === "Slab the Killer") ? 2 : 1;
+            this.missesPlayed = 0;
+            this.currentAttacker = attackerIdx;
+        }
+    },
+
+    playSpecialCard(attIdx, tarIdx, cardIdx) {
+        if (this.currentPlayerIndex !== attIdx) return;
+        const attacker = this.players[attIdx];
+        if (!attacker || !attacker.hand[cardIdx]) return;
+
+        const cardType = attacker.hand[cardIdx].type;
+
+        if (cardType !== CardType.GATLING && cardType !== CardType.INDIANS) {
+            if (tarIdx === null || !this.players[tarIdx]) return;
+        }
+
+        const target = tarIdx !== null ? this.players[tarIdx] : null;
+        const card = attacker.hand.splice(cardIdx, 1)[0];
+
+        if (card) this._trackCard(attIdx, card.type);
+
+        if (card.type === CardType.JAIL) {
+            const alreadyInJail = target.board.some(c => c.type === CardType.JAIL);
+            if (target.role === "Sheriff" || alreadyInJail || target.health <= 0) {
+                attacker.hand.splice(cardIdx, 0, card);
+                this.checkSuzyLafayette(attacker);
+                return;
+            }
+            // Apache Kid: kárové Vězení na něj nemá efekt (karta se odhodí naprázdno).
+            if (this._apacheImmune(tarIdx, card.suit, attIdx)) {
+                this.deck.discardPile.push(card);
+                this.checkSuzyLafayette(attacker);
+                this._processSpecialQueue();
+                return;
+            }
+            target.board.push(card);
+            this.checkSuzyLafayette(attacker);
+            this._processSpecialQueue();
+            return;
+        }
+        else if (card.type === CardType.CAT_BALOU || card.type === CardType.PANIC) {
+            this.deck.discardPile.push(card);
+            // Apache Kid: kárová Panika!/Cat Balou na něj nemá efekt (žádný výběr karty).
+            if (this._apacheImmune(tarIdx, card.suit, attIdx)) {
+                this.checkSuzyLafayette(attacker);
+                this._processSpecialQueue();
+                return;
+            }
+            this.phase = "SELECTING_TARGET_CARD";
+            this.pendingSelection = {
+                attackerIdx: attIdx,
+                targetIdx: tarIdx,
+                sourceCardType: card.type,
+            };
+            return;
+        }
+        else if (card.type === CardType.DUEL) {
+            this.deck.discardPile.push(card);
+            this.checkSuzyLafayette(attacker);
+            // Apache Kid: kárový Duel (karta samotná ♦) na něj nemá efekt – odhodí se
+            // naprázdno, žádná výměna Bang!. (Bang! zahrané JAKO reakce uvnitř duelu jsou
+            // reakce, ne cílené karty, takže ty Apache zasáhnou bez ohledu na barvu.)
+            if (this._apacheImmune(tarIdx, card.suit, attIdx)) {
+                this._processSpecialQueue();
+                return;
+            }
+            this.pendingResponse = {
+                active: true,
+                originatorIdx: attIdx,
+                targetIdx: tarIdx,
+                initialTargetIdx: tarIdx,
+                requiredCard: CardType.BANG,
+                sourceCard: CardType.DUEL,
+                responded: []
+            };
+            this.phase = "RESPOND";
+            this._processSpecialQueue();
+            return;
+        }
+        else if (card.type === CardType.GATLING || card.type === CardType.INDIANS) {
+            this.deck.discardPile.push(card);
+            this.checkSuzyLafayette(attacker);
+            this.missesRequired = 1;
+            this.missesPlayed = 0;
+            this._massAttackSuit = card.suit;   // Apache Kid: kárový hromadný útok ho míjí
+            this._advanceMassAttack(attIdx, attIdx, card.type);
+            this._processSpecialQueue();
+            return;
+        }
+        this._processSpecialQueue();
+    },
+
+    triggerBarrelDraw() {
+        if (this.phase !== "BARREL_DRAW" || !this.pendingBarrelCheck?.active) return;
+        const pbc = this.pendingBarrelCheck;
+        this.pendingBarrelCheck = null;
+        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect);
+    },
+
+    // Vyloží kartu (modrou i zelenou) na stůl. Nelze mít 2 karty stejného jména (D7).
+    // Zelené karty se navíc orazí kolem tahu položení (`_playedTurn`) – nelze je aktivovat
+    // ve stejném tahu (viz activateGreenCard).
+    playBoardCard(player, cardIndex) {
+        const card = player.hand[cardIndex];
+        if (player.board.some(c => c.name === card.name)) {
+            return false;
+        }
+        if (card.green) card._playedTurn = this.turnId;
+        player.board.push(player.hand.splice(cardIndex, 1)[0]);
+        return false;
+    },
+
+    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false) {
+        const target = this.players[targetIdx];
+
+        if (effectiveCharacter(target) === "Lucky Duke") {
+            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, bangEffect };
+            this.startLuckyDukeCheck(checkContext);
+            return;
+        }
+
+        const checkCard = this.deck.draw();
+        this.deck.discardPile.push(checkCard);
+        this.phase = "CHECKING";
+        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, bangEffect };
+    },
+
+    resolveCardSelection(attackerIdx, targetCardArea, targetCardIdx) {
+        const sel = this.pendingSelection;
+        if (!sel || sel.attackerIdx !== attackerIdx) return;
+
+        // Ragtime/Rvačka (ignoreDistance) krade/odhazuje bez ohledu na vzdálenost.
+        if (sel.sourceCardType === CardType.PANIC && sel.attackerIdx !== sel.targetIdx && !sel.ignoreDistance) {
+            const dist = this.getDistance(sel.attackerIdx, sel.targetIdx);
+            if (dist > 1) { return; }
+        }
+
+        const attacker = this.players[sel.attackerIdx];
+        const target = this.players[sel.targetIdx];
+        let cardToMove = null;
+
+        if (targetCardArea === 'hand') {
+            const randomIndex = Math.floor(Math.random() * target.hand.length);
+            cardToMove = target.hand.splice(randomIndex, 1)[0];
+        }
+        else if (targetCardArea === 'weapon') {
+            cardToMove = target.weapon;
+            target.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+        }
+        else {
+            cardToMove = target.board.splice(targetCardIdx, 1)[0];
+        }
+
+        if (cardToMove) {
+            if (sel.sourceCardType === CardType.PANIC) {
+                attacker.hand.push(cardToMove);
+            } else {
+                this.deck.discardPile.push(cardToMove);
+            }
+        }
+
+        const srcType = sel.sourceCardType === 'Panika!' ? 'krade' : 'zahazuje';
+        console.log(`🃏 ${this.players[sel.attackerIdx]?.name} ${srcType} kartu od ${this.players[sel.targetIdx]?.name} z oblasti: ${targetCardArea} – karta: ${cardToMove?.name}`);
+
+        const wasBrawl = sel.isBrawl;
+        this.pendingSelection = null;
+        this.checkSuzyLafayette(attacker);
+        this.checkSuzyLafayette(target);
+        if (wasBrawl) {
+            // Rvačka: pokračuj dalším cílem ve frontě (každý ostatní odhodí 1 kartu).
+            this._advanceBrawl();
+        } else {
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+        }
+    },
+
+    _advanceMassAttack(currentPlayerIdx, originatorIdx, sourceCard) {
+        let nextTarget = (currentPlayerIdx + 1) % this.players.length;
+        let loopCount = 0;
+
+        // Přeskoč mrtvé i Apache Kida, když je hromadný útok kárový (imunita vůči ♦).
+        while (
+            nextTarget !== originatorIdx &&
+            (this.players[nextTarget].health <= 0 || this._apacheImmune(nextTarget, this._massAttackSuit, originatorIdx)) &&
+            loopCount < this.players.length
+        ) {
+            nextTarget = (nextTarget + 1) % this.players.length;
+            loopCount++;
+        }
+
+        if (nextTarget === originatorIdx || loopCount >= this.players.length) {
+            this.pendingResponse.active = false;
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+            return;
+        }
+
+        const target = this.players[nextTarget];
+        let barrelChecksLeft = 0;
+        let barrelReason = "BARREL";
+
+        if (sourceCard === CardType.GATLING) {
+            // Belle Star útočí (originator) → cizí Barel neplatí; Jourdonnaisova vrozená ano.
+            const hasBarrelCard = !this._belleIgnoresBoard(originatorIdx) && target.board.some(c => c.type === CardType.BARREL);
+            if (effectiveCharacter(target) === "Jourdonnais" && hasBarrelCard) {
+                barrelChecksLeft = 2;
+                barrelReason = "JOURDONNAIS";
+            } else if (effectiveCharacter(target) === "Jourdonnais") {
+                barrelChecksLeft = 1;
+                barrelReason = "JOURDONNAIS";
+            } else if (hasBarrelCard) {
+                barrelChecksLeft = 1;
+                barrelReason = "BARREL";
+            }
+        }
+
+        if (barrelChecksLeft > 0) {
+            this.pendingBarrelCheck = {
+                active: true, targetIdx: nextTarget, attackerIdx: originatorIdx,
+                checksLeft: barrelChecksLeft, reason: barrelReason, sourceCard: sourceCard
+            };
+            this.phase = "BARREL_DRAW";
+        } else {
+            this.pendingResponse = {
+                active: true, originatorIdx: originatorIdx, targetIdx: nextTarget,
+                requiredCard: sourceCard === CardType.GATLING ? CardType.MISSED : CardType.BANG,
+                sourceCard: sourceCard, responded: []
+            };
+            // Hromadný útok (Kulomet/Indiáni): vždy jen 1 vedle/bang na cíl – Slabův
+            // bonus (2 vedle) platí jen na obyčejný Bang, ne na Kulomet.
+            this.missesRequired = 1;
+            this.missesPlayed = 0;
+            this.phase = "RESPOND";
+        }
+    },
+
+    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false) {
+        const attacker = this.players[attackerIdx];
+        this.pendingResponse = {
+            active: true,
+            originatorIdx: attackerIdx,
+            targetIdx: targetIdx,
+            requiredCard: CardType.MISSED,
+            sourceCard: sourceCard,
+            bangEffect: bangEffect,
+            responded: []
+        };
+        if (!this.missesPlayed || this.missesPlayed === 0) {
+            // Bang-efekt: Slabův bonus (2× Vedle!) neplatí → vždy 1.
+            this.missesRequired = (!bangEffect && effectiveCharacter(attacker) === "Slab the Killer" && sourceCard !== CardType.GATLING) ? 2 : 1;
+            this.missesPlayed = 0;
+        }
+        this.phase = "RESPOND";
+    }
+};
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = PlayMixin;
+} else {
+    Object.assign(GameState.prototype, PlayMixin);
+}
+})();

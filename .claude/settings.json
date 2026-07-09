@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check *)",
+      "Bash(npm test)",
+      "Bash(npm test *)",
+      "Bash(node -e *)",
+      "Bash(node server.js)",
+      "Bash(node server.js *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
