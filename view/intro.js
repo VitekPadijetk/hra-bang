@@ -472,16 +472,16 @@ function renderIntroScene() {
 
     // Popisek fáze
     const phaseLabels = {
-        'init': 'Pripravujeme hru...',
-        'shuffle_roles': 'Michani roli...',
-        'deal_roles': 'Rozdavani roli...',
+        'init': '',
+        'shuffle_roles': '',
+        'deal_roles': '',
         'await_role_ok': 'Podivej se na svou roli!',
         'waiting_for_others_role': 'Cekame az si ostatni rozkliknou roli...',
-        'shuffle_chars': 'Michani karet postav...',
-        'deal_chars': 'Rozdavani postav...',
+        'shuffle_chars': '',
+        'deal_chars': '',
         'chars_slide_in': '',
-        'shuffle_deck': 'Michani hraciho balicku...',
-        'deal_cards': 'Rozdavani karet...',
+        'shuffle_deck': '',
+        'deal_cards': '',
     };
     // Pokud už mám roli odkrytou (čeká se na OK), ukaž odpovídající popisek
     // bez ohledu na to, v jaké přesné fázi rozdávání zrovna server je.
