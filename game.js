@@ -660,7 +660,11 @@ function startBlackJackReveal(ds) {
     if (isOwner) {
         gameScene.tweens.add({ targets: sprite, scaleX: endScale, delay: flyDelay, duration: 420, ease: 'Cubic.easeIn' });
     } else {
-        // ostatní: během letu se karta otočí zpět na rub (míří do skryté ruky)
+        // ostatní: karta míří do vějíře ruky soupeře → za letu se dotočí do jeho
+        // orientace (bok = ±90°, protější = 180°), jako běžné líznutí do ruky.
+        const seatAngle = _kitSpecAngleFor(playerIdx);
+        if (seatAngle) gameScene.tweens.add({ targets: sprite, angle: seatAngle, delay: flyDelay, duration: 420, ease: 'Cubic.easeIn' });
+        // ...a překlopí se zpět na rub (míří do skryté ruky).
         gameScene.tweens.add({ targets: sprite, scaleX: 0, delay: flyDelay, duration: 210, ease: 'Sine.easeIn',
             onComplete: () => { if (!sprite.active) return; sprite.setTexture('card_back');
                 gameScene.tweens.add({ targets: sprite, scaleX: endScale, duration: 210, ease: 'Sine.easeOut' }); } });

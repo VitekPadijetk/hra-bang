@@ -41,6 +41,16 @@ const DodgeCityMixin = {
         this.phase = "DISCARD_ANOTHER";
     },
 
+    // Hráč si to rozmyslel: hlavní karta ještě NEBYLA odhozena (leží v ruce), takže
+    // stačí zrušit rozehraný stav a vrátit se do fáze hraní.
+    cancelDiscardAnother(playerIdx) {
+        const pending = this.pendingDiscardAnother;
+        if (!pending || pending.playerIdx !== playerIdx) return;
+        if (this.phase !== "DISCARD_ANOTHER") return;
+        this.pendingDiscardAnother = null;
+        this.phase = "PLAY";
+    },
+
     // Hráč vybral „další kartu" (cenu) – odhodíme ji i hlavní kartu a spustíme efekt.
     // Do odhozu jde NEJPRVE odhozená („další") karta, pak hlavní karta (dle pravidel).
     discardAnotherCard(playerIdx, extraCardIdx) {

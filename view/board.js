@@ -880,8 +880,10 @@ function drawMyArea(ctx) {
             myBoardSprites.push({ sprite: bSprite, card, i });
 
             // Dodge City: zelená karta položená TENTO tah se zatím nedá aktivovat →
-            // vykresli ji černobíle (grayscale), ať je to jasné (do konce tahu).
-            if (card.green && card._playedTurn === state.turnId) {
+            // vykresli ji černobíle (grayscale), ať je to jasné. Jen ve fázi hraní –
+            // při odhazování (DISCARD/DISCARD_ANOTHER…) hint „nejde aktivovat" nedává
+            // smysl a černobílá zbytečně mate (má vypadat normálně, ne zašedle).
+            if (card.green && card._playedTurn === state.turnId && state.phase === 'PLAY') {
                 if (bSprite.preFX) bSprite.preFX.addColorMatrix().grayscale(1);
                 else bSprite.setTint(0x777777);   // fallback (Canvas renderer bez preFX)
             }
@@ -1023,7 +1025,10 @@ function drawMyArea(ctx) {
                 let cSprite = gameScene.add.image(posX, myBaseY, getTex(card.id))
                     .setScale(cScale)
                     .setAngle(0);
-                if (!isStagedCard && !isDAmain) {
+                if (isDAmain) {
+                    // Hlavní (hraná) karta jde kliknout pro ZRUŠENÍ „odhoď další kartu".
+                    cSprite.setInteractive({ useHandCursor: true });
+                } else if (!isStagedCard) {
                     cSprite.setInteractive({ useHandCursor: true });
                 }
 
@@ -1108,9 +1113,14 @@ function drawMyArea(ctx) {
                 });
 
                 cSprite.on('pointerdown', () => {
-                    // „Odhoď další kartu": klik na jinou než hlavní kartu ji zaplatí.
+                    // „Odhoď další kartu": klik na hlavní kartu = zrušit; na jinou = zaplatit.
                     if (isDiscardAnother) {
-                        if (isDAmain) return;
+                        if (isDAmain) {
+                            socket.emit('cancel_discard_another');
+                            App.blockInput = true;
+                            renderUI();
+                            return;
+                        }
                         socket.emit('discard_another_card', { playerIdx: myIndex, extraCardIdx: index });
                         App.blockInput = true;
                         renderUI();
@@ -1565,6 +1575,20 @@ function drawPhaseOverlays(ctx) {
             }
             mAdd(cSprite, 58);
         });
+    }
+
+    // „Odhoď další kartu" (Dodge City): banner + tlačítko Zrušit (nebo klik na hlavní kartu).
+    if (state.phase === "DISCARD_ANOTHER" && state.pendingDiscardAnother?.playerIdx === myIndex) {
+        let l1 = gameScene.add.text(960, 70, 'Klikni na kartu, kterou odhodíš jako cenu',
+            { fontSize: '26px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+        mAdd(l1, 206);
+        let cancel = gameScene.add.text(960, 116, '✖ Zrušit',
+            { fontSize: '22px', color: '#ffffff', backgroundColor: '#883333', padding: { x: 18, y: 8 } })
+            .setOrigin(0.5).setDepth(206).setInteractive({ useHandCursor: true });
+        cancel.on('pointerover', () => cancel.setBackgroundColor('#aa4444'));
+        cancel.on('pointerout',  () => cancel.setBackgroundColor('#883333'));
+        cancel.on('pointerdown', () => { socket.emit('cancel_discard_another'); App.blockInput = true; renderUI(); });
+        mAdd(cancel, 206);
     }
 
     if (state.phase === "SID_SAVE" && state.pendingSidSave?.playerIdx === myIndex) {

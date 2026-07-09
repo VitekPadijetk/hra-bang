@@ -464,6 +464,16 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Zrušení „odhoď další kartu" – hráč si to rozmyslel (klik na hlavní kartu / Zrušit).
+    socket.on('cancel_discard_another', () => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingDiscardAnother?.playerIdx;
+            if (idx == null) { broadcastRoom(room); return; }
+            gs.cancelDiscardAnother(idx);
+            broadcastRoom(room);
+        });
+    });
+
     socket.on('end_turn', () => {
         withRoom((room, p, gs) => {
             gs.tryEndTurn();
