@@ -97,6 +97,16 @@ module.exports = function installRoomService(ctx) {
     }
 
     function leaveRoom(socket, room) {
+        // Debug hra běží celá na jednom socketu (všechny „seaty" mají stejné socketId).
+        // Když debug okno odejde, nemá smysl hru držet (nic se v ní už neděje, jen by
+        // svítila jako sledovatelná) → zruš ji celou.
+        if (room.gameState?.isDebug) {
+            rooms.delete(room.id);
+            socket.leave(room.id);
+            socket.emit('go_to_menu');
+            broadcastLobbyList();
+            return;
+        }
         const idx = room.players.findIndex(p => p.socketId === socket.id);
         if (idx === -1) return;
         const wasLeader = room.leaderSocketId === socket.id;

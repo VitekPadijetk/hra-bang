@@ -192,6 +192,12 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         if (disbandBotGameWatchedBy(socket.id)) return;
         const room = findRoomBySocket(socket.id);
         if (room) {
+            // Debug hra žije jen dokud je otevřené debug okno – po jeho zavření ji smaž
+            // (jinak by zůstala viset jako sledovatelná hra, kde se už nic neděje).
+            if (room.gameState?.isDebug) {
+                disbandRoom(room);
+                return;
+            }
             if (room.phase === 'lobby' || room.phase === 'next_lobby') {
                 leaveRoom(socket, room);
             } else {
