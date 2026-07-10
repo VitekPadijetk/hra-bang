@@ -928,6 +928,29 @@ function drawMyArea(ctx) {
             });
         }
 
+        // Krytý vůz (DE_STEAL) / Kankán (GREEN_DISCARD) na SEBE: klik na vlastní kartu na
+        // stole (výzbroj/modrá/zelená) zacílí efekt na mě. Na samotnou aktivovanou zelenou
+        // kartu cílit nelze. Bez zvýraznění (jen kurzor ručička), ať to nevypadá jako běžný cíl.
+        const isDeStealSelf = (selectedState.action === 'DE_STEAL' || selectedState.action === 'GREEN_DISCARD')
+            && selectedState.greenCardId != null;
+        if (isDeStealSelf) {
+            myBoardSprites.forEach(({ sprite, card, i }) => {
+                if (card._isColt || card.id === selectedState.greenCardId) return;
+                sprite.setInteractive({ useHandCursor: true });
+                sprite.on('pointerdown', () => {
+                    const hasRealWeapon = me.weapon && me.weapon.id !== -1;
+                    const isWeapon = hasRealWeapon && i === 0;
+                    const area = isWeapon ? 'weapon' : 'board';
+                    const boardIdx = isWeapon ? null : (i - 1);
+                    socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId,
+                        target: { targetIdx: myIndex, area, boardIdx } });
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                });
+            });
+        }
+
         // ── Dodge City: zelené karty na mém stole ──────────────────────────────
         // (a) aktivace ve svém tahu (klik → efekt / míření), (b) Vedle!-zelené jako
         // reakce v RESPOND. Vzhled zeleného okraje je součástí artu karty.
@@ -977,8 +1000,12 @@ function drawMyArea(ctx) {
                 } else if (card.activate === 'heal_self') {
                     ok = me.health < me.maxHealth;
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
+                    // Cíl může být soupeř (má kartu) NEBO já sám (moje karta na stole – mimo
+                    // tuhle aktivovanou zelenou), pravidla umožňují cílit i na sebe.
                     ok = state.players.some((pl, idx) => idx !== myIndex && pl.health > 0 &&
-                        (pl.hand.length > 0 || (pl.weapon && pl.weapon.id !== -1) || (pl.board || []).length > 0));
+                            (pl.hand.length > 0 || (pl.weapon && pl.weapon.id !== -1) || (pl.board || []).length > 0))
+                        || (me.weapon && me.weapon.id !== -1)
+                        || (me.board || []).some(c => c.id !== card.id);
                 }
                 if (!ok) return;
 

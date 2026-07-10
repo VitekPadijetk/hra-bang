@@ -247,7 +247,15 @@ const DodgeCityMixin = {
         if (eff === 'steal_any' || eff === 'discard_any') {   // Krytý vůz / Kankán – bez vzdálenosti
             const targetIdx = target?.targetIdx;
             const t = this.players[targetIdx];
-            if (!t || t.health <= 0 || targetIdx === playerIdx || !this._hasAnyCard(t) || !target?.area) return;
+            // Cílit lze i na sebe (vlastní karty na stole) – pravidla to umožňují.
+            if (!t || t.health <= 0 || !this._hasAnyCard(t) || !target?.area) return;
+            // Na sebe: odhození zelené karty posune indexy mého stolu → cíl zapamatuj podle
+            // ID a po odhození dopočítej znovu. Na samotnou aktivovanou kartu cílit nelze.
+            let selfBoardId = null;
+            if (targetIdx === playerIdx && target.area === 'board') {
+                selfBoardId = t.board?.[target.boardIdx]?.id ?? null;
+                if (selfBoardId == null || selfBoardId === card.id) return;
+            }
             // Apache Kid: kárový Krytý vůz (9♦) ho míjí – karta se aktivuje naprázdno.
             if (this._apacheImmune(targetIdx, card.suit, playerIdx)) {
                 discardAndTrack();
@@ -264,7 +272,8 @@ const DodgeCityMixin = {
                 ignoreDistance: true,
             };
             this.phase = "SELECTING_TARGET_CARD";
-            this.resolveCardSelection(playerIdx, target.area, target.boardIdx);
+            const boardIdx = selfBoardId != null ? t.board.findIndex(c => c.id === selfBoardId) : target.boardIdx;
+            this.resolveCardSelection(playerIdx, target.area, boardIdx);
             return;
         }
     },

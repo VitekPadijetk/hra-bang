@@ -158,6 +158,40 @@ test('Kankán (discard any): odhoď kartu i vzdálenému', () => {
     assert.equal(g.phase, 'PLAY');
 });
 
+test('Kankán na sebe: odhodí vlastní kartu na stole (i po posunu indexů)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
+    g.turnId = 1;
+    const kancan = putGreen(g, 0, CardType.CAN_CAN, { activate: 'discard_any' }, 909); // board[0]
+    board(g, 0, CardType.BARREL, { id: 950 });                                          // board[1] (cíl)
+    assert.equal(g.players[0].board.length, 2);
+    // Klient posílá index z pohledu PŘED odhozem Kankánu (boardIdx: 1). Po odhození se
+    // index posune, server musí odhodit SPRÁVNOU kartu (950), ne vedlejší.
+    g.activateGreenCard(0, kancan.id, { targetIdx: 0, area: 'board', boardIdx: 1 });
+    assert.equal(g.players[0].board.length, 0);                       // Kankán i cíl pryč
+    assert.equal(g.deck.discardPile.some(c => c.id === 950), true);   // odhozena správná karta
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Krytý vůz na sebe: vezme vlastní kartu ze stolu do ruky', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
+    g.turnId = 1;
+    const wagon = putGreen(g, 0, CardType.COVERED_WAGON, { activate: 'steal_any' }, 908); // board[0]
+    board(g, 0, CardType.BARREL, { id: 951 });                                             // board[1] (cíl)
+    g.activateGreenCard(0, wagon.id, { targetIdx: 0, area: 'board', boardIdx: 1 });
+    assert.equal(g.players[0].board.length, 0);
+    assert.equal(g.players[0].hand.some(c => c.id === 951), true);    // karta se vrátila do ruky
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Zelená steal/discard na sebe nesmí cílit sama na sebe (aktivovaná karta)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
+    g.turnId = 1;
+    const kancan = putGreen(g, 0, CardType.CAN_CAN, { activate: 'discard_any' }, 912); // board[0]
+    // boardIdx 0 = sama aktivovaná karta → neplatné, nic se nestane.
+    g.activateGreenCard(0, kancan.id, { targetIdx: 0, area: 'board', boardIdx: 0 });
+    assert.equal(g.players[0].board.length, 1);   // Kankán zůstal (aktivace neproběhla)
+});
+
 test('Vedle!-zelená (Železný plát) se ve svém tahu NEaktivuje', () => {
     const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
     g.turnId = 1;
