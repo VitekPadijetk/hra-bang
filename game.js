@@ -1129,33 +1129,51 @@ function update() {
 
 // Vera Custer: portrét u jejího místa cyklicky střídá kopírovanou postavu a vlastní
 // Veru, ať všichni vidí (a poznají), koho zrovna kopíruje – bez zabírání dalšího místa.
-//   ~8 s: kopírovaná postava, jemně bliká (pulzující zelený nádech) = „zvýrazněná,
+//   ~8 s: kopírovaná postava, jemně bliká (velmi slabý zelený nádech) = „zvýrazněná,
 //         ale není to ona" (žádná průhlednost ani zvětšování – jen barva)
 //   ~2 s: čistá Vera Custer bez zvýraznění (obnoví se původní obarvení, pokud bylo)
+// Mezi oběma stavy PLYNULÝ přechod – vodorovné překlopení (scaleX 1→0→1), textura se
+// vymění v půlce (když je karta „na hraně"), takže žádný tvrdý skok.
 // Řízeno hodinami (Date.now) → stejná fáze pro každého i po překreslení. Portréty
 // registruje renderGameBoard (App.veraPortraits); mrtvé/překreslené sprity přeskoč.
 function _tickVeraPortraits() {
     const list = App.veraPortraits;
     if (!list || !list.length) return;
-    const CYCLE = 10000, COPY_MS = 8000;
+    const CYCLE = 10000, COPY_MS = 8000, TR = 480, H = TR / 2;   // TR = délka překlopení
     const t = Date.now() % CYCLE;
-    const inCopy = t < COPY_MS;
-    // Pulzující zelený nádech (0..1): bílá (bez nádechu) ↔ světle zelená. Sinus →
-    // plynulé „blikání" barvou. Snižujeme jen červený a modrý kanál, zelený drží 0xff.
+
+    // Velmi jemný pulzující zelený nádech: bílá ↔ sotva znatelná zelená (červený a
+    // modrý kanál klesnou jen málo, zelený drží 0xff).
     const s = Math.abs(Math.sin(t / 300));
-    const rb = Math.round(0xff - s * (0xff - 0x88));   // 255 → 136
+    const rb = Math.round(0xff - s * (0xff - 0xdd));   // 255 → 221 (slabý nádech)
     const greenTint = (rb << 16) | (0xff << 8) | rb;
+
+    // Urči zobrazený stav + faktor překlopení (flip). Přechody jsou na hranicích
+    // t=8000 (kopie→Vera) a t=0≡10000 (Vera→kopie), okno ±H.
+    let showCopy, flip = 1;
+    const d8 = t - COPY_MS;                              // vzdálenost k hranici 8000
+    const d0 = t < CYCLE / 2 ? t : t - CYCLE;            // znaménková vzdálenost k 0/10000
+    if (Math.abs(d8) < H) {
+        const p = (d8 + H) / TR;                         // 0..1
+        flip = Math.abs(Math.cos(p * Math.PI));
+        showCopy = p < 0.5;                             // z kopie do Very
+    } else if (Math.abs(d0) < H) {
+        const p = (d0 + H) / TR;
+        flip = Math.abs(Math.cos(p * Math.PI));
+        showCopy = p >= 0.5;                            // z Very do kopie
+    } else {
+        showCopy = t < COPY_MS;
+    }
+
     for (const v of list) {
         const sp = v.sprite;
         if (!sp || !sp.active) continue;
-        if (inCopy) {
-            if (v.copyTex && sp.texture.key !== v.copyTex) sp.setTexture(v.copyTex);
-            sp.setTint(greenTint);
-        } else {
-            if (v.selfTex && sp.texture.key !== v.selfTex) sp.setTexture(v.selfTex);
-            if (v.baseTint != null) sp.setTint(v.baseTint);
-            else sp.clearTint();
-        }
+        const tex = showCopy ? v.copyTex : v.selfTex;
+        if (tex && sp.texture.key !== tex) sp.setTexture(tex);
+        if (showCopy) sp.setTint(greenTint);
+        else if (v.baseTint != null) sp.setTint(v.baseTint);
+        else sp.clearTint();
+        sp.scaleX = v.baseScaleX * flip;
     }
 }
 

@@ -17,8 +17,10 @@ function registerVeraPortrait(sprite, player, getCharTex) {
         selfTex: getCharTex('Vera Custer'),
         copyTex: getCharTex(player._copiedCharacter),
         // Původní obarvení (zvýraznění tahu/čekání/mrtvý) – během „vlastní Very" fáze
-        // ho vrátíme; během kopie ho přebije pulzující zelený nádech.
+        // ho vrátíme; během kopie ho přebije jemný zelený nádech.
         baseTint: sprite.isTinted ? sprite.tintTopLeft : null,
+        // Základní scaleX (pro plynulý překlopení-přechod mezi Verou a kopií).
+        baseScaleX: sprite.scaleX,
     });
 }
 
