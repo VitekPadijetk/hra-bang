@@ -623,10 +623,20 @@ socket.on('card_animation', (data) => {
             if (!animateDrawToMyHand(data.playerIdx, data.cardId, deck.x, deck.y)) {
                 // Soupeřova karta zůstává skrytá (rub), míří do jeho vějíře ruky – a dotočí
                 // se z orientace balíčku (0°) do orientace jeho ruky (bok = ±90°, protější = 180°).
-                const oldLen = state.players?.[data.playerIdx]?.hand?.length ?? 0;
-                const target = getHandSlotPos(data.playerIdx, oldLen, oldLen + 1);
-                animateCard(deck.x, deck.y, target.x, target.y, 'card_back', 380, null,
-                    { startAngle: 0, endAngle: sideAngle(data.playerIdx) });
+                // Rychlá líznutí za sebou: než dorazí room_update, posílají se na STEJNÝ slot
+                // a překrývají se ve stejné hloubce (blikání/špatné vrstvy). Držíme proto počet
+                // právě letících líznutí u daného soupeře – každé další míří o slot dál a má
+                // vyšší depth (pozdější karta navrch).
+                const pIdx = data.playerIdx;
+                App.oppDrawPending = App.oppDrawPending || {};
+                const pending = App.oppDrawPending[pIdx] || 0;
+                App.oppDrawPending[pIdx] = pending + 1;
+                const oldLen = state.players?.[pIdx]?.hand?.length ?? 0;
+                const slot = oldLen + pending;
+                const target = getHandSlotPos(pIdx, slot, slot + 1);
+                animateCard(deck.x, deck.y, target.x, target.y, 'card_back', 380,
+                    () => { App.oppDrawPending[pIdx] = Math.max(0, (App.oppDrawPending[pIdx] || 1) - 1); },
+                    { startAngle: 0, endAngle: sideAngle(pIdx), depth: 800 + pending });
             }
             break;
         }
@@ -825,8 +835,11 @@ socket.on('card_animation', (data) => {
             const pedroDone = () => { App.discardFlyHideIds.delete(data.cardId); renderUI(); };
             // Karta z odhozu (lícem nahoru) → bez otáčení, jen dolet + růst + staging.
             if (!animateDrawToMyHand(data.playerIdx, data.cardId, discard.x, discard.y, { faceUp: true, duration: 380, onComplete: pedroDone })) {
+                // Soupeř bere veřejnou vrchní kartu odhozu (líc) → letí do jeho ruky a
+                // dotočí se do jeho orientace (bok = ±90°, protější = 180°), jako běžné líznutí.
                 const handPos = getPlayerHandPos(data.playerIdx);
-                animateCard(discard.x, discard.y, handPos.x, handPos.y, getCardTex(data.cardId), 380, pedroDone);
+                animateCard(discard.x, discard.y, handPos.x, handPos.y, getCardTex(data.cardId), 380, pedroDone,
+                    { startAngle: 0, endAngle: sideAngle(data.playerIdx) });
             }
             break;
         }

@@ -265,8 +265,9 @@ function animateCard(fromX, fromY, toX, toY, texKey, duration = 380, onComplete 
     const startScale = opts.startScale ?? opts.scale ?? 0.28;
     const endScale   = opts.endScale ?? opts.scale ?? startScale;
     const delay      = opts.delay || 0;
+    const depth      = opts.depth ?? 800;
     const sprite = gameScene.add.image(fromX, fromY, texKey)
-        .setScale(startScale).setAngle(startAngle).setDepth(800).setAlpha(0.95);
+        .setScale(startScale).setAngle(startAngle).setDepth(depth).setAlpha(0.95);
     gameScene.tweens.add({
         targets: sprite, x: toX, y: toY,
         duration, delay, ease: 'Power2',

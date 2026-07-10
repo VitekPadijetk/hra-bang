@@ -37,6 +37,9 @@ const App = {
     // jejich cíle přepočítají na aktuální rozteč ruky (retargetDrawAnims), aby karta
     // dosedla přesně tam, kam ji board.js vykreslí (jinak posun při přerozprostření).
     drawAnims: [],
+    // Počet právě letících líznutí u jednotlivých soupeřů (playerIdx -> count) – rychlá
+    // líznutí za sebou tak míří na postupné sloty a mají rostoucí depth (správné vrstvy).
+    oppDrawPending: {},
     // Přesná pozice rezervovaného slotu gated karty z board.js (cardId -> {x,y}).
     // Letící líznutí se na ni zaměřuje – board.js je autorita, žádný odhad slotu.
     gatedSlotPos: {},
