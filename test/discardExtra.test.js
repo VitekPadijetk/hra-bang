@@ -124,6 +124,30 @@ test('Ragtime: zvol kartu soupeře → zaplať → ukradni ji (bez vzdálenosti)
     assert.equal(g.phase, 'PLAY');
 });
 
+test('Ragtime na SEBE: vezmi si vlastní kartu ze stolu do ruky', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
+    give(g, 0, CardType.RAGTIME, de('steal_any'));
+    give(g, 0, CardType.BANG);              // cena (další karta)
+    board(g, 0, CardType.BARREL, { id: 777 });   // moje modrá karta na stole
+
+    g.startDiscardExtra(0, { targetIdx: 0, area: 'board', boardIdx: 0 });
+    assert.equal(g.phase, 'DISCARD_ANOTHER');
+
+    g.discardAnotherCard(0, 1);             // zaplať Bangem (index 1)
+    assert.equal(g.players[0].board.length, 0);                 // Barel opustil stůl
+    assert.ok(g.players[0].hand.some(c => c.id === 777));       // a je zpět v ruce
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Ragtime na SEBE nesmí cílit vlastní ruku (area hand → nic)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
+    give(g, 0, CardType.RAGTIME, de('steal_any'));
+    give(g, 0, CardType.BANG);
+
+    g.startDiscardExtra(0, { targetIdx: 0, area: 'hand', boardIdx: null });
+    assert.equal(g.phase, 'PLAY');          // neplatný cíl → stav se nezmění
+});
+
 test('Rvačka: zvol balíček → zaplať → každý ostatní odhodí 1 (útočník vybírá po směru)', () => {
     const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Renegade' }]);
     give(g, 0, CardType.BRAWL, de('brawl'));

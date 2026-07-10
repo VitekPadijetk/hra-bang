@@ -361,6 +361,11 @@ function renderCharacterSelectScreen() {
 function renderVeraCopyOverlay() {
     const pvc = state.pendingVeraCopy;
     if (!pvc) return;
+    // Okno s výběrem vidí POUZE Vera – ostatní hráči (ani diváci) nesmí vidět, kterou
+    // postavu si zvolila (skrytá informace jako role). Pro ně se overlay nekreslí vůbec.
+    // TODO(návrh, zatím NEimplementováno): jak dát ostatním vědět, koho Vera kopíruje –
+    //   viz komentář nad funkcí / poznámku pro uživatele.
+    if (pvc.playerIdx !== myIndex) return;
     const charData = gameScene.cache.json.get('characters_data');
 
     // Ztmavené pozadí přes celou desku.
@@ -368,12 +373,9 @@ function renderVeraCopyOverlay() {
         .setInteractive();   // spolkne kliknutí mimo portréty
     gameScene.cardsSprites.add(backdrop);
 
-    // Vybírá jen ten, na koho se čeká (Vera na tahu); ostatní vidí jen info.
-    const iAmVera = pvc.playerIdx === myIndex;
+    const iAmVera = true;   // sem se dostane jen Vera (viz early return výše)
 
-    themeTitle(gameScene, 960, 150,
-        iAmVera ? 'Vera Custer – vyber postavu ke zkopírování'
-                : `${state.players[pvc.playerIdx]?.name} (Vera Custer) kopíruje postavu…`,
+    themeTitle(gameScene, 960, 150, 'Vera Custer – vyber postavu ke zkopírování',
         { fontSize: '40px' });
 
     const choices = pvc.choices || [];

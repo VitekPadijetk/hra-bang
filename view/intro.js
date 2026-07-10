@@ -475,8 +475,8 @@ function renderIntroScene() {
         'init': '',
         'shuffle_roles': '',
         'deal_roles': '',
-        'await_role_ok': 'Podivej se na svou roli!',
-        'waiting_for_others_role': 'Cekame az si ostatni rozkliknou roli...',
+        'await_role_ok': '',
+        'waiting_for_others_role': '',
         'shuffle_chars': '',
         'deal_chars': '',
         'chars_slide_in': '',
@@ -486,7 +486,7 @@ function renderIntroScene() {
     // Pokud už mám roli odkrytou (čeká se na OK), ukaž odpovídající popisek
     // bez ohledu na to, v jaké přesné fázi rozdávání zrovna server je.
     const showReveal = (s.showRoleReveal || sub === 'await_role_ok') && s.myRole && !App.introRoleOkSent;
-    const lbl = showReveal ? 'Podivej se na svou roli!' : phaseLabels[sub];
+    const lbl = showReveal ? '' : phaseLabels[sub];
     if (lbl) {
         _iAdd(gameScene.add.text(960, 80, lbl,
             { fontSize: '38px', color: '#ffcc00',
@@ -565,12 +565,6 @@ function _renderIntroCharSelect() {
 
     // Umístěné karty (role atd.) + jmenovky
     if (s.placedCards) s.placedCards.forEach(_drawPlacedCard);
-
-    // Titulek
-    _iAdd(gameScene.add.text(960, 75, 'Vyber si postavu',
-        { fontSize: '48px', color: '#ffcc00',
-          backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 18, y: 10 } })
-        .setOrigin(0.5).setDepth(60));
 
     // Klikací karty postav ukážeme AŽ po dokončení překlápěcího revealu
     // (charChoicesRevealed) – během flipu běží sprite v introSprites. Výběr je

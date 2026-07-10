@@ -928,22 +928,29 @@ function drawMyArea(ctx) {
             });
         }
 
-        // Krytý vůz (DE_STEAL) / Kankán (GREEN_DISCARD) na SEBE: klik na vlastní kartu na
-        // stole (výzbroj/modrá/zelená) zacílí efekt na mě. Na samotnou aktivovanou zelenou
-        // kartu cílit nelze. Bez zvýraznění (jen kurzor ručička), ať to nevypadá jako běžný cíl.
-        const isDeStealSelf = (selectedState.action === 'DE_STEAL' || selectedState.action === 'GREEN_DISCARD')
+        // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
+        // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
+        // Ragtime (DE_STEAL + cardIndex, bez greenCardId) – hnědá „odhoď další kartu".
+        // Na samotnou aktivovanou zelenou kartu cílit nelze. Bez zvýraznění (jen kurzor).
+        const isGreenStealSelf = (selectedState.action === 'DE_STEAL' || selectedState.action === 'GREEN_DISCARD')
             && selectedState.greenCardId != null;
-        if (isDeStealSelf) {
+        const isRagtimeSelf = selectedState.action === 'DE_STEAL'
+            && selectedState.greenCardId == null && selectedState.cardIndex !== null;
+        if (isGreenStealSelf || isRagtimeSelf) {
             myBoardSprites.forEach(({ sprite, card, i }) => {
-                if (card._isColt || card.id === selectedState.greenCardId) return;
+                if (card._isColt || (selectedState.greenCardId != null && card.id === selectedState.greenCardId)) return;
                 sprite.setInteractive({ useHandCursor: true });
                 sprite.on('pointerdown', () => {
                     const hasRealWeapon = me.weapon && me.weapon.id !== -1;
                     const isWeapon = hasRealWeapon && i === 0;
                     const area = isWeapon ? 'weapon' : 'board';
                     const boardIdx = isWeapon ? null : (i - 1);
-                    socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId,
-                        target: { targetIdx: myIndex, area, boardIdx } });
+                    if (isGreenStealSelf) {
+                        socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId,
+                            target: { targetIdx: myIndex, area, boardIdx } });
+                    } else {
+                        socket.emit('discard_extra_choose', { cardIdx: selectedState.cardIndex, targetIdx: myIndex, area, boardIdx });
+                    }
                     selectedState = { cardIndex: null, action: null };
                     App.blockInput = true;
                     renderUI();
@@ -1622,18 +1629,11 @@ function drawPhaseOverlays(ctx) {
         });
     }
 
-    // „Odhoď další kartu" (Dodge City): banner + tlačítko Zrušit (nebo klik na hlavní kartu).
+    // „Odhoď další kartu" (Dodge City): banner. Zrušení = klik zpět na hlavní (hranou) kartu.
     if (state.phase === "DISCARD_ANOTHER" && state.pendingDiscardAnother?.playerIdx === myIndex) {
         let l1 = gameScene.add.text(960, 70, 'Klikni na kartu, kterou odhodíš jako cenu',
             { fontSize: '26px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
         mAdd(l1, 206);
-        let cancel = gameScene.add.text(960, 116, '✖ Zrušit',
-            { fontSize: '22px', color: '#ffffff', backgroundColor: '#883333', padding: { x: 18, y: 8 } })
-            .setOrigin(0.5).setDepth(206).setInteractive({ useHandCursor: true });
-        cancel.on('pointerover', () => cancel.setBackgroundColor('#aa4444'));
-        cancel.on('pointerout',  () => cancel.setBackgroundColor('#883333'));
-        cancel.on('pointerdown', () => { socket.emit('cancel_discard_another'); App.blockInput = true; renderUI(); });
-        mAdd(cancel, 206);
     }
 
     if (state.phase === "SID_SAVE" && state.pendingSidSave?.playerIdx === myIndex) {

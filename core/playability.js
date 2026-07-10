@@ -57,7 +57,8 @@ function cardPlayability(state, me, myIndex, card) {
             if (card.discardExtra === 'heal_any') return state.players.some(p => p.health > 0 && p.health < p.maxHealth);
             if (card.discardExtra === 'bang_any') return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
             if (card.discardExtra === 'steal_any') return state.players.some((p, idx) =>
-                idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
+                idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0))
+                || (me.weapon && me.weapon.id !== -1) || (me.board || []).length > 0;
             if (card.discardExtra === 'brawl') return state.players.some((p, idx) =>
                 idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
             return true;
