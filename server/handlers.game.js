@@ -216,6 +216,13 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     if (hi !== -1) atkH.splice(hi, 1);
                 }
                 gs.resolveCardSelection(d.attackerIdx, d.area, d.cardIdx);
+                // Cat Balou z ruky: odhozená karta je teď navrchu odhozu = VEŘEJNÁ, takže
+                // pošli její skutečné ID – ať se za letu odhalí (rub→líc) a natočí do odhozu
+                // (u soupeře naproti se dřív posílal jen rub → karta se ani neotočila, ani
+                // nepřetočila). Panika z ruky zůstává skrytá (míří do ruky útočníka).
+                if (!isPanic && d.area === 'hand') {
+                    stolenCardId = gs.deck.discardPile[gs.deck.discardPile.length - 1]?.id ?? null;
+                }
                 if (isPanic && d.area === 'hand') {
                     // Panika z ruky: útočník si vzal kartu do ruky a zná ji (poslední
                     // v ruce), ostatní vidí jen rub.
