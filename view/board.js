@@ -340,6 +340,7 @@ function drawOpponents(ctx) {
             );
             // Jediné setInteractive s korektním kurzorem (opakované volání by kurzor nepřepsalo).
             sprite.setInteractive({ useHandCursor: canActuallyTarget });
+            sprite._zoomKey = 'char:' + actualIdx;   // stabilní klíč zoomu (přežije překreslení)
 
             if (isShoot) {
                     const canShoot = computeCanHit(state, myIndex, actualIdx, selectedState.reach);
@@ -400,7 +401,7 @@ function drawOpponents(ctx) {
             });
 
             sprite.on('pointerover', () => {
-                startCardZoom(getCharTex(player.character));
+                startCardZoom(getCharTex(player.character), 'char:' + actualIdx);
                 if (selectedState.action === 'SHOOT') {
                     sprite.setTint(computeCanHit(state, myIndex, actualIdx, selectedState.reach) ? 0x00ff00 : 0xff0000);
                     sprite.setScale(scaleOpp * 1.1);
@@ -456,7 +457,8 @@ function drawOpponents(ctx) {
 
             bCard.setInteractive({ useHandCursor: (canTargetThisPlayer || isPatDraw) && !card._isRole });
             if (!card._isRole) {
-                bCard.on('pointerover', () => startCardZoom(tex));
+                bCard._zoomKey = card.id;
+                bCard.on('pointerover', () => startCardZoom(tex, card.id));
                 bCard.on('pointerout', scheduleZoomFade);
             }
 
@@ -837,7 +839,8 @@ function drawMyArea(ctx) {
             || healSelfMode
             || (['Panika!', 'Cat Balou'].includes(selectedState.action) && me.board.length > 0);
         charImg.setInteractive({ useHandCursor: charNeedsCursor });
-        charImg.on('pointerover', () => startCardZoom(getCharTex(me.character)));
+        charImg._zoomKey = 'char:' + myIndex;
+        charImg.on('pointerover', () => startCardZoom(getCharTex(me.character), 'char:' + myIndex));
         charImg.on('pointerout', scheduleZoomFade);
 
         if (healSelfMode) {
@@ -936,7 +939,8 @@ function drawMyArea(ctx) {
             reflowCard('mb' + (card._isColt ? 'colt' : card.id), bSprite, bx, by, tex, scaleMe, 0);
 
             bSprite.setInteractive({ useHandCursor: canTarget });
-            bSprite.on('pointerover', () => startCardZoom(tex));
+            bSprite._zoomKey = card.id;
+            bSprite.on('pointerover', () => startCardZoom(tex, card.id));
             bSprite.on('pointerout', scheduleZoomFade);
         });
 
@@ -1156,9 +1160,10 @@ function drawMyArea(ctx) {
                 }
 
                 let isHovered = false;
+                cSprite._zoomKey = card.id;
 
                 cSprite.on('pointerover', () => {
-                    startCardZoom(getTex(card.id));
+                    startCardZoom(getTex(card.id), card.id);
                     isHovered = true;
                     if (isMySidActive || isDocActive || state.phase === "DISCARD") return;
                     // „Odhoď další kartu": drž červené zvýraznění ceny i při hoveru (jako Sid).
@@ -1794,7 +1799,8 @@ function drawDrawPiles(ctx) {
             .setScale(scaleDeck).setAngle(topAngle);
         gameScene.cardsSprites.add(discardSprite);
         discardSprite.setInteractive({ useHandCursor: discardNeedsCursor });
-        discardSprite.on('pointerover', () => startCardZoom(getTex(topCard.id)));
+        discardSprite._zoomKey = 'discard:' + topCard.id;
+        discardSprite.on('pointerover', () => startCardZoom(getTex(topCard.id), 'discard:' + topCard.id));
         discardSprite.on('pointerout', scheduleZoomFade);
 
         var _discardTopY = topY;

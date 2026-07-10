@@ -114,6 +114,11 @@ let _zoomObjects = [];
 let _zoomTween = null;
 let _zoomVisible = false;
 let _zoomFadeTimer = null;
+// Identita karty, jejíž zoom je naplánovaný/zobrazený (id karty nebo 'char:N'…). Drží
+// se NEZÁVISLE na spritu: renderUI stůl překresluje (staré sprity zničí, nové vytvoří),
+// takže zoom nesmí viset na konkrétním spritu, ale na tom, CO je pod kurzorem. Díky
+// tomu cizí akce (překreslení) neresetuje odpočet ani zvýraznění té samé karty.
+let _zoomKey = null;
 
 function cancelZoomTimer() {
     clearTimeout(_hoverTimer);
@@ -127,6 +132,9 @@ function _cancelFadeTimer() {
 
 function _zoomSuppressed() {
     if (!state) return false;
+    // Běžné letící animace zoom NEblokují (zobrazí se nad nimi, depth 900 > 800). Přeruší
+    // ho jen míchání/snímání balíčku – to zabírá střed obrazovky, kde zoom vzniká.
+    if (App.reshuffleAnimating) return true;
     if (selectedState.cardIndex !== null) return true;
     if (selectedState.sidKetchum !== undefined) return true;
     const suppressPhases = ['RESPOND','DISCARD','BARREL_DRAW','BART_DRAW',
@@ -135,19 +143,39 @@ function _zoomSuppressed() {
     return false;
 }
 
-function startCardZoom(texKey) {
+// Je pod kurzorem stále karta (nebo její zoom-obraz) s daným klíčem? Řeší případy, kdy
+// karta mezitím zmizela (cizí akce ji odhodila) nebo se změnila obrazovka – Phaser tehdy
+// 'pointerout' nepošle (sprite byl zničen bez události). Bez klíče (starý styl) guard vypnut.
+function _pointerOverZoomKey(key) {
+    if (key == null || !gameScene?.input) return true;
+    const p = gameScene.input.activePointer;
+    if (!p || !p.camera) return true;   // kurzor ještě neurčen → neuklízej (drž zoom)
+    try {
+        return gameScene.input.hitTestPointer(p).some(o => o && o._zoomKey === key);
+    } catch (e) { return true; }
+}
+
+function startCardZoom(texKey, key = null) {
     if (_zoomSuppressed()) return;
     _cancelFadeTimer();
+    // Stejná karta je pořád pod kurzorem (typicky po překreslení stolu cizí akcí): neresetuj
+    // odpočet ani nezhasínej – necháme běžet původní časovač/zoom.
+    if (key != null && key === _zoomKey && (_zoomVisible || _hoverTimer)) return;
     if (_zoomVisible) return;
     cancelZoomTimer();
     if (!texKey || texKey === 'placeholder') return;
+    _zoomKey = key;
     _hoverTimer = setTimeout(() => {
+        _hoverTimer = null;   // časovač doběhl – od teď „nečeká"
         if (!gameScene || _zoomSuppressed()) return;
+        if (!_pointerOverZoomKey(key)) { _zoomKey = null; return; }   // karta mezitím zmizela
         stopCardZoom();
+        _zoomKey = key;   // stopCardZoom klíč vynuloval, obnov
         const targetScale = Math.min(1700 / 325, 880 / 500) * 0.92;
         const img = gameScene.add.image(960, 540, texKey)
             .setDepth(900).setAlpha(0).setScale(targetScale * 0.85)
             .setInteractive();
+        img._zoomKey = key;   // ať guard uzná i kurzor nad samotným zoom-obrazem
         _zoomObjects = [img];
         _zoomVisible = true;
         if (_zoomTween) _zoomTween.stop();
@@ -162,7 +190,7 @@ function startCardZoom(texKey) {
 
 function scheduleZoomFade() {
     cancelZoomTimer();
-    if (!_zoomVisible) return;
+    if (!_zoomVisible) { _zoomKey = null; return; }
     _cancelFadeTimer();
     _zoomFadeTimer = setTimeout(() => {
         _zoomFadeTimer = null;
@@ -174,8 +202,9 @@ function scheduleZoomFade() {
 
 function fadeOutZoom(img) {
     _cancelFadeTimer();
-    if (!_zoomVisible) { cancelZoomTimer(); return; }
+    if (!_zoomVisible) { cancelZoomTimer(); _zoomKey = null; return; }
     _zoomVisible = false;
+    _zoomKey = null;
     if (!img?.active) { _zoomObjects = []; return; }
     if (_zoomTween) { _zoomTween.stop(); _zoomTween = null; }
     gameScene.tweens.add({
@@ -189,9 +218,24 @@ function stopCardZoom() {
     _cancelFadeTimer();
     cancelZoomTimer();
     _zoomVisible = false;
+    _zoomKey = null;
     if (_zoomTween) { _zoomTween.stop(); _zoomTween = null; }
     _zoomObjects.forEach(o => { try { if (o?.active) o.destroy(); } catch(e){} });
     _zoomObjects = [];
+}
+
+// Backstop volaný z update() smyčky: zoom čeká/svítí, ale karta s jeho klíčem už není pod
+// kurzorem (cizí akce ji odstranila / změna obrazovky / kurzor odešel při překreslení, kdy
+// Phaser 'pointerout' nepošle) → zoom ukliď. Při běžném hoveru téže karty se nestane nic.
+function _tickCardZoom() {
+    if (!gameScene) return;
+    if (!_zoomVisible && !_hoverTimer) return;
+    // Míchání/snímání balíčku zabírá střed – běžící/naplánovaný zoom přeruš.
+    if (App.reshuffleAnimating) { stopCardZoom(); return; }
+    if (_zoomKey == null) return;
+    if (_pointerOverZoomKey(_zoomKey)) return;
+    if (_zoomVisible && _zoomObjects[0]?.active) fadeOutZoom(_zoomObjects[0]);
+    else stopCardZoom();
 }
 
 // --- OPTIMISTICKÉ AKTUALIZACE ---
@@ -1108,6 +1152,12 @@ function create() {
     // Separatni skupina pro intro animace - necisti se pri renderUI
     gameScene.introSprites = this.add.group();
 
+    // Hover vyhodnocuj KAŽDÝ snímek, ne jen při pohybu myši. renderUI stůl překresluje
+    // (staré sprity zničí, nové vytvoří); s výchozím „poll on move" by po cizí akci
+    // zvýraznění karty pod nehybným kurzorem zmizelo, dokud uživatel nepohne myší. Takto
+    // Phaser znovu vyvolá pointerover na nově vytvořeném spritu i bez pohybu.
+    this.input.setPollAlways();
+
     document.addEventListener('fullscreenchange', () => { if (gameScene) renderUI(); });
 
     renderUI();
@@ -1125,6 +1175,7 @@ function create() {
 
 function update() {
     _tickVeraPortraits();
+    _tickCardZoom();
 }
 
 // Vera Custer: portrét u jejího místa cyklicky střídá kopírovanou postavu a vlastní
@@ -1205,7 +1256,10 @@ function renderUI() {
     const isSpectator = myIndex === null && !!state;
 
     gameScene.cardsSprites.clear(true, true);
-    stopCardZoom();
+    // POZN.: zoom karty tu ZÁMĚRNĚ nerušíme. renderUI běží i při cizí akci a tvrdý
+    // stopCardZoom() by resetoval odpočet/zvýraznění karty pod nehybným kurzorem. Zoom je
+    // klíčovaný identitou karty (_zoomKey) a uklízí ho _tickCardZoom() z update() smyčky,
+    // jakmile pod kurzorem přestane být karta s daným klíčem (změna obrazovky, zmizení karty).
 
     // Závoj pozadí jen v menu/lobby/výběru/výsledcích (čitelnost textu). U herního
     // stolu je pozadí klasické bez ztmavení (závoj se úplně vypne).

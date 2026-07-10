@@ -981,13 +981,16 @@ socket.on('card_animation', (data) => {
             renderUI();                            // ne až s (opožděným) room_update na konci (Rvačka ap.)
             // Z boardu hráče (klidně otočeného o ±90°/180°) do odhozu, kde leží rovně (0°),
             // se zmenšením z velikosti jeho boardu na velikost odhozu (vězení/výměna zbraně).
+            // exactAngle: karta na stole leží LÍCEM nahoru, takže 0° ≠ 180° (u protějšího hráče
+            // se musí viditelně otočit o 180°, ne se „srovnat" na 180° díky symetrii → jinak
+            // dosedne do odhozu vzhůru nohama). Bez exactAngle by nearestCardAngle rotaci zrušil.
             // holdUntil: sprite drž na cíli, dokud karta reálně nedosedne do odhozu (room_update),
             // aby zdroj nezablikal zpět mezi koncem letu (380 ms) a opožděným broadcastem (~420 ms).
             _runResult(() => animateCard(from.x, from.y, discard.x, discard.y, getCardTex(data.cardId), 380, () => {
                 App.stealHideIds.delete(data.cardId);
                 if (App.discardAnimHideId === data.cardId) App.discardAnimHideId = null;
                 renderUI();
-            }, { startAngle: sideAngle(data.fromPlayerIdx), endAngle: 0,
+            }, { startAngle: sideAngle(data.fromPlayerIdx), endAngle: 0, exactAngle: true,
                  startScale: sideScale(data.fromPlayerIdx), endScale: 0.3,
                  holdUntil: () => inDiscard(data.cardId) }));
             break;
