@@ -1129,8 +1129,9 @@ function update() {
 
 // Vera Custer: portrét u jejího místa cyklicky střídá kopírovanou postavu a vlastní
 // Veru, ať všichni vidí (a poznají), koho zrovna kopíruje – bez zabírání dalšího místa.
-//   ~8 s: kopírovaná postava, jemně bliká (pulzující jas) = „zvýrazněná, ale není to ona"
-//   ~2 s: čistá Vera Custer bez zvýraznění
+//   ~8 s: kopírovaná postava, jemně bliká (pulzující zelený nádech) = „zvýrazněná,
+//         ale není to ona" (žádná průhlednost ani zvětšování – jen barva)
+//   ~2 s: čistá Vera Custer bez zvýraznění (obnoví se původní obarvení, pokud bylo)
 // Řízeno hodinami (Date.now) → stejná fáze pro každého i po překreslení. Portréty
 // registruje renderGameBoard (App.veraPortraits); mrtvé/překreslené sprity přeskoč.
 function _tickVeraPortraits() {
@@ -1139,17 +1140,21 @@ function _tickVeraPortraits() {
     const CYCLE = 10000, COPY_MS = 8000;
     const t = Date.now() % CYCLE;
     const inCopy = t < COPY_MS;
-    // Pulzující jas jen během kopie (žádné zvětšování). Sinus → plynulé „blikání".
-    const blink = 0.5 + 0.5 * Math.abs(Math.sin(t / 300));
+    // Pulzující zelený nádech (0..1): bílá (bez nádechu) ↔ světle zelená. Sinus →
+    // plynulé „blikání" barvou. Snižujeme jen červený a modrý kanál, zelený drží 0xff.
+    const s = Math.abs(Math.sin(t / 300));
+    const rb = Math.round(0xff - s * (0xff - 0x88));   // 255 → 136
+    const greenTint = (rb << 16) | (0xff << 8) | rb;
     for (const v of list) {
         const sp = v.sprite;
         if (!sp || !sp.active) continue;
         if (inCopy) {
             if (v.copyTex && sp.texture.key !== v.copyTex) sp.setTexture(v.copyTex);
-            sp.setAlpha(blink);
+            sp.setTint(greenTint);
         } else {
             if (v.selfTex && sp.texture.key !== v.selfTex) sp.setTexture(v.selfTex);
-            sp.setAlpha(1);
+            if (v.baseTint != null) sp.setTint(v.baseTint);
+            else sp.clearTint();
         }
     }
 }
