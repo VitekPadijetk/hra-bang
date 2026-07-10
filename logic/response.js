@@ -134,6 +134,13 @@ const ResponseMixin = {
                     const di = this.deck.discardPile.findIndex(c => c.id === pm.card.id);
                     if (di !== -1) this.deck.discardPile.splice(di, 1);
                     this.players[pm.playerIdx].hand.push(pm.card);
+                    // Úhyb (a jiné Vedle!-karty s `draw`) se vrací do ruky NEPOUŽITÁ (např.
+                    // proti Slabovi nebyl druhý Vedle!) → zruš i naplánovanou odměnu
+                    // (líznutí z fronty), aby si hráč nebral kartu za nezahranou kartu.
+                    for (let k = 0; k < (pm.card.draw || 0); k++) {
+                        const qi = this.specialActionQueue.findIndex(a => a.type === 'UHYB_DRAW' && a.playerIdx === pm.playerIdx);
+                        if (qi !== -1) this.specialActionQueue.splice(qi, 1);
+                    }
                 });
                 this.pendingResponse.partialMisses = [];
                 this.missesPlayed = 0;
