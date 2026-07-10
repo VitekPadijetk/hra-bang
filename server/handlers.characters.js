@@ -15,7 +15,10 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             emitAnimPrivate(room, playerIdx,
                 { type: 'draw', playerIdx, cardId: drawnId },
                 { type: 'draw', playerIdx });
-            handleReshuffleAndBroadcast(room, gs);
+            // Broadcast musí dorazit TĚSNĚ před dosednutím líznutí (jako běžné líznutí, 350ms),
+            // ne přesně na jeho konci (400ms) – jinak majiteli karta na okamžik problikne
+            // (staging ji pustí dřív, než dorazí nový stav).
+            handleReshuffleAndBroadcast(room, gs, 350);
         });
     });
 
@@ -32,7 +35,8 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
                     { type: 'draw', playerIdx, cardId: drawnId },
                     { type: 'draw', playerIdx });
             }
-            handleReshuffleAndBroadcast(room, gs);
+            // 350ms (těsně před dosednutím) místo 400ms – ať Úhyb/Bible líznutí majiteli neproblikne.
+            handleReshuffleAndBroadcast(room, gs, 350);
         });
     });
 

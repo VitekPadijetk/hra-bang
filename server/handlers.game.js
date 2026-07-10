@@ -39,7 +39,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // Pat Brennan – emituj animaci jen když karta opravdu přešla do jeho ruky.
             if (patAnim && gs.players[playerIdx]?.hand.some(c => c.id === patAnim.stolenCardId)) {
                 emitAnim(room, patAnim);
-                broadcastRoomDelayed(room, 500);
+                // Animace letu je 360ms; broadcast musí dorazit TĚSNĚ před dosednutím (ne až
+                // po něm), jinak karta po zániku sprite na chvíli zmizí, než ji přidá nový stav
+                // (animace „nenavazovala"). Karta se v ruce do dosednutí drží skrytá (staging).
+                broadcastRoomDelayed(room, 330);
                 return;
             }
             if (animateDraw && data.source === 'opponent_hand') {
