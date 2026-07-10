@@ -131,7 +131,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const card = attacker?.hand[d.cardIdx];
             emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
             gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx);
-            ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
+            if (d.targetIdx !== d.attackerIdx) ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
             broadcastRoomDelayed(room);
         });
     });
@@ -380,7 +380,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const discardBefore = gs.deck.discardPile.length;
             gs.activateGreenCard(playerIdx, d.cardId, target);
             // Cílená zelená karta (bang-efekt / krádež / odhoz) → ledger chování (dedukce rolí).
-            if (target && target.targetIdx != null) {
+            // Střelba/odhoz na sebe se do ledgeru nepočítá (není to nepřátelský akt).
+            if (target && target.targetIdx != null && target.targetIdx !== playerIdx) {
                 ctx.recordBehavior?.(room, { actorIdx: playerIdx, targetIdx: target.targetIdx, kind: 'hostile' });
             }
 

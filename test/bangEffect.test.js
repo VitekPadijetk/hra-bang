@@ -111,14 +111,14 @@ test('getActionForCard: bang-efekt (ne zelený) → SHOOT', () => {
     assert.notEqual(getActionForCard({ type: 'Nůž', bangEffect: true, green: true, range: 1 }, null), 'SHOOT');
 });
 
-test('cardPlayability: Úder hratelný jen když je cíl v dostřelu 1', () => {
-    // 3 hráči v kruhu: soused (dist 1) i vzdálenější (dist 1 ve 3 hráčích – všichni sousedi).
+test('cardPlayability: Úder hratelný vždy (lze vystřelit i na sebe)', () => {
+    // Soused v dostřelu → hratelný.
     const near = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
     const me = near.players[0];
     const cNear = { type: 'Úder', bangEffect: true, range: 1 };
     assert.equal(cardPlayability(near, me, 0, cNear), true);
 
-    // Bez živého cíle v dostřelu → nehratelné.
+    // I bez živého soupeře v dostřelu je hratelný – pravidla umožňují vystřelit na sebe.
     const solo = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw', health: 0 }]);
-    assert.equal(cardPlayability(solo, solo.players[0], 0, cNear), false);
+    assert.equal(cardPlayability(solo, solo.players[0], 0, cNear), true);
 });

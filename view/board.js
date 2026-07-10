@@ -831,11 +831,29 @@ function drawMyArea(ctx) {
             });
         }
 
-        if (selectedState.action === 'SHOOT' && selectedState.greenCardId == null && selectedState.cardIndex !== null) {
-            charImg.on('pointerdown', () => {
-                socket.emit('play_bang', { attackerIdx: myIndex, targetIdx: myIndex, cardIdx: selectedState.cardIndex });
-                selectedState = { cardIndex: null, action: null };
-            });
+        // Střelba na sebe (pravidla to umožňují): Bang!/Úder z ruky i zelené bang-efekty
+        // (Pepperbox/Puška na bizony/Nůž/Derringer). Postava se NEzvýrazňuje – jen kurzor
+        // ručička (charNeedsCursor) + klik zacílí útok na mě.
+        if (selectedState.action === 'SHOOT') {
+            if (selectedState.greenCardId != null) {
+                charImg.on('pointerdown', () => {
+                    socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId, target: { targetIdx: myIndex } });
+                    state.phase = "RESPOND";
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                });
+            } else if (selectedState.cardIndex !== null) {
+                charImg.on('pointerdown', () => {
+                    const capturedIdx = selectedState.cardIndex;
+                    socket.emit('play_bang', { attackerIdx: myIndex, targetIdx: myIndex, cardIdx: capturedIdx });
+                    optimisticRemoveCard(capturedIdx);
+                    state.phase = "RESPOND";
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
         }
 
         if (selectedState.action === "PLAY_BLUE" && selectedState.cardIndex !== null) {
@@ -953,7 +971,7 @@ function drawMyArea(ctx) {
                 const reach = bangEffectReach(card);
                 let ok = true;
                 if (card.bangEffect && card.range !== 'mass') {
-                    ok = state.players.some((pl, idx) => idx !== myIndex && pl.health > 0 && computeCanHit(state, myIndex, idx, reach));
+                    ok = true;   // lze vystřelit i na sebe (klik na vlastní postavu) → vždy aktivovatelná
                 } else if (card.bangEffect && card.range === 'mass') {
                     ok = state.players.some((pl, idx) => idx !== myIndex && pl.health > 0);
                 } else if (card.activate === 'heal_self') {

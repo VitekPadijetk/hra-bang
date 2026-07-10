@@ -207,7 +207,10 @@ const DodgeCityMixin = {
             if (card.range === 'any') reach = Infinity;
             else if (typeof card.range === 'number') reach = card.range;
             else reach = player.weapon?.range || player.weapon?.props?.range || 1;   // 'weapon' = dostřel zbraně
-            if (!t || t.health <= 0 || targetIdx === playerIdx || computeDistance(this, playerIdx, targetIdx) > reach) return;
+            // Pravidla umožňují vystřelit i sám na sebe (nelogické, ale legální) → na sebe
+            // neplatí kontrola vzdálenosti. Na cizí cíl standardní dostřel.
+            if (!t || t.health <= 0) return;
+            if (targetIdx !== playerIdx && computeDistance(this, playerIdx, targetIdx) > reach) return;
             // Apache Kid: kárová bang-efekt zelená ho míjí (karta se přesto odhodí).
             if (this._apacheImmune(targetIdx, card.suit, playerIdx)) {
                 discardAndTrack();

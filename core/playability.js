@@ -35,12 +35,11 @@ function cardPlayability(state, me, myIndex, card) {
         return false;
     }
     if (isMyPlayTurn) {
-        // Karta s bang-efektem (Úder, …) mimo zelené: nepočítá se do limitu Bang!,
-        // hratelná jen když je v jejím dostřelu živý cíl.
+        // Karta s bang-efektem (Úder, …) mimo zelené: nepočítá se do limitu Bang!.
+        // Vystřelit lze i sám na sebe (pravidla to umožňují), takže je hratelná vždy –
+        // i když není v dostřelu žádný soupeř (na sebe se klikne přes vlastní postavu).
         if (card.bangEffect && !card.green) {
-            const reach = bangEffectReach(card);
-            return state.players.some((p, idx) =>
-                idx !== myIndex && p.health > 0 && computeCanHit(state, myIndex, idx, reach));
+            return true;
         }
         if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
             const isWilly = effectiveCharacter(me) === "Willy the Kid";

@@ -75,6 +75,19 @@ test('Nůž: vzdálený hráč mimo dostřel 1 → nic', () => {
     assert.equal(g.players[0].board.length, 1);      // karta zůstala (aktivace neplatná)
 });
 
+test('Nůž na sebe: pravidla umožňují vystřelit na sebe → RESPOND s cílem = já', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Renegade' }]);
+    g.turnId = 1;
+    const c = putGreen(g, 0, CardType.KNIFE, { bangEffect: true, range: 1 }, 906);
+    g.activateGreenCard(0, c.id, { targetIdx: 0 });   // na sebe
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.pendingResponse.targetIdx, 0);
+    assert.equal(g.pendingResponse.originatorIdx, 0);
+    assert.equal(g.players[0].board.length, 0);        // zelená karta se odhodila
+    g.handleResponse(0, null);                          // schytám vlastní zásah
+    assert.equal(g.players[0].health, g.players[0].maxHealth - 1);
+});
+
 test('Puška na bizony (dostřel any): zasáhne i vzdáleného', () => {
     const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Renegade' }, { role: 'Outlaw' }]);
     g.turnId = 1;
