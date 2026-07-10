@@ -988,11 +988,25 @@ function closeCardGallery() {
 // ── ZÁKLADNÍ FUNKCE PHASERU ──────────────────────────────────────────────
 
 function preload() {
+    // Pozadí ve 4K: primárně malý WebP (~0,7 MB), PNG (~8 MB) zůstává jako fallback.
+    // Při paralelním stahování všech textur občas soubor skončí loaderror → zůstala by
+    // holá barva plátna. Proto ho při chybě párkrát znovu zařadíme do fronty: 1. pokus
+    // spadne na PNG, další přidají cache-buster (obejde nakešovanou chybu). Retry běží,
+    // dokud loader v preloadu ještě jede, takže se stihne než doběhne create().
+    let bgRetries = 0;
+    const bgSources = ['assets/background.webp', 'assets/background.png'];
     this.load.on('loaderror', function (file) {
+        if (file.key === 'background' && bgRetries < 4) {
+            bgRetries++;
+            const src = bgSources[Math.min(bgRetries, bgSources.length - 1)] + '?retry=' + bgRetries;
+            console.warn('Pozadí se nenačetlo, opakuji pokus č. ' + bgRetries + ' → ' + src);
+            this.load.image('background', src);
+            return;
+        }
         console.warn('Chybí textura, použije se placeholder:', file.src);
-    });
+    }, this);
 
-    this.load.image('background', 'assets/background.png');
+    this.load.image('background', bgSources[0]);
     this.load.image('logo', 'assets/logo.png');
     this.load.image('card_back', 'assets/other_cards/playing_card_back.png');
     this.load.image('placeholder', 'assets/card_placeholder.png');
@@ -1140,8 +1154,14 @@ function create() {
     normalizeCharTextures(this);
     buildCardTextures(this);
 
-    let bg = this.add.image(960, 540, 'background');
-    bg.setDisplaySize(1920, 1080);
+    // Kdyby se pozadí ani po retry nenačetlo, nevkládej „rozbitou" texturu (zelený
+    // placeholder) – radši nech tmavou výplň, přes kterou stejně leží bgScrim.
+    if (this.textures.exists('background')) {
+        let bg = this.add.image(960, 540, 'background');
+        bg.setDisplaySize(1920, 1080);
+    } else {
+        this.add.rectangle(960, 540, 1920, 1080, 0x2a1c10);
+    }
 
     // Ztmavovací závoj přes pozadí kvůli čitelnosti (obrázek pozadí je místy světlý/rušný
     // a text nad ním nešel přečíst). Persistentní – NENÍ v cardsSprites, takže ho renderUI
@@ -1327,7 +1347,9 @@ function renderUI() {
             renderIntroScene();
         } else {
             // Intro brzy dorazi (50ms delay na serveru) - zobraz prazdnou obrazovku
-            const bg2 = gameScene.add.image(960, 540, 'background').setDepth(0);
+            const bg2 = gameScene.textures.exists('background')
+                ? gameScene.add.image(960, 540, 'background').setDepth(0)
+                : gameScene.add.rectangle(960, 540, 1920, 1080, 0x2a1c10).setDepth(0);
             gameScene.cardsSprites.add(bg2);
         }
         return;
