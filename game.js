@@ -1123,7 +1123,36 @@ function create() {
     }
 }
 
-function update() {}
+function update() {
+    _tickVeraPortraits();
+}
+
+// Vera Custer: portrét u jejího místa cyklicky střídá kopírovanou postavu a vlastní
+// Veru, ať všichni vidí (a poznají), koho zrovna kopíruje – bez zabírání dalšího místa.
+//   ~8 s: kopírovaná postava, jemně bliká (pulzující jas) = „zvýrazněná, ale není to ona"
+//   ~2 s: čistá Vera Custer bez zvýraznění
+// Řízeno hodinami (Date.now) → stejná fáze pro každého i po překreslení. Portréty
+// registruje renderGameBoard (App.veraPortraits); mrtvé/překreslené sprity přeskoč.
+function _tickVeraPortraits() {
+    const list = App.veraPortraits;
+    if (!list || !list.length) return;
+    const CYCLE = 10000, COPY_MS = 8000;
+    const t = Date.now() % CYCLE;
+    const inCopy = t < COPY_MS;
+    // Pulzující jas jen během kopie (žádné zvětšování). Sinus → plynulé „blikání".
+    const blink = 0.5 + 0.5 * Math.abs(Math.sin(t / 300));
+    for (const v of list) {
+        const sp = v.sprite;
+        if (!sp || !sp.active) continue;
+        if (inCopy) {
+            if (v.copyTex && sp.texture.key !== v.copyTex) sp.setTexture(v.copyTex);
+            sp.setAlpha(blink);
+        } else {
+            if (v.selfTex && sp.texture.key !== v.selfTex) sp.setTexture(v.selfTex);
+            sp.setAlpha(1);
+        }
+    }
+}
 
 // getPlayerPosition je v positions.js
 

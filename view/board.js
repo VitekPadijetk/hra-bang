@@ -5,12 +5,29 @@
 //
 // isSpectator se zde přepočítává (v renderUI byl lokál); zbytek je beze změny.
 
+// Vera Custer: portrét kopírované postavy se v update() cyklicky přepíná (viz state.js).
+// Zaregistruj portrét hráče, pokud je to Vera s aktuálně zkopírovanou postavou.
+// getCharTex převede jméno postavy na texturu. Bez efektu pro ne-Veru / bez kopie.
+function registerVeraPortrait(sprite, player, getCharTex) {
+    if (!sprite || !player) return;
+    if (player.character !== 'Vera Custer' || !player._copiedCharacter) return;
+    if (player._copiedCharacter === 'Vera Custer') return;
+    App.veraPortraits.push({
+        sprite,
+        selfTex: getCharTex('Vera Custer'),
+        copyTex: getCharTex(player._copiedCharacter),
+    });
+}
+
 function renderGameBoard() {
     const isSpectator = myIndex === null && !!state;
 
     // Reflow slide: v tomto renderu si značíme, které karty jsme viděli (App._cardSeen),
     // po dokreslení desky (pruneCardSlides) se nepoužité klíče uklidí.
     App._cardSeen = new Set();
+    // Vera Custer: seznam portrétů k cyklickému přepínání se staví od nuly každý render
+    // (sprity jsou nové). scene.update() pak jen animuje aktuální seznam.
+    App.veraPortraits = [];
 
     const centerX = 1920 / 2;
     const centerY = 1080 / 2;
@@ -525,6 +542,7 @@ function drawOpponents(ctx) {
                 player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingL);
+            registerVeraPortrait(charOpp, player, getCharTex);
 
             if (player.role === "Sheriff") {
                 let star = gameScene.add.image(
@@ -596,6 +614,7 @@ function drawOpponents(ctx) {
                 player.role === "Sheriff" ? { dx: cardW * 0.42, dy: cardH * 0.45, scale: starScale } : null);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingT);
+            registerVeraPortrait(charOpp, player, getCharTex);
 
             if (player.role === "Sheriff") {
                 let star = gameScene.add.image(
@@ -666,6 +685,7 @@ function drawOpponents(ctx) {
                 player.role === "Sheriff" ? { dx: -cardH * 0.45, dy: cardW * 0.42, scale: starScale } : null);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingR);
+            registerVeraPortrait(charOpp, player, getCharTex);
 
             if (player.role === "Sheriff") {
                 let star = gameScene.add.image(
@@ -802,6 +822,7 @@ function drawMyArea(ctx) {
         let charImg = gameScene.add.image(livesX, myBaseY - (bulletH * me.health), getCharTex(me.character)).setScale(scaleMe);
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character))) charImg.setVisible(false);
+        registerVeraPortrait(charImg, me, getCharTex);
 
         // Dodge City: Tequila (DE_HEAL) může vyléčit +1 i sám sebe → moje postava klikatelná
         // (jen když jsem zraněný – léčení na plný život nedává smysl).
@@ -1469,6 +1490,7 @@ function drawSpectatorPlayer(ctx) {
         if (isCurrent) charImg2.setTint(0x88ff88);
         else if (isDead) charImg2.setTint(0x777777);
         gameScene.cardsSprites.add(charImg2);
+        registerVeraPortrait(charImg2, player, getCharTex);
         if (player.role === 'Sheriff') {
             gameScene.cardsSprites.add(
                 gameScene.add.image(livesX_adj + cW * 0.42, charY2 - cH * 0.45, 'sheriff_star').setScale(sOpp)

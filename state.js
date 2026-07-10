@@ -40,6 +40,10 @@ const App = {
     // Počet právě letících líznutí u jednotlivých soupeřů (playerIdx -> count) – rychlá
     // líznutí za sebou tak míří na postupné sloty a mají rostoucí depth (správné vrstvy).
     oppDrawPending: {},
+    // Vera Custer: portréty, které v update() cyklicky přepínají mezi kopírovanou
+    // postavou (blikající zvýraznění, ~8 s) a vlastní Verou (bez zvýraznění, ~2 s).
+    // Naplňuje renderGameBoard, čte scene.update(). Prvky: { sprite, selfTex, copyTex }.
+    veraPortraits: [],
     // Přesná pozice rezervovaného slotu gated karty z board.js (cardId -> {x,y}).
     // Letící líznutí se na ni zaměřuje – board.js je autorita, žádný odhad slotu.
     gatedSlotPos: {},
