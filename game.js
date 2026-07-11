@@ -701,6 +701,11 @@ function startBlackJackReveal(ds) {
                 const h = state?.players?.[myIndex]?.hand;
                 if (h && !h.some(c => c.id === card.id)) h.push(card);
                 renderUI();
+            } else {
+                // Ostatní: karta (rub) se v jeho ruce objeví TAKÉ přesně při dosednutí spritu,
+                // ať mezi koncem letu a (opožděným) room_update není prázdné místo (probliknutí).
+                const h = state?.players?.[playerIdx]?.hand;
+                if (h && !h.some(c => c.id === card.id)) { h.push(card); renderUI(); }
             } } });
     if (isOwner) {
         gameScene.tweens.add({ targets: sprite, scaleX: endScale, delay: flyDelay, duration: 420, ease: 'Cubic.easeIn' });
@@ -773,6 +778,7 @@ function _clearKitSpecSprites() {
     (App.kitSpecParked || []).forEach(p => { if (p?.sprite?.active) p.sprite.destroy(); });
     App.kitSpecParked = [];
     App.kitSpecPicksDone = 0;
+    App.oppHandHideCount = {};   // žádné rozletěné Kitovy karty → nic neskrývej
 }
 
 function startKitCarlsonDealSpectator() {
@@ -842,14 +848,25 @@ function _kitSpecFlyToHand(slot, delay = 0, slotBump = 0) {
     const sp = slot?.sprite;
     if (!gameScene || !sp?.active) { if (sp?.active) sp.destroy(); return; }
     const kitIdx = App.kitSpecKitIdx ?? state?.currentPlayerIndex ?? 0;
+    // Vybraná karta už je v Kitově ruce ze serveru (room_update). Drž ji ale skrytou,
+    // dokud sem animace nedosedne – ať se v ruce neobjeví HNED, ale až po doletu.
+    App.oppHandHideCount = App.oppHandHideCount || {};
+    App.oppHandHideCount[kitIdx] = (App.oppHandHideCount[kitIdx] || 0) + 1;
     const handLen = state?.players?.[kitIdx]?.hand?.length ?? 0;
+    const visLen = Math.max(0, handLen - App.oppHandHideCount[kitIdx]);   // viditelné karty (bez letících)
     const total = handLen + slotBump + 1;
-    const to = getHandSlotPos(kitIdx, handLen + slotBump, total);
+    const to = getHandSlotPos(kitIdx, visLen + slotBump, total);           // dosedne na koncový VIDITELNÝ slot
     const scale = kitIdx === (myIndex === null ? 0 : myIndex) ? 0.36 : 0.27;
     const angle = _kitSpecAngleFor(kitIdx);
+    renderUI();   // skryj nově přibylou kartu v ruce hned (než dosedne sprite)
     gameScene.tweens.add({ targets: sp, x: to.x, y: to.y, scaleX: scale, scaleY: scale,
         angle, delay, duration: 380, ease: 'Cubic.easeIn',
-        onComplete: () => { if (sp.active) sp.destroy(); } });
+        onComplete: () => {
+            if (sp.active) sp.destroy();
+            // Sprite dosedl → kartu v ruce odkryj (sniž skrytý počet).
+            if (App.oppHandHideCount) App.oppHandHideCount[kitIdx] = Math.max(0, (App.oppHandHideCount[kitIdx] || 1) - 1);
+            renderUI();
+        } });
 }
 
 function _kitSpecFlyToDeck(slot, delay = 0) {

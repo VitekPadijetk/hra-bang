@@ -581,6 +581,20 @@ function getMyPlayedCardPos(playerIdx, cardId) {
     return getPlayerHandPos(playerIdx);
 }
 
+// Karta ze stolu cíle právě odlétá (Panika/Cat Balou/Ragtime): skryj ji po dobu letu.
+// Když jde o MOU zbraň (area 'weapon'), sundej ji rovnou z mého stavu, ať se na jejím
+// místě HNED objeví výchozí Colt .45 – jinak slot zůstane prázdný, než dorazí room_update
+// (= krátké probliknutí). Colt slot je jen v mém renderu (drawMyArea), proto stačí pro mě.
+function _hideStolenBoardCard(data) {
+    if (data.stolenCardId == null) return;
+    App.stealHideIds.add(data.stolenCardId);
+    if (data.area === 'weapon' && data.targetIdx === myIndex && myIndex !== null) {
+        const me = state?.players?.[myIndex];
+        if (me?.weapon && me.weapon.id === data.stolenCardId) me.weapon = { id: -1 };
+    }
+    renderUI();
+}
+
 socket.on('card_animation', (data) => {
     if (!gameScene || !state) return;   // divák (myIndex === null) animace také vidí
     const deck    = deckTopPos();      // vrch balíčku (odkud karta vzlétá / kam dosedá)
@@ -717,7 +731,7 @@ socket.on('card_animation', (data) => {
                     { startAngle: tgtAngle, endAngle: 0, scale: 0.3, holdUntil: () => inDiscard(data.cardId) });
                 // Ukradenou kartu z výzbroje/stolu skryj AŽ TEĎ, když se odlepuje (jinak
                 // by z boardu zmizela hned a teprve po doletu paniky vylétla z prázdna).
-                if (isBoard && data.stolenCardId) { App.stealHideIds.add(data.stolenCardId); renderUI(); }
+                if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
                 // Panika z RUKY: kartu (rub) uber z ruky cíle TEĎ, když se odlepuje k útočníkovi
                 // – ať ji cíl nedrží déle, než letí (dřív mizela až s room_update = viditelně pozdě).
                 else if (state?.players?.[data.targetIdx]?.hand?.length) {
@@ -766,7 +780,7 @@ socket.on('card_animation', (data) => {
                 animateCard(from.x, from.y, discard.x, discard.y, cbTex, 250, null,
                     { startAngle: tgtAngle, endAngle: 0, scale: 0.3, holdUntil: () => inDiscard(data.cardId) });
                 // Zničenou kartu z výzbroje/stolu skryj AŽ TEĎ, když se odlepuje.
-                if (isBoard && data.stolenCardId) { App.stealHideIds.add(data.stolenCardId); renderUI(); }
+                if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
                 // Cat Balou z RUKY: kartu (rub) uber z ruky cíle TEĎ, když letí do odhozu –
                 // ať ji cíl nedrží déle, než letí (dřív mizela až s room_update = pozdě).
                 else if (state?.players?.[data.targetIdx]?.hand?.length) {
@@ -867,7 +881,7 @@ socket.on('card_animation', (data) => {
             const atkAngle = sideAngle(data.attackerIdx);
             const revealStolen = () => { if (data.stolenCardId) { App.stealHideIds.delete(data.stolenCardId); renderUI(); } };
             // Kartu z výzbroje/stolu skryj (letí), z ruky uber cíli poslední rub.
-            if (isBoard && data.stolenCardId) { App.stealHideIds.add(data.stolenCardId); renderUI(); }
+            if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
             else if (state?.players?.[data.targetIdx]?.hand?.length) {
                 state.players[data.targetIdx].hand.splice(-1, 1); renderUI();
             }

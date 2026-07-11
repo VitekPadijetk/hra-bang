@@ -78,6 +78,23 @@ test('Dynamit: jiná barva → přejde na dalšího hráče, tah pokračuje', ()
     assert.equal(g.players[0].health, 4);
 });
 
+test('Dynamit: nelze posunout (všichni ho mají) → zůstává u hráče, check jen 1×', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
+    board(g, 0, CardType.DYNAMITE, { name: 'Dynamit' });
+    board(g, 1, CardType.DYNAMITE, { name: 'Dynamit' }); // soupeř má taky → nelze posunout
+    g.deck.cards = []; topDeck(g, Suits.HEARTS, '5'); topDeck(g, Suits.HEARTS, '6'); // rezerva + check (nevybuchne)
+
+    g.handleStartOfTurnChecks();
+    g.triggerCheckDraw();
+    g.resolveCheck();
+
+    // Dynamit zůstal u hráče 0 (jen jeden), nepřesunul se, hráč pokračuje v tahu.
+    assert.equal(g.players[0].board.filter(c => c.type === CardType.DYNAMITE).length, 1);
+    assert.equal(g.players[1].board.filter(c => c.type === CardType.DYNAMITE).length, 1);
+    assert.equal(g.phase, 'DRAW');       // žádné zacyklení – check proběhl jen jednou
+    assert.equal(g.players[0].health, 4);
+});
+
 // ── Vězení ───────────────────────────────────────────────────────────────────
 test('Vězení: srdce → hráč se vyplatí a hraje (DRAW)', () => {
     const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }]);

@@ -289,7 +289,10 @@ function drawOpponents(ctx) {
             (isDeSteal && player.health > 0) || isServerCardSelect;
         // Pat Brennan (Dodge City): ve své fázi lízání smí místo balíčku vzít 1 kartu ze
         // stolu libovolného hráče do ruky (klik na kartu na stole soupeře).
-        const isPatDraw = isMyDraw && (state.drawPhaseState?.options || []).includes('board') &&
+        // !App.blockInput: jakmile Pat kliknutím vezme kartu (nastaví blockInput), zvýraznění
+        // i klikatelnost karet na stole HNED zmizí (nečekej na room_update na konci animace) –
+        // jinak jde na ně klikat znovu a spustit „falešnou" animaci karty, co nedoletí do ruky.
+        const isPatDraw = isMyDraw && !App.blockInput && (state.drawPhaseState?.options || []).includes('board') &&
             state.drawPhaseState?.cardsDrawn === 0 && player.health > 0;
 
         let isCurrent = state.currentPlayerIndex === actualIdx;
@@ -313,7 +316,10 @@ function drawOpponents(ctx) {
 
         const numBluePrimary = Math.min(displayCards.length, 3);
 
-        const handLen = player.hand.length;
+        // oppHandHideCount: dočasně skryté karty v ruce soupeře, které k němu právě LETÍ
+        // (Kit Carlson – vybraná karta). Objeví se v ruce teprve po dosednutí animace,
+        // ne hned s room_update. Klíč = reálný index hráče.
+        const handLen = Math.max(0, player.hand.length - (App.oppHandHideCount?.[actualIdx] || 0));
 
         const addCharInteraction = (sprite) => {
             if (isDead) {
@@ -994,8 +1000,15 @@ function drawMyArea(ctx) {
         {
             const greenTurn = state.phase === 'PLAY' && state.currentPlayerIndex === myIndex &&
                 selectedState.cardIndex === null && !App.blockInput && !isPanicCBMyTurn;
+            // Belle Star útočí (na svém tahu) → cizí karty na stole (i zelené Vedle!) neplatí,
+            // server je odmítne. Nenabízej je pak jako reakci (zrcadlí server _belleIgnoresBoard).
+            const _origIdx = state.pendingResponse?.originatorIdx;
+            const _belleIgnoresBoard = _origIdx != null &&
+                state.currentPlayerIndex === _origIdx &&
+                effectiveCharacter(state.players[_origIdx]) === "Belle Star";
             const isRespondMiss = state.phase === 'RESPOND' && state.pendingResponse?.active &&
-                state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!';
+                state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
+                !_belleIgnoresBoard;
 
             myBoardSprites.forEach(({ sprite, card }) => {
                 if (card._isColt || card._isWeapon || !card || !card.green) return;
@@ -1061,8 +1074,13 @@ function drawMyArea(ctx) {
                     } else if (card.activate === 'discard_any') {
                         selectedState = { cardIndex: null, action: 'GREEN_DISCARD', greenCardId: card.id };
                         renderUI();
+                    } else if (card.bangEffect && card.range === 'mass') {
+                        // Houfnice (masový útok): dvoukrok jako Kulomet/Indiáni – tenhle klik
+                        // kartu jen oznaří, spustí ji teprve klik na ODHAZOVACÍ hromádku.
+                        selectedState = { cardIndex: null, action: 'GREEN_MASS', greenCardId: card.id };
+                        renderUI();
                     } else {
-                        // Houfnice (mass) / Čutora (heal_self) / Pony express (draw_3): hned.
+                        // Čutora (heal_self) / Pony express (draw_3): hned.
                         socket.emit('activate_green_card', { playerIdx: myIndex, cardId: card.id, target: null });
                         App.blockInput = true;
                         renderUI();
@@ -1162,7 +1180,11 @@ function drawMyArea(ctx) {
                 let isHovered = false;
                 cSprite._zoomKey = card.id;
 
-                cSprite.on('pointerover', () => {
+                cSprite.on('pointerover', (pointer) => {
+                    // Dotyk: „pointerover" naskočí už při ťuknutí a Phaser k němu nepošle
+                    // „pointerout" → karta by zůstala zvětšená/podbarvená, i když nic nedržíš.
+                    // Na dotykovém zařízení proto hover efekt (zoom i zvětšení) přeskoč.
+                    if (pointer?.wasTouch) return;
                     startCardZoom(getTex(card.id), card.id);
                     isHovered = true;
                     if (isMySidActive || isDocActive || state.phase === "DISCARD") return;
@@ -1346,7 +1368,15 @@ function drawMyArea(ctx) {
                 }
                 return true;
             });
-            const hasPlayable = sidCanHeal || hasPlayableGreen || me.hand.some((card, idx) => {
+            // Aktivní schopnosti postav se počítají jako hratelná akce → blikání „Ukončit
+            // tah" pak nemá smysl (zrcadlí podmínky tlačítek Chuck/Doc/José níže).
+            const _ec = effectiveCharacter(me);
+            const _joseBlue = ["Zbraň", "Barel", "Vybavení", "Dynamit"];
+            const hasActiveAbility =
+                (_ec === "Chuck Wengam" && me.health > 1) ||
+                (_ec === "Doc Holyday" && !me._docUsed && me.hand.length >= 2) ||
+                (_ec === "José Delgado" && (me._joseUses || 0) < 2 && me.hand.some(c => _joseBlue.includes(c.type)));
+            const hasPlayable = sidCanHeal || hasPlayableGreen || hasActiveAbility || me.hand.some((card, idx) => {
                 const p = getCardPlayability(card, idx);
                 return p !== false;
             });
@@ -1651,7 +1681,8 @@ function drawPhaseOverlays(ctx) {
                 cSprite.setInteractive({ useHandCursor: true });
                 cSprite.setTint(0xddffdd);
                 // Po najetí jen lehce zvětšit (do všech stran), ne posouvat nahoru.
-                cSprite.on('pointerover', () => { cSprite.setTint(0xffff44); cSprite.setScale(0.34); });
+                // Dotyk: hover efekt přeskoč (jinak karta zůstane zvětšená bez „pointerout").
+                cSprite.on('pointerover', (pointer) => { if (pointer?.wasTouch) return; cSprite.setTint(0xffff44); cSprite.setScale(0.34); });
                 cSprite.on('pointerout', () => { cSprite.setTint(0xddffdd); cSprite.setScale(0.3); });
                 cSprite.on('pointerdown', () => {
                     socket.emit('store_pick', { playerIdx: myIndex, cardIdx: i });
@@ -1748,7 +1779,8 @@ function drawDrawPiles(ctx) {
                         state.drawPhaseState?.playerIdx === myIndex &&
                         (state.drawPhaseState?.options || []).includes('discard') &&
                         state.deck.discardPile.length > 0;
-    const discardNeedsCursor = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) || isPedroDraw;
+    const discardNeedsCursor = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) ||
+        (selectedState.action === "GREEN_MASS" && selectedState.greenCardId != null) || isPedroDraw;
 
     // Během sejmutí je kontrolní karta navrchu odhozu, ale vizuálně je teď uprostřed
     // (reveal animace). V odhozu ji proto zatím nezobrazuj – naskočí, až tam dolétne.
@@ -1830,7 +1862,10 @@ function drawDrawPiles(ctx) {
     const _neededTotal     = state.drawPhaseState?.cardsNeeded ?? 2;
     const _effectiveDrawn  = _serverDrawn + App.pendingDrawCount;
     const _drawStillNeeded = _neededTotal - _effectiveDrawn;
-    const _isMyDrawActive  = isMyDraw && _drawStillNeeded > 0;
+    // !App.blockInput: po Patině vzetí karty ze stolu (nastaví blockInput) zhasni i balíček
+    // HNED se startem animace, ne až po ní. Normální lízání z balíčku blockInput nenastavuje
+    // (řídí se pendingDrawCount), takže víceklik zůstává funkční.
+    const _isMyDrawActive  = isMyDraw && _drawStillNeeded > 0 && !App.blockInput;
 
     if (_isMyDrawActive) {
         deckSprite.setTint(0xffff44);
@@ -1921,6 +1956,20 @@ function drawDrawPiles(ctx) {
                 socket.emit('play_card', capturedIdx);
             }
             optimisticRemoveCard(capturedIdx);
+            selectedState = { cardIndex: null, action: null };
+            App.blockInput = true;
+            renderUI();
+        });
+    }
+
+    // Houfnice (zelený masový útok): potvrzení klikem na ODHAZOVACÍ hromádku (jako Kulomet).
+    if (selectedState.action === "GREEN_MASS" && selectedState.greenCardId != null) {
+        discardSprite.setInteractive({ useHandCursor: true });
+        if (discardSprite.setTint) discardSprite.setTint(0xffff44);
+        discardSprite.on('pointerover', () => { if (discardSprite.setTint) discardSprite.setTint(0xffff88); });
+        discardSprite.on('pointerout', () => { if (discardSprite.setTint) discardSprite.setTint(0xffff44); });
+        discardSprite.on('pointerdown', () => {
+            socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId, target: null });
             selectedState = { cardIndex: null, action: null };
             App.blockInput = true;
             renderUI();

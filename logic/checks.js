@@ -88,6 +88,19 @@ const ChecksMixin = {
         }
     },
 
+    // Dynamit nevybuchl a nedal se posunout (zůstává u hráče). Pokračuj případným
+    // Vězením a pak lízáním – ale dynamit se v TOMTO tahu už znovu nekontroluje.
+    _continueAfterDynamite(playerIdx) {
+        const p = this.players[playerIdx];
+        const jailIdx = p.board.findIndex(c => c.type === CardType.JAIL);
+        if (jailIdx !== -1) {
+            this.pendingCheckDraw = { active: true, playerIdx, dynamiteIdx: null, jailIdx };
+            this.phase = "CHECK_DRAW";
+            return;
+        }
+        this.startDrawPhase();
+    },
+
     _applyCheckResult(check) {
         const getNum = (val) => {
             if (val === 'J') return 11; if (val === 'Q') return 12;
@@ -111,26 +124,27 @@ const ChecksMixin = {
             } else {
                 const pHasWeapon = p.weapon && p.weapon.id !== -1;
                 const fromBoardIdx = (pHasWeapon ? 1 : 0) + check.boardIdx;
-                const dynCard = p.board.splice(check.boardIdx, 1)[0];
-                let nextIdx = (check.playerIdx + 1) % this.players.length;
-                let loopGuard = 0;
-                while (loopGuard < this.players.length) {
-                    const np = this.players[nextIdx];
-                    const hasDynamite = np.board.some(c => c.type === CardType.DYNAMITE);
-                    if (np.health > 0 && !hasDynamite) break;
-                    nextIdx = (nextIdx + 1) % this.players.length;
-                    loopGuard++;
+                // Najdi dalšího ŽIVÉHO hráče BEZ dynamitu (jen ostatní – nikdy zpět na sebe).
+                let targetIdx = null;
+                for (let k = 1; k < this.players.length; k++) {
+                    const idx = (check.playerIdx + k) % this.players.length;
+                    const np = this.players[idx];
+                    if (np.health > 0 && !np.board.some(c => c.type === CardType.DYNAMITE)) { targetIdx = idx; break; }
                 }
-                if (loopGuard >= this.players.length) {
-                    this.deck.discardPile.push(dynCard);
+                if (targetIdx === null) {
+                    // Nikdo jiný nemůže dynamit převzít (všichni ho mají / jsou mrtví) →
+                    // dynamit ZŮSTÁVÁ u hráče na tahu a check se pro TENTO tah už neopakuje
+                    // (dynCard zůstává na p.board). Příští tah se zkontroluje znovu.
+                    this._continueAfterDynamite(check.playerIdx);
                 } else {
-                    const np = this.players[nextIdx];
+                    const dynCard = p.board.splice(check.boardIdx, 1)[0];
+                    const np = this.players[targetIdx];
                     const npHasWeapon = np.weapon && np.weapon.id !== -1;
                     np.board.push(dynCard);
                     const toBoardIdx = (npHasWeapon ? 1 : 0) + (np.board.length - 1);
-                    this.lastAnimEvent = { type: 'dynamite_pass', fromIdx: check.playerIdx, toIdx: nextIdx, cardId: dynCard?.id, fromBoardIdx, toBoardIdx };
+                    this.lastAnimEvent = { type: 'dynamite_pass', fromIdx: check.playerIdx, toIdx: targetIdx, cardId: dynCard?.id, fromBoardIdx, toBoardIdx };
+                    this.handleStartOfTurnChecks();
                 }
-                this.handleStartOfTurnChecks();
             }
         } else if (check.reason === "JAIL") {
             const jailCard = p.board.splice(check.boardIdx, 1)[0];
