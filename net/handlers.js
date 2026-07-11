@@ -648,9 +648,13 @@ socket.on('card_animation', (data) => {
                 const oldLen = state.players?.[pIdx]?.hand?.length ?? 0;
                 const slot = oldLen + pending;
                 const target = getHandSlotPos(pIdx, slot, slot + 1);
+                // exactAngle: u hráče PŘÍMO NAPROTI (nahoře, 180°) by se rotace bez něj
+                // srovnala na 0° (symetrie rubu) → karta letí „placatě" a dosedne v MOJÍ
+                // orientaci místo jeho vějíře (pak by po room_update přeskočila na 180°).
+                // Se 180° se viditelně dotočí do jeho orientace, jako rozdání přes stůl.
                 animateCard(deck.x, deck.y, target.x, target.y, 'card_back', 380,
                     () => { App.oppDrawPending[pIdx] = Math.max(0, (App.oppDrawPending[pIdx] || 1) - 1); },
-                    { startAngle: 0, endAngle: sideAngle(pIdx), depth: 800 + pending });
+                    { startAngle: 0, endAngle: sideAngle(pIdx), exactAngle: true, depth: 800 + pending });
             }
             break;
         }
@@ -835,8 +839,10 @@ socket.on('card_animation', (data) => {
                           startScale: sideScale(data.fromPlayerIdx), endScale: sideScale(data.playerIdx), duration: 380 });
                 } else {
                     // Jiný divák: jen rub, otočí se z orientace cíle do orientace Jesseho.
+                    // exactAngle: cíl a Jesse přímo naproti (180° od sebe) by se bez něj
+                    // srovnali na 0° a karta by letěla placatě – takhle se dotočí naplno.
                     animateCard(from.x, from.y, to.x, to.y, 'card_back', 380, null,
-                        { startAngle: fromAngle, endAngle: drawerAngle, scale: sideScale(data.playerIdx) });
+                        { startAngle: fromAngle, endAngle: drawerAngle, exactAngle: true, scale: sideScale(data.playerIdx) });
                 }
             }
             break;
