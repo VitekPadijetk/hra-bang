@@ -137,22 +137,49 @@ function _zoomSuppressed() {
     if (App.reshuffleAnimating) return true;
     if (selectedState.cardIndex !== null) return true;
     if (selectedState.sidKetchum !== undefined) return true;
-    const suppressPhases = ['RESPOND','DISCARD','BARREL_DRAW','BART_DRAW',
-                            'SUZY_DRAW','EL_GRINGO_STEAL','CHECK_DRAW','KIT_CARLSON','LUCKY_DUKE','DRAW','DYNAMITE_DAMAGE'];
-    if (suppressPhases.includes(state.phase)) return true;
+    // Fázové potlačení (líznutí, odhoz, reakce, kontroly…) platí jen když jsem to JÁ, kdo je
+    // na tahu / má reagovat. state.phase je GLOBÁLNÍ, takže když soupeř zrovna líže/hraje,
+    // nesmí mi to blokovat zoom – v cizím tahu klidně zvětšuj.
+    const iAmActing = myIndex != null && (
+        state.currentPlayerIndex === myIndex ||
+        (state.phase === 'RESPOND' && state.pendingResponse?.targetIdx === myIndex) ||
+        (state.phase === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.playerIdx === myIndex)
+    );
+    if (iAmActing) {
+        const suppressPhases = ['RESPOND','DISCARD','BARREL_DRAW','BART_DRAW',
+                                'SUZY_DRAW','EL_GRINGO_STEAL','CHECK_DRAW','KIT_CARLSON','LUCKY_DUKE','DRAW','DYNAMITE_DAMAGE'];
+        if (suppressPhases.includes(state.phase)) return true;
+    }
     return false;
 }
 
-// Je pod kurzorem stále karta (nebo její zoom-obraz) s daným klíčem? Řeší případy, kdy
-// karta mezitím zmizela (cizí akce ji odhodila) nebo se změnila obrazovka – Phaser tehdy
-// 'pointerout' nepošle (sprite byl zničen bez události). Bez klíče (starý styl) guard vypnut.
+// Pozice kurzoru v herních souřadnicích (bez závislosti na Phaserově input listu, který se
+// po vytvoření spritů plní až další snímek → hitTestPointer by hned po renderUI vracel prázdno).
+function _pointerPos() {
+    const p = gameScene?.input?.activePointer;
+    if (!p) return null;
+    const x = (p.worldX != null) ? p.worldX : p.x;
+    const y = (p.worldY != null) ? p.worldY : p.y;
+    return (x == null || y == null) ? null : { x, y };
+}
+
+// Je pod kurzorem stále karta (nebo její zoom-obraz) s daným klíčem? Počítá se GEOMETRICKY
+// proti spritům ve skupině (ne přes Phaser input list), takže to platí i hned po překreslení.
+// Řeší, když karta zmizela (cizí akce), změnila se obrazovka nebo kurzor kartu opustil.
 function _pointerOverZoomKey(key) {
-    if (key == null || !gameScene?.input) return true;
-    const p = gameScene.input.activePointer;
-    if (!p || !p.camera) return true;   // kurzor ještě neurčen → neuklízej (drž zoom)
-    try {
-        return gameScene.input.hitTestPointer(p).some(o => o && o._zoomKey === key);
-    } catch (e) { return true; }
+    if (key == null || !gameScene) return true;
+    const pos = _pointerPos();
+    if (!pos) return true;
+    const list = gameScene.cardsSprites?.getChildren?.() || [];
+    for (const o of list) {
+        if (!o || o._zoomKey !== key || !o.visible || !o.getBounds) continue;
+        try { if (o.getBounds().contains(pos.x, pos.y)) return true; } catch (e) {}
+    }
+    const img = _zoomObjects[0];
+    if (img?.active && img._zoomKey === key && img.getBounds) {
+        try { if (img.getBounds().contains(pos.x, pos.y)) return true; } catch (e) {}
+    }
+    return false;
 }
 
 function startCardZoom(texKey, key = null) {
@@ -242,20 +269,24 @@ function _tickCardZoom() {
     else stopCardZoom();
 }
 
-// Zvýraznění (tint/scale) drží pointerover handlery jednotlivých karet. Po překreslení
-// stolu vzniknou NOVÉ sprity v základním stavu a Phaserův 'pointerover' by na nehybném
-// kurzoru dorazil až o snímek později → karta by na okamžik probliknala bez zvýraznění.
-// Proto hned po renderu synchronně znovu vyvoláme pointerover na spritu pod kurzorem –
-// zvýraznění (a případný zoom) se nasadí ještě PŘED vykreslením. Idempotentní s pozdějším
-// Phaserovým pointerover.
+// Zvýraznění (tint/scale) i zoom drží pointerover handlery jednotlivých karet. Po překreslení
+// stolu vzniknou NOVÉ sprity v základním stavu; Phaserův 'pointerover' na nehybném kurzoru
+// dorazí až příští snímek (nové sprity se do input listu zařadí se zpožděním) → karta by na
+// okamžik probliknala bez zvýraznění a zoomu by se resetoval odpočet. Proto hned po renderu
+// synchronně dohledáme GEOMETRICKY vrchní kartu pod kurzorem a vyvoláme na ní pointerover –
+// zvýraznění i zoom se nasadí PŘED vykreslením. Idempotentní s pozdějším Phaserovým pointerover.
 function _reapplyPointerHover() {
-    if (!gameScene?.input) return;
-    const p = gameScene.input.activePointer;
-    if (!p || !p.camera) return;
-    try {
-        const hits = gameScene.input.hitTestPointer(p);
-        if (hits && hits[0]) hits[0].emit('pointerover', p, hits[0].x, hits[0].y);
-    } catch (e) {}
+    if (!gameScene?.cardsSprites) return;
+    const pos = _pointerPos();
+    if (!pos) return;
+    let top = null;
+    gameScene.cardsSprites.getChildren().forEach(o => {
+        if (!o || !o.input || !o.visible || !o.getBounds) return;
+        if (top && o.depth < top.depth) return;
+        let b; try { b = o.getBounds(); } catch (e) { return; }
+        if (b.contains(pos.x, pos.y)) top = o;
+    });
+    if (top) top.emit('pointerover', gameScene.input.activePointer);
 }
 
 // --- OPTIMISTICKÉ AKTUALIZACE ---
