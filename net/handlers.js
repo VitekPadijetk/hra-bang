@@ -889,9 +889,19 @@ socket.on('card_animation', (data) => {
                     { duration: 360, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle })) {
                 const dLen = state?.players?.[data.attackerIdx]?.hand?.length ?? 0;
                 const toAtk = getHandSlotPos(data.attackerIdx, dLen, dLen + 1);
-                const stolenTex = data.stolenCardId ? getCardTex(data.stolenCardId) : 'card_back';
-                animateCard(from.x, from.y, toAtk.x, toAtk.y, stolenTex, 360, revealStolen,
-                    { startAngle: tgtAngle, endAngle: atkAngle, scale: sideScale(data.attackerIdx) });
+                if (isBoard && data.stolenCardId) {
+                    // Viditelná karta ze stolu (Pat Brennan / Ragtime) mizí do SKRYTÉ ruky
+                    // jiného hráče → pro ostatní se za letu překlopí lícem→rub (reverse),
+                    // zamíří na správný slot a dotočí se z orientace cíle do orientace útočníka.
+                    animateCardFlip(from.x, from.y, toAtk.x, toAtk.y, 'card_back', getCardTex(data.stolenCardId),
+                        { reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
+                          startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx),
+                          duration: 360, onComplete: revealStolen });
+                } else {
+                    const stolenTex = data.stolenCardId ? getCardTex(data.stolenCardId) : 'card_back';
+                    animateCard(from.x, from.y, toAtk.x, toAtk.y, stolenTex, 360, revealStolen,
+                        { startAngle: tgtAngle, endAngle: atkAngle, scale: sideScale(data.attackerIdx) });
+                }
             }
             break;
         }
