@@ -1017,6 +1017,7 @@ function drawMyArea(ctx) {
                 if (isRespondMiss && card.activate === 'miss' && !App.blockInput) {
                     sprite.setTint(0xffff44);
                     sprite.setInteractive({ useHandCursor: true });
+                    if (sprite.input) sprite.input.cursor = 'pointer';   // setInteractive kurzor nepřepíše (viz ř. ~947)
                     sprite.on('pointerover', () => { sprite.setTint(0xffff88); sprite.setScale(scaleMe * 1.06); });
                     sprite.on('pointerout', () => { sprite.setTint(0xffff44); sprite.setScale(scaleMe); });
                     sprite.on('pointerdown', () => {
@@ -1032,6 +1033,7 @@ function drawMyArea(ctx) {
                 if (selectedState.greenCardId === card.id) {
                     sprite.setTint(0xddffdd);
                     sprite.setInteractive({ useHandCursor: true });
+                    if (sprite.input) sprite.input.cursor = 'pointer';   // setInteractive kurzor nepřepíše (viz ř. ~947)
                     sprite.on('pointerdown', () => { selectedState = { cardIndex: null, action: null }; renderUI(); });
                     return;
                 }
@@ -1059,10 +1061,17 @@ function drawMyArea(ctx) {
                 }
                 if (!ok) return;
 
-                sprite.setTint(0x66ff99);
+                // Žádné permanentní zelené zvýraznění – karta vypadá normálně a teprve
+                // po najetí myší se lehce zvětší a podbarví (jako karty v ruce) + ručička.
+                // setInteractive kurzor po dřívějším volání (ř. ~947) nepřepíše, proto ho
+                // nastavíme napřímo přes input.cursor.
                 sprite.setInteractive({ useHandCursor: true });
-                sprite.on('pointerover', () => { sprite.setTint(0x99ffbb); sprite.setScale(scaleMe * 1.06); });
-                sprite.on('pointerout', () => { sprite.setTint(0x66ff99); sprite.setScale(scaleMe); });
+                if (sprite.input) sprite.input.cursor = 'pointer';
+                sprite.on('pointerover', (pointer) => {
+                    if (pointer?.wasTouch) return;
+                    sprite.setTint(0xddffdd); sprite.setScale(scaleMe * 1.05);
+                });
+                sprite.on('pointerout', () => { sprite.clearTint(); sprite.setScale(scaleMe); });
                 sprite.on('pointerdown', () => {
                     if (card.bangEffect && card.range !== 'mass') {
                         // Míření jako Bang! – cíl vybereš klikem na soupeře (viz addCharInteraction).
@@ -1079,8 +1088,14 @@ function drawMyArea(ctx) {
                         // kartu jen oznaří, spustí ji teprve klik na ODHAZOVACÍ hromádku.
                         selectedState = { cardIndex: null, action: 'GREEN_MASS', greenCardId: card.id };
                         renderUI();
+                    } else if (card.activate === 'draw_3' || card.activate === 'heal_self') {
+                        // Pony express (lízni 3) i Čutora (uzdrav se): dvoukrok jako Houfnice –
+                        // klik kartu jen oznaří, spustí ji teprve potvrzovací klik na
+                        // ODHAZOVACÍ hromádku (karta se přitom odhodí).
+                        selectedState = { cardIndex: null, action: 'GREEN_SELF', greenCardId: card.id };
+                        renderUI();
                     } else {
-                        // Čutora (heal_self) / Pony express (draw_3): hned.
+                        // Bezpečnostní záloha pro případnou jinou „vlastní" zelenou: aktivuj hned.
                         socket.emit('activate_green_card', { playerIdx: myIndex, cardId: card.id, target: null });
                         App.blockInput = true;
                         renderUI();
@@ -1780,7 +1795,7 @@ function drawDrawPiles(ctx) {
                         (state.drawPhaseState?.options || []).includes('discard') &&
                         state.deck.discardPile.length > 0;
     const discardNeedsCursor = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) ||
-        (selectedState.action === "GREEN_MASS" && selectedState.greenCardId != null) || isPedroDraw;
+        ((selectedState.action === "GREEN_MASS" || selectedState.action === "GREEN_SELF") && selectedState.greenCardId != null) || isPedroDraw;
 
     // Během sejmutí je kontrolní karta navrchu odhozu, ale vizuálně je teď uprostřed
     // (reveal animace). V odhozu ji proto zatím nezobrazuj – naskočí, až tam dolétne.
@@ -1962,8 +1977,9 @@ function drawDrawPiles(ctx) {
         });
     }
 
-    // Houfnice (zelený masový útok): potvrzení klikem na ODHAZOVACÍ hromádku (jako Kulomet).
-    if (selectedState.action === "GREEN_MASS" && selectedState.greenCardId != null) {
+    // Houfnice (masový útok) i „vlastní" zelené (Pony express, Čutora): potvrzení klikem
+    // na ODHAZOVACÍ hromádku (jako Kulomet) – karta se přitom odhodí.
+    if ((selectedState.action === "GREEN_MASS" || selectedState.action === "GREEN_SELF") && selectedState.greenCardId != null) {
         discardSprite.setInteractive({ useHandCursor: true });
         if (discardSprite.setTint) discardSprite.setTint(0xffff44);
         discardSprite.on('pointerover', () => { if (discardSprite.setTint) discardSprite.setTint(0xffff88); });
