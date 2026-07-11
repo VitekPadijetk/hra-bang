@@ -189,8 +189,12 @@ function startCardZoom(texKey, key = null) {
 }
 
 function scheduleZoomFade() {
-    cancelZoomTimer();
-    if (!_zoomVisible) { _zoomKey = null; return; }
+    // ZÁMĚRNĚ neruší odpočet ani _zoomKey: 'pointerout' přichází i při běžném překreslení
+    // stolu (starý sprite se zničí = out, hned vznikne nový = over) a tvrdý reset by u karty
+    // pod nehybným kurzorem shodil zvětšení. Skutečný úklid (kurzor opustil kartu) řeší
+    // _tickCardZoom() podle geometrie. Tady jen naplánuj doznění UŽ zobrazeného zoomu –
+    // dává to grace okno při přejezdu mezi kartami; návrat na kartu ho v startCardZoom zruší.
+    if (!_zoomVisible) return;
     _cancelFadeTimer();
     _zoomFadeTimer = setTimeout(() => {
         _zoomFadeTimer = null;
@@ -236,6 +240,22 @@ function _tickCardZoom() {
     if (_pointerOverZoomKey(_zoomKey)) return;
     if (_zoomVisible && _zoomObjects[0]?.active) fadeOutZoom(_zoomObjects[0]);
     else stopCardZoom();
+}
+
+// Zvýraznění (tint/scale) drží pointerover handlery jednotlivých karet. Po překreslení
+// stolu vzniknou NOVÉ sprity v základním stavu a Phaserův 'pointerover' by na nehybném
+// kurzoru dorazil až o snímek později → karta by na okamžik probliknala bez zvýraznění.
+// Proto hned po renderu synchronně znovu vyvoláme pointerover na spritu pod kurzorem –
+// zvýraznění (a případný zoom) se nasadí ještě PŘED vykreslením. Idempotentní s pozdějším
+// Phaserovým pointerover.
+function _reapplyPointerHover() {
+    if (!gameScene?.input) return;
+    const p = gameScene.input.activePointer;
+    if (!p || !p.camera) return;
+    try {
+        const hits = gameScene.input.hitTestPointer(p);
+        if (hits && hits[0]) hits[0].emit('pointerover', p, hits[0].x, hits[0].y);
+    } catch (e) {}
 }
 
 // --- OPTIMISTICKÉ AKTUALIZACE ---
@@ -1416,4 +1436,7 @@ function renderUI() {
     if (state.phase === "VERA_COPY") renderVeraCopyOverlay();
     // board.js právě zapsal přesné pozice rezervovaných slotů → zaměř na ně letící líznutí.
     retargetDrawAnims();
+    // Nové sprity vznikly bez zvýraznění → hned nasaď hover na kartu pod kurzorem (bez čekání
+    // na pohyb myší / další snímek), ať zvýraznění po cizí akci neprobliká.
+    _reapplyPointerHover();
 }
