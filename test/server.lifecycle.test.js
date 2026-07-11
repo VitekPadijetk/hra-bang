@@ -102,6 +102,9 @@ function mkLifecycleCtx() {
         broadcastLobbyList() { calls.broadcastLobbyList++; },
         emitIntro() { calls.intro++; },
         runIntroSequence() { calls.intro++; },
+        // No-op herní log (v produkci ho instaluje server/gamelog.js; tady jen ať nepadne).
+        glog: { openGame() {}, closeGame() {}, action() {}, rule() {}, snapshot() {},
+                system() {}, error() {}, clientLog() {}, actorLabel: () => '' },
     };
     installLifecycle(ctx);
     return { ctx, calls };

@@ -1,5 +1,12 @@
 const socket = io();
 
+// Klientská diagnostika (chybějící textura, nenačtené pozadí, notify) → server, který ji
+// složí do logu hry / server.log (server/gamelog.js). Nahrazuje dřívější console.* na klientu.
+// socket.io bufferuje emity poslané před navázáním spojení, takže časné hlášky se neztratí.
+function clog(level, msg, data) {
+    try { socket.emit('client_log', { level, msg, data }); } catch (_) { /* logování nesmí shodit klienta */ }
+}
+
 const config = {
     type: Phaser.AUTO,
     scale: {
@@ -1067,11 +1074,11 @@ function preload() {
         if (file.key === 'background' && bgRetries < 4) {
             bgRetries++;
             const src = bgSources[Math.min(bgRetries, bgSources.length - 1)] + '?retry=' + bgRetries;
-            console.warn('Pozadí se nenačetlo, opakuji pokus č. ' + bgRetries + ' → ' + src);
+            clog('warn', 'Pozadí se nenačetlo, pokus č. ' + bgRetries, { src });
             this.load.image('background', src);
             return;
         }
-        console.warn('Chybí textura, použije se placeholder:', file.src);
+        clog('warn', 'Chybí textura, použije se placeholder', { src: file.src });
     }, this);
 
     this.load.image('background', bgSources[0]);
@@ -1131,7 +1138,7 @@ function preload() {
 // před prvním renderUI. Výsledná textura má rozměr CARD_TEX_W×H (teď = současné velikosti).
 function buildCardTextures(scene) {
     const data = scene.cache.json.get('cards_data');
-    if (!data) { console.warn('cards_data nenačteno – karty zůstávají na legacy_<id>'); return; }
+    if (!data) { clog('warn', 'cards_data nenačteno – karty zůstávají na legacy_<id>'); return; }
     // Karty rozšíření (Dodge City) – zapečou se stejně, navíc dostanou symbol býka a
     // (dokud chybí art) placeholder s domalovaným názvem/hodnotou/barvou.
     const dodge = scene.cache.json.get('cards_dodge_city_data') || [];

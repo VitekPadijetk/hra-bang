@@ -36,6 +36,8 @@ class GameState {
     constructor() {
         this.players = [];
         this.deck = new Deck();
+        // Deck loguje reshuffle/prázdný balíček přes logEvent (no-op než server nastaví _onEvent).
+        this.deck._log = (type, data) => this.logEvent(type, data);
         this.currentPlayerIndex = 0;
         this.phase = "MENU";
         this.winner = null;
@@ -136,7 +138,8 @@ class GameState {
             this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
             p = this.players[this.currentPlayerIndex];
         }
-        console.log(`\n--- TAH: ${this.players[this.currentPlayerIndex]?.name} (${this.players[this.currentPlayerIndex]?.role}, HP: ${this.players[this.currentPlayerIndex]?.health}/${this.players[this.currentPlayerIndex]?.maxHealth}, ruka: ${this.players[this.currentPlayerIndex]?.hand?.length} karet) ---`);
+        const cp = this.players[this.currentPlayerIndex];
+        this.logEvent('turn', { who: cp?.name, role: cp?.role, hp: cp?.health, max: cp?.maxHealth, hand: cp?.hand?.length });
         this.handleStartOfTurnChecks();
     }
 
@@ -212,13 +215,17 @@ class GameState {
             } else if (outlaws.length === 0 && renegades.length === 0) {
                 result = "Zákon by vyhrál!";
             }
-            if (result) console.log(`🐛 DEBUG – ${result} (hra pokračuje)`);
+            if (result) this.logEvent('system', { msg: `DEBUG – ${result} (hra pokračuje)` });
             return;
         }
         const w = evaluateWinner(this.players);
-        if (w) this.winner = w;
-        console.log(`🏆 KONEC HRY: ${this.winner}`);
-        console.log(`📊 Přeživší: ${this.players.filter(p => p.health > 0).map(p => `${p.name}(${p.role})`).join(', ')}`);
+        if (w) {
+            this.winner = w;
+            this.logEvent('win', {
+                winner: this.winner,
+                survivors: this.players.filter(p => p.health > 0).map(p => `${p.name}(${p.role})`),
+            });
+        }
     }
 
     _trackCard(playerIdx, cardType) {
@@ -226,6 +233,16 @@ class GameState {
         if (!s) return;
         s.cardsUsed[cardType] = (s.cardsUsed[cardType] || 0) + 1;
         s.cardsPlayed++;
+    }
+
+    // Strukturovaná herní událost → injektovaný sink `_onEvent` (nastaví server v
+    // lifecycle.js; zapíše ji do logu hry). V prohlížeči/testech je _onEvent undefined →
+    // no-op. Funkce se přes JSON.stringify neserializuje, takže neuniká do klienta.
+    logEvent(type, data) {
+        if (!this._onEvent) return;
+        try {
+            this._onEvent(Object.assign({ ev: type, turn: this.turnId, phase: this.phase }, data || {}));
+        } catch (_) { /* logování nesmí shodit pravidla */ }
     }
 }
 

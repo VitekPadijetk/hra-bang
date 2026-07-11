@@ -28,7 +28,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         socket.emit('room_joined', { roomId: room.id, myIndex: 0 });
         broadcastRoom(room);
         broadcastLobbyList();
-        console.log(`🏠 ${playerName} vytvořil: "${name}" (${maxPlayers}P) opts:`, options);
+        ctx.glog.system(`${playerName} vytvořil místnost "${name}" (${maxPlayers}P)`, { options });
     });
 
     socket.on('join_room', ({ roomId, playerName, token }) => {
@@ -47,7 +47,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         socket.emit('room_joined', { roomId, myIndex: idx });
         broadcastRoom(room);
         broadcastLobbyList();
-        console.log(`👤 ${playerName} se připojil do "${room.name}"`);
+        ctx.glog.system(`${playerName} se připojil do "${room.name}"`);
     });
 
     socket.on('leave_room', () => {
@@ -74,7 +74,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         socket.emit('room_joined', { roomId, myIndex: p.playerIdx });
         broadcastRoom(room);
         broadcastLobbyList();
-        console.log(`🔄 ${p.name} se vrátil do "${room.name}"`);
+        ctx.glog.system(`${p.name} se vrátil do "${room.name}"`);
     });
 
     // ── BOTI (počítačoví hráči) ───────────────────────────────────────────────
@@ -119,7 +119,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
             const sheriffPlayer = room.gameState.players.find(p => p.role === 'Sheriff');
             if (sheriffPlayer) room.lastSheriffName = sheriffPlayer.name;
         }
-        console.log(`▶️ "${room.name}" startuje – pořadí: ${room.players.map(p => p.name).join(', ')}`);
+        ctx.glog.system(`"${room.name}" startuje – pořadí: ${room.players.map(p => p.name).join(', ')}`);
     });
 
     socket.on('cancel_game', () => {
@@ -162,7 +162,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         startGame(room);                    // botGame → přeskočí intro (lifecycle)
         socket.emit('room_update', { ...roomPayload(room), myIndex: null });
         broadcastLobbyList();
-        console.log(`🤖 Spuštěna hra ${n} botů (divák ${socket.id})`);
+        ctx.glog.system(`Spuštěna hra ${n} botů (divák ${socket.id})`);
     });
 
     socket.on('go_to_menu', () => {
@@ -178,7 +178,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         const p = room.players.find(pl => pl.socketId === socket.id);
         const name = p?.name || 'Divák';
         const msg = { name, text: String(text).slice(0, 300), ts: Date.now() };
-        console.log(`💬 [${room.name}] ${name}: ${msg.text}`);
+        ctx.glog.system(`[chat ${room.name}] ${name}: ${msg.text}`);
         room.players.forEach(rp => {
             const s = io.sockets.sockets.get(rp.socketId);
             if (s) s.emit('chat_message', msg);
@@ -188,7 +188,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
 
     // ── DISCONNECT ───────────────────────────────────────────────────────────
     socket.on('disconnect', () => {
-        console.log(`❌ ${socket.id}`);
+        ctx.glog.system(`socket odpojen: ${socket.id}`);
         if (disbandBotGameWatchedBy(socket.id)) return;
         const room = findRoomBySocket(socket.id);
         if (room) {

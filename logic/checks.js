@@ -6,7 +6,7 @@ const ChecksMixin = {
     handleStartOfTurnChecks() {
         const p = this.players[this.currentPlayerIndex];
         if (!p) {
-            console.error(`❌ handleStartOfTurnChecks: hráč #${this.currentPlayerIndex} neexistuje!`);
+            this.logEvent('error', { scope: 'handleStartOfTurnChecks', msg: `hráč #${this.currentPlayerIndex} neexistuje` });
             return;
         }
 
@@ -110,6 +110,12 @@ const ChecksMixin = {
         const p = this.players[check.playerIdx];
         const suit = check.card.suit;
         const numVal = getNum(check.card.value);
+
+        let checkResult;
+        if (check.reason === "DYNAMITE") checkResult = (suit === Suits.SPADES && numVal >= 2 && numVal <= 9) ? 'výbuch' : 'nevybuchl';
+        else if (check.reason === "JAIL") checkResult = (suit === Suits.HEARTS) ? 'srdce → hraje' : 'vězení → konec tahu';
+        else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
+        this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${check.card.suit}`, result: checkResult });
 
         if (check.reason === "DYNAMITE") {
             if (suit === Suits.SPADES && numVal >= 2 && numVal <= 9) {

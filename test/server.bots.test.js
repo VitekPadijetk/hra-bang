@@ -239,8 +239,8 @@ test('create_bot_game: bot select-char doběhne k vítězi a go_to_menu rozpust�
 test('40 her jen botů (4–7) vždy doběhne bez stallu', () => {
     const ctx = buildCtx();
     let stalls = 0;
-    const origWarn = console.warn;
-    console.warn = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
     try {
         for (let k = 0; k < 40; k++) {
             const n = 4 + (k % 4);
@@ -255,15 +255,15 @@ test('40 her jen botů (4–7) vždy doběhne bez stallu', () => {
             assert.ok(gs.winner, `hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
             assert.ok(guard < 6000, `hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
         }
-    } finally { console.warn = origWarn; }
+    } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci (žádný stall)');
 });
 
 test('20 her jen botů se zapnutým Dodge City vždy doběhne (zelené karty v balíčku)', () => {
     const ctx = buildCtx();
     let stalls = 0;
-    const origWarn = console.warn;
-    console.warn = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
     try {
         for (let k = 0; k < 20; k++) {
             const n = 4 + (k % 4);
@@ -279,7 +279,7 @@ test('20 her jen botů se zapnutým Dodge City vždy doběhne (zelené karty v b
             assert.ok(gs.winner, `DC hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
             assert.ok(guard < 6000, `DC hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
         }
-    } finally { console.warn = origWarn; }
+    } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s Dodge City');
 });
 

@@ -21,15 +21,22 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         socket.emit('room_joined', { roomId: room.id, myIndex: 0 });
         room.gameState.cardData = cardData;
         room.gameState.dodgeCityCardData = dodgeCityCardData;
+        ctx.glog.openGame(room);
+        room.gameState._onEvent = (evt) => ctx.glog.rule(room, evt);
         room.gameState.setupDebugGame(playerCount, names, debugRoles, options);
+        room.gameState.logEvent('gamestart', {
+            players: room.gameState.players.map(p => ({ n: p.name, role: p.role, ch: p.character || null, hp: p.health })),
+            opts: options, deck: room.gameState.deck.cards.map(c => c.name),
+        });
         room.phase = 'char_select';
         broadcastRoom(room);
-        console.log(`🐛 Debug start ${playerCount}P`);
+        ctx.glog.system(`Debug start ${playerCount}P`);
     });
 
     socket.on('debug_end_game', () => {
         const room = findRoomBySocket(socket.id);
         if (!room?.gameState.isDebug) return;
+        ctx.glog.closeGame(room);
         rooms.delete(room.id);
         broadcastLobbyList();
         socket.emit('go_to_menu');

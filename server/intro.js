@@ -42,7 +42,7 @@ module.exports = function installIntroService(ctx) {
         const roleOrder = Array.from({ length: n }, (_, k) => (roleStartIdx + k) % n);
         const roleCount = n;
 
-        console.log('[INTRO] Start, players:', n, 'sheriffIdx:', sheriffIdx);
+        ctx.glog.system(`[INTRO] Start, players: ${n}, sheriffIdx: ${sheriffIdx}`);
 
         // Fáze 1: míchání rolí
         emitIntro(room, { sub: 'shuffle_roles', roleCount });
@@ -83,7 +83,7 @@ module.exports = function installIntroService(ctx) {
         const charOrder = Array.from({ length: n }, (_, k) => (sheriffIdx + k) % n);
         const charCount = n * 2;
 
-        console.log('[INTRO] Char phase');
+        ctx.glog.system('[INTRO] Char phase');
 
         emitIntro(room, { sub: 'shuffle_chars', charCount });
 
@@ -118,7 +118,7 @@ module.exports = function installIntroService(ctx) {
         const dealtTotal = gs.players.reduce((s, p) => s + (p.hand?.length || 0), 0);
         const deckCount = gs.deck.cards.length + dealtTotal;
 
-        console.log('[INTRO] Deck phase, full deck:', deckCount, '(dealt back:', dealtTotal, ')');
+        ctx.glog.system(`[INTRO] Deck phase, full deck: ${deckCount} (dealt back: ${dealtTotal})`);
 
         // Kratky delay pred chars_slide_in aby clients dostali CHARACTER_SELECT room_update
         const slideInStart = 200;

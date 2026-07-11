@@ -9,8 +9,16 @@ module.exports = function installLifecycle(ctx) {
         const gs = room.gameState;
         gs.cardData = cardData;
         gs.dodgeCityCardData = dodgeCityCardData;
+        // Log hry otevři a napoj sink JEŠTĚ PŘED setupem, ať se zachytí i výběr rolí/postav.
+        ctx.glog.openGame(room);
+        gs._onEvent = (evt) => ctx.glog.rule(room, evt);
         const names = room.players.map(p => p.name);
         gs.setupGame(room.maxPlayers, names, room.options || {});
+        gs.logEvent('gamestart', {
+            players: gs.players.map(p => ({ n: p.name, role: p.role, ch: p.character || null, hp: p.health })),
+            opts: room.options || {},
+            deck: gs.deck.cards.map(c => c.name),
+        });
         ctx.initLedger?.(room);   // nová hra → čistý ledger chování (dedukce rolí boty)
         room.phase = 'char_select';
         // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
@@ -70,7 +78,7 @@ module.exports = function installLifecycle(ctx) {
                     // Posouvá se DOPRAVA (tedy na hráče s vyšším indexem, konec → začátek)
                     const nextIdx = (sheriffIdx + 1) % names.length;
                     nextSheriffName = names[nextIdx];
-                    console.log(`👑 Rotující šerif: ${currentSheriffName} → ${nextSheriffName}`);
+                    ctx.glog.system(`Rotující šerif: ${currentSheriffName} → ${nextSheriffName}`);
                 }
             }
             // Zapamatujeme si budoucího šerifa pro příští rotaci
@@ -80,7 +88,15 @@ module.exports = function installLifecycle(ctx) {
         room.gameState = new GameState();
         room.gameState.cardData = cardData;
         room.gameState.dodgeCityCardData = dodgeCityCardData;
+        // Nová hra ve stejné místnosti → nový log (openGame zavře předchozí) + sink před setupem.
+        ctx.glog.openGame(room);
+        room.gameState._onEvent = (evt) => ctx.glog.rule(room, evt);
         room.gameState.setupNextGame(playerNames, prevSurvivorChars, room.options || {}, nextSheriffName);
+        room.gameState.logEvent('gamestart', {
+            players: room.gameState.players.map(p => ({ n: p.name, role: p.role, ch: p.character || null, hp: p.health })),
+            opts: room.options || {},
+            deck: room.gameState.deck.cards.map(c => c.name),
+        });
         ctx.initLedger?.(room);   // další hra → čistý ledger chování
         room.nextGameVotes = {};
         room.survivorKeepVotes = {};

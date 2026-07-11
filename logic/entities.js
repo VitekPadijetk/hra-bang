@@ -158,14 +158,14 @@ class Deck {
         this._reshuffleCount = this.cards.length;
         // default: emergency (volající nastaví true pokud je proaktivní)
         this._reshuffleWasProactive = false;
-        console.log(`🔀 Balíček promíchán (${this.cards.length} karet, odhoz: ${this.discardPile.length})`);
+        if (this._log) this._log('reshuffle', { count: this.cards.length, discard: this.discardPile.length });
         return this.cards.length > 0;
     }
 
     draw() {
         if (this.cards.length === 0) {
             if (!this._reshuffle()) {
-                console.warn('⚠️ Balíček i odhoz jsou prázdné – nelze lízat');
+                if (this._log) this._log('deck_empty', {});
                 return null;
             }
             // Emergency reshuffle: _reshuffleWasProactive zůstane false

@@ -224,7 +224,7 @@ module.exports = function installBotService(ctx) {
         room._botTick = setTimeout(() => {
             room._botTick = null;
             try { runBotTickOnce(room); }
-            catch (e) { console.error('🤖 chyba v bot ticku:', e); }
+            catch (e) { ctx.glog.error('bot-tick', e, room); }
         }, delay);
     }
 
@@ -273,10 +273,11 @@ module.exports = function installBotService(ctx) {
         const beliefs = computeBeliefs(gs, room.behaviorLedger || { pairs: {} }, pa.idx);
         let intent = decideBotAction(gs, pa.idx, beliefs);
         if (room._botStall > 4) {
-            console.warn(`🤖 stall na ${pa.kind} (idx ${pa.idx}) – nouzová akce`);
+            ctx.glog.system(`bot stall na ${pa.kind} (idx ${pa.idx}) – nouzová akce`);
             intent = forceSafeAction(pa.kind, pa.idx, gs) || intent;
         }
         if (!intent) return;
+        ctx.glog.action(room, ctx.glog.actorLabel(gs, pa.idx), intent.event, intent.payload);
         sock._fire(intent.event, intent.payload);
         // _fire spustí handler → ten broadcastne → afterBroadcast → scheduleBotTick znovu.
     }

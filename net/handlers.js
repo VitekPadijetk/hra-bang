@@ -1206,7 +1206,7 @@ socket.on('room_joined', ({ roomId, myIndex: idx }) => {
     App.debugViewAs = null;
     _rejoinDone = true;        // jsme v místnosti → auto-rejoin už neřeš
     saveBangSession(roomId);   // umožní automatický návrat po F5/výpadku
-    console.log('Jsem hráč', idx, 'v room', roomId);
+    clog('info', 'Jsem hráč ' + idx + ' v room ' + roomId);
 });
 
 // ── Auto-rejoin do rozehrané hry ─────────────────────────────────────────────
@@ -1443,7 +1443,7 @@ socket.on('kicked_from_game', (msg) => {
 });
 
 socket.on('notify', (msg) => {
-    console.warn('Notify:', msg);
+    clog('warn', 'Notify: ' + msg);
     App.notifyMsg = msg;
     if (gameScene) renderUI();
 });

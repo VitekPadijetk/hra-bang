@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const fs = require('fs');
 const { GameState } = require('./logic.js');
+const { pendingActor } = require('./core/pending.js');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,10 +19,11 @@ const dodgeCityCardData = JSON.parse(fs.readFileSync('cards.dodge_city.json', 'u
 // a vystaví room helpery zpět na ctx; ostatní moduly/handlery je berou z ctx.
 const ctx = { io, cardData, dodgeCityCardData, GameState };
 require('./server/rooms.js')(ctx);
+require('./server/gamelog.js')(ctx);  // strukturovaný herní log (JSONL na hru + konzole) – před vším ostatním
 require('./server/ledger.js')(ctx);   // ledger chování (dedukce rolí boty) – před handlery
 const { rooms, makeRoom, roomPayload, broadcastRoom, broadcastRoomDelayed,
         broadcastLobbyList, getLobbyList, getGameList, findRoomBySocket,
-        leaveRoom } = ctx;
+        leaveRoom, glog } = ctx;
 require('./server/intro.js')(ctx);
 const { emitIntro, runIntroSequence, introStartCharPhase, introStartDeckPhase } = ctx;
 require('./server/anim.js')(ctx);
@@ -37,7 +39,7 @@ const registerDebugHandlers = require('./server/handlers.debug.js');
 
 // ── Connection ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-    console.log(`🔌 ${socket.id}`);
+    glog.system(`socket připojen: ${socket.id}`);
 
     socket.emit('lobby_list', getLobbyList());
     socket.emit('game_list', getGameList());
@@ -49,6 +51,31 @@ io.on('connection', (socket) => {
         if (!p) return;
         cb(room, p, room.gameState);
     }
+
+    // Ingress lidských akcí: jen když v místnosti běží logovaná hra (room._logStream).
+    // Aktér = seat vlastnící socket, ale u herních akcí ho zpřesníme přes pendingActor
+    // (v debug módu sdílí všechny seaty jeden socket). Boti jdou přes fake socket (bots.js),
+    // takže onAny je nezdvojuje. Logování nikdy neshodí server.
+    socket.onAny((event, payload) => {
+        try {
+            if (event === 'client_log') return;   // řeší dedikovaný handler níže (glog.clientLog)
+            const room = findRoomBySocket(socket.id);
+            if (!room || !room._logStream) return;
+            const gs = room.gameState;
+            const p = room.players.find(pl => pl.socketId === socket.id);
+            let idx = p ? p.playerIdx : null;
+            try { const pa = pendingActor(gs); if (pa) idx = pa.idx; } catch (_) { /* ignore */ }
+            glog.action(room, idx != null ? glog.actorLabel(gs, idx) : socket.id, event, payload);
+        } catch (_) { /* logování nesmí shodit server */ }
+    });
+
+    // Klientská diagnostika (asset/render/notify) → složí se do logu hry, nebo server.log mimo hru.
+    socket.on('client_log', (entry) => {
+        try {
+            const room = findRoomBySocket(socket.id);
+            glog.clientLog(room, { level: entry && entry.level, msg: String(entry && entry.msg || ''), data: entry && entry.data });
+        } catch (_) { /* ignore */ }
+    });
 
     registerLobbyHandlers(socket, ctx, withRoom);
     registerNextGameHandlers(socket, ctx, withRoom);
@@ -74,9 +101,5 @@ const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
     const lan = getLanIP();
-    console.log('');
-    console.log('🎮 Bang! server běží!');
-    console.log(`   Lokálně:  http://localhost:${PORT}`);
-    console.log(`   Přes LAN: http://${lan}:${PORT}`);
-    console.log('');
+    glog.system(`Bang! server běží – http://localhost:${PORT} (LAN http://${lan}:${PORT})`);
 });

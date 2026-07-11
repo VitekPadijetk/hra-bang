@@ -32,7 +32,7 @@ module.exports = function registerNextGameHandlers(socket, ctx, withRoom) {
         const p = room.players.find(pl => pl.socketId === socket.id);
         if (!p) return;
         room._introRoleConfirmed.add(p.playerIdx);
-        console.log('[INTRO] role_ok from', p.playerIdx, 'confirmed:', room._introRoleConfirmed.size, '/', room.players.length);
+        ctx.glog.system(`[INTRO] role_ok from ${p.playerIdx} confirmed: ${room._introRoleConfirmed.size}/${room.players.length}`);
         if (room._introRoleConfirmed.size >= room.players.length) {
             room._introRoleConfirmed = null;
             room._introActive = true;

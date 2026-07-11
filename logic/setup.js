@@ -31,7 +31,7 @@ const SetupMixin = {
         if (options.noAdvancedCards) {
             const banned = ['Duel', 'Hokynářství', 'Indiáni!', 'Vězení', 'Dynamit'];
             this.deck.cards = this.deck.cards.filter(c => !banned.includes(c.type));
-            console.log(`🚫 Pokročilé karty zakázány, balíček: ${this.deck.cards.length} karet`);
+            this.logEvent('system', { msg: `Pokročilé karty zakázány, balíček: ${this.deck.cards.length} karet` });
         }
 
         let roles = rolesForPlayerCount(playerCount);
@@ -53,7 +53,7 @@ const SetupMixin = {
                 p.charChoices = [chars.pop(), chars.pop()];
             }
             this.players.push(p);
-            console.log(`🎭 Hráč #${i}: ${name} – role: ${role}, výběr postav: ${p.charChoices.join(' / ')}`);
+            this.logEvent('system', { msg: `Hráč #${i}: ${name} – role: ${role}, výběr postav: ${p.charChoices.join(' / ')}` });
         };
 
         this.phase = "CHARACTER_SELECT";
@@ -83,7 +83,7 @@ const SetupMixin = {
             const p = new Player(name, role, null, 4);
             p.charChoices = this._characterPool(options);
             this.players.push(p);
-            console.log(`🐛 Debug hráč #${i}: ${name} – role: ${role}`);
+            this.logEvent('system', { msg: `Debug hráč #${i}: ${name} – role: ${role}` });
         }
 
         this.phase = "CHARACTER_SELECT";
@@ -106,7 +106,7 @@ const SetupMixin = {
         card.exp = cardData.exp || null;
         card.border = cardData.border || null;
         p.hand.push(card);
-        console.log(`🐛 Debug: ${p.name} dostává kartu ${card.name} (${resolvedType})`);
+        this.logEvent('system', { msg: `Debug: ${p.name} dostává kartu ${card.name} (${resolvedType})` });
     },
 
     debugRemoveCard(playerIdx, area, cardIdx) {
@@ -132,7 +132,7 @@ const SetupMixin = {
         if (!p.charChoices || !p.charChoices.includes(charName)) return;
 
         p.character = charName;
-        console.log(`✅ ${p.name} si vybral: ${charName} (role: ${p.role}, HP: ${p.maxHealth})`);
+        this.logEvent('system', { msg: `${p.name} si vybral: ${charName} (role: ${p.role}, HP: ${p.maxHealth})` });
 
         const { base, max } = healthForCharacter(charName, p.role);
         p.maxHealth = max;
@@ -142,7 +142,7 @@ const SetupMixin = {
         const allChosen = this.players.every(pl => pl.character);
 
         if (allChosen) {
-            console.log(`🚀 Všichni vybrali postavy, hra začíná! Šerif: ${this.players.find(pl => pl.role === 'Sheriff')?.name}`);
+            this.logEvent('system', { msg: `Všichni vybrali postavy, hra začíná! Šerif: ${this.players.find(pl => pl.role === 'Sheriff')?.name}` });
             this.players.forEach(pl => {
                 const startCards = pl._baseHealth ?? (pl.health > 0 ? pl.health - (pl.role === "Sheriff" ? 1 : 0) : pl.health);
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
@@ -175,7 +175,7 @@ const SetupMixin = {
         if (options.noAdvancedCards) {
             const banned = ['Duel', 'Hokynářství', 'Indiáni!', 'Vězení', 'Dynamit'];
             this.deck.cards = this.deck.cards.filter(c => !banned.includes(c.type));
-            console.log(`🚫 Pokročilé karty zakázány, balíček: ${this.deck.cards.length} karet`);
+            this.logEvent('system', { msg: `Pokročilé karty zakázány, balíček: ${this.deck.cards.length} karet` });
         }
 
         const playerCount = playerNames.length;
@@ -189,7 +189,7 @@ const SetupMixin = {
                 roles = roles.filter(r => r !== 'Sheriff');
                 this.deck.shuffleArray(roles);
                 roles.splice(targetIdx, 0, 'Sheriff');
-                console.log(`👑 Rotující šerif: ${nextSheriffName} (idx ${targetIdx})`);
+                this.logEvent('system', { msg: `Rotující šerif: ${nextSheriffName} (idx ${targetIdx})` });
             } else {
                 this.deck.shuffleArray(roles);
             }
@@ -211,7 +211,7 @@ const SetupMixin = {
                 p._awaitingKeepChoice = true;
             }
             this.players.push(p);
-            console.log(`🎭 Hráč #${i}: ${name} – role: ${role}${p._survivorChar ? ` (přeživší s ${p._survivorChar})` : ' (zemřelý, čeká na postavu)'}`);
+            this.logEvent('system', { msg: `Hráč #${i}: ${name} – role: ${role}${p._survivorChar ? ` (přeživší s ${p._survivorChar})` : ' (zemřelý, čeká na postavu)'}` });
         }
 
         this._remainingChars = chars;

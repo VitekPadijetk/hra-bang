@@ -12,9 +12,8 @@ const CombatMixin = {
             this.players[attackerIdx].stats.damageDealt++;
         }
 
-        const attName = attackerIdx !== null ? this.players[attackerIdx]?.name : 'neznámý';
-        console.log(`💔 ${target.name} ztrácí život (${target.health + 1} → ${target.health}) – způsobil: ${attName}`);
-        if (target.health <= 0) console.log(`💀 ${target.name} je na 0 HP`);
+        const attName = attackerIdx !== null ? this.players[attackerIdx]?.name : null;
+        this.logEvent('damage', { who: target.name, hp: `${target.health + 1}→${target.health}`, by: attName });
 
         if (target.health <= 0) {
             target.health = 0;
@@ -47,7 +46,7 @@ const CombatMixin = {
         }
 
         p.health = 1;
-        console.log(`💊 Sid Ketchum (${p.name}) se zachránil zahozením 2 karet!`);
+        this.logEvent('special', { who: p.name, card: 'Sid Ketchum (záchrana 2 kartami)' });
         this.pendingSidSave = null;
         this._resumeAfterSpecial();
     },
@@ -109,6 +108,12 @@ const CombatMixin = {
             }
         });
 
+        const killerName = killerIdx !== null ? this.players[killerIdx]?.name : 'dynamit';
+        let deathReward = null;
+        if (deadPlayer.role === "Outlaw") deathReward = `${killerName} +3 karty`;
+        else if (deadPlayer.role === "Deputy" && this.players[killerIdx]?.role === "Sheriff") deathReward = `Šerif ${killerName} ztrácí všechny karty`;
+        this.logEvent('death', { who: deadPlayer.name, role: deadPlayer.role, killer: killerName, reward: deathReward });
+
         this.checkWinCondition();
 
         if (!this.winner && deadIdx === this.currentPlayerIndex &&
@@ -116,11 +121,6 @@ const CombatMixin = {
             this._autoEndTurnPending = true;
             this._deadPlayerIdx = deadIdx;
         }
-
-        const killerName = killerIdx !== null ? this.players[killerIdx]?.name : 'dynamit';
-        console.log(`☠️ ${deadPlayer.name} (${deadPlayer.role}) zemřel! Zabil ho: ${killerName}`);
-        if (deadPlayer.role === "Outlaw") console.log(`🏆 ${killerName} zabíjí banditu → dostane 3 karty`);
-        if (deadPlayer.role === "Deputy" && this.players[killerIdx]?.role === "Sheriff") console.log(`😱 Šerif ${killerName} zabil pomocníka → přichází o všechny karty!`);
     },
 
     // ── DYNAMIT: hráč klikne na životy (1 hit z 3) ────────────────────────────
@@ -132,7 +132,7 @@ const CombatMixin = {
         const p = this.players[playerIdx];
         p.health--;
         p.stats.damageTaken++;
-        console.log(`💥 Dynamit hit: ${p.name} HP → ${p.health}, hitsLeft: ${pdd.hitsLeft - 1}`);
+        this.logEvent('dynamite', { who: p.name, hp: p.health, hitsLeft: pdd.hitsLeft - 1 });
 
         if (p.health <= 0) {
             p.health = 0;

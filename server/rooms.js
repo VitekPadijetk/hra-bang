@@ -5,6 +5,14 @@
 module.exports = function installRoomService(ctx) {
     const { io, cardData, dodgeCityCardData, GameState } = ctx;
 
+    // Rooms se instaluje jako první v každém ctx. V produkci gamelog (server/gamelog.js)
+    // hned potom přepíše ctx.glog reálným loggerem; v testech (fake io bez gamelogu) tu
+    // zůstane no-op, takže lifecycle/bots/handlery mohou volat ctx.glog.* bez guardů.
+    if (!ctx.glog) ctx.glog = {
+        openGame() {}, closeGame() {}, action() {}, rule() {}, snapshot() {},
+        system() {}, error() {}, clientLog() {}, actorLabel: () => '',
+    };
+
     const rooms = new Map();
     let roomCounter = 1;
 
@@ -53,6 +61,8 @@ module.exports = function installRoomService(ctx) {
             }
         });
         io.to(room.id + '_spectators').emit('room_update', { ...roomPayload(room), myIndex: null });
+        // Egress: kompaktní snapshot stavu do logu hry (dedup uvnitř – delayed broadcast nezdvojí).
+        ctx.glog.snapshot(room);
         // Hook pro driver botů: po každém ustálení stavu se může probudit bot (server/bots.js).
         if (typeof ctx.afterBroadcast === 'function') ctx.afterBroadcast(room);
     }
@@ -101,6 +111,7 @@ module.exports = function installRoomService(ctx) {
         // Když debug okno odejde, nemá smysl hru držet (nic se v ní už neděje, jen by
         // svítila jako sledovatelná) → zruš ji celou.
         if (room.gameState?.isDebug) {
+            ctx.glog.closeGame(room);
             rooms.delete(room.id);
             socket.leave(room.id);
             socket.emit('go_to_menu');
@@ -116,6 +127,7 @@ module.exports = function installRoomService(ctx) {
         socket.emit('go_to_menu');
 
         if (room.players.length === 0) {
+            ctx.glog.closeGame(room);
             rooms.delete(room.id);
             broadcastLobbyList();
             return;
@@ -127,6 +139,7 @@ module.exports = function installRoomService(ctx) {
                 const s = io.sockets.sockets.get(p.socketId);
                 if (s) s.emit('kicked_from_game', 'Game leader opustil hru.');
             });
+            ctx.glog.closeGame(room);
             rooms.delete(room.id);
             broadcastLobbyList();
             return;
@@ -134,7 +147,7 @@ module.exports = function installRoomService(ctx) {
 
         if (wasLeader) {
             room.leaderSocketId = room.players[0].socketId;
-            console.log(`👑 Nový lídr: ${room.players[0].name}`);
+            ctx.glog.system(`Nový lídr: ${room.players[0].name}`);
         }
         broadcastRoom(room);
         broadcastLobbyList();
@@ -151,6 +164,7 @@ module.exports = function installRoomService(ctx) {
                 }
             }
         });
+        ctx.glog.closeGame(room);
         rooms.delete(room.id);
         broadcastLobbyList();
     }

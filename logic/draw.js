@@ -35,7 +35,6 @@ const DrawMixin = {
     },
 
     drawCard(source, sourceIdx = null, area = null, cardIdx = null) {
-        console.log("DRAW", this.phase, this.drawPhaseState);
         if (this.phase !== "DRAW" || !this.drawPhaseState.active) return;
 
         const ds = this.drawPhaseState;
@@ -58,6 +57,7 @@ const DrawMixin = {
             if (!card) return;
             if (card.green) delete card._playedTurn;   // v ruce už není „položená tento tah"
             player.hand.push(card);
+            this.logEvent('draw', { who: player.name, source: 'board', cards: [card.name] });
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
             this._finishDraw();
@@ -68,7 +68,9 @@ const DrawMixin = {
             const opponent = this.players[sourceIdx];
             if (!opponent || opponent.health <= 0 || opponent.hand.length === 0) return;
             const randomIdx = Math.floor(Math.random() * opponent.hand.length);
-            player.hand.push(opponent.hand.splice(randomIdx, 1)[0]);
+            const stolen = opponent.hand.splice(randomIdx, 1)[0];
+            player.hand.push(stolen);
+            this.logEvent('draw', { who: player.name, source: 'opponent_hand', cards: [stolen.name] });
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
             ds.options = ['deck'];
@@ -77,13 +79,13 @@ const DrawMixin = {
             if (this.deck.discardPile.length === 0) return;
             const card = this.deck.discardPile.pop();
             player.hand.push(card);
+            this.logEvent('draw', { who: player.name, source: 'discard', cards: [card.name] });
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
             ds.options = ['deck'];
         }
         else if (source === 'deck') {
             const card = this.deck.draw();
-            console.log("LIZNUTA KARTA", card);
             if (!card) return;
 
             this.drawPhaseState.options = ['deck'];
@@ -117,13 +119,7 @@ const DrawMixin = {
             }
 
             player.hand.push(card);
-            console.log("HAND LENGTH AFTER PUSH:", player.hand.length);
-            console.log("LAST CARD:", player.hand[player.hand.length - 1]);
-            console.log(
-                "HAND AFTER DRAW",
-                player.name,
-                player.hand.length
-            );
+            this.logEvent('draw', { who: player.name, source: 'deck', cards: [card.name] });
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
 
@@ -184,6 +180,7 @@ const DrawMixin = {
         kc.pickedIds.push(card.id);
         kc.pendingAdd.push(cardIdx);
         player.hand.push(card);
+        this.logEvent('draw', { who: player.name, source: 'Kit Carlson', cards: [card.name] });
 
         if (kc.pendingAdd.length >= 2) {
             const pickedSet = new Set(kc.pendingAdd);
@@ -202,6 +199,7 @@ const DrawMixin = {
         const isRed = card.suit === Suits.HEARTS || card.suit === Suits.DIAMONDS;
         const player = this.players[ds.playerIdx];
         player.hand.push(card);
+        this.logEvent('draw', { who: player.name, source: 'deck (Black Jack)', cards: [card.name] });
         player.stats.cardsDrawn++;
         ds.cardsDrawn++;
         ds.blackJackCard = null;

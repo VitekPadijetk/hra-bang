@@ -14,6 +14,8 @@ const PlayMixin = {
         // proto sem discardExtra karta nechodí; případný omyl je bezpečný no-op.
         if (card.discardExtra) return;
 
+        this.logEvent('play', { who: player.name, card: card.name });
+
         // Zelené karty (Dodge City) se vykládají na stůl jako modré – aktivují se až
         // příští tah ze stolu (viz activateGreenCard). Nelze mít 2 stejného jména (D7).
         if (card.green) {
@@ -105,7 +107,7 @@ const PlayMixin = {
         if (!isEffect) attacker.bangsPlayedThisTurn++;
         attacker.stats.bangsFired++;
         this._trackCard(attackerIdx, card?.type || 'Bang!');
-        console.log(`🎯 Bang! od ${attacker.name} → ${this.players[targetIdx]?.name}`);
+        this.logEvent('bang', { who: attacker.name, target: target.name });
         this.deck.discardPile.push(attacker.hand.splice(cardIdx, 1)[0]);
         this.currentAttacker = attackerIdx;
         this.checkSuzyLafayette(attacker);
@@ -188,6 +190,7 @@ const PlayMixin = {
         const card = attacker.hand.splice(cardIdx, 1)[0];
 
         if (card) this._trackCard(attIdx, card.type);
+        this.logEvent('special', { who: attacker.name, card: card.name, target: target ? target.name : null });
 
         if (card.type === CardType.JAIL) {
             const alreadyInJail = target.board.some(c => c.type === CardType.JAIL);
@@ -330,7 +333,7 @@ const PlayMixin = {
         }
 
         const srcType = sel.sourceCardType === 'Panika!' ? 'krade' : 'zahazuje';
-        console.log(`🃏 ${this.players[sel.attackerIdx]?.name} ${srcType} kartu od ${this.players[sel.targetIdx]?.name} z oblasti: ${targetCardArea} – karta: ${cardToMove?.name}`);
+        this.logEvent('special', { who: attacker.name, card: `${srcType} kartu`, target: target.name, area: targetCardArea, taken: cardToMove?.name });
 
         const wasBrawl = sel.isBrawl;
         this.pendingSelection = null;
