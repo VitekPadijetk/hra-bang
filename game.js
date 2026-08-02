@@ -127,6 +127,37 @@ let _zoomFadeTimer = null;
 // tomu cizí akce (překreslení) neresetuje odpočet ani zvýraznění té samé karty.
 let _zoomKey = null;
 
+// --- DOTYKOVÝ REŽIM ---
+// Na mobilu Phaserův activePointer po zvednutí prstu ZŮSTANE na místě posledního dotyku
+// (a 'pointerover' přijde už při tapnutí), takže pouhé ťuknutí na kartu/postavu nastartovalo
+// odpočet a karta se po chvíli sama zvětšila – i když se ničeho nedržím. Na dotyku proto
+// zvětšuj jen jako „long press": vyžaduj DRŽENÍ prstu po celou dobu odpočtu i zobrazení.
+// Stav dotyku si držíme z nativních listenerů (běží dřív než Phaser zpracuje frontu událostí,
+// takže při 'pointerover' už je _touchActive spolehlivě true), ne z pointer.isDown.
+let _touchInput = false;    // zařízení se ovládá dotykem (zjištěno prvním dotykem)
+let _touchActive = false;   // právě se držím prstem na displeji
+const ZOOM_HOLD_MS_MOUSE = 1600;
+const ZOOM_HOLD_MS_TOUCH = 600;
+
+if (typeof window !== 'undefined') {
+    const opts = { passive: true, capture: true };
+    window.addEventListener('touchstart', () => { _touchInput = true; _touchActive = true; }, opts);
+    const endTouch = (e) => {
+        if (e.touches && e.touches.length > 0) return;   // jiný prst ještě drží
+        _touchActive = false;
+        _onTouchRelease();
+    };
+    window.addEventListener('touchend', endTouch, opts);
+    window.addEventListener('touchcancel', endTouch, opts);
+}
+
+// Zvednutí prstu = konec long pressu: naplánovaný odpočet zruš, zobrazený zoom zhasni.
+function _onTouchRelease() {
+    if (!_hoverTimer && !_zoomVisible) return;
+    if (_zoomVisible && _zoomObjects[0]?.active) fadeOutZoom(_zoomObjects[0]);
+    else stopCardZoom();
+}
+
 function cancelZoomTimer() {
     clearTimeout(_hoverTimer);
     _hoverTimer = null;
@@ -191,6 +222,8 @@ function _pointerOverZoomKey(key) {
 
 function startCardZoom(texKey, key = null) {
     if (_zoomSuppressed()) return;
+    // Dotyk: odpočet startuje jen se drženým prstem (tapnutí zoom nespustí).
+    if (_touchInput && !_touchActive) return;
     _cancelFadeTimer();
     // Stejná karta je pořád pod kurzorem (typicky po překreslení stolu cizí akcí): neresetuj
     // odpočet ani nezhasínej – necháme běžet původní časovač/zoom.
@@ -202,6 +235,7 @@ function startCardZoom(texKey, key = null) {
     _hoverTimer = setTimeout(() => {
         _hoverTimer = null;   // časovač doběhl – od teď „nečeká"
         if (!gameScene || _zoomSuppressed()) return;
+        if (_touchInput && !_touchActive) { _zoomKey = null; return; }   // prst mezitím pustil
         if (!_pointerOverZoomKey(key)) { _zoomKey = null; return; }   // karta mezitím zmizela
         stopCardZoom();
         _zoomKey = key;   // stopCardZoom klíč vynuloval, obnov
@@ -217,9 +251,11 @@ function startCardZoom(texKey, key = null) {
             targets: img, alpha: 1, scale: targetScale,
             duration: 500, ease: 'Power2'
         });
-        img.on('pointerout', () => fadeOutZoom(img));
+        // Odchod z velké karty zhasíná hned – ale jen když kurzor NENÍ zpátky na té malé
+        // (ta může ležet přesně pod zoomem; při poll-always se pointerout umí ozvat i tak).
+        img.on('pointerout', () => { if (!_pointerOverZoomKey(_zoomKey)) fadeOutZoom(img); });
         img.on('pointerdown', () => fadeOutZoom(img));
-    }, 1600);
+    }, _touchInput ? ZOOM_HOLD_MS_TOUCH : ZOOM_HOLD_MS_MOUSE);
 }
 
 function scheduleZoomFade() {
@@ -232,6 +268,12 @@ function scheduleZoomFade() {
     _cancelFadeTimer();
     _zoomFadeTimer = setTimeout(() => {
         _zoomFadeTimer = null;
+        // Pořád stojím na místě zvětšované karty (nebo na jejím zoom-obrazu)? Pak zhasínat
+        // nesmíme: karta ležící uprostřed stolu se schová POD velkou kartu, čímž dostane
+        // 'pointerout' – bez téhle kontroly se zoom zhasl, kurzor byl zase na malé kartě,
+        // odpočet se rozjel znovu a celé to blikalo dokola. Skutečný odchod z karty odchytí
+        // geometricky _tickCardZoom() v update() smyčce.
+        if (_pointerOverZoomKey(_zoomKey)) return;
         if (_zoomVisible && _zoomObjects[0]?.active) {
             fadeOutZoom(_zoomObjects[0]);
         }
@@ -270,6 +312,12 @@ function _tickCardZoom() {
     if (!_zoomVisible && !_hoverTimer) return;
     // Míchání/snímání balíčku zabírá střed – běžící/naplánovaný zoom přeruš.
     if (App.reshuffleAnimating) { stopCardZoom(); return; }
+    // Dotyk: bez drženého prstu zoom nežije (pojistka, kdyby nám utekl touchend).
+    if (_touchInput && !_touchActive) {
+        if (_zoomVisible && _zoomObjects[0]?.active) fadeOutZoom(_zoomObjects[0]);
+        else stopCardZoom();
+        return;
+    }
     if (_zoomKey == null) return;
     if (_pointerOverZoomKey(_zoomKey)) return;
     if (_zoomVisible && _zoomObjects[0]?.active) fadeOutZoom(_zoomObjects[0]);
@@ -284,6 +332,9 @@ function _tickCardZoom() {
 // zvýraznění i zoom se nasadí PŘED vykreslením. Idempotentní s pozdějším Phaserovým pointerover.
 function _reapplyPointerHover() {
     if (!gameScene?.cardsSprites) return;
+    // Na dotyku žádný „kurzor" neexistuje – pointer visí tam, kde jsem naposledy ťukl.
+    // Obnovovat pod ním hover po každém překreslení = falešně zvýrazněná karta bez prstu.
+    if (_touchInput && !_touchActive) return;
     const pos = _pointerPos();
     if (!pos) return;
     let top = null;
