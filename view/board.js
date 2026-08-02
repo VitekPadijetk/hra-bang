@@ -917,6 +917,17 @@ function drawMyArea(ctx) {
         const boardCardH = 500 * scaleMe;
         const boardMaxPerRow = 6;   // MUSÍ zrcadlit getBoardCardPos v positions.js
         const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action);
+        // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
+        // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
+        // Ragtime (DE_STEAL + cardIndex, bez greenCardId) – hnědá „odhoď další kartu".
+        const isGreenStealSelf = (selectedState.action === 'DE_STEAL' || selectedState.action === 'GREEN_DISCARD')
+            && selectedState.greenCardId != null;
+        const isRagtimeSelf = selectedState.action === 'DE_STEAL'
+            && selectedState.greenCardId == null && selectedState.cardIndex !== null;
+        // Probíhá výběr karty na mém stole (Panika/Cat Balou/Krytý vůz/Kankán/Ragtime)?
+        // Pak se zelená karta položená tento tah nešediví – je legitimní cíl a musí
+        // vypadat normálně (a u Paniky/CB být vidět žluté zvýraznění).
+        const isPickingMyBoard = isPanicCBMyTurn || isGreenStealSelf || isRagtimeSelf;
         const myBoardSprites = [];
         myBoardCards.forEach((card, i) => {
             // Karta právě ukradená Panikou/Cat Balou: po dobu letu ji nekresli (slot
@@ -936,7 +947,8 @@ function drawMyArea(ctx) {
             // vykresli ji černobíle (grayscale), ať je to jasné. Jen ve fázi hraní –
             // při odhazování (DISCARD/DISCARD_ANOTHER…) hint „nejde aktivovat" nedává
             // smysl a černobílá zbytečně mate (má vypadat normálně, ne zašedle).
-            if (card.green && card._playedTurn === state.turnId && state.phase === 'PLAY') {
+            // Totéž při výběru cíle na vlastním stole (Panika/CB/Krytý vůz/Kankán/Ragtime).
+            if (card.green && card._playedTurn === state.turnId && state.phase === 'PLAY' && !isPickingMyBoard) {
                 if (bSprite.preFX) bSprite.preFX.addColorMatrix().grayscale(1);
                 else bSprite.setTint(0x777777);   // fallback (Canvas renderer bez preFX)
             }
@@ -964,14 +976,8 @@ function drawMyArea(ctx) {
             });
         }
 
-        // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
-        // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
-        // Ragtime (DE_STEAL + cardIndex, bez greenCardId) – hnědá „odhoď další kartu".
+        // Cílení na vlastní stůl (viz isGreenStealSelf/isRagtimeSelf výše).
         // Na samotnou aktivovanou zelenou kartu cílit nelze. Bez zvýraznění (jen kurzor).
-        const isGreenStealSelf = (selectedState.action === 'DE_STEAL' || selectedState.action === 'GREEN_DISCARD')
-            && selectedState.greenCardId != null;
-        const isRagtimeSelf = selectedState.action === 'DE_STEAL'
-            && selectedState.greenCardId == null && selectedState.cardIndex !== null;
         if (isGreenStealSelf || isRagtimeSelf) {
             myBoardSprites.forEach(({ sprite, card, i }) => {
                 if (card._isColt || (selectedState.greenCardId != null && card.id === selectedState.greenCardId)) return;
@@ -1400,13 +1406,24 @@ function drawMyArea(ctx) {
                 fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
                 fontSize: '24px',
                 onClick: () => {
+                    if (App.blockInput) return;
                     selectedState = { cardIndex: null, action: null };
+                    // Zamkni do příchodu nového stavu. Na pomalé lince se dřív stihlo
+                    // kliknout víckrát (tlačítko svítilo dál, stav ještě nedorazil) a KAŽDÝ
+                    // klik ukončil další tah → přeskočilo se několik hráčů. Server duplikát
+                    // odmítne sám (server/guard.js), tohle je okamžitá zpětná vazba.
+                    App.blockInput = true;
                     socket.emit('end_turn');
                     renderUI();
                 },
             });
 
-            if (!hasPlayable) {
+            if (App.blockInput) {
+                // Čeká se na server (běžící animace nebo právě odeslaný konec tahu):
+                // tlačítko zůstane na místě, ale zhasnuté a neklikatelné.
+                endBtn.setAlpha(0.45);
+                endBtn.disableInteractive();
+            } else if (!hasPlayable) {
                 gameScene.tweens.add({
                     targets: endBtn,
                     alpha: { from: 1, to: 0.2 },
@@ -1684,6 +1701,11 @@ function drawPhaseOverlays(ctx) {
         const cards = state.storeCards || [];
         const count = cards.length;
         const isMyPickTurn = state.storePickerIndex === myIndex && !App.storeLocked;
+        // Jeden výběr na jedno vykreslení: dokud nedorazí nový stav (na pomalé lince
+        // to je i půl vteřiny), zůstávají všechny karty nakreslené a klikatelné –
+        // druhý klik by vybíral už za dalšího hráče. Server to odmítne (server/guard.js),
+        // tady jen zhasneme UI, ať to nesvádí.
+        let _storePickSent = false;
 
         cards.forEach((card, i) => {
             if (!card) return;
@@ -1700,6 +1722,8 @@ function drawPhaseOverlays(ctx) {
                 cSprite.on('pointerover', (pointer) => { if (pointer?.wasTouch) return; cSprite.setTint(0xffff44); cSprite.setScale(0.34); });
                 cSprite.on('pointerout', () => { cSprite.setTint(0xddffdd); cSprite.setScale(0.3); });
                 cSprite.on('pointerdown', () => {
+                    if (_storePickSent) return;
+                    _storePickSent = true;
                     socket.emit('store_pick', { playerIdx: myIndex, cardIdx: i });
                 });
             }

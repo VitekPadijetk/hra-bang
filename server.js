@@ -21,6 +21,7 @@ const ctx = { io, cardData, dodgeCityCardData, GameState };
 require('./server/rooms.js')(ctx);
 require('./server/gamelog.js')(ctx);  // strukturovaný herní log (JSONL na hru + konzole) – před vším ostatním
 require('./server/ledger.js')(ctx);   // ledger chování (dedukce rolí boty) – před handlery
+require('./server/guard.js')(ctx);    // autorizace akcí na hráče (ctx.guardedOn) – před registrací handlerů
 const { rooms, makeRoom, roomPayload, broadcastRoom, broadcastRoomDelayed,
         broadcastLobbyList, getLobbyList, getGameList, findRoomBySocket,
         leaveRoom, glog } = ctx;

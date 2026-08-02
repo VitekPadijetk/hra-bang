@@ -4,8 +4,10 @@
 module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
     const { rooms, emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn,
             handleReshuffleAndBroadcast, broadcastRoomDelayed } = ctx;
+    // Guard „čí je tah" (viz handlers.game.js / server/guard.js).
+    const on = ctx.guardedOn?.(socket) || socket.on.bind(socket);
 
-    socket.on('bart_cassidy_draw', () => {
+    on('bart_cassidy_draw', () => {
         withRoom((room, p, gs) => {
             const playerIdx = gs.pendingBartDraw?.playerIdx ?? p.playerIdx;
             gs.bartCassidyDraw(playerIdx);
@@ -22,7 +24,7 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('uhyb_draw', () => {
+    on('uhyb_draw', () => {
         withRoom((room, p, gs) => {
             const playerIdx = gs.pendingUhybDraw?.playerIdx ?? p.playerIdx;
             const before = gs.players[playerIdx]?.hand.length ?? 0;
@@ -40,7 +42,7 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('get_taken_names', () => {
+    on('get_taken_names', () => {
         const taken = new Set();
         for (const [, r] of rooms) {
             r.players.filter(p => !p.disconnected).forEach(p => taken.add(p.name));
@@ -48,7 +50,7 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         socket.emit('taken_names', [...taken]);
     });
 
-    socket.on('el_gringo_steal', () => {
+    on('el_gringo_steal', () => {
         withRoom((room, p, gs) => {
             const playerIdx = gs.pendingElGringoSteal?.playerIdx ?? p.playerIdx;
             const attackerIdx = gs.pendingElGringoSteal?.attackerIdx;
@@ -67,7 +69,7 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('suzy_draw', () => {
+    on('suzy_draw', () => {
         withRoom((room, p, gs) => {
             const playerIdx = gs.pendingSuzyDraw?.playerIdx ?? p.playerIdx;
             gs.suzyLafayetteDraw(playerIdx);
@@ -81,14 +83,14 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('trigger_check_draw', () => {
+    on('trigger_check_draw', () => {
         withRoom((room, p, gs) => {
             gs.triggerCheckDraw();
             handleReshuffleAndBroadcast(room, gs, 0);
         });
     });
 
-    socket.on('resolve_check', () => {
+    on('resolve_check', () => {
         withRoom((room, p, gs) => {
             gs.resolveCheck();
             if (gs.lastAnimEvent) {
@@ -104,7 +106,7 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('resolve_black_jack', (wantThird) => {
+    on('resolve_black_jack', (wantThird) => {
         withRoom((room, p, gs) => {
             gs.resolveBlackJack(wantThird);
             handleReshuffleAndBroadcast(room, gs);
@@ -114,14 +116,14 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
     // ── Dodge City: aktivní schopnosti (Chuck Wengam / José Delgado / Doc Holyday) ──
     // Jde o schopnosti ve VLASTNÍM tahu → aktér je aktuální hráč (gs.currentPlayerIndex),
     // ne socket.playerIdx (v debugu ovládá jeden socket více hráčů = jiný index).
-    socket.on('chuck_wengam', () => {
+    on('chuck_wengam', () => {
         withRoom((room, p, gs) => {
             gs.useChuckWengam(gs.currentPlayerIndex);   // −1 život + lízání 2 (fronta → klik na balíček)
             handleReshuffleAndBroadcast(room, gs);
         });
     });
 
-    socket.on('jose_delgado', (d) => {
+    on('jose_delgado', (d) => {
         withRoom((room, p, gs) => {
             const idx = gs.currentPlayerIndex;
             const card = gs.players[idx]?.hand[d.cardIdx];
@@ -131,7 +133,7 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('doc_holyday', (d) => {
+    on('doc_holyday', (d) => {
         withRoom((room, p, gs) => {
             const idx = gs.currentPlayerIndex;
             const ids = (d.cardIndices || []).map(i => gs.players[idx]?.hand[i]?.id).filter(x => x != null);
@@ -143,7 +145,7 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
     });
 
     // Vera Custer: na začátku svého tahu si zvolí kopírovanou postavu (VERA_COPY → DRAW).
-    socket.on('vera_copy', (d) => {
+    on('vera_copy', (d) => {
         withRoom((room, p, gs) => {
             gs.veraCopyCharacter(gs.currentPlayerIndex, d && d.charName);
             handleReshuffleAndBroadcast(room, gs);

@@ -1240,6 +1240,17 @@ socket.on('rejoin_failed', () => {
 
 attemptRejoin();   // pokus hned při načtení (buffered – odejde po connectu)
 
+// ── Akci zahodil server (server/guard.js) ────────────────────────────────────
+// Hra na nás v tu chvíli nečekala – typicky opožděný/dvojitý klik na pomalé lince
+// (např. „Ukončit tah" poslaný dvakrát, než dorazil nový stav). Nový stav kvůli
+// zahozené akci NEPŘIJDE, takže si UI musíme odemknout sami, ať tlačítka nezůstanou
+// mrtvá; správný stav dorazí běžným broadcastem.
+socket.on('action_rejected', (info) => {
+    App.blockInput = false;
+    clog('warn', 'akce zahozena serverem: ' + (info?.event || '?'), { reason: info?.reason });
+    if (gameScene) renderUI();
+});
+
 socket.on('room_update', (payload) => {
     if (!payload) return;
     const _prevPhase = roomState?.gameState?.phase;   // fáze před tímto updatem (pro reveal trigger)

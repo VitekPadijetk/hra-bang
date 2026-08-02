@@ -44,6 +44,7 @@ function buildCtx() {
     const ctx = { io, cardData, GameState };
     require('../server/rooms.js')(ctx);
     require('../server/ledger.js')(ctx);   // ledger chování (dedukce rolí boty) – jako v server.js
+    require('../server/guard.js')(ctx);    // guard „čí je tah" – ať ho boti proberou celou hrou
     // No-op broadcasty: testujeme logiku, ne vizuál. Override PŘED instalací anim/intro/
     // lifecycle/bots, aby je zachytili (a tím i handlery botů). Tím odpadnou všechny timery
     // a driver jde pumpovat synchronně (broadcastRoom = no-op ⇒ afterBroadcast se nevolá).

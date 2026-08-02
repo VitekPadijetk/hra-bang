@@ -189,6 +189,10 @@ class GameState {
     }
 
     tryEndTurn() {
+        // Tah jde ukončit jen z hraní (a z odhazování, kde je to no-op). Opožděný klik
+        // na „Ukončit tah" doručený už během lízání/reakce by jinak tah zahodil rovnou
+        // (bez líznutí) nebo ukončil tah někomu jinému uprostřed obrany.
+        if (this.phase !== "PLAY" && this.phase !== "DISCARD") return;
         const p = this.getCurrentPlayer();
         if (!p) {
             this.nextTurn();

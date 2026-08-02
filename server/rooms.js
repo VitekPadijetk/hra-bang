@@ -9,7 +9,7 @@ module.exports = function installRoomService(ctx) {
     // hned potom přepíše ctx.glog reálným loggerem; v testech (fake io bez gamelogu) tu
     // zůstane no-op, takže lifecycle/bots/handlery mohou volat ctx.glog.* bez guardů.
     if (!ctx.glog) ctx.glog = {
-        openGame() {}, closeGame() {}, action() {}, rule() {}, snapshot() {},
+        openGame() {}, closeGame() {}, action() {}, reject() {}, rule() {}, snapshot() {},
         system() {}, error() {}, clientLog() {}, actorLabel: () => '',
     };
 

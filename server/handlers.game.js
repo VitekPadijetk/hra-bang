@@ -4,8 +4,12 @@
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const { emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn, handleReshuffleAndBroadcast,
             broadcastRoom, broadcastRoomDelayed } = ctx;
+    // Registrace přes guard „čí je tah" (server/guard.js) – zahodí opožděný/duplicitní
+    // klik od hráče, na kterého hra nečeká. Bez guardu v ctx (testy s holým ctx) padne
+    // zpět na obyčejné socket.on.
+    const on = ctx.guardedOn?.(socket) || socket.on.bind(socket);
 
-    socket.on('draw_card', (data) => {
+    on('draw_card', (data) => {
         withRoom((room, p, gs) => {
             const ds = gs.drawPhaseState;
             const playerIdx = ds?.playerIdx;
@@ -35,7 +39,17 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // správný slot (dřív odebíral poslední → viditelné přeskládání a špatná pozice).
             const victimBefore = (data.source === 'opponent_hand' && gs.players[data.sourceIdx])
                 ? gs.players[data.sourceIdx].hand.map(c => c.id) : null;
+            const phaseBefore = gs.phase, drawnBefore = ds?.cardsDrawn ?? -1;
+            const handBefore = gs.players[playerIdx]?.hand.length ?? -1;
             gs.drawCard(data.source, data.sourceIdx, data.area, data.cardIdx);
+            // Klik navíc na balíček (pomalá linka: klient ještě nemá stav, kde už dolízal)
+            // – logika ho zahodila, takže se nic nelízlo ani nezměnila fáze. NEANIMUJ nic:
+            // jinak by poslední karta z ruky „znovu přiletěla" z balíčku. Jen sesynchronizuj.
+            if (gs.phase === phaseBefore && (gs.drawPhaseState?.cardsDrawn ?? -1) === drawnBefore
+                && (gs.players[playerIdx]?.hand.length ?? -1) === handBefore) {
+                broadcastRoom(room);
+                return;
+            }
             // Pat Brennan – emituj animaci jen když karta opravdu přešla do jeho ruky.
             if (patAnim && gs.players[playerIdx]?.hand.some(c => c.id === patAnim.stolenCardId)) {
                 emitAnim(room, patAnim);
@@ -83,7 +97,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('play_card', (i) => {
+    on('play_card', (i) => {
         withRoom((room, p, gs) => {
             const player = gs.getCurrentPlayer();
             const card = player?.hand[i];
@@ -125,7 +139,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('play_bang', (d) => {
+    on('play_bang', (d) => {
         withRoom((room, p, gs) => {
             const attacker = gs.players[d.attackerIdx];
             const card = attacker?.hand[d.cardIdx];
@@ -136,7 +150,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('play_special', (d) => {
+    on('play_special', (d) => {
         withRoom((room, p, gs) => {
             const atk = gs.players[d.attackerIdx];
             const tar = d.targetIdx !== null ? gs.players[d.targetIdx] : null;
@@ -183,7 +197,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('select_target_card', (d) => {
+    on('select_target_card', (d) => {
         withRoom((room, p, gs) => {
             const pending = room._pendingPanicCard;
             if (pending) {
@@ -282,7 +296,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('respond_to_card', (d) => {
+    on('respond_to_card', (d) => {
         withRoom((room, p, gs) => {
             if (d.cardIndex !== null || d.boardCardId != null) {
                 const respPlayer = gs.players[d.playerIdx];
@@ -346,7 +360,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     });
 
     // ── Dodge City: aktivace zelené karty ze stolu ──────────────────────────────
-    socket.on('activate_green_card', (d) => {
+    on('activate_green_card', (d) => {
         withRoom((room, p, gs) => {
             const playerIdx = d.playerIdx ?? gs.currentPlayerIndex;
             const player = gs.players[playerIdx];
@@ -416,7 +430,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
 
     // ── Dodge City: „odhoď další kartu" (cíl → cena → efekt) ────────────────────
     // 1) Hráč zvolil hlavní kartu + cíl → přejdeme na výběr ceny (DISCARD_ANOTHER).
-    socket.on('discard_extra_choose', (d) => {
+    on('discard_extra_choose', (d) => {
         withRoom((room, p, gs) => {
             // Ledger chování: Springfield/Ragtime na cíl = hostilní, Tequila na jiného = podpora.
             const eff = gs.players[gs.currentPlayerIndex]?.hand[d.cardIdx]?.discardExtra;
@@ -433,7 +447,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     });
 
     // 2) Hráč vybral „další kartu" (cenu) → obě karty do odhozu (další, pak hlavní) + efekt.
-    socket.on('discard_another_card', (d) => {
+    on('discard_another_card', (d) => {
         withRoom((room, p, gs) => {
             const pending = gs.pendingDiscardAnother;
             if (!pending) { broadcastRoom(room); return; }
@@ -476,7 +490,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     });
 
     // Zrušení „odhoď další kartu" – hráč si to rozmyslel (klik na hlavní kartu / Zrušit).
-    socket.on('cancel_discard_another', () => {
+    on('cancel_discard_another', () => {
         withRoom((room, p, gs) => {
             const idx = gs.pendingDiscardAnother?.playerIdx;
             if (idx == null) { broadcastRoom(room); return; }
@@ -485,14 +499,14 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('end_turn', () => {
+    on('end_turn', () => {
         withRoom((room, p, gs) => {
             gs.tryEndTurn();
             broadcastRoom(room);
         });
     });
 
-    socket.on('discard_card', (i) => {
+    on('discard_card', (i) => {
         withRoom((room, p, gs) => {
             const discardingIdx = gs.currentPlayerIndex;
             const player = gs.players[discardingIdx];
@@ -510,8 +524,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const handleKitCarlson = (index) => {
         withRoom((room, p, gs) => { gs.kitCarlsonPick(index); broadcastRoom(room); });
     };
-    socket.on('kit_carlson_pick', handleKitCarlson);
-    socket.on('kit_carlson_select', (data) => handleKitCarlson(data?.index ?? data));
+    on('kit_carlson_pick', handleKitCarlson);
+    on('kit_carlson_select', (data) => handleKitCarlson(data?.index ?? data));
 
     const handleLuckyDuke = (index) => {
         withRoom((room, p, gs) => {
@@ -528,8 +542,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             handleReshuffleAndBroadcast(room, gs, 0);
         });
     };
-    socket.on('lucky_duke_pick', handleLuckyDuke);
-    socket.on('lucky_duke_choose', (data) => handleLuckyDuke(data?.cardIndex ?? data));
+    on('lucky_duke_pick', handleLuckyDuke);
+    on('lucky_duke_choose', (data) => handleLuckyDuke(data?.cardIndex ?? data));
 
     const handleBarrelDraw = () => {
         withRoom((room, p, gs) => {
@@ -537,10 +551,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             handleReshuffleAndBroadcast(room, gs, 0);
         });
     };
-    socket.on('trigger_barrel_draw', handleBarrelDraw);
-    socket.on('draw_from_barrel', handleBarrelDraw);
+    on('trigger_barrel_draw', handleBarrelDraw);
+    on('draw_from_barrel', handleBarrelDraw);
 
-    socket.on('sid_ketchum_discard_both', (d) => {
+    on('sid_ketchum_discard_both', (d) => {
         withRoom((room, p, gs) => {
             const player = gs.players[d.playerIdx];
             if (!player || player.health <= 0) return;
@@ -579,7 +593,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('take_dynamite_hit', () => {
+    on('take_dynamite_hit', () => {
         withRoom((room, p, gs) => {
             // Používáme playerIdx ze stavu – bezpečné v debug i normálním módu
             const dynPlayerIdx = gs.pendingDynamiteDamage?.playerIdx;
@@ -598,7 +612,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('respond_with_beer', (d) => {
+    on('respond_with_beer', (d) => {
         withRoom((room, p, gs) => {
             const player = gs.players[d.playerIdx];
             const card = player?.hand[d.cardIdx];
@@ -613,7 +627,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('beer_dynamite_save', (d) => {
+    on('beer_dynamite_save', (d) => {
         withRoom((room, p, gs) => {
             const player = gs.players[d.playerIdx];
             const card = player?.hand[d.cardIdx];
@@ -627,7 +641,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('sid_ketchum_cancel', (d) => {
+    on('sid_ketchum_cancel', (d) => {
         withRoom((room, p, gs) => {
             if (!gs.sidKetchumPending || gs.sidKetchumPending.playerIdx !== d.playerIdx) return;
             const lastDiscard = gs.deck.discardPile[gs.deck.discardPile.length - 1];
@@ -641,11 +655,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    socket.on('sid_save_discard', (d) => {
+    on('sid_save_discard', (d) => {
         withRoom((room, p, gs) => { gs.sidSaveDiscard(d.playerIdx, d.cardIdx); broadcastRoom(room); });
     });
 
-    socket.on('store_pick', (d) => {
+    on('store_pick', (d) => {
         withRoom((room, p, gs) => {
             // Identita + pozice PŘED odebráním (karta letí ze slotu do ruky hráče).
             const pickerIdx = gs.storePickerIndex;

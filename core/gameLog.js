@@ -15,6 +15,7 @@ if (typeof pendingActor === 'undefined' && typeof require === 'function') {
 const LogEvent = {
     GAMESTART: 'gamestart',
     ACTION:    'action',   // ingress: akce hráče/bota (server)
+    REJECT:    'reject',   // ingress: akce zahozená guardem (čeká se na jiného hráče)
     TURN:      'turn',     // začátek tahu
     PLAY:      'play',     // zahrání karty (modrá/zelená/netargetovaná)
     BANG:      'bang',     // Bang! / bang-efekt
@@ -66,6 +67,8 @@ function formatEvent(evt) {
         }
         case LogEvent.ACTION:
             return `${t}▶ ${evt.actor}: ${evt.a}${evt.arg ? ' ' + evt.arg : ''}`;
+        case LogEvent.REJECT:
+            return `${t}⛔ ${evt.actor}: ${evt.a} zahozeno – ${evt.reason}`;
         case LogEvent.TURN:
             return `${t}── TAH ${evt.who}(${evt.role}) HP ${evt.hp}/${evt.max}, ruka ${evt.hand}`;
         case LogEvent.PLAY:

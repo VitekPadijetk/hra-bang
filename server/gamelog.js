@@ -101,6 +101,19 @@ module.exports = function installGameLog(ctx) {
             });
         },
 
+        // ── ingress: akce zahozená guardem (čeká se na jiného hráče) ──────────
+        // Typicky opožděný/dvojitý klik na pomalé lince. Loguje se, aby bylo z logu
+        // hry poznat, že hráč klikal, ale hra ho (správně) neposlechla.
+        reject(room, actor, event, reason) {
+            const gs = room && room.gameState;
+            emit(room, {
+                ev: 'reject',
+                turn: gs ? gs.turnId : undefined,
+                phase: gs ? gs.phase : undefined,
+                actor, a: event, reason,
+            });
+        },
+
         // ── rules-level událost z GameState (_onEvent sink) ───────────────────
         rule(room, evt) {
             // evt už má { ev, turn, phase, ... } z GameState.logEvent.

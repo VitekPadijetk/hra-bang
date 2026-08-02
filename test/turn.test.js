@@ -164,6 +164,13 @@ test('tryEndTurn: přebytek karet → fáze DISCARD, jinak další tah', () => {
     assert.equal(g.phase, 'DISCARD');
 });
 
+test('tryEndTurn mimo hraní/odhazování nic neudělá (opožděný klik na pomalé lince)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { phase: 'DRAW' });
+    g.tryEndTurn();
+    assert.equal(g.phase, 'DRAW');            // lízání se nesmí přeskočit
+    assert.equal(g.currentPlayerIndex, 0);
+});
+
 test('discardCard sníží ruku na limit a předá tah', () => {
     const g = mkGame([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }], { phase: 'DISCARD' });
     give(g, 0, CardType.BEER);
