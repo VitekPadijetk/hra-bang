@@ -28,8 +28,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 let stolenId = null, visIdx = null;
                 if (data.area === 'weapon') { stolenId = tgt.weapon?.id ?? null; visIdx = 0; }
                 else if (data.area === 'board') {
-                    const hw = tgt.weapon && tgt.weapon.id !== -1;
-                    visIdx = (hw ? 1 : 0) + (data.cardIdx ?? 0);
+                    visIdx = 1 + (data.cardIdx ?? 0);
                     stolenId = tgt.board?.[data.cardIdx]?.id ?? null;
                 }
                 if (stolenId != null) patAnim = { type: 'ragtime_steal', attackerIdx: playerIdx, targetIdx: data.sourceIdx, area: data.area, boardIdx: visIdx, stolenCardId: stolenId };
@@ -206,10 +205,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 if (d.area === 'weapon') {
                     boardIdx = 0;
                 } else if (d.area === 'board') {
-                    // Vizuální slot = zbraň (pokud je) + index v boardu. Bez zbraně
-                    // je board[0] hned na slotu 0, ne na 1.
-                    const hasWeapon = target?.weapon && target.weapon.id !== -1;
-                    boardIdx = (hasWeapon ? 1 : 0) + (d.cardIdx ?? 0);
+                    // Vizuální slot v jednotné konvenci „slot 0 = zbraň" (klient si ji u
+                    // soupeřů bez zbraně sám posune – viz getBoardPos v net/handlers.js).
+                    boardIdx = 1 + (d.cardIdx ?? 0);
                 }
                 // Veřejné ID ukradené karty (z ruky je skryté). Výzbroj/stůl čteme
                 // PŘED resolvem, dokud je karta ještě u cíle.
@@ -276,8 +274,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (isBrawl && victim) {
                 if (d.area === 'weapon') { brawlBoardId = victim.weapon?.id ?? null; brawlVisBoardIdx = 0; }
                 else if (d.area === 'board') {
-                    const hasWeapon = victim.weapon && victim.weapon.id !== -1;
-                    brawlVisBoardIdx = (hasWeapon ? 1 : 0) + (d.cardIdx ?? 0);
+                    brawlVisBoardIdx = 1 + (d.cardIdx ?? 0);
                     brawlBoardId = victim.board?.[d.cardIdx]?.id ?? null;
                 }
             }
@@ -303,8 +300,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 if (d.boardCardId != null) {
                     // Zelená Vedle!-karta ze stolu (Železný plát/Stetson/Sombrero/Bible).
                     const bi = respPlayer?.board.findIndex(c => c.id === d.boardCardId) ?? -1;
-                    const hasWeapon = respPlayer?.weapon && respPlayer.weapon.id !== -1;
-                    const visBoardIdx = (hasWeapon ? 1 : 0) + (bi >= 0 ? bi : 0);
+                    const visBoardIdx = 1 + (bi >= 0 ? bi : 0);
                     emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: d.playerIdx, cardId: d.boardCardId, boardIdx: visBoardIdx });
                 } else {
                     const card = respPlayer?.hand[d.cardIndex];
@@ -367,8 +363,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const bi = player?.board.findIndex(c => c.id === d.cardId) ?? -1;
             if (bi === -1) { broadcastRoom(room); return; }
             const card = player.board[bi];
-            const hasWeapon = player.weapon && player.weapon.id !== -1;
-            const greenVisIdx = (hasWeapon ? 1 : 0) + bi;
+            const greenVisIdx = 1 + bi;
             const eff = card.activate;
             const isSteal = eff === 'steal_any', isDiscard = eff === 'discard_any';
             const target = d.target || null;
@@ -379,8 +374,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 const victim = gs.players[target.targetIdx];
                 if (target.area === 'weapon') { victimPublicId = victim?.weapon?.id ?? null; victimVisIdx = 0; }
                 else if (target.area === 'board') {
-                    const vw = victim?.weapon && victim.weapon.id !== -1;
-                    victimVisIdx = (vw ? 1 : 0) + (target.boardIdx ?? 0);
+                    victimVisIdx = 1 + (target.boardIdx ?? 0);
                     victimPublicId = victim?.board?.[target.boardIdx]?.id ?? null;
                 }
             }
@@ -468,8 +462,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 let publicStolenId = null, visBoardIdx = null;
                 if (area === 'weapon') { publicStolenId = victim?.weapon?.id ?? null; visBoardIdx = 0; }
                 else if (area === 'board') {
-                    const hasWeapon = victim?.weapon && victim.weapon.id !== -1;
-                    visBoardIdx = (hasWeapon ? 1 : 0) + (boardIdx ?? 0);
+                    visBoardIdx = 1 + (boardIdx ?? 0);
                     publicStolenId = victim?.board?.[boardIdx]?.id ?? null;
                 }
                 gs.discardAnotherCard(attackerIdx, d.extraCardIdx);

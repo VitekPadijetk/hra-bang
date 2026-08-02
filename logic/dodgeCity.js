@@ -77,10 +77,11 @@ const DodgeCityMixin = {
 
         this.pendingDiscardAnother = null;
         this.checkSuzyLafayette(player);
-        this._dispatchDiscardExtraEffect(playerIdx, effect, target);
+        this._dispatchDiscardExtraEffect(playerIdx, effect, target, mainCard?.name);
     },
 
-    _dispatchDiscardExtraEffect(playerIdx, effect, target) {
+    // `mainName` = jméno hrané karty (Springfield/Tequila/…) – jen pro UI popisky.
+    _dispatchDiscardExtraEffect(playerIdx, effect, target, mainName = null) {
         const player = this.players[playerIdx];
         if (effect === 'heal_self_2') {
             // Whisky: +2 sobě (do maxima).
@@ -105,7 +106,7 @@ const DodgeCityMixin = {
             }
             this.players[playerIdx].stats.bangsFired++;
             this.currentAttacker = playerIdx;
-            this._beginBangResolution(playerIdx, targetIdx, true); // isEffect = true
+            this._beginBangResolution(playerIdx, targetIdx, true, mainName); // isEffect = true
             this._processSpecialQueue();
         } else if (effect === 'steal_any') {
             // Ragtime: ukradni konkrétní kartu zvoleného hráče (Panika bez vzdálenosti).
@@ -200,6 +201,7 @@ const DodgeCityMixin = {
                 this.currentAttacker = playerIdx;
                 this.missesRequired = 1; this.missesPlayed = 0;
                 this._massAttackSuit = card.suit;        // Apache Kid: kárová Houfnice ho míjí
+                this._massAttackName = card.name;        // UI: ohrožuje tě Houfnice, ne Kulomet
                 this._advanceMassAttack(playerIdx, playerIdx, CardType.GATLING);
                 this._processSpecialQueue();
                 return;
@@ -225,7 +227,7 @@ const DodgeCityMixin = {
             if (card.draw) { for (let k = 0; k < card.draw; k++) this.specialActionQueue.push({ type: 'UHYB_DRAW', playerIdx }); }
             player.stats.bangsFired++;
             this.currentAttacker = playerIdx;
-            this._beginBangResolution(playerIdx, targetIdx, true); // isEffect = true
+            this._beginBangResolution(playerIdx, targetIdx, true, card.name); // isEffect = true
             this._processSpecialQueue();
             return;
         }

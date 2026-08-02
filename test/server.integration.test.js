@@ -88,6 +88,31 @@ test('debug_start handler rozjede debug hru (resolved makeRoom/cardData/setupDeb
     assert.equal(room.gameState.players.length, 3);
 });
 
+// Vizuální slot karty na stole se posílá v JEDNOTNÉ konvenci „slot 0 = zbraň" –
+// i když hráč zbraň nemá (na svém stole tam má výchozí Colt .45). Přepočet pro
+// soupeře bez zbraně dělá klient (getBoardPos v net/handlers.js). Dřív posílal server
+// index bez zbraňového slotu a krádež/odhoz z vlastního stolu letěla o kartu vedle.
+test('animace karty ze stolu posílá slot v konvenci „0 = zbraň" i bez zbraně', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    const anims = [];
+    s.emit = (ev, data) => { if (ev === 'card_animation') anims.push(data); };
+    s.fire('debug_start', { playerCount: 3, roles: [] });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+
+    gs.players[1].weapon = { id: -1 };                       // žádná zbraň
+    gs.players[1].board = [{ id: 991, name: 'Barel', type: 'Barel' }];
+    gs.phase = 'SELECTING_TARGET_CARD';
+    gs.pendingSelection = { attackerIdx: 0, targetIdx: 1, sourceCardType: 'Cat Balou' };
+    room._pendingPanicCard = { type: 'catbalou_sequence', attackerIdx: 0, targetIdx: 1, cardId: 990 };
+
+    s.fire('select_target_card', { attackerIdx: 0, area: 'board', cardIdx: 0 });
+    const a = anims.find(x => x.type === 'catbalou_sequence');
+    assert.ok(a, 'animace catbalou_sequence se musí odeslat');
+    assert.equal(a.boardIdx, 1);   // board[0] = slot 1 (slot 0 patří zbrani/Coltu)
+});
+
 test('end_turn / chat handlery běží bez chyby (game + lobby modul)', () => {
     const { ctx, mkSocket } = mkEnv();
     const s = mkSocket('s1');

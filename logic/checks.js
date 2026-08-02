@@ -119,8 +119,9 @@ const ChecksMixin = {
 
         if (check.reason === "DYNAMITE") {
             if (suit === Suits.SPADES && numVal >= 2 && numVal <= 9) {
-                const pHasWeapon = p.weapon && p.weapon.id !== -1;
-                const fromBoardIdx = (pHasWeapon ? 1 : 0) + check.boardIdx;
+                // Vizuální slot v konvenci „slot 0 = zbraň" (klient si ji u soupeřů bez
+                // zbraně posune sám – viz getBoardPos v net/handlers.js).
+                const fromBoardIdx = 1 + check.boardIdx;
                 const dynCard = p.board.splice(check.boardIdx, 1)[0];
                 this.lastAnimEvent = { type: 'dynamite_explode', playerIdx: check.playerIdx, cardId: dynCard?.id, boardIdx: fromBoardIdx };
                 this.deck.discardPile.push(dynCard);
@@ -128,8 +129,7 @@ const ChecksMixin = {
                 this.pendingDynamiteDamage = { playerIdx: check.playerIdx, hitsLeft: 3 };
                 this.phase = "DYNAMITE_DAMAGE";
             } else {
-                const pHasWeapon = p.weapon && p.weapon.id !== -1;
-                const fromBoardIdx = (pHasWeapon ? 1 : 0) + check.boardIdx;
+                const fromBoardIdx = 1 + check.boardIdx;
                 // Najdi dalšího ŽIVÉHO hráče BEZ dynamitu (jen ostatní – nikdy zpět na sebe).
                 let targetIdx = null;
                 for (let k = 1; k < this.players.length; k++) {
@@ -145,17 +145,15 @@ const ChecksMixin = {
                 } else {
                     const dynCard = p.board.splice(check.boardIdx, 1)[0];
                     const np = this.players[targetIdx];
-                    const npHasWeapon = np.weapon && np.weapon.id !== -1;
                     np.board.push(dynCard);
-                    const toBoardIdx = (npHasWeapon ? 1 : 0) + (np.board.length - 1);
+                    const toBoardIdx = 1 + (np.board.length - 1);
                     this.lastAnimEvent = { type: 'dynamite_pass', fromIdx: check.playerIdx, toIdx: targetIdx, cardId: dynCard?.id, fromBoardIdx, toBoardIdx };
                     this.handleStartOfTurnChecks();
                 }
             }
         } else if (check.reason === "JAIL") {
             const jailCard = p.board.splice(check.boardIdx, 1)[0];
-            const hasWeapon = p.weapon && p.weapon.id !== -1;
-            const visualBoardIdx = hasWeapon ? check.boardIdx + 1 : check.boardIdx;
+            const visualBoardIdx = 1 + check.boardIdx;
             this.lastAnimEvent = { type: 'board_to_discard', fromPlayerIdx: check.playerIdx, cardId: jailCard?.id, boardIdx: visualBoardIdx };
             this.deck.discardPile.push(jailCard);
             if (suit === Suits.HEARTS) {
@@ -172,7 +170,7 @@ const ChecksMixin = {
                 if (slabBonus > 0 && (this.missesPlayed || 0) < 1 && check.sourceCard !== CardType.GATLING) {
                     this.missesRequired = 1;
                     this.missesPlayed = 1;
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect);
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName);
                 } else {
                     if (check.sourceCard === CardType.GATLING || check.sourceCard === CardType.INDIANS) {
                         this._advanceMassAttack(check.playerIdx, check.attackerIdx, check.sourceCard);
@@ -191,11 +189,12 @@ const ChecksMixin = {
                         checksLeft: check.checksLeft - 1,
                         reason: check.reason === "JOURDONNAIS" ? "BARREL" : check.reason,
                         sourceCard: check.sourceCard,
+                        sourceCardName: check.sourceCardName,
                         bangEffect: check.bangEffect
                     };
                     this.phase = "BARREL_DRAW";
                 } else {
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect);
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName);
                 }
             }
         }

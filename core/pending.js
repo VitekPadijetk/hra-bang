@@ -3,6 +3,7 @@
 //   pendingActor(state)              -> { idx, kind } | null   — na koho a na jaké rozhodnutí hra čeká
 //   waitingStatus(state)             -> { idx, kind, text } | null — lidsky čitelný status pro UI štítek
 //   describePendingResponse(state,v) -> { forMe, attackerName, targetName, sourceLabel, need } | null
+//   describePendingCheck(state,v)    -> { forMe, kind, short, title, detail, waitingName } | null — co a proč se líže
 // Globál v prohlížeči (<script> v index.html), require v Node/testech. Viz CLAUDE.md.
 
 // ── pendingActor — kdo a jaké rozhodnutí hra očekává ─────────────────────────
@@ -65,12 +66,19 @@ const _WAIT_LABELS = {
     VERA_COPY:             'Vera Custer – kopíruje postavu',
 };
 
+// Karta, která útok skutečně spustila. `sourceCard` je TYP efektu (Houfnice se řeší
+// jako Kulomet, Nůž/Derringer/Úder jako Bang!) – pro hráče ale musí být vidět reálně
+// zahraná karta, proto má přednost `sourceCardName` (doplní ji logic/*).
+function _sourceLabel(pr) {
+    return pr?.sourceCardName || pr?.sourceCard || null;
+}
+
 function waitingStatus(state) {
     const pa = pendingActor(state);
     if (!pa) return null;
     let text = _WAIT_LABELS[pa.kind] || '';
     if (pa.kind === 'RESPOND' && state.pendingResponse?.sourceCard) {
-        text = 'brání se proti ' + state.pendingResponse.sourceCard;
+        text = 'brání se proti ' + _sourceLabel(state.pendingResponse);
     }
     return { idx: pa.idx, kind: pa.kind, text };
 }
@@ -96,12 +104,57 @@ function describePendingResponse(state, viewerIdx) {
         forMe: pr.targetIdx === viewerIdx,
         attackerName: attacker ? attacker.name : '?',
         targetName: target ? target.name : '?',
-        sourceLabel: pr.sourceCard,
+        sourceLabel: _sourceLabel(pr),
         requiredCard: pr.requiredCard,
         need,
     };
 }
 
+// ── describePendingCheck — kontrolní líznutí (Barel/Jourdonnais, Dynamit, Vězení) ─
+// Vrací, CO se líže a PROČ, ať hráč u balíčku neklikne naslepo:
+//   { forMe, kind, playerIdx, title, detail, waitingName } | null
+// kind: 'BARREL' | 'JOURDONNAIS' | 'DYNAMITE' | 'JAIL'
+function describePendingCheck(state, viewerIdx) {
+    const nameOf = (idx) => state.players[idx]?.name || '?';
+
+    if (state.phase === 'BARREL_DRAW' && state.pendingBarrelCheck?.active) {
+        const pbc = state.pendingBarrelCheck;
+        const isJourdonnais = pbc.reason === 'JOURDONNAIS';
+        const left = pbc.checksLeft > 1 ? ` (2 pokusy)` : '';
+        const from = pbc.attackerIdx != null && pbc.attackerIdx !== pbc.targetIdx
+            ? ` od hráče ${nameOf(pbc.attackerIdx)}` : '';
+        return {
+            forMe: pbc.targetIdx === viewerIdx,
+            kind: isJourdonnais ? 'JOURDONNAIS' : 'BARREL',
+            playerIdx: pbc.targetIdx,
+            waitingName: nameOf(pbc.targetIdx),
+            short: isJourdonnais ? 'Jourdonnais' : 'Barel',
+            title: (isJourdonnais ? '🛢️ Jourdonnais' : '🛢️ Barel') + ' – lízni si kontrolní kartu' + left,
+            detail: `♥ = uhnul jsi (platí jako Vedle!), jinak musíš zahrát Vedle! · ${_sourceLabel(pbc) || 'Bang!'}${from}`,
+        };
+    }
+
+    if (state.phase === 'CHECK_DRAW' && state.pendingCheckDraw?.active) {
+        const pcd = state.pendingCheckDraw;
+        const isDynamite = pcd.dynamiteIdx !== null && pcd.dynamiteIdx !== undefined;
+        return {
+            forMe: pcd.playerIdx === viewerIdx,
+            kind: isDynamite ? 'DYNAMITE' : 'JAIL',
+            playerIdx: pcd.playerIdx,
+            waitingName: nameOf(pcd.playerIdx),
+            short: isDynamite ? 'Dynamit' : 'Vězení',
+            title: isDynamite
+                ? '💥 Dynamit – lízni si kontrolní kartu'
+                : '🔒 Vězení – lízni si kontrolní kartu',
+            detail: isDynamite
+                ? '♠ 2–9 = dynamit vybuchne (−3 životy), jinak putuje dál'
+                : '♥ = vyskočíš z vězení a hraješ, jinak tah přeskakuješ',
+        };
+    }
+
+    return null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { pendingActor, waitingStatus, describePendingResponse };
+    module.exports = { pendingActor, waitingStatus, describePendingResponse, describePendingCheck };
 }

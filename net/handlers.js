@@ -451,8 +451,12 @@ function _renderSideScale(playerIdx) {
 function _deathCardSeq(pid, blue, weapon, hand) {
     const hasW = !!weapon;
     const seq = [];
+    // Slot 0 na MÉM stole drží zbraň, a když žádnou nemám, výchozí Colt .45 (drawMyArea);
+    // soupeři Colt nekreslí, takže bez zbraně jim modré začínají hned na slotu 0.
+    const _selfView = pid === (myIndex === null ? 0 : myIndex);
+    const _blueBase = (_selfView || hasW) ? 1 : 0;
     for (let k = blue.length - 1; k >= 0; k--) {
-        seq.push({ kind: 'blue', id: blue[k].id, from: getBoardCardPos(pid, (hasW ? 1 : 0) + k) });
+        seq.push({ kind: 'blue', id: blue[k].id, from: getBoardCardPos(pid, _blueBase + k) });
     }
     if (hasW) seq.push({ kind: 'weapon', id: weapon.id, from: getBoardCardPos(pid, 0) });
     else      seq.push({ kind: 'colt',   id: null,      from: getBoardCardPos(pid, 0) });
@@ -600,7 +604,18 @@ socket.on('card_animation', (data) => {
     const deck    = deckTopPos();      // vrch balíčku (odkud karta vzlétá / kam dosedá)
     const discard = discardTopPos();   // vrch odhozu (ne základna) – ať karty dosednou na hromádku
 
-    const getBoardPos = (playerIdx, boardIdx = 0) => getBoardCardPos(playerIdx, boardIdx);
+    // Server posílá vizuální slot v jednotné konvenci „slot 0 = zbraň": 0 = výzbroj,
+    // 1+k = k-tá karta na stole. Přesně tak kreslím SVŮJ stůl (na slotu 0 je zbraň, a
+    // když žádnou nemám, výchozí Colt .45 – viz drawMyArea). Soupeři Colt nezobrazují,
+    // takže bez zbraně jim jeden slot ubývá → index posuň o 1 dolů. Bez toho letěla
+    // krádež/odhoz z cizího stolu (a Krytý vůz/Kankán na vlastní stůl) o kartu vedle.
+    const getBoardPos = (playerIdx, boardIdx = 0) => {
+        const view = myIndex === null ? 0 : myIndex;
+        const p = state?.players?.[playerIdx];
+        const hasWeapon = !!(p?.weapon && p.weapon.id !== -1);
+        const idx = (playerIdx !== view && !hasWeapon && boardIdx > 0) ? boardIdx - 1 : boardIdx;
+        return getBoardCardPos(playerIdx, idx);
+    };
 
     // Úhel, pod kterým jsou renderované karty daného hráče (viz drawOpponents):
     // já/spodní 0°, vlevo 90°, nahoře 180°, vpravo −90°. Stranu bereme ze stejného

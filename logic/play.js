@@ -64,8 +64,8 @@ const PlayMixin = {
             [CardType.EQUIPMENT]: () => this.playBoardCard(player, cardIndex),
             [CardType.BARREL]: () => this.playBoardCard(player, cardIndex),
             [CardType.DYNAMITE]: () => this.playBoardCard(player, cardIndex),
-            [CardType.INDIANS]: () => { this._massAttackSuit = card.suit; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.INDIANS); return true; },
-            [CardType.GATLING]: () => { this._massAttackSuit = card.suit; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.GATLING); return true; },
+            [CardType.INDIANS]: () => { this._massAttackSuit = card.suit; this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.INDIANS); return true; },
+            [CardType.GATLING]: () => { this._massAttackSuit = card.suit; this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.GATLING); return true; },
             [CardType.STORE]: () => { this.openStore(); return true; }
         };
 
@@ -119,13 +119,15 @@ const PlayMixin = {
             return;
         }
 
-        this._beginBangResolution(attackerIdx, targetIdx, isEffect);
+        this._beginBangResolution(attackerIdx, targetIdx, isEffect, card.name);
         this._processSpecialQueue();
     },
 
     // Barel-check + fáze RESPOND pro Bang!/bang-efekt. Sdílí playBang i Springfield
     // (bang-efekt „any" po odhození další karty). isEffect = bez limitu/Slaba.
-    _beginBangResolution(attackerIdx, targetIdx, isEffect = false) {
+    // `sourceName` = SKUTEČNÁ karta, která útok spustila (Úder/Nůž/Derringer/Springfield…);
+    // pravidla se dál řídí `sourceCard` (typ efektu), jméno je jen pro UI/log.
+    _beginBangResolution(attackerIdx, targetIdx, isEffect = false, sourceName = null) {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
 
@@ -155,6 +157,7 @@ const PlayMixin = {
                 checksLeft: barrelChecksLeft,
                 reason: barrelReason,
                 sourceCard: CardType.BANG,
+                sourceCardName: sourceName || CardType.BANG,
                 bangEffect: isEffect
             };
             this.phase = "BARREL_DRAW";
@@ -165,6 +168,7 @@ const PlayMixin = {
                 targetIdx: targetIdx,
                 requiredCard: CardType.MISSED,
                 sourceCard: CardType.BANG,
+                sourceCardName: sourceName || CardType.BANG,
                 bangEffect: isEffect,
                 responded: []
             };
@@ -256,6 +260,7 @@ const PlayMixin = {
             this.missesRequired = 1;
             this.missesPlayed = 0;
             this._massAttackSuit = card.suit;   // Apache Kid: kárový hromadný útok ho míjí
+            this._massAttackName = card.name;   // UI: skutečná karta (Houfnice ≠ Kulomet)
             this._advanceMassAttack(attIdx, attIdx, card.type);
             this._processSpecialQueue();
             return;
@@ -267,7 +272,7 @@ const PlayMixin = {
         if (this.phase !== "BARREL_DRAW" || !this.pendingBarrelCheck?.active) return;
         const pbc = this.pendingBarrelCheck;
         this.pendingBarrelCheck = null;
-        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect);
+        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName);
     },
 
     // Vyloží kartu (modrou i zelenou) na stůl. Nelze mít 2 karty stejného jména (D7).
@@ -283,11 +288,11 @@ const PlayMixin = {
         return false;
     },
 
-    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false) {
+    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null) {
         const target = this.players[targetIdx];
 
         if (effectiveCharacter(target) === "Lucky Duke") {
-            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, bangEffect };
+            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect };
             this.startLuckyDukeCheck(checkContext);
             return;
         }
@@ -295,7 +300,7 @@ const PlayMixin = {
         const checkCard = this.deck.draw();
         this.deck.discardPile.push(checkCard);
         this.phase = "CHECKING";
-        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, bangEffect };
+        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect };
     },
 
     resolveCardSelection(attackerIdx, targetCardArea, targetCardIdx) {
@@ -388,17 +393,21 @@ const PlayMixin = {
             }
         }
 
+        // UI: skutečně zahraná karta (Houfnice se chová jako Kulomet, ale jmenuje se jinak).
+        const sourceName = this._massAttackName || sourceCard;
+
         if (barrelChecksLeft > 0) {
             this.pendingBarrelCheck = {
                 active: true, targetIdx: nextTarget, attackerIdx: originatorIdx,
-                checksLeft: barrelChecksLeft, reason: barrelReason, sourceCard: sourceCard
+                checksLeft: barrelChecksLeft, reason: barrelReason, sourceCard: sourceCard,
+                sourceCardName: sourceName
             };
             this.phase = "BARREL_DRAW";
         } else {
             this.pendingResponse = {
                 active: true, originatorIdx: originatorIdx, targetIdx: nextTarget,
                 requiredCard: sourceCard === CardType.GATLING ? CardType.MISSED : CardType.BANG,
-                sourceCard: sourceCard, responded: []
+                sourceCard: sourceCard, sourceCardName: sourceName, responded: []
             };
             // Hromadný útok (Kulomet/Indiáni): vždy jen 1 vedle/bang na cíl – Slabův
             // bonus (2 vedle) platí jen na obyčejný Bang, ne na Kulomet.
@@ -408,7 +417,7 @@ const PlayMixin = {
         }
     },
 
-    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false) {
+    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false, sourceCardName = null) {
         const attacker = this.players[attackerIdx];
         this.pendingResponse = {
             active: true,
@@ -416,6 +425,7 @@ const PlayMixin = {
             targetIdx: targetIdx,
             requiredCard: CardType.MISSED,
             sourceCard: sourceCard,
+            sourceCardName: sourceCardName || sourceCard,
             bangEffect: bangEffect,
             responded: []
         };

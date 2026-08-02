@@ -938,7 +938,11 @@ function drawMyArea(ctx) {
             const bx = roleX - boardCardW - (bCol * boardCardW);
             const by = myBaseY - bRow * (boardCardH + 10);
             let tex = card._isColt ? 'colt_.45' : getTex(card.id);
-            const canTarget = isPanicCBMyTurn && !card._isColt;
+            // Ručička kurzoru: jediné setInteractive na sprite (opakované volání by ji už
+            // nepřepsalo) → musí pokrýt VŠECHNY režimy míření na vlastní stůl, i Ragtime /
+            // Krytý vůz / Kankán na sebe. Aktivovaná zelená karta sama cílem být nemůže.
+            const canTarget = isPickingMyBoard && !card._isColt &&
+                !(selectedState.greenCardId != null && card.id === selectedState.greenCardId);
             let bSprite = gameScene.add.image(bx, by, tex).setScale(scaleMe);
             gameScene.cardsSprites.add(bSprite);
             myBoardSprites.push({ sprite: bSprite, card, i });
@@ -1635,6 +1639,30 @@ function drawPhaseOverlays(ctx) {
         }
     }
 
+    // ── Kontrolní líznutí (Barel/Jourdonnais, Dynamit, Vězení): banner „co a proč" ──
+    // Bez něj se jen rozsvítí balíček a hráč netuší, na co kliká ani co karta rozhodne.
+    if ((state.phase === "BARREL_DRAW" || state.phase === "CHECK_DRAW") && typeof describePendingCheck === 'function') {
+        const c = describePendingCheck(state, myIndex);
+        if (c) {
+            let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+            bg.setStrokeStyle(3, c.forMe ? 0xff8800 : 0xffaa33);
+            mAdd(bg, 205);
+            if (c.forMe) {
+                let l1 = gameScene.add.text(960, 66, c.title,
+                    { fontSize: '32px', color: '#ffbb55', fontStyle: 'bold' }).setOrigin(0.5);
+                mAdd(l1, 206);
+                let l2 = gameScene.add.text(960, 112, c.detail,
+                    { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+                mAdd(l2, 206);
+            } else {
+                let l1 = gameScene.add.text(960, 92,
+                    `⏳ Čeká se na hráče ${c.waitingName} – kontrolní líznutí (${c.short})`,
+                    { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+                mAdd(l1, 206);
+            }
+        }
+    }
+
     // CHECKING (Dynamit/Vězení/Barel/Jourdonnais) a BLACK_JACK_CHECK už NEMAJÍ modal
     // s tlačítkem – běží automatická reveal animace (startCheckReveal / startBlackJackReveal
     // v game.js, spuštěná z přechodu fáze v net/handlers.js). Čekajícího hráče zvýrazní
@@ -1818,7 +1846,12 @@ function drawDrawPiles(ctx) {
                         state.drawPhaseState?.playerIdx === myIndex &&
                         (state.drawPhaseState?.options || []).includes('discard') &&
                         state.deck.discardPile.length > 0;
+    // POZOR: setInteractive lze na sprite nastavit jen JEDNOU – opakované volání už
+    // `useHandCursor` nepřepíše. Všechny důvody, proč má odhoz ručičku, proto musí být
+    // tady (níž se sprite jen tintuje a věší se na něj klik). DE_DECK = „odhoď další
+    // kartu" bez cíle (Whisky/Rvačka) – potvrzuje se klikem na odhazovací balíček.
     const discardNeedsCursor = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) ||
+        (selectedState.action === "DE_DECK" && selectedState.cardIndex !== null) ||
         ((selectedState.action === "GREEN_MASS" || selectedState.action === "GREEN_SELF") && selectedState.greenCardId != null) || isPedroDraw;
 
     // Během sejmutí je kontrolní karta navrchu odhozu, ale vizuálně je teď uprostřed
