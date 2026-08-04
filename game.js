@@ -17,6 +17,11 @@ const config = {
     },
     backgroundColor: '#4a3018',
     parent: 'game-container',
+    // Výchozích 32 paralelních stahování (~165 souborů) na horší lince/mobilu končilo
+    // občasným přerušením spojení → chybějící textura a zelený placeholder. Prohlížeč
+    // stejně jede max ~6 spojení na doménu, takže nižší strop nic nezpomalí, jen ubere
+    // rozpracovaných requestů (a nesoupeří tolik se socketem).
+    loader: { maxParallelDownloads: 8 },
     scene: { preload: preload, create: create, update: update }
 };
 
@@ -1113,7 +1118,54 @@ function closeCardGallery() {
 
 // ── ZÁKLADNÍ FUNKCE PHASERU ──────────────────────────────────────────────
 
+// ── Registr assetů + opakované načtení ───────────────────────────────────────
+// Phaser na loader sice čeká, ale soubor, který skončí chybou (přerušené spojení
+// na horší lince / mobilu), jen přeskočí – hra se pak sestaví se zelenými placeholdery
+// a pomůže až F5. Proto jde KAŽDÉ načtení přes loadAsset() do registru AssetLoads a:
+//   1) loaderror soubor rovnou zařadí zpátky do běžícího loaderu (cache-buster obejde
+//      nakešovanou chybnou odpověď), pokud to má smysl (viz core/assetLoad.js),
+//   2) create() před sestavením textur ověří, že jsou všechny assety v cache; když ne,
+//      běží opravné kolo (ensureAssetsLoaded) s cedulí „Načítám…".
+// Soubory, které na serveru nejsou (odpověď 4xx – typicky art karty, který ještě nemáme
+// nakreslený), se neopakují: mají fallback (legacy karta / placeholder) a čekat na ně
+// nemá smysl. Rozhoduje tedy HTTP status, ne seznam „nepovinných" souborů v kódu.
+const AssetLoads = {};
+
+function loadAsset(scene, kind, key, url) {
+    // Klíč už registrovaný (art sdílený základní sadou a Dodge City) – drž první URL;
+    // duplicitní klíč Phaser stejně přeskočí a případný retry má mířit na existující soubor.
+    if (!AssetLoads[key]) AssetLoads[key] = { url, kind, attempts: 1, status: 0 };
+    scene.load[kind](key, url);
+}
+
+// Je asset v cache? (obrázek → texture manager, JSON → json cache)
+function assetInCache(scene, key, kind) {
+    return kind === 'json' ? scene.cache.json.exists(key) : scene.textures.exists(key);
+}
+
+// Znovu zařadí asset do loaderu (další pokus s cache-busterem). Vrací false, když už nemá smysl.
+function retryAsset(scene, key, status) {
+    const info = AssetLoads[key];
+    if (!info) return false;
+    if (status != null) info.status = status;
+    if (!shouldRetryAsset(info)) return false;
+    info.attempts++;
+    const url = retryAssetUrl(info.url, info.attempts);
+    clog('warn', 'Asset se nenačetl, pokus č. ' + info.attempts, { key, url, status: info.status });
+    scene.load[info.kind](key, url);
+    return true;
+}
+
 function preload() {
+    // Cedule s průběhem – jinak je do konce načítání jen prázdné plátno.
+    const loadTxt = this.add.text(960, 540, 'Načítám…', {
+        fontFamily: 'Arial', fontSize: '34px', color: '#e8dcc0'
+    }).setOrigin(0.5).setDepth(5000);
+    this._loadingText = loadTxt;
+    this.load.on('progress', p => {
+        if (this._loadingText) this._loadingText.setText('Načítám… ' + Math.round(p * 100) + ' %');
+    });
+
     // Pozadí ve 4K: primárně malý WebP (~0,7 MB), PNG (~8 MB) zůstává jako fallback.
     // Při paralelním stahování všech textur občas soubor skončí loaderror → zůstala by
     // holá barva plátna. Proto ho při chybě párkrát znovu zařadíme do fronty: 1. pokus
@@ -1129,59 +1181,92 @@ function preload() {
             this.load.image('background', src);
             return;
         }
-        clog('warn', 'Chybí textura, použije se placeholder', { src: file.src });
+        // Status z XHR (Phaser načítá obrázky přes XHR): 404 = soubor tam není, 0/5xx = výpadek.
+        const status = (file.xhrLoader && file.xhrLoader.status) || 0;
+        if (retryAsset(this, file.key, status)) return;
+        clog('warn', 'Chybí textura, použije se placeholder', { src: file.src, status });
     }, this);
 
-    this.load.image('background', bgSources[0]);
-    this.load.image('logo', 'assets/logo.png');
-    this.load.image('card_back', 'assets/other_cards/playing_card_back.png');
-    this.load.image('placeholder', 'assets/card_placeholder.png');
-    this.load.image('colt_.45', 'assets/other_cards/colt_.45.png');
+    loadAsset(this, 'image', 'background', bgSources[0]);
+    loadAsset(this, 'image', 'logo', 'assets/logo.png');
+    loadAsset(this, 'image', 'card_back', 'assets/other_cards/playing_card_back.png');
+    loadAsset(this, 'image', 'placeholder', 'assets/card_placeholder.png');
+    loadAsset(this, 'image', 'colt_.45', 'assets/other_cards/colt_.45.png');
 
     // Staré hotové karty jako FALLBACK (legacy_<id>). buildCardTextures je v create()
     // zapeče do card_<id>, pokud pro daný druh chybí nový art/marky.
     for (let i = 0; i <= 79; i++) {
         let paddedId = i.toString().padStart(3, '0');
-        this.load.image('legacy_' + i, `assets/playing_cards/${paddedId}.png`);
+        loadAsset(this, 'image', 'legacy_' + i, `assets/playing_cards/${paddedId}.png`);
     }
 
     // Nové vykreslování: data karet + art druhů (assets/card_art/<art>.png) + marky
     // hodnoty/barvy (assets/card_marks/*.png). Art/marky se doplní do fronty, jakmile
     // je JSON načtený (chybějící soubory jen zalogují loaderror a spadnou na legacy).
-    this.load.json('cards_data', 'cards.json');
-    this.load.once('filecomplete-json-cards_data', (key, type, data) => {
+    loadAsset(this, 'json', 'cards_data', 'cards.json');
+    this.load.on('filecomplete-json-cards_data', (key, type, data) => {
         // Soubory: card_art/<art>.png, card_marks/<hodnota>.png (Q.png, 10.png…) a
         // card_marks/<barva>.png (hearts.png…). Texturové klíče drží prefix (art_/value_/suit_).
-        distinctArtKeys(data).forEach(a => this.load.image('art_' + a, `assets/card_art/${a}.png`));
+        distinctArtKeys(data).forEach(a => loadAsset(this, 'image', 'art_' + a, `assets/card_art/${a}.png`));
         ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].forEach(v =>
-            this.load.image('value_' + v, `assets/card_marks/${v}.png`));
+            loadAsset(this, 'image', 'value_' + v, `assets/card_marks/${v}.png`));
         ['hearts', 'diamonds', 'clubs', 'spades'].forEach(s =>
-            this.load.image('suit_' + s, `assets/card_marks/${s}.png`));
+            loadAsset(this, 'image', 'suit_' + s, `assets/card_marks/${s}.png`));
     });
 
     // Rozšíření Dodge City: vlastní data + art z podsložky card_art/dodge_city/ + marka
     // symbolu býka (card_marks/dodge_city.png). Art se sdíleným slugem se základem (bang…)
     // se nenačítá znovu – klíč art_<slug> už drží základní karta (duplicitní klíč Phaser
     // přeskočí), takže „reskin" karty rozšíření použijí základní art + domalovaný býk.
-    this.load.json('cards_dodge_city_data', 'cards.dodge_city.json');
-    this.load.image('mark_dodge_city', 'assets/card_marks/dodge_city.png');
-    this.load.once('filecomplete-json-cards_dodge_city_data', (key, type, data) => {
-        distinctArtKeys(data).forEach(a => this.load.image('art_' + a, `assets/card_art/dodge_city/${a}.png`));
+    loadAsset(this, 'json', 'cards_dodge_city_data', 'cards.dodge_city.json');
+    loadAsset(this, 'image', 'mark_dodge_city', 'assets/card_marks/dodge_city.png');
+    this.load.on('filecomplete-json-cards_dodge_city_data', (key, type, data) => {
+        distinctArtKeys(data).forEach(a => loadAsset(this, 'image', 'art_' + a, `assets/card_art/dodge_city/${a}.png`));
     });
 
-    this.load.json('characters_data', 'characters.json');
+    loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 30; i++) {   // 0–15 základ, 16–30 Dodge City (chybějící → placeholder)
         let paddedId = i.toString().padStart(3, '0');
-        this.load.image('char_' + i, `assets/characters/${paddedId}.png`);
+        loadAsset(this, 'image', 'char_' + i, `assets/characters/${paddedId}.png`);
     }
 
-    this.load.image('lives', 'assets/other_cards/lives.png');
-    this.load.image('role_card_back', 'assets/other_cards/role_card_back.png');
-    this.load.image('role_000', 'assets/roles/000.png');
-    this.load.image('role_001', 'assets/roles/001.png');
-    this.load.image('role_002', 'assets/roles/002.png');
-    this.load.image('role_003', 'assets/roles/003.png');
-    this.load.image('sheriff_star', 'assets/other_cards/sheriff_star.png');
+    loadAsset(this, 'image', 'lives', 'assets/other_cards/lives.png');
+    loadAsset(this, 'image', 'role_card_back', 'assets/other_cards/role_card_back.png');
+    loadAsset(this, 'image', 'role_000', 'assets/roles/000.png');
+    loadAsset(this, 'image', 'role_001', 'assets/roles/001.png');
+    loadAsset(this, 'image', 'role_002', 'assets/roles/002.png');
+    loadAsset(this, 'image', 'role_003', 'assets/roles/003.png');
+    loadAsset(this, 'image', 'sheriff_star', 'assets/other_cards/sheriff_star.png');
+}
+
+// Počká, dokud nejsou v cache VŠECHNY assety, které na serveru jsou – co při preloadu
+// spadlo, zkusí znovu v dalších kolech loaderu (max ASSET_REPAIR_ROUNDS). Teprve pak
+// pustí `done`, takže buildCardTextures nikdy nezapeče placeholder jen kvůli výpadku
+// sítě. Když se to ani po všech kolech nepovede, hra se rozjede jako dřív (placeholdery)
+// – radši hrát s placeholdery než viset na černé obrazovce.
+// POZOR: volat JEN před buildCardTextures – ten legacy_* textury po zapečení maže,
+// takže by se pak tvářily jako chybějící a stahovaly se dokola.
+function ensureAssetsLoaded(scene, done, round) {
+    round = round || 1;
+    const missing = missingAssets(AssetLoads, (key, kind) => assetInCache(scene, key, kind));
+    if (!missing.length || round > ASSET_REPAIR_ROUNDS) {
+        if (missing.length) clog('warn', 'Assety se nedonačetly, jede se s placeholdery', { missing: missing.slice(0, 20), count: missing.length });
+        done();
+        return;
+    }
+    clog('warn', 'Donačítám chybějící assety, kolo ' + round, { missing: missing.slice(0, 20), count: missing.length });
+    if (scene._loadingText) scene._loadingText.setText('Načítám… (' + missing.length + ')');
+
+    // Do dalšího kola pusť i ty, které už vyčerpaly pokusy v preloadu – tady chceme
+    // soubory dotáhnout za každou cenu, jen s omezeným počtem kol.
+    for (const key of missing) {
+        const info = AssetLoads[key];
+        info.attempts++;
+        info.maxAttempts = info.attempts + ASSET_MAX_ATTEMPTS;   // uvolni strop pro loaderror retry
+        scene.load[info.kind](key, retryAssetUrl(info.url, info.attempts));
+    }
+    scene.load.once('complete', () => ensureAssetsLoaded(scene, done, round + 1));
+    scene.load.start();
 }
 
 // Složí textury card_<id> z art druhu + marek hodnoty/barvy; když nový art/marky pro
@@ -1275,6 +1360,17 @@ function normalizeCharTextures(scene) {
 }
 
 function create() {
+    // Nejdřív dotáhni, co při preloadu spadlo (jinak by se zapekly placeholdery), teprve
+    // pak postav scénu. gameScene se nastaví až v createScene – dokud je null, renderUI
+    // volané ze socketu (lobby_list…) se samo přeskočí a překreslí se po startu.
+    ensureAssetsLoaded(this, () => createScene.call(this));
+}
+
+// Vlastní sestavení scény. Běží až jsou assety v cache (viz ensureAssetsLoaded), jinak
+// beze změny – `this` je scéna, stejně jako dřív v create().
+function createScene() {
+    if (this._loadingText) { this._loadingText.destroy(); this._loadingText = null; }
+
     gameScene = this;
 
     normalizeCharTextures(this);
