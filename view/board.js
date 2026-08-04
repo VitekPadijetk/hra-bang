@@ -197,8 +197,18 @@ function runHealthSlide(playerIdx, curHealth, tx, ty, bulletH, dirX, dirY, angle
 const REFLOW_MS = 240;
 function reflowCard(key, staticSprite, x, y, tex, scale, angle, depth = 0) {
     App._cardSeen.add(key);
+    // Statická karta je po dobu klouzání skrytá, takže obarvení musí převzít ta plovoucí –
+    // jinak karta během přeskládání ztratí zvýraznění (červené „musíš odhodit" na konci
+    // tahu mizelo přesně těm kartám, které se zrovna posouvaly). Přenáší se při každém
+    // renderu, aby změna zvýraznění za letu (konec fáze, výběr) dosedla i na klouzající.
+    const syncTint = (spr) => {
+        if (!spr?.active) return;
+        if (staticSprite?.isTinted) spr.setTint(staticSprite.tintTopLeft);
+        else spr.clearTint();
+    };
     const slide = App.cardSlides[key];
     if (slide) {
+        syncTint(slide.sprite);
         // Klouzání už běží → drž statickou skrytou, plovoucí doletí sama. Když se cíl
         // za letu změnil (další přeskládání), přesměruj tween (jako retargetDrawAnims).
         if (slide.tween && (slide.tx !== x || slide.ty !== y)) {
@@ -218,6 +228,7 @@ function reflowCard(key, staticSprite, x, y, tex, scale, angle, depth = 0) {
         // chybně kreslil NAD novou kartu). Pozadí je vloženo dřív, takže slide je nad ním.
         // Výjimka: co má vlastní depth i staticky (šerifova hvězda), si ho drží i za letu.
         const spr = gameScene.add.image(home.x, home.y, tex).setScale(scale).setAngle(angle).setDepth(depth);
+        syncTint(spr);
         const rec = { sprite: spr, tx: x, ty: y };
         rec.tween = gameScene.tweens.add({
             targets: spr, x, y, duration: REFLOW_MS, ease: 'Cubic.easeOut',
@@ -1173,12 +1184,6 @@ function drawMyArea(ctx) {
                     cSprite.setInteractive({ useHandCursor: true });
                 }
 
-                // Reflow slide: když se změnil počet karet, ostatní dokloužou na nové místo
-                // místo skoku. Staged (Sid) / zmenšenou hlavní kartu nekloužeme – mají vlastní transformaci.
-                if (!isStagedCard && !isDAmain && !isDocStaged) {
-                    reflowCard('h' + card.id, cSprite, posX, myBaseY, getTex(card.id), scaleMe, 0);
-                }
-
                 const isMySidActive = selectedState.sidKetchum !== undefined ||
                                     state.sidKetchumPending?.playerIdx === myIndex;
 
@@ -1216,6 +1221,14 @@ function drawMyArea(ctx) {
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
                     cSprite.setTint(0xddffdd);
+                }
+
+                // Reflow slide: když se změnil počet karet, ostatní dokloužou na nové místo
+                // místo skoku. Staged (Sid) / zmenšenou hlavní kartu nekloužeme – mají vlastní transformaci.
+                // AŽ ZA obarvením – reflowCard si tint ze statické karty přebírá, aby ho
+                // klouzající karta neztratila.
+                if (!isStagedCard && !isDAmain && !isDocStaged) {
+                    reflowCard('h' + card.id, cSprite, posX, myBaseY, getTex(card.id), scaleMe, 0);
                 }
 
                 let isHovered = false;

@@ -1093,7 +1093,14 @@ function _playCardAnim(data) {
 // v _playCardAnim; když se změní délka letu, srovnej i tady, jinak vznikne mezera nebo
 // překryv. Nesedící číslo frontu nikdy nezasekne – jen posune pacing.
 const ANIM_MS = {
-    draw:              400,   // vlastní líznutí jede přes animateCardFlip s defaultem 400
+    // Líznutí frontu ZÁMĚRNĚ nedrží (0). Kartu, která ještě letí, drží v ruce skrytou
+    // vlastní staging (App.pendingDrawIds + holdUntil v animateDrawToMyHand), takže stav
+    // smí dorazit kdykoli – neobjeví se dřív, než dosedne. Kdyby líznutí frontu drželo,
+    // při rychlém druhém kliknutí by se stav první karty zařadil až za animaci té druhé:
+    // ruka by se přeskládala naráz až po dolíznutí všeho místo postupně a první karta by
+    // do té doby visela na svém slotu. Zároveň tím smí dvě líznutí letět souběžně, což je
+    // u opakovaných kliknutí přirozené (rozteč letících karet řeší retargetDrawAnims).
+    draw:              0,
     discard:           380,
     hand_to_discard:   380,
     hand_to_board:     400,
