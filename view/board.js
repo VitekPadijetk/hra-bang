@@ -147,6 +147,11 @@ function renderGameBoard() {
 }
 
 
+// Šerifova hvězda leží prostorově NAD kartou postavy, takže musí být nad kartami
+// vyloženými vedle ní (modré/zelené/zbraň se kreslí až po ní → bez depth by je měla
+// pod sebou a schovaly by ji). Pod jmenovkami (50) a overlaye (200+) zůstává.
+const STAR_DEPTH = 46;
+
 // Zásah / vyléčení (Návrh 1): postava se posune po kartě životů o bulletH × Δživotů
 // správným směrem. Plovoucí sprite (mimo cardsSprites → přežije re-render) jede ze
 // staré pozice na aktuální (tx,ty = pozice pro nové životy); statická postava je po
@@ -167,7 +172,7 @@ function runHealthSlide(playerIdx, curHealth, tx, ty, bulletH, dirX, dirY, angle
         let starSpr = null;
         if (starOpts) {
             starSpr = gameScene.add.image(sx + starOpts.dx, sy + starOpts.dy, 'sheriff_star')
-                .setScale(starOpts.scale).setAngle(angle).setDepth(46);
+                .setScale(starOpts.scale).setAngle(angle).setDepth(STAR_DEPTH);
             gameScene.tweens.add({ targets: starSpr, x: tx + starOpts.dx, y: ty + starOpts.dy, duration: 280, ease: 'Cubic.easeOut' });
         }
         gameScene.tweens.add({
@@ -190,7 +195,7 @@ function runHealthSlide(playerIdx, curHealth, tx, ty, bulletH, dirX, dirY, angle
 // identita karty napříč rendery (u ruky card.id, u rubů soupeřů per-slot). Voláme těsně
 // po vytvoření statického spritu na jeho cílové (x,y).
 const REFLOW_MS = 240;
-function reflowCard(key, staticSprite, x, y, tex, scale, angle) {
+function reflowCard(key, staticSprite, x, y, tex, scale, angle, depth = 0) {
     App._cardSeen.add(key);
     const slide = App.cardSlides[key];
     if (slide) {
@@ -211,7 +216,8 @@ function reflowCard(key, staticSprite, x, y, tex, scale, angle) {
         // statické karty se do display-listu vloží PO tomto (přežívajícím) slide spritu →
         // klouzající karta zůstane POD čerstvě dosednutou/statickou kartou (dřív depth 30 ji
         // chybně kreslil NAD novou kartu). Pozadí je vloženo dřív, takže slide je nad ním.
-        const spr = gameScene.add.image(home.x, home.y, tex).setScale(scale).setAngle(angle).setDepth(0);
+        // Výjimka: co má vlastní depth i staticky (šerifova hvězda), si ho drží i za letu.
+        const spr = gameScene.add.image(home.x, home.y, tex).setScale(scale).setAngle(angle).setDepth(depth);
         const rec = { sprite: spr, tx: x, ty: y };
         rec.tween = gameScene.tweens.add({
             targets: spr, x, y, duration: REFLOW_MS, ease: 'Cubic.easeOut',
@@ -249,14 +255,14 @@ function pruneCardSlides() {
 // (postava jede po liště životů), nech pohyb na runHealthSlide a jen udrž home + skryj
 // statický sprite, ať se nepokusí klouzat podruhé. Board-změna a health-změna u téhož
 // hráče nenastávají zároveň (modrá karta vs zásah), takže si nekonkurují.
-function reflowStatic(key, sprite, tex, scale, angle, sliding) {
+function reflowStatic(key, sprite, tex, scale, angle, sliding, depth = 0) {
     if (sliding) {
         App._cardSeen.add(key);
         App.cardHome[key] = { x: sprite.x, y: sprite.y };
         sprite.setVisible(false);
         return;
     }
-    reflowCard(key, sprite, sprite.x, sprite.y, tex, scale, angle);
+    reflowCard(key, sprite, sprite.x, sprite.y, tex, scale, angle, depth);
 }
 
 // ── Soupeři kolem stolu (vykresleno relativně k mému indexu) ──────────────────
@@ -561,9 +567,9 @@ function drawOpponents(ctx) {
                 let star = gameScene.add.image(
                     charOpp.x + cardH * 0.45,
                     charOpp.y - cardW * 0.42,
-                    'sheriff_star').setScale(starScale).setAngle(90);
+                    'sheriff_star').setScale(starScale).setAngle(90).setDepth(STAR_DEPTH);
                 gameScene.cardsSprites.add(star);
-                reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingL);
+                reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingL, STAR_DEPTH);
             }
 
             displayCards.forEach((card, bIdx) => {
@@ -633,9 +639,9 @@ function drawOpponents(ctx) {
                 let star = gameScene.add.image(
                     charOpp.x + cardW * 0.42,
                     charOpp.y + cardH * 0.45,
-                    'sheriff_star').setScale(starScale).setAngle(180);
+                    'sheriff_star').setScale(starScale).setAngle(180).setDepth(STAR_DEPTH);
                 gameScene.cardsSprites.add(star);
-                reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingT);
+                reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingT, STAR_DEPTH);
             }
 
             displayCards.forEach((card, bIdx) => {
@@ -704,9 +710,9 @@ function drawOpponents(ctx) {
                 let star = gameScene.add.image(
                     charOpp.x - cardH * 0.45,
                     charOpp.y + cardW * 0.42,
-                    'sheriff_star').setScale(starScale).setAngle(-90);
+                    'sheriff_star').setScale(starScale).setAngle(-90).setDepth(STAR_DEPTH);
                 gameScene.cardsSprites.add(star);
-                reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingR);
+                reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingR, STAR_DEPTH);
             }
 
             displayCards.forEach((card, bIdx) => {
@@ -928,6 +934,18 @@ function drawMyArea(ctx) {
         // Pak se zelená karta položená tento tah nešediví – je legitimní cíl a musí
         // vypadat normálně (a u Paniky/CB být vidět žluté zvýraznění).
         const isPickingMyBoard = isPanicCBMyTurn || isGreenStealSelf || isRagtimeSelf;
+        // Reakce zelenou Vedle!-kartou ze stolu (Železný plát/Stetson/Sombrero/Bible).
+        // Počítá se i pro kartu položenou TENTO tah (server ji jako reakci uznává, viz
+        // handleResponse s boardCardId) → taková karta se nešediví, jde o ni.
+        // Belle Star útočí (na svém tahu) → cizí karty na stole (i zelené Vedle!) neplatí,
+        // server je odmítne. Nenabízej je pak jako reakci (zrcadlí server _belleIgnoresBoard).
+        const _origIdx = state.pendingResponse?.originatorIdx;
+        const _belleIgnoresBoard = _origIdx != null &&
+            state.currentPlayerIndex === _origIdx &&
+            effectiveCharacter(state.players[_origIdx]) === "Belle Star";
+        const isRespondMiss = state.phase === 'RESPOND' && state.pendingResponse?.active &&
+            state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
+            !_belleIgnoresBoard;
         const myBoardSprites = [];
         myBoardCards.forEach((card, i) => {
             // Karta právě ukradená Panikou/Cat Balou: po dobu letu ji nekresli (slot
@@ -948,11 +966,16 @@ function drawMyArea(ctx) {
             myBoardSprites.push({ sprite: bSprite, card, i });
 
             // Dodge City: zelená karta položená TENTO tah se zatím nedá aktivovat →
-            // vykresli ji černobíle (grayscale), ať je to jasné. Jen ve fázi hraní –
-            // při odhazování (DISCARD/DISCARD_ANOTHER…) hint „nejde aktivovat" nedává
-            // smysl a černobílá zbytečně mate (má vypadat normálně, ne zašedle).
+            // vykresli ji černobíle (grayscale), ať je to jasné. Šedá drží po CELÝ můj
+            // tah, ne jen ve fázi PLAY: když mezitím dělá něco jiný hráč (RESPOND na můj
+            // Bang!, sejmutí, barel…), karta pořád není aktivovatelná a nemá zezelenat a
+            // zase zešednout – zezelená až dalším tahem (turnId se změní).
+            // Výjimka: odhazování (DISCARD/DISCARD_ANOTHER) – tam hint „nejde aktivovat"
+            // nedává smysl a černobílá zbytečně mate (má vypadat normálně, ne zašedle).
             // Totéž při výběru cíle na vlastním stole (Panika/CB/Krytý vůz/Kankán/Ragtime).
-            if (card.green && card._playedTurn === state.turnId && state.phase === 'PLAY' && !isPickingMyBoard) {
+            const _greyPhase = state.phase !== 'DISCARD' && state.phase !== 'DISCARD_ANOTHER' &&
+                !(isRespondMiss && card.activate === 'miss');   // zrovna použitelná jako Vedle!
+            if (card.green && card._playedTurn === state.turnId && _greyPhase && !isPickingMyBoard) {
                 if (bSprite.preFX) bSprite.preFX.addColorMatrix().grayscale(1);
                 else bSprite.setTint(0x777777);   // fallback (Canvas renderer bez preFX)
             }
@@ -1010,15 +1033,8 @@ function drawMyArea(ctx) {
         {
             const greenTurn = state.phase === 'PLAY' && state.currentPlayerIndex === myIndex &&
                 selectedState.cardIndex === null && !App.blockInput && !isPanicCBMyTurn;
-            // Belle Star útočí (na svém tahu) → cizí karty na stole (i zelené Vedle!) neplatí,
-            // server je odmítne. Nenabízej je pak jako reakci (zrcadlí server _belleIgnoresBoard).
-            const _origIdx = state.pendingResponse?.originatorIdx;
-            const _belleIgnoresBoard = _origIdx != null &&
-                state.currentPlayerIndex === _origIdx &&
-                effectiveCharacter(state.players[_origIdx]) === "Belle Star";
-            const isRespondMiss = state.phase === 'RESPOND' && state.pendingResponse?.active &&
-                state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
-                !_belleIgnoresBoard;
+            // isRespondMiss / _belleIgnoresBoard viz výše (počítá se před kreslením desky,
+            // rozhoduje i o tom, jestli se zelená Vedle!-karta smí šedivit).
 
             myBoardSprites.forEach(({ sprite, card }) => {
                 if (card._isColt || card._isWeapon || !card || !card.green) return;
@@ -1569,7 +1585,7 @@ function drawSpectatorPlayer(ctx) {
         registerVeraPortrait(charImg2, player, getCharTex);
         if (player.role === 'Sheriff') {
             gameScene.cardsSprites.add(
-                gameScene.add.image(livesX_adj + cW * 0.42, charY2 - cH * 0.45, 'sheriff_star').setScale(sOpp)
+                gameScene.add.image(livesX_adj + cW * 0.42, charY2 - cH * 0.45, 'sheriff_star').setScale(sOpp).setDepth(STAR_DEPTH)
             );
         }
         gameScene.cardsSprites.add(
@@ -1800,7 +1816,9 @@ function drawDrawPiles(ctx) {
     const pxPerCard = 0.25;   // tenčí hromádky (dříve 0.5)
     const stackTop = (count) => deckY - (count - 1) * pxPerCard / 2;
 
-    const _hideDeck = App.reshuffleAnimating || App.reshuffleIsProactive;
+    // Během míchání se balíček nekreslí (místo počtu 🔀) – platí i pro míchání
+    // v hokynářství, které běží ve zvednuté poloze (App.storeShuffling).
+    const _hideDeck = App.reshuffleAnimating || App.reshuffleIsProactive || App.storeShuffling;
 
     {
         const total = _hideDeck ? 0 : (state.deck.cards?.length ?? 0);

@@ -81,10 +81,16 @@ const App = {
     // řady pod nimi (storeDealIds = ještě nedoletělé sloty, gated), výběr může být
     // dočasně zamčený (storeLocked, případ nedostatku) a u proaktivního míchání čeká
     // návrat balíčků na dokončení míchání (storeShuffleEndAt = timestamp konce).
+    // storeShuffling = běží míchací cinematika ve zvednuté poloze (balíček se po tu dobu
+    // nekreslí, stejně jako u klasického domíchání); storeShuffleBlock = hráči byli
+    // rychlejší než míchání a hra na jeho dokončení čeká se zamčeným UI (blockInput,
+    // který room_update kvůli tomuhle flagu nesmí předčasně odemknout).
     storePileLiftY: 0,
     storeDealIds: new Set(),
     storeLocked: false,
     storeShuffleEndAt: 0,
+    storeShuffling: false,
+    storeShuffleBlock: false,
     discardBorderShown: false,
     // Pedro Ramirez: po kliknutí na odhoz (vzít první kartu z odhozu) zamkni odhoz,
     // ať se během letové animace nedá klikat znovu (jinak by se odpálilo víc animací).

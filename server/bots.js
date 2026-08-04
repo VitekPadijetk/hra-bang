@@ -117,19 +117,12 @@ module.exports = function installBotService(ctx) {
     }
 
     // Pauza před PRVNÍM výběrem bota v hokynářství: počká, než doběhne klientská
-    // cinematika (zvednutí balíčků + rozdání + případné míchání). Tempo zrcadlí
-    // game.js (STORE_LIFT/STAGGER/DEAL/SHUFFLE). Jen na první výběr po otevření.
+    // cinematika (zvednutí balíčků + rozdání + případné míchání). Časování je sdílené
+    // se serverem i klientem (server/anim.js storeCinematicMs). Jen na první výběr.
+    // U 'proactive' se míchá paralelně s výběrem – bot bere hned, na konec míchání
+    // pak hra počká přes room._reshuffleBlockUntil (nastaví handlers.game.js).
     function storeOpenDelayMs(gs) {
-        const N = (gs.storeCards || []).filter(c => c).length;
-        const sa = gs.storeAnim || {};
-        const LIFT = 340, STAG = 190, CARD = 460, SHUF = 1100, BUF = 250;
-        const dealMs = n => n > 0 ? (n - 1) * STAG + CARD : 0;
-        if (sa.mode === 'blocking') {
-            const k = Math.min(sa.dealtBefore || 0, N);
-            return LIFT + dealMs(k) + SHUF + dealMs(N - k) + BUF;
-        }
-        // 'proactive' / 'none': výběr možný hned po rozdání (míchání u A běží paralelně).
-        return LIFT + dealMs(N) + BUF;
+        return ctx.storeCinematicMs(gs).pickReady;
     }
 
     // Hrubý "otisk pokroku": když se mezi dvěma akcemi bota nezmění, hrozí zaseknutí.

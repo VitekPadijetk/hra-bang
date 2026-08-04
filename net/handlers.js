@@ -1062,11 +1062,16 @@ function _playCardAnim(data) {
             App.storeDealIds.add(data.cardId);   // skryj kartu ve slotu po dobu letu
             renderUI();
             const cleanup = () => { App.storeDealIds.delete(data.cardId); };
+            // Odkrytí slotu drž, dokud karta ze stavu hokynářství SKUTEČNĚ nezmizí
+            // (broadcast chodí opožděně, ~400 ms). Bez toho se po doletu do ruky pustí
+            // gate dřív, než dorazí nový stav, a karta na okamžik problikne zpět ve slotu.
+            const gone = () => !(state?.storeCards || []).some(c => c && c.id === data.cardId);
             if (data.pickerIdx === myIndex) {
                 if (!animateDrawToMyHand(data.pickerIdx, data.cardId, slot.x, slot.y,
-                        { faceUp: true, duration: 420, onComplete: cleanup })) {
+                        { faceUp: true, duration: 420, onComplete: cleanup, holdUntil: gone })) {
                     const to = getPlayerHandPos(data.pickerIdx);
-                    animateCard(slot.x, slot.y, to.x, to.y, getCardTex(data.cardId), 420, cleanup);
+                    animateCard(slot.x, slot.y, to.x, to.y, getCardTex(data.cardId), 420, cleanup,
+                        { holdUntil: gone });
                 }
             } else {
                 // Cíl = KONCOVÝ slot ruky bereného hráče (ne střed vějíře). Karta se cestou
@@ -1075,7 +1080,8 @@ function _playCardAnim(data) {
                 const to = getHandSlotPos(data.pickerIdx, dLen, dLen + 1);
                 animateCardFlip(slot.x, slot.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
                     { flip: true, reverse: true, startScale: 0.32, endScale: sideScale(data.pickerIdx),
-                      duration: 420, onComplete: cleanup, startAngle: 0, endAngle: sideAngle(data.pickerIdx) });
+                      duration: 420, onComplete: cleanup, holdUntil: gone,
+                      startAngle: 0, endAngle: sideAngle(data.pickerIdx) });
             }
             break;
         }
@@ -1156,123 +1162,16 @@ socket.on('reshuffle_anim', ({ cardCount, proactive, topCardId }) => {
     }
     renderUI();
 
-    const cx = GAME_W / 2, cy = GAME_H / 2 - 60;
-    const N = Math.min(cardCount, 24);
-    const SCALE = 0.28;
-    const CARD_W = 325 * SCALE, CARD_H = 500 * SCALE;
-    const allSprites = [];
-
-    for (let i = 0; i < N; i++) {
-        const sp = gameScene.add.image(DISCARD_X, DISCARD_Y, 'card_back')
-            .setScale(SCALE * 0.01).setDepth(5 + i).setAlpha(0);
-        allSprites.push(sp);
-        gameScene.tweens.add({
-            targets: sp,
-            x: cx, y: cy,
-            scaleX: SCALE, scaleY: SCALE,
-            alpha: 1,
-            duration: 480,
-            delay: i * 18,
-            ease: 'Power2'
-        });
-    }
-
-    const half = Math.ceil(N / 2);
-    const leftX = cx - CARD_W * 1.6, rightX = cx + CARD_W * 1.6;
-
-    gameScene.time.delayedCall(600, () => {
-        allSprites.forEach((sp, i) => {
-            const isLeft = i < half;
-            const stackIdx = isLeft ? i : i - half;
-            gameScene.tweens.add({
-                targets: sp,
-                x: isLeft ? leftX : rightX,
-                y: cy + stackIdx * 1.2,
-                duration: 420,
-                delay: i * 12,
-                ease: 'Back.Out'
-            });
-        });
-    });
-
-    const RIFFLE_START = 1200;
-    const PER_CARD = (2600) / N;
-
-    allSprites.forEach((sp, i) => {
-        const isLeft = i < half;
-        const stackIdx = isLeft ? i : i - half;
-        const riffleSlot = isLeft ? stackIdx * 2 : stackIdx * 2 + 1;
-        const delay = RIFFLE_START + riffleSlot * PER_CARD;
-
-        gameScene.time.delayedCall(delay, () => {
-            if (!sp.active) return;
-            gameScene.tweens.add({
-                targets: sp,
-                x: cx + (isLeft ? -CARD_W * 0.5 : CARD_W * 0.5),
-                y: cy - 30,
-                scaleX: SCALE * 1.05, scaleY: SCALE * 1.05,
-                duration: 110, ease: 'Power1',
-                onComplete: () => {
-                    if (!sp.active) return;
-                    const finalY = cy + (riffleSlot - N / 2) * 0.5;
-                    gameScene.tweens.add({
-                        targets: sp,
-                        x: cx, y: finalY,
-                        scaleX: SCALE, scaleY: SCALE,
-                        duration: 130, ease: 'Power2',
-                        onComplete: () => {
-                            sp.setDepth(5 + riffleSlot);
-                        }
-                    });
-                }
-            });
-        });
-    });
-
-    gameScene.time.delayedCall(3900, () => {
-        allSprites.forEach((sp, i) => {
-            if (!sp.active) return;
-            gameScene.tweens.add({
-                targets: sp,
-                x: cx, y: cy + i * 0.4,
-                duration: 380,
-                delay: i * 8,
-                ease: 'Power3'
-            });
-        });
-    });
-
-    gameScene.time.delayedCall(4700, () => {
-        allSprites.forEach((sp, i) => {
-            if (!sp.active) return;
-            gameScene.tweens.add({
-                targets: sp,
-                x: DECK_X, y: DECK_Y,
-                duration: 520,
-                delay: i * 6,
-                ease: 'Power2.inOut',
-                onComplete: () => {
-                    if (sp.active) sp.destroy();
-                }
-            });
-        });
-
-        gameScene.time.delayedCall(560, () => {
-            const flash = gameScene.add.rectangle(DECK_X, DECK_Y, CARD_W * 1.3, CARD_H * 1.3, 0xffdd44, 0.55)
-                .setDepth(15);
-            gameScene.tweens.add({
-                targets: flash, alpha: 0, scaleX: 1.6, scaleY: 1.6,
-                duration: 420, ease: 'Power2',
-                onComplete: () => { if (flash.active) flash.destroy(); }
-            });
-        });
-    });
-
-    gameScene.time.delayedCall(5500, () => {
-        if (App.reshuffleIsProactive) {
-            App.blockInput = false;
-            App.reshuffleIsProactive = false;
-            if (gameScene) renderUI();
+    // Samotná cinematika je sdílená s hokynářstvím (game.js playReshuffleCinematic),
+    // aby to bylo v obou případech vizuálně i délkou totéž míchání. onDone odemkne UI
+    // u proaktivního zamíchání, kde broadcast dorazil hned na začátku animace.
+    playReshuffleCinematic(cardCount, {
+        onDone: () => {
+            if (App.reshuffleIsProactive) {
+                App.blockInput = false;
+                App.reshuffleIsProactive = false;
+                if (gameScene) renderUI();
+            }
         }
     });
 });
@@ -1361,7 +1260,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Jen u
     // živého hráče v běžící hře (smrt řeší vlastní odhozová animace → vyžadujeme health>0).
@@ -1482,13 +1381,15 @@ function _applyRoomUpdate(payload) {
         selectedState.sidKetchum = undefined;
     }
 
+    // Míchání drží UI zamčené i po doručení stavu (klasické proaktivní domíchání i
+    // dojezd míchání v hokynářství) – to odemkne až konec cinematiky, ne broadcast.
     if (App.reshuffleAnimating) {
         App.reshuffleAnimating = false;
-        if (!App.reshuffleIsProactive) {
+        if (!App.reshuffleIsProactive && !App.storeShuffleBlock) {
             App.blockInput = false;
         }
     } else {
-        if (!App.reshuffleIsProactive) {
+        if (!App.reshuffleIsProactive && !App.storeShuffleBlock) {
             App.blockInput = false;
         }
     }

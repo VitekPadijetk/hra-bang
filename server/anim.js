@@ -72,6 +72,33 @@ module.exports = function installAnimService(ctx) {
         }
     }
 
+    // ── Hokynářství: časování klientské cinematiky ───────────────────────────────
+    // Zvednutí balíčků → rozdání karet do řady → (případné) míchání ve zvednuté poloze.
+    // Míchání je TOTÉŽ jako klasické domíchání balíčku (game.js playReshuffleCinematic),
+    // takže trvá stejně dlouho (RESHUFFLE_ANIM_MS). Tempo MUSÍ zrcadlit game.js
+    // (STORE_LIFT/STORE_DEAL_STAGGER/STORE_DEAL_MS).
+    // Vrací offsety od otevření hokynářství (ms):
+    //   pickReady  – kdy smí padnout PRVNÍ výběr (u 'blocking' až po dorozdání),
+    //   shuffleEnd – kdy je míchání hotové (0 = nemíchá se).
+    // 'proactive' = v balíčku bylo přesně tolik karet, kolik se rozdává: míchá se
+    // paralelně s výběrem (brát se smí hned), ale hra na jeho konec počká.
+    const STORE_LIFT_MS = 340, STORE_STAGGER_MS = 190, STORE_DEAL_MS = 460,
+          STORE_SHUFFLE_MS = 5700, STORE_BUF_MS = 250;
+    function storeCinematicMs(gs) {
+        const N = (gs?.storeCards || []).filter(c => c).length;
+        const sa = gs?.storeAnim || {};
+        const dealMs = n => n > 0 ? (n - 1) * STORE_STAGGER_MS + STORE_DEAL_MS : 0;
+        if (sa.mode === 'blocking') {
+            const k = Math.min(sa.dealtBefore || 0, N);
+            const shuffleEnd = STORE_LIFT_MS + dealMs(k) + STORE_SHUFFLE_MS;
+            return { pickReady: shuffleEnd + dealMs(N - k) + STORE_BUF_MS, shuffleEnd };
+        }
+        const pickReady = STORE_LIFT_MS + dealMs(N) + STORE_BUF_MS;
+        const shuffleEnd = sa.mode === 'proactive'
+            ? STORE_LIFT_MS + dealMs(N) + STORE_SHUFFLE_MS : 0;
+        return { pickReady, shuffleEnd };
+    }
+
     function handleReshuffleAndBroadcast(room, gs, baseDelay = 400) {
         if (gs.deck._reshuffleOccurred) {
             const count = gs.deck._reshuffleCount || 20;
@@ -104,6 +131,7 @@ module.exports = function installAnimService(ctx) {
         }
     }
 
-    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn, handleReshuffleAndBroadcast });
+    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn,
+                         handleReshuffleAndBroadcast, storeCinematicMs });
     return ctx;
 };

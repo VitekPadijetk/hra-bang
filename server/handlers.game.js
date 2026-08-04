@@ -134,6 +134,13 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: gs.currentPlayerIndex, cardId: card?.id });
             }
             gs.playCard(i);
+            // Hokynářství: míchání si přebírá klientská cinematika (openStore potlačil
+            // legacy reshuffle_anim), takže tady jen zapamatuj, KDY dojede. U proaktivního
+            // režimu se během něj smí brát, ale po posledním výběru na něj hra počká.
+            if (gs.phase === 'STORE') {
+                const t = ctx.storeCinematicMs?.(gs);
+                room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;
+            }
             handleReshuffleAndBroadcast(room, gs);
         });
     });
@@ -661,6 +668,14 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             gs.pickFromStore(d.cardIdx);
             if (cardId !== undefined && cardId !== null) {
                 emitAnim(room, { type: 'store_pick', pickerIdx, cardIdx: d.cardIdx, cardId });
+            }
+            // Poslední karta = konec hokynářství. Když ještě běží míchání ve zvednuté
+            // poloze (proaktivní režim – hráči si brali rychleji, než stihlo doběhnout),
+            // hra na jeho dokončení počká: klient si zamkne UI (endStoreCinematic),
+            // boti čekají přes _reshuffleBlockUntil (stejně jako u klasického domíchání).
+            if (gs.phase !== 'STORE' && room._storeShuffleUntil) {
+                room._reshuffleBlockUntil = Math.max(room._reshuffleBlockUntil || 0, room._storeShuffleUntil);
+                room._storeShuffleUntil = 0;
             }
             // Zpoždění, ať se karta v ruce / zmizení ze slotu neobjeví dřív, než dolétne.
             broadcastRoomDelayed(room, 400);

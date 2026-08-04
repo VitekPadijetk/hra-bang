@@ -70,6 +70,11 @@ const DISCARD_X = GAME_CENTER_X + 90, DISCARD_Y = GAME_CENTER_Y;
 // hromádky dosedne viditelně „pod ni" a po překreslení poskočí. Hodnota i vzorec musí
 // sedět s board.js (stackTop / topY). App.storePileLiftY zvedá obě hromádky (Hokynářství).
 const PILE_PX_PER_CARD = 0.25;
+// Velikost karty ležící v balíčku / odhozu. MUSÍ sedět s board.js (scaleDeck) – karta,
+// která do hromádky dolétá (nebo z ní startuje), se musí zmenšit přesně na ni, jinak
+// „dosedne" menší než hromádka a než ji překreslení srovná, je to vidět (o to víc,
+// když sprite na cíli chvíli počká na opožděný broadcast – holdThenFinish).
+const PILE_SCALE = 0.3;
 function _pileTopY(baseY, count) {
     const lift = App.storePileLiftY || 0;
     return (baseY - lift) - Math.max(0, count - 1) * PILE_PX_PER_CARD / 2;
@@ -584,9 +589,12 @@ function animateDrawToMyHand(playerIdx, cardId, fromX, fromY, opts = {}) {
     // Zdroj může být otočený (krádež z ruky/boardu soupeře – Jesse/Panika): startAngle
     // = orientace zdroje, endAngle vždy 0 (moje ruka je dole). Default 0 → líznutí z
     // balíčku/odhozu/hokynářství se nikam netočí (beze změny chování).
+    // opts.holdUntil: po doletu drž sprite na cíli (a kartu ve stagingu), dokud predikát
+    // neplatí – typicky „zdroj už ve stavu není". Jinak by se zdroj (slot hokynářství)
+    // odkryl dřív, než dorazí opožděný broadcast, a karta by tam na chvíli problikla.
     const sprite = animateCardFlip(fromX, fromY, target.x, target.y, 'card_back', getCardTex(cardId),
         { flip: !opts.faceUp, duration: opts.duration, startScale: opts.startScale, onComplete: onDone,
-          startAngle: opts.startAngle ?? 0, endAngle: 0 });
+          holdUntil: opts.holdUntil, startAngle: opts.startAngle ?? 0, endAngle: 0 });
     if (sprite) App.drawAnims.push({ cardId, slotIndex, sprite });
     retargetDrawAnims();   // sjednotí rozteč všech letících karet (vč. už letících)
     renderUI();
@@ -598,14 +606,148 @@ function getCardTex(cardId) {
     return gameScene.textures.exists('card_' + cardId) ? 'card_' + cardId : 'card_back';
 }
 
+// ── MÍCHACÍ CINEMATIKA BALÍČKU ───────────────────────────────────────────────
+// Karty se slijí z odhozu doprostřed, rozdělí se na dvě hromádky, prostřídají (riffle),
+// srovnají a odletí na balíček (+ záblesk). SDÍLENÁ: klasické domíchání (reshuffle_anim
+// v net/handlers.js) i hokynářství, kde běží ve zvednuté poloze (opts.liftY) – jinak
+// naprosto stejná animace i délka, ať to hráč pozná jako totéž míchání.
+// opts.liftY   – o kolik pixelů výš (Hokynářství zvedá oba balíčky, App.storePileLiftY).
+// opts.depthBase – základ depth letících karet (řadí se i mezi sebou při riffle).
+// opts.onDone  – zavolá se po RESHUFFLE_ANIM_MS, kdy je míchání vizuálně hotové.
+// Stav (blockInput, skrytí balíčku, ořez odhozu) si řídí volající – tohle je jen animace.
+// RESHUFFLE_ANIM_MS MUSÍ sedět se serverem (server/anim.js _reshuffleBlockUntil = 5700),
+// který o stejnou dobu odkládá boty i broadcast.
+const RESHUFFLE_ANIM_MS = 5700;
+function playReshuffleCinematic(cardCount, opts = {}) {
+    const finish = () => { if (opts.onDone) opts.onDone(); };
+    if (!gameScene) { setTimeout(finish, 0); return; }
+    const lift = opts.liftY || 0;
+    const D0 = opts.depthBase ?? 5;
+
+    const cx = GAME_W / 2, cy = GAME_H / 2 - 60 - lift;
+    const srcX = DISCARD_X, srcY = DISCARD_Y - lift;
+    const dstX = DECK_X,    dstY = DECK_Y - lift;
+    const N = Math.min(cardCount, 24);
+    const SCALE = 0.28;
+    const CARD_W = 325 * SCALE, CARD_H = 500 * SCALE;
+    const allSprites = [];
+
+    for (let i = 0; i < N; i++) {
+        const sp = gameScene.add.image(srcX, srcY, 'card_back')
+            .setScale(SCALE * 0.01).setDepth(D0 + i).setAlpha(0);
+        allSprites.push(sp);
+        gameScene.tweens.add({
+            targets: sp,
+            x: cx, y: cy,
+            scaleX: SCALE, scaleY: SCALE,
+            alpha: 1,
+            duration: 480,
+            delay: i * 18,
+            ease: 'Power2'
+        });
+    }
+
+    const half = Math.ceil(N / 2);
+    const leftX = cx - CARD_W * 1.6, rightX = cx + CARD_W * 1.6;
+
+    gameScene.time.delayedCall(600, () => {
+        allSprites.forEach((sp, i) => {
+            const isLeft = i < half;
+            const stackIdx = isLeft ? i : i - half;
+            gameScene.tweens.add({
+                targets: sp,
+                x: isLeft ? leftX : rightX,
+                y: cy + stackIdx * 1.2,
+                duration: 420,
+                delay: i * 12,
+                ease: 'Back.Out'
+            });
+        });
+    });
+
+    const RIFFLE_START = 1200;
+    const PER_CARD = (2600) / N;
+
+    allSprites.forEach((sp, i) => {
+        const isLeft = i < half;
+        const stackIdx = isLeft ? i : i - half;
+        const riffleSlot = isLeft ? stackIdx * 2 : stackIdx * 2 + 1;
+        const delay = RIFFLE_START + riffleSlot * PER_CARD;
+
+        gameScene.time.delayedCall(delay, () => {
+            if (!sp.active) return;
+            gameScene.tweens.add({
+                targets: sp,
+                x: cx + (isLeft ? -CARD_W * 0.5 : CARD_W * 0.5),
+                y: cy - 30,
+                scaleX: SCALE * 1.05, scaleY: SCALE * 1.05,
+                duration: 110, ease: 'Power1',
+                onComplete: () => {
+                    if (!sp.active) return;
+                    const finalY = cy + (riffleSlot - N / 2) * 0.5;
+                    gameScene.tweens.add({
+                        targets: sp,
+                        x: cx, y: finalY,
+                        duration: 130, ease: 'Power2',
+                        onComplete: () => {
+                            sp.setDepth(D0 + riffleSlot);
+                        }
+                    });
+                }
+            });
+        });
+    });
+
+    gameScene.time.delayedCall(3900, () => {
+        allSprites.forEach((sp, i) => {
+            if (!sp.active) return;
+            gameScene.tweens.add({
+                targets: sp,
+                x: cx, y: cy + i * 0.4,
+                duration: 380,
+                delay: i * 8,
+                ease: 'Power3'
+            });
+        });
+    });
+
+    gameScene.time.delayedCall(4700, () => {
+        allSprites.forEach((sp, i) => {
+            if (!sp.active) return;
+            gameScene.tweens.add({
+                targets: sp,
+                x: dstX, y: dstY,
+                duration: 520,
+                delay: i * 6,
+                ease: 'Power2.inOut',
+                onComplete: () => {
+                    if (sp.active) sp.destroy();
+                }
+            });
+        });
+
+        gameScene.time.delayedCall(560, () => {
+            const flash = gameScene.add.rectangle(dstX, dstY, CARD_W * 1.3, CARD_H * 1.3, 0xffdd44, 0.55)
+                .setDepth(D0 + 10);
+            gameScene.tweens.add({
+                targets: flash, alpha: 0, scaleX: 1.6, scaleY: 1.6,
+                duration: 420, ease: 'Power2',
+                onComplete: () => { if (flash.active) flash.destroy(); }
+            });
+        });
+    });
+
+    gameScene.time.delayedCall(RESHUFFLE_ANIM_MS, finish);
+}
+
 // ── HOKYNÁŘSTVÍ: cinematika na stole ──────────────────────────────────────────
 // Balíčky vyjedou nahoru (STORE_LIFT), pod ně se rozdají karty (flip rub→líc),
 // případně se v horní poloze zamíchá. Pozice slotů řeší getStoreSlotPos (positions.js),
-// časování musí sedět s bot settle (server/bots.js storeOpenDelayMs).
+// časování musí sedět s bot settle (server/bots.js storeOpenDelayMs, server/anim.js
+// storeCinematicMs).
 const STORE_LIFT = 120;   // celý blok (balíčky + řada) výš, do volného místa nad středem
 const STORE_DEAL_STAGGER = 190;
 const STORE_DEAL_MS = 440;
-const STORE_SHUFFLE_MS = 1000;
 
 // Plynulé zvednutí/spuštění obou balíčků. Tween na pomocném objektu + renderUI
 // (board.js kreslí balíčky podle App.storePileLiftY).
@@ -643,26 +785,23 @@ function dealStoreCards(cards, from, to, onDone) {
     setTimeout(() => { if (onDone) onDone(); }, total);
 }
 
-// Míchací swirl v horní (zvednuté) poloze: card_backy přeletí z odhozu do balíčku.
-function playStoreShuffle(onDone) {
-    const lift = App.storePileLiftY || 0;
-    App.storeShuffleEndAt = Date.now() + STORE_SHUFFLE_MS;
-    if (!gameScene) { if (onDone) onDone(); return; }
-    const fromX = DISCARD_X, fromY = DISCARD_Y - lift;
-    const toX = DECK_X, toY = DECK_Y - lift;
-    const N = 12;
-    for (let i = 0; i < N; i++) {
-        setTimeout(() => {
-            if (!gameScene) return;
-            const s = gameScene.add.image(fromX, fromY, 'card_back').setScale(0.28).setDepth(820).setAlpha(0.95);
-            const midX = (fromX + toX) / 2 + (Math.random() - 0.5) * 160;
-            const midY = (fromY + toY) / 2 - 40 - Math.random() * 60;
-            gameScene.tweens.add({ targets: s, x: midX, y: midY, duration: 220, ease: 'Sine.easeOut',
-                onComplete: () => gameScene.tweens.add({ targets: s, x: toX, y: toY, duration: 220, ease: 'Sine.easeIn',
-                    onComplete: () => { if (s.active) s.destroy(); } }) });
-        }, Math.floor(i * (STORE_SHUFFLE_MS - 440) / N));
-    }
-    setTimeout(() => { if (onDone) onDone(); }, STORE_SHUFFLE_MS);
+// Míchání v hokynářství = TOTÁŽ cinematika jako klasické domíchání balíčku, jen
+// posunutá nahoru do zvednuté polohy balíčků. Stejná délka → hra na ni čeká stejně
+// (App.storeShuffleEndAt drží konec, balíček je po tu dobu schovaný jako u klasického).
+function playStoreShuffle(count, onDone) {
+    App.storeShuffleEndAt = Date.now() + RESHUFFLE_ANIM_MS;
+    App.storeShuffling = true;
+    renderUI();
+    playReshuffleCinematic(count, {
+        liftY: App.storePileLiftY || 0,
+        depthBase: 60,   // nad zvednutými balíčky i řadou hokynářství (58), pod letícími kartami (800)
+        onDone: () => {
+            App.storeShuffling = false;
+            App.storeShuffleEndAt = 0;
+            renderUI();
+            if (onDone) onDone();
+        }
+    });
 }
 
 // Vstup do fáze STORE: zvednout balíčky, rozdat (případně s mícháním dle režimu).
@@ -676,30 +815,46 @@ function startStoreCinematic() {
     const N = cards.length;
     const k = Math.min(sa.dealtBefore ?? N, N);
     renderUI();
+    const shufN = sa.shuffleCount || 20;
     animatePileLift(STORE_LIFT, () => {
         if (sa.mode === 'blocking') {
             // Nedostatek karet: rozdej zbylé (zamčené) → zamíchej → dorozdej → odemkni.
             dealStoreCards(cards, 0, k, () => {
-                playStoreShuffle(() => {
+                playStoreShuffle(shufN, () => {
                     dealStoreCards(cards, k, N, () => { App.storeLocked = false; renderUI(); });
                 });
             });
         } else if (sa.mode === 'proactive') {
             // Přesně tolik: rozdej vše, pak míchej paralelně (výběr už běží).
-            dealStoreCards(cards, 0, N, () => { playStoreShuffle(() => {}); });
+            dealStoreCards(cards, 0, N, () => { playStoreShuffle(shufN, () => {}); });
         } else {
             dealStoreCards(cards, 0, N, () => {});
         }
     });
 }
 
-// Konec hokynářství (STORE → PLAY): balíčky sjedou zpět; u proaktivního míchání
-// počká návrat na jeho dokončení.
+// Konec hokynářství (STORE → PLAY): balíčky sjedou zpět; u proaktivního míchání se na
+// jeho dokončení počká. Během čekání drž UI zamčené (App.storeShuffleBlock) – hráči si
+// směli brát i během míchání, ale pokud byli rychlejší, hra počká, stejně jako u
+// klasického proaktivního domíchání. Boty drží server (room._reshuffleBlockUntil).
 function endStoreCinematic() {
     App.storeLocked = false;
     App.storeDealIds = new Set();
     const wait = Math.max(0, (App.storeShuffleEndAt || 0) - Date.now());
-    setTimeout(() => { animatePileLift(0, () => { App.storeShuffleEndAt = 0; }); }, wait);
+    if (wait > 0) {
+        App.storeShuffleBlock = true;
+        App.blockInput = true;
+        renderUI();
+    }
+    setTimeout(() => {
+        if (App.storeShuffleBlock) {
+            App.storeShuffleBlock = false;
+            App.blockInput = false;
+        }
+        App.storeShuffling = false;
+        App.storeShuffleEndAt = 0;
+        animatePileLift(0);
+    }, wait);
 }
 
 // ── SEJMUTÍ / REVEAL ─────────────────────────────────────────────────────────
@@ -755,7 +910,7 @@ function startCheckReveal(check) {
         pulse = null;
     };
     const sprite = gameScene.add.image(DECK_X, DECK_Y, 'card_back')
-        .setScale(0.28).setDepth(820).setAlpha(0.98);
+        .setScale(PILE_SCALE).setDepth(820).setAlpha(0.98);
     // 1) balíček → střed: posun + růst + flip rub→líc
     gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: 450, ease: 'Cubic.easeOut' });
     gameScene.tweens.add({ targets: sprite, scaleY: REVEAL_BIG, duration: 450, ease: 'Cubic.easeOut' });
@@ -766,8 +921,11 @@ function startCheckReveal(check) {
     // 2) po 3 s drhu se zmenší a odletí do odhozu. Sprite po dosednutí podrž na místě,
     // dokud kontrolní karta na vrcholu odhozu není VIDITELNÁ (fáze už není CHECKING, kde ji
     // board.js schovává) – jinak po zániku spritu problikne předchozí vrchní karta odhozu.
+    // Zmenšení PŘESNĚ na velikost karty v odhozu (PILE_SCALE) – ne na „nějakých" 0.28,
+    // jinak karta dosedne menší než hromádka a než sprite zanikne (čeká na broadcast,
+    // holdThenFinish), je ten rozdíl vidět.
     const _checkDiscard = discardTopPos();   // vrch odhozu, ať kontrolní karta dosedne na hromádku
-    gameScene.tweens.add({ targets: sprite, x: _checkDiscard.x, y: _checkDiscard.y, scaleX: 0.28, scaleY: 0.28,
+    gameScene.tweens.add({ targets: sprite, x: _checkDiscard.x, y: _checkDiscard.y, scaleX: PILE_SCALE, scaleY: PILE_SCALE,
         delay: 450 + 3000, duration: 400, ease: 'Cubic.easeIn', onStart: stopPulse,
         onComplete: () => holdThenFinish(sprite, () => {
             // Drž, dokud kontrolní karta není ve stavu odhozu A zároveň skončila fáze
