@@ -12,7 +12,7 @@
 //   status   – HTTP status posledního neúspěchu (0 = spojení selhalo/přerušilo se)
 
 const ASSET_MAX_ATTEMPTS = 3;      // 1. pokus + 2 opakování ještě ve fázi preload
-const ASSET_REPAIR_ROUNDS = 3;     // opravná kola po preloadu (create), než to vzdáme
+const ASSET_REPAIR_ROUNDS = 5;     // opravná kola po preloadu (create), než to vzdáme
 
 // Má smysl zkusit soubor znovu? 4xx = na serveru prostě není (typicky 404 u artu, který
 // ještě nemáme) → neopakuj. Status 0 (přerušené spojení) nebo 5xx = výpadek → opakuj.
@@ -39,7 +39,7 @@ function retryAssetUrl(url, attempt) {
 
 // Které assety z registru ještě nejsou v cache? `has(key, kind)` → bool.
 // Natvrdo chybějící (4xx – např. art karty, který ještě nemáme nakreslený) přeskoč;
-// ty mají v klientu vlastní fallback (legacy karta / placeholder) a čekat na ně nemá smysl.
+// ty mají v klientu vlastní fallback (karta složená z placeholderu) a čekat na ně nemá smysl.
 function missingAssets(registry, has) {
     const out = [];
     for (const key of Object.keys(registry || {})) {

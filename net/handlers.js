@@ -1093,7 +1093,7 @@ function _playCardAnim(data) {
 // v _playCardAnim; když se změní délka letu, srovnej i tady, jinak vznikne mezera nebo
 // překryv. Nesedící číslo frontu nikdy nezasekne – jen posune pacing.
 const ANIM_MS = {
-    draw:              380,
+    draw:              400,   // vlastní líznutí jede přes animateCardFlip s defaultem 400
     discard:           380,
     hand_to_discard:   380,
     hand_to_board:     400,

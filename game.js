@@ -94,8 +94,9 @@ function discardTopPos() {
 // ── NOVÉ VYKRESLOVÁNÍ KARET ───────────────────────────────────────────────────
 // Karta se při startu složí z art-obrázku druhu (assets/card_art/<art>.png) + malých
 // marek hodnoty/barvy (assets/card_marks/*.png) do textury card_<id> (buildCardTextures).
-// Když art/marky pro druh chybí, spadne na starou kartu (assets/playing_cards/<id>.png,
-// načtenou jako legacy_<id>) → plynulá migrace po druzích.
+// Když art druhu chybí, karta se poskládá z placeholderu + názvu + marek – čitelná karta
+// vznikne VŽDY. (Staré hotové karty assets/playing_cards/<id>.png jako fallback padly:
+// v repu ani na hostingu nejsou, takže se jen 80× zbytečně stahovalo 404.)
 //
 // CARD_TEX_W/H = velikost výsledné textury. Teď 325×500 (shodné se současným zobrazením),
 // takže se NEMĚNÍ žádný display scale. Art i marky se kreslí ve 2× (návrh pro 4K) a při
@@ -406,13 +407,14 @@ function nearestAngle360(start, end) {
 // Po dosednutí letu podrž sprite na cíli, dokud `holdUntil()` není true (typicky „karta už
 // je ve stavu odhozu / na boardu / v ruce"), pak teprve zavolej finish (odkrytí + zánik).
 // Bez toho by po doletu – dřív, než dorazí room_update s kartou – problikla stará karta na
-// cíli (např. předchozí vrchní karta odhozu). Strop ~720 ms, ať sprite nezůstane viset.
-function holdThenFinish(sprite, holdUntil, finish) {
+// cíli (např. předchozí vrchní karta odhozu). Strop (maxTries × 16 ms, výchozí ~720 ms)
+// hlídá, ať sprite nezůstane viset, když predikát nikdy nenastane.
+function holdThenFinish(sprite, holdUntil, finish, maxTries = 45) {
     if (!holdUntil || !gameScene) { finish(); return; }
     let tries = 0;
     const poll = () => {
         if (!sprite?.active) return;
-        if (holdUntil() || ++tries > 45) finish();
+        if (holdUntil() || ++tries > maxTries) finish();
         else gameScene.time.delayedCall(16, poll);
     };
     poll();
@@ -437,7 +439,7 @@ function animateCard(fromX, fromY, toX, toY, texKey, duration = 380, onComplete 
         onComplete: () => holdThenFinish(sprite, opts.holdUntil, () => {
             if (sprite?.active) sprite.destroy();
             if (onComplete) onComplete();
-        })
+        }, opts.holdTries)
     });
     if (endAngle !== startAngle) {
         gameScene.tweens.add({ targets: sprite, angle: endAngle, duration, delay, ease: 'Power2' });
@@ -530,7 +532,7 @@ function animateCardFlip(fromX, fromY, toX, toY, backTex, faceTex, opts = {}) {
             // stará vrchní karta odhozu.
             if (onComplete) onComplete();
             if (sprite?.active) sprite.destroy();
-        })
+        }, opts.holdTries)
     });
     return sprite;
 }
@@ -592,9 +594,17 @@ function animateDrawToMyHand(playerIdx, cardId, fromX, fromY, opts = {}) {
     // opts.holdUntil: po doletu drž sprite na cíli (a kartu ve stagingu), dokud predikát
     // neplatí – typicky „zdroj už ve stavu není". Jinak by se zdroj (slot hokynářství)
     // odkryl dřív, než dorazí opožděný broadcast, a karta by tam na chvíli problikla.
+    // Default: drž, dokud karta reálně NENÍ v mojí ruce ve stavu. Server posílá stav
+    // ~350 ms po líznutí, tedy těsně před dosednutím – jenže při rychlém druhém líznutí
+    // se ve frontě (core/animQueue.js) zařadí až ZA animaci té druhé karty. Bez držení
+    // by první karta po doletu zanikla a v ruce se objevila o pár set ms později =
+    // viditelné probliknutí. Takhle sprite počká přesně na svůj stav a karta pod ním
+    // rovnou naskočí. Delší strop (holdTries) pokryje i tři líznutí rychle za sebou.
+    const holdUntil = opts.holdUntil ||
+        (() => (state?.players?.[myIndex]?.hand || []).some(c => c.id === cardId));
     const sprite = animateCardFlip(fromX, fromY, target.x, target.y, 'card_back', getCardTex(cardId),
         { flip: !opts.faceUp, duration: opts.duration, startScale: opts.startScale, onComplete: onDone,
-          holdUntil: opts.holdUntil, startAngle: opts.startAngle ?? 0, endAngle: 0 });
+          holdUntil, holdTries: 90, startAngle: opts.startAngle ?? 0, endAngle: 0 });
     if (sprite) App.drawAnims.push({ cardId, slotIndex, sprite });
     retargetDrawAnims();   // sjednotí rozteč všech letících karet (vč. už letících)
     renderUI();
@@ -1285,8 +1295,8 @@ function closeCardGallery() {
 //   2) create() před sestavením textur ověří, že jsou všechny assety v cache; když ne,
 //      běží opravné kolo (ensureAssetsLoaded) s cedulí „Načítám…".
 // Soubory, které na serveru nejsou (odpověď 4xx – typicky art karty, který ještě nemáme
-// nakreslený), se neopakují: mají fallback (legacy karta / placeholder) a čekat na ně
-// nemá smysl. Rozhoduje tedy HTTP status, ne seznam „nepovinných" souborů v kódu.
+// nakreslený), se neopakují: karta se poskládá z placeholderu a čekat na ně nemá smysl.
+// Rozhoduje tedy HTTP status, ne seznam „nepovinných" souborů v kódu.
 const AssetLoads = {};
 
 function loadAsset(scene, kind, key, url) {
@@ -1315,6 +1325,12 @@ function retryAsset(scene, key, status) {
 }
 
 function preload() {
+    // Míň souběžných stahování = míň selhaných souborů. Phaser jich ve výchozím stavu
+    // pouští 32 naráz; na slabší lince (mobil) se jich část utne a hra se pak sestaví
+    // s placeholdery. Assetů je i tak přes stovku, takže při 8 paralelních to načítání
+    // znatelně nezpomalí, ale výrazně sníží počet chyb, které musí opravovat retry.
+    this.load.maxParallelDownloads = 8;
+
     // Cedule s průběhem – jinak je do konce načítání jen prázdné plátno.
     const loadTxt = this.add.text(960, 540, 'Načítám…', {
         fontFamily: 'Arial', fontSize: '34px', color: '#e8dcc0'
@@ -1351,16 +1367,9 @@ function preload() {
     loadAsset(this, 'image', 'placeholder', 'assets/card_placeholder.png');
     loadAsset(this, 'image', 'colt_.45', 'assets/other_cards/colt_.45.png');
 
-    // Staré hotové karty jako FALLBACK (legacy_<id>). buildCardTextures je v create()
-    // zapeče do card_<id>, pokud pro daný druh chybí nový art/marky.
-    for (let i = 0; i <= 79; i++) {
-        let paddedId = i.toString().padStart(3, '0');
-        loadAsset(this, 'image', 'legacy_' + i, `assets/playing_cards/${paddedId}.png`);
-    }
-
     // Nové vykreslování: data karet + art druhů (assets/card_art/<art>.png) + marky
     // hodnoty/barvy (assets/card_marks/*.png). Art/marky se doplní do fronty, jakmile
-    // je JSON načtený (chybějící soubory jen zalogují loaderror a spadnou na legacy).
+    // je JSON načtený (chybějící art jen zaloguje loaderror → karta z placeholderu).
     loadAsset(this, 'json', 'cards_data', 'cards.json');
     this.load.on('filecomplete-json-cards_data', (key, type, data) => {
         // Soubory: card_art/<art>.png, card_marks/<hodnota>.png (Q.png, 10.png…) a
@@ -1402,8 +1411,7 @@ function preload() {
 // pustí `done`, takže buildCardTextures nikdy nezapeče placeholder jen kvůli výpadku
 // sítě. Když se to ani po všech kolech nepovede, hra se rozjede jako dřív (placeholdery)
 // – radši hrát s placeholdery než viset na černé obrazovce.
-// POZOR: volat JEN před buildCardTextures – ten legacy_* textury po zapečení maže,
-// takže by se pak tvářily jako chybějící a stahovaly se dokola.
+// POZOR: volat JEN před buildCardTextures (ten už z načtených artů peče card_<id>).
 function ensureAssetsLoaded(scene, done, round) {
     round = round || 1;
     const missing = missingAssets(AssetLoads, (key, kind) => assetInCache(scene, key, kind));
@@ -1427,18 +1435,21 @@ function ensureAssetsLoaded(scene, done, round) {
     scene.load.start();
 }
 
-// Složí textury card_<id> z art druhu + marek hodnoty/barvy; když nový art/marky pro
-// druh chybí, zapeče starou kartu legacy_<id> (fallback). Volá se JEDNOU v create(),
+// Složí textury card_<id> z art druhu + marek hodnoty/barvy. Když art chybí (ještě není
+// nakreslený, nebo se nestáhl), poskládá kartu z placeholderu + názvu + marek – texturu
+// dostane KAŽDÁ karta, žádná nikdy nezůstane na rubu (getCardTex by jinak vrátil
+// 'card_back' a karta by ve hře byla k nerozeznání od zakryté). Volá se JEDNOU v create(),
 // před prvním renderUI. Výsledná textura má rozměr CARD_TEX_W×H (teď = současné velikosti).
 function buildCardTextures(scene) {
     const data = scene.cache.json.get('cards_data');
-    if (!data) { clog('warn', 'cards_data nenačteno – karty zůstávají na legacy_<id>'); return; }
+    if (!data) { clog('error', 'cards_data nenačteno – karty zůstanou na rubu'); return; }
     // Karty rozšíření (Dodge City) – zapečou se stejně, navíc dostanou symbol býka a
     // (dokud chybí art) placeholder s domalovaným názvem/hodnotou/barvou.
     const dodge = scene.cache.json.get('cards_dodge_city_data') || [];
     const allData = data.concat(dodge);
     const W = CARD_TEX_W, H = CARD_TEX_H, L = MARK_LAYOUT;
     scene._cardRTs = scene._cardRTs || [];
+    const missingArt = [];   // karty složené z placeholderu (chybí art) – do logu
     const drawMarks = (rt, vKey, sKey) => {
         // marky do levého dolního rohu (hodnota, vedle ní barva); origin(0,1) = kotva vlevo dole
         if (vKey && scene.textures.exists(vKey)) {
@@ -1454,27 +1465,21 @@ function buildCardTextures(scene) {
     };
     for (const card of allData) {
         const aKey = artKey(card), vKey = valueMarkKey(card), sKey = suitMarkKey(card);
-        const hasNew = aKey && vKey && sKey &&
-            scene.textures.exists(aKey) && scene.textures.exists(vKey) && scene.textures.exists(sKey);
-        const legacyKey = 'legacy_' + card.id;
-        const hasLegacy = scene.textures.exists(legacyKey);
+        const hasArt = !!aKey && scene.textures.exists(aKey);
         const isExp = !!card.exp;
-        // Základní karty beze změny: bez artu i legacy přeskoč (getCardTex spadne na card_back).
-        // Karty rozšíření vždy sestavíme (art nebo placeholder), ať jsou čitelné.
-        if (!hasNew && !hasLegacy && !isExp) continue;
+        if (!hasArt) missingArt.push(card.id + ':' + (card.name || '?'));
         if (scene.textures.exists('card_' + card.id)) scene.textures.remove('card_' + card.id);
         const rt = scene.make.renderTexture({ width: W, height: H }, false);
-        if (hasNew) {
+        if (hasArt) {
+            // Hlavní cesta: art druhu + marky hodnoty/barvy. Marky se kreslí každá zvlášť,
+            // takže i kdyby některá chyběla, art se použije (lepší než náhradní karta).
             const art = scene.make.image({ key: aKey, add: false }).setOrigin(0, 0);
             art.setDisplaySize(W, H);
             rt.draw(art, 0, 0); art.destroy();
             drawMarks(rt, vKey, sKey);
-        } else if (hasLegacy) {
-            const leg = scene.make.image({ key: legacyKey, add: false }).setOrigin(0, 0);
-            leg.setDisplaySize(W, H);
-            rt.draw(leg, 0, 0); leg.destroy();
         } else {
-            // Karta rozšíření bez artu → placeholder + domalovaný název (nahoře) + marky.
+            // Nouzová cesta (art druhu chybí): placeholder + název nahoře + marky. Stejně
+            // jako u karet rozšíření bez artu, ale býka dostanou dál jen karty rozšíření.
             const ph = scene.make.image({ key: 'placeholder', add: false }).setOrigin(0, 0);
             ph.setDisplaySize(W, H);
             rt.draw(ph, 0, 0); ph.destroy();
@@ -1493,9 +1498,9 @@ function buildCardTextures(scene) {
         rt.saveTexture('card_' + card.id);   // getCardTex/getTex beze změny
         scene._cardRTs.push(rt);             // RT drží texturu → nedestruovat
     }
-    // legacy karty jsou teď zapečené v card_<id> → uvolni je z paměti
-    for (const card of allData) {
-        if (scene.textures.exists('legacy_' + card.id)) scene.textures.remove('legacy_' + card.id);
+    if (missingArt.length) {
+        clog('warn', 'Karty bez artu složené z placeholderu: ' + missingArt.length,
+             { cards: missingArt.slice(0, 30) });
     }
 }
 
