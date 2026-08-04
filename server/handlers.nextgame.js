@@ -3,7 +3,7 @@
 // registerNextGameHandlers(socket, ctx, withRoom) – těla byte-identická.
 module.exports = function registerNextGameHandlers(socket, ctx, withRoom) {
     const { rooms, broadcastRoom, broadcastLobbyList, findRoomBySocket,
-            startNextGame, introStartCharPhase, introStartDeckPhase, io } = ctx;
+            startNextGame, introStartDeckPhase, io } = ctx;
 
     // ── CHAR SELECT ─────────────────────────────────────────────────────────
     socket.on('select_character', (charName) => {
@@ -35,11 +35,13 @@ module.exports = function registerNextGameHandlers(socket, ctx, withRoom) {
         ctx.glog.system(`[INTRO] role_ok from ${p.playerIdx} confirmed: ${room._introRoleConfirmed.size}/${room.players.length}`);
         if (room._introRoleConfirmed.size >= room.players.length) {
             room._introRoleConfirmed = null;
+            room._introRolesDone = true;   // fáze rolí uzavřena (viz intro.js await_role_ok)
             room._introActive = true;
             // Poslední hráč právě klikl OK – jeho snap animace role (~550 ms) ještě
             // letí. Char fáze začíná 'shuffle_chars', která na klientu volá
             // _clearIntroSprites() a snap by zničila. Počkáme, ať doletí u všech.
-            setTimeout(() => introStartCharPhase(room), 700);
+            // (V navazující hře se mezitím ještě odhalí šerifova hvězda – viz intro.js.)
+            ctx.introAfterRoles(room);
         }
     });
 
@@ -48,9 +50,14 @@ module.exports = function registerNextGameHandlers(socket, ctx, withRoom) {
         if (!room) return;
         const p = room.players.find(pl => pl.socketId === socket.id);
         if (!p) return;
+        // Opožděný/dvojitý klik: hráč už rozhodl → nic (jinak by se rozjela animace znovu).
+        const gp = room.gameState.players[p.playerIdx];
+        if (!gp || !gp._awaitingKeepChoice) return;
         room.survivorKeepVotes[p.playerIdx] = keep;
         if (!keep) room.gameState.rejectCharacterForNextGame(p.playerIdx);
         else room.gameState.selectCharacterForNextGame(p.playerIdx);
+        // Intro navazující hry: rozešli animaci rozhodnutí a případně nastartuj role.
+        ctx.introKeepResult(room, p.playerIdx, keep);
         broadcastRoom(room);
     });
 

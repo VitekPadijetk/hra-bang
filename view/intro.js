@@ -259,6 +259,86 @@ function _animateIntroShuffle(cx, cy, tex, scale, N, tiltDeck, onComplete, onSet
 }
 
 
+// Přesné pozice bloku „životy + postava + jmenovka (+ hvězda)" soupeře na herní
+// desce. Math je 1:1 s herním renderem (view/board.js drawOpponents); sdílí ho
+// slide-in postav (net/handlers.js) i úvod navazující hry, kde přeživší mají svou
+// postavu na stole už od začátku. `health` posouvá kartu postavy po ose nábojů,
+// numBlue=0 (na začátku hry nemá nikdo karty na stole). `dx/dy` = vektor „ze zákulisí"
+// pro slide-in.
+function _introOppSlots(idx, health) {
+    const oppScale   = 0.27;
+    const oppCardH   = 500 * oppScale;          // 135
+    const oppBulletH = oppCardH * 0.93 / 5;     // 25.11
+    const oppOffset  = oppCardH * 1.1;          // 148.5 (ruka od anchor)
+
+    // Zjisti anchor pozici z hand pozice
+    const hand = getPlayerHandPos(idx);
+    let ax, ay, side;
+    if (hand.x < 50)        { ax = hand.x + oppOffset; ay = hand.y; side = 'left'; }
+    else if (hand.y < 50)   { ax = hand.x; ay = hand.y + oppOffset; side = 'top'; }
+    else if (hand.x > 1870) { ax = hand.x - oppOffset; ay = hand.y; side = 'right'; }
+    else                    { ax = hand.x; ay = hand.y - oppOffset; side = 'bottom'; }
+
+    // Natočení karet podle strany (stejně jako herní render)
+    const angle = side === 'left' ? 90 : side === 'top' ? 180 : side === 'right' ? -90 : 0;
+
+    // Jmenovka soupeře – PŘESNĚ na herní pozici (drawOpponents): x = anchor.x,
+    // y = anchor.y + offset dle strany (left +38.25, top/right +85.5). Styl shodný.
+    const nameOffY = side === 'left' ? 38.25 : 85.5;
+    const NAME_X = ax, NAME_Y = ay + nameOffY;
+    const OPP_NAME_STYLE = { fontSize: '18px', color: '#cccccc',
+        backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } };
+
+    // Cílové pozice lives + postavy – PŘESNĚ podle herního renderu
+    // (renderUI: anchor.side větve). numBlue=0, protože na začátku hry
+    // nemá nikdo karty na stole. (ax,ay) == herní anchor.
+    const cardW  = 325 * oppScale;              // 97.5
+    const numBlue = 0;
+    const groupH = (1 + numBlue) * cardW;       // == cardW
+    let livesEndX, livesEndY, charEndX, charEndY;
+    if (side === 'left') {
+        livesEndX = ax;
+        livesEndY = ay + groupH / 2 - oppCardH / 2;
+        charEndX  = livesEndX + oppBulletH * health;
+        charEndY  = livesEndY;
+    } else if (side === 'top') {
+        livesEndX = ax;                          // groupStartX + cardW/2 == ax při numBlue=0
+        livesEndY = ay;
+        charEndX  = livesEndX;
+        charEndY  = livesEndY + oppBulletH * health;
+    } else if (side === 'right') {
+        livesEndX = ax;
+        livesEndY = ay - groupH / 2 + oppCardH / 2;
+        charEndX  = livesEndX - oppBulletH * health;
+        charEndY  = livesEndY;
+    } else {
+        livesEndX = ax; livesEndY = ay;
+        charEndX  = ax; charEndY  = ay;
+    }
+
+    // Start mimo obrazovku - obe karty se posunou o stejny vektor
+    let dx = 0, dy = 0;
+    if (side === 'left')   dx = -(ax + oppCardH + 50);
+    else if (side === 'top')    dy = -(ay + oppCardH + 50);
+    else if (side === 'right')  dx = 1920 - ax + oppCardH + 50;
+    else                       dy = 1080 - ay + oppCardH + 50;
+
+    // Šerifova hvězda se usadí nad kartou postavy – offsety dle strany zrcadlí board.js.
+    const starScale = 0.3;
+    let starDx = 0, starDy = 0;
+    if (side === 'left')       { starDx =  oppCardH * 0.45; starDy = -cardW * 0.42; }
+    else if (side === 'top')   { starDx =  cardW * 0.42;    starDy =  oppCardH * 0.45; }
+    else if (side === 'right') { starDx = -oppCardH * 0.45; starDy =  cardW * 0.42; }
+
+    return {
+        side, angle, scale: oppScale, cardW, cardH: oppCardH, bulletH: oppBulletH,
+        livesX: livesEndX, livesY: livesEndY, charX: charEndX, charY: charEndY,
+        nameX: NAME_X, nameY: NAME_Y, nameStyle: OPP_NAME_STYLE,
+        starX: charEndX + starDx, starY: charEndY + starDy, starScale,
+        dx, dy,
+    };
+}
+
 function _getIntroPlayerPos(targetPlayerIdx, myIdx, total) {
     if (myIdx === null || myIdx === undefined) return { x: 960, y: 540 };
     if (targetPlayerIdx === myIdx) return { x: 960, y: 900 };
@@ -440,6 +520,294 @@ function _myCharY(health) {
     return MY_LIVES_Y - bulletH * (health || 4);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// NAVAZUJÍCÍ HRA – přeživší si nechává (nebo odkládá) svou postavu
+// ══════════════════════════════════════════════════════════════════════════════
+// Tok: init rozloží desku (balíčky + postavy přeživších) → po 1 s vyletí MOJE postava
+// doprostřed a zeptá se → rozhodnutí odletí na server, karta se usadí (ANO) nebo se
+// překlopí a odletí na balíček postav (NE) → ostatní vidí totéž bez zvětšení.
+
+function _introCharTex(charName) {
+    const charData = gameScene && gameScene.cache.json.get('characters_data');
+    const info = charData && charData.find(c => c.name === charName);
+    return (info && gameScene.textures.exists('char_' + info.id)) ? 'char_' + info.id : 'placeholder';
+}
+
+function _introMyIdx() {
+    return (typeof myIndex === 'number') ? myIndex : App.myIntroIndex;
+}
+
+// placedCards se hledají/mění přes `key` ('char:3', 'lives:3', 'name:3', 'star:3').
+function _introFindPlaced(key) {
+    const s = _introState;
+    if (!s || !s.placedCards) return null;
+    return s.placedCards.find(pc => pc.key === key) || null;
+}
+
+function _introRemovePlaced(key) {
+    const s = _introState;
+    if (!s || !s.placedCards) return;
+    s.placedCards = s.placedCards.filter(pc => pc.key !== key);
+}
+
+// Karta odejde fade-outem (lives po odložení postavy). Vykreslí ji jako sprite,
+// aby přechod nebyl skokový, a teprve pak ji z placedCards odstraní.
+function _introFadeAwayPlaced(key) {
+    const pc = _introFindPlaced(key);
+    if (!pc || !gameScene) { _introRemovePlaced(key); return; }
+    pc.hidden = true;
+    const sp = gameScene.add.image(pc.x, pc.y, pc.tex)
+        .setScale(pc.scale).setAngle(pc.angle || 0).setDepth(pc.depth || 20);
+    if (gameScene.introSprites) gameScene.introSprites.add(sp);
+    gameScene.tweens.add({
+        targets: sp, alpha: 0, duration: 520, ease: 'Power2',
+        onComplete: () => { if (sp?.active) sp.destroy(); _introRemovePlaced(key); renderUI(); }
+    });
+}
+
+// Rozloží na desku postavy přeživších (a jejich životy + jmenovky). Bez hvězdy –
+// role se teprve rozdají, takže ani přeživší šerif zatím odznak nemá.
+function _introPlaceSurvivors() {
+    const s = _introState;
+    if (!s || !gameScene || !state || !state.players) return;
+    const myIdx = _introMyIdx();
+    (s.survivors || []).forEach(sv => {
+        const p = state.players[sv.idx];
+        if (!p || !sv.char) return;
+        const charTex = _introCharTex(sv.char);
+        if (sv.idx === myIdx) {
+            s.placedCards.push({ tex: 'lives', x: MY_LIVES_X, y: MY_LIVES_Y,
+                scale: MY_LIVES_SCALE, depth: 21, key: 'lives:' + sv.idx });
+            s.placedCards.push({ tex: charTex, x: MY_LIVES_X, y: _myCharY(sv.health),
+                scale: MY_LIVES_SCALE, depth: 23, key: 'char:' + sv.idx });
+            s.placedCards.push({ text: p.name, x: 850, y: 1115, depth: 50, key: 'name:' + sv.idx,
+                style: { fontSize: '20px', color: '#cccccc',
+                    backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 7, y: 4 } } });
+            s.myNamePlaced = true;
+        } else {
+            const sl = _introOppSlots(sv.idx, sv.health);
+            s.placedCards.push({ tex: 'lives', x: sl.livesX, y: sl.livesY,
+                scale: sl.scale, angle: sl.angle, depth: 21, key: 'lives:' + sv.idx });
+            s.placedCards.push({ tex: charTex, x: sl.charX, y: sl.charY,
+                scale: sl.scale, angle: sl.angle, depth: 23, key: 'char:' + sv.idx });
+            s.placedCards.push({ text: p.name, x: sl.nameX, y: sl.nameY,
+                style: sl.nameStyle, depth: 50, key: 'name:' + sv.idx });
+        }
+        s.placedForIdx.push(sv.idx);
+    });
+}
+
+// Moje postava vyletí ze stolu doprostřed a zvětší se – pak přijdou tlačítka ANO/NE.
+function _startKeepReveal() {
+    const s = _introState;
+    if (!s || s.keepShown) return;
+    s.keepShown = true;
+    const myIdx = _introMyIdx();
+    const sv = (s.survivors || []).find(v => v.idx === myIdx);
+    if (!sv || !gameScene) { renderUI(); return; }   // divák / mrtvý hráč jen přihlíží
+    const entry = _introFindPlaced('char:' + myIdx);
+    const fromY = entry ? entry.y : _myCharY(sv.health);
+    if (entry) entry.hidden = true;
+    renderUI();
+    const sp = gameScene.add.image(MY_LIVES_X, fromY, _introCharTex(sv.char))
+        .setScale(MY_LIVES_SCALE).setDepth(1000);
+    if (gameScene.introSprites) gameScene.introSprites.add(sp);
+    gameScene.tweens.add({
+        targets: sp, x: 960, y: 420, scaleX: 0.80, scaleY: 0.80,
+        duration: 620, ease: 'Power2.easeOut',
+        onComplete: () => {
+            if (sp?.active) sp.destroy();
+            if (_introState) { _introState.myKeepReady = true; renderUI(); }
+        }
+    });
+}
+
+// Statická zvětšená karta + otázka + ANO/NE. Kreslí se přes rozloženou desku
+// (renderIntroScene ji volá až po balíčcích a placedCards).
+function _renderKeepChoice() {
+    const s = _introState;
+    const sv = (s.survivors || []).find(v => v.idx === _introMyIdx());
+    if (!sv) return;
+
+    _iAdd(gameScene.add.image(960, 420, _introCharTex(sv.char)).setScale(0.80).setDepth(1000));
+
+    _iAdd(gameScene.add.text(960, 760, `Chceš hrát dál s postavou ${sv.char}?`,
+        { fontFamily: THEME.fontUI, fontSize: '30px', color: THEME.color.text,
+          backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 18, y: 8 } })
+        .setOrigin(0.5).setDepth(1001));
+
+    const { bg: yesBg } = themeButton(gameScene, 700, 880, 380, 64, '✓ ANO, NECHÁM SI JI', {
+        fill: THEME.color.successDarkNum, fillHover: 0x3f7a3f, stroke: THEME.color.successNum,
+        fontSize: '26px', onClick: () => _confirmKeepChoice(true),
+    });
+    yesBg.setDepth(1001);
+
+    const { bg: noBg } = themeButton(gameScene, 1220, 880, 300, 64, '✗ CHCI JINOU', {
+        fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+        fontSize: '26px', onClick: () => _confirmKeepChoice(false),
+    });
+    noBg.setDepth(1001);
+}
+
+function _confirmKeepChoice(keep) {
+    const s = _introState;
+    if (!s || s.myKeepDecided) return;
+    const myIdx = _introMyIdx();
+    const sv = (s.survivors || []).find(v => v.idx === myIdx);
+    if (!sv) return;
+    s.myKeepDecided = keep ? 'keep' : 'reject';
+    socket.emit('keep_character', keep);
+    renderUI();   // schová tlačítka i statickou kartu, sprite níž letí v introSprites
+
+    const sp = gameScene.add.image(960, 420, _introCharTex(sv.char)).setScale(0.80).setDepth(1000);
+    if (gameScene.introSprites) gameScene.introSprites.add(sp);
+
+    if (keep) {
+        // Postava se vrátí na stůl, ale rovnou na svůj MAXIMÁLNÍ počet životů.
+        // Šerifův +1 se přidá až s odhalením rolí (sheriff_reveal) – teď je role tajná.
+        const toY = _myCharY(baseHealthForCharacter(sv.char));
+        gameScene.tweens.add({
+            targets: sp, x: MY_LIVES_X, y: toY,
+            scaleX: MY_LIVES_SCALE, scaleY: MY_LIVES_SCALE,
+            duration: 620, ease: 'Power2.easeIn',
+            onComplete: () => {
+                if (sp?.active) sp.destroy();
+                const entry = _introFindPlaced('char:' + myIdx);
+                if (entry) { entry.y = toY; entry.hidden = false; }
+                renderUI();
+            }
+        });
+        return;
+    }
+
+    // Odmítnutí: karta se překlopí na rub (lives) a odletí zmenšená na balíček postav.
+    _introFlyBackToCharDeck(sp, myIdx);
+}
+
+// Společný závěr odmítnutí (moje i cizí karta): flip na rub → let na balíček postav,
+// karta životů zmizí fade-outem a hráč se vrátí mezi ty, kdo si postavu teprve vyberou.
+function _introFlyBackToCharDeck(sp, idx) {
+    const s = _introState;
+    gameScene.tweens.add({
+        targets: sp, scaleX: 0, duration: 170, ease: 'Sine.easeIn',
+        onComplete: () => {
+            if (!sp?.active) return;
+            sp.setTexture('lives');
+            gameScene.tweens.add({
+                targets: sp, scaleX: sp.scaleY, duration: 170, ease: 'Sine.easeOut',
+                onComplete: () => {
+                    gameScene.tweens.add({
+                        targets: sp, x: INTRO_CHAR_DECK.x, y: INTRO_CHAR_DECK.y,
+                        angle: 0, scaleX: 0.30, scaleY: 0.30,
+                        duration: 520, ease: 'Power2.easeIn',
+                        onComplete: () => {
+                            if (sp?.active) sp.destroy();
+                            if (!_introState) return;
+                            // Odložená karta se vrací do balíčku postav.
+                            _introState.charCount = (_introState.charCount || 0) + 1;
+                            renderUI();
+                        }
+                    });
+                }
+            });
+        }
+    });
+    // Životy i jmenovka odchází – hráč je zase „bez postavy" a všechno mu přiletí
+    // znovu se slide-inem po výběru nové postavy (proto ho pustíme z placedForIdx).
+    _introFadeAwayPlaced('lives:' + idx);
+    _introRemovePlaced('char:' + idx);
+    _introRemovePlaced('name:' + idx);
+    if (s) {
+        s.placedForIdx = (s.placedForIdx || []).filter(i => i !== idx);
+        if (idx === _introMyIdx()) s.myNamePlaced = false;
+    }
+}
+
+// Rozhodnutí jiného hráče: stejné pohyby, jen bez zvětšení doprostřed.
+function _introKeepAnimateOther(idx, keep) {
+    const s = _introState;
+    if (!s || !gameScene) return;
+    const sv = (s.survivors || []).find(v => v.idx === idx);
+    if (!sv) return;
+    const entry = _introFindPlaced('char:' + idx);
+    const sl = _introOppSlots(idx, sv.health);
+    const fromX = entry ? entry.x : sl.charX;
+    const fromY = entry ? entry.y : sl.charY;
+    if (entry) entry.hidden = true;
+    renderUI();
+
+    const sp = gameScene.add.image(fromX, fromY, _introCharTex(sv.char))
+        .setScale(sl.scale).setAngle(sl.angle).setDepth(1000);
+    if (gameScene.introSprites) gameScene.introSprites.add(sp);
+
+    if (keep) {
+        const to = _introOppSlots(idx, baseHealthForCharacter(sv.char));
+        gameScene.tweens.add({
+            targets: sp, x: to.charX, y: to.charY,
+            duration: 520, ease: 'Power2.easeOut',
+            onComplete: () => {
+                if (sp?.active) sp.destroy();
+                const e = _introFindPlaced('char:' + idx);
+                if (e) { e.x = to.charX; e.y = to.charY; e.hidden = false; }
+                renderUI();
+            }
+        });
+        return;
+    }
+    _introFlyBackToCharDeck(sp, idx);
+}
+
+// Role jsou odhalené: šerif, který si nechal postavu, dostane +1 život (karta se
+// posune o jeden náboj) a fade-inem se mu objeví hvězda. U sebe hvězdu nekreslíme –
+// vlastní role je vidět na kartě role (drawMyArea odznak nemá).
+function _introSheriffReveal(idx) {
+    const s = _introState;
+    if (!s || !gameScene || !state || !state.players) return;
+    const entry = _introFindPlaced('char:' + idx);
+    const p = state.players[idx];
+    if (!entry || !p || !p.character) return;
+    const isMe = idx === _introMyIdx();
+    const tex = _introCharTex(p.character);
+    const health = p.health || 4;
+    const sl = isMe ? null : _introOppSlots(idx, health);
+    const toX = isMe ? MY_LIVES_X : sl.charX;
+    const toY = isMe ? _myCharY(health) : sl.charY;
+    const scale = isMe ? MY_LIVES_SCALE : sl.scale;
+    const angle = isMe ? 0 : sl.angle;
+
+    entry.hidden = true;
+    renderUI();
+    const sp = gameScene.add.image(entry.x, entry.y, tex)
+        .setScale(scale).setAngle(angle).setDepth(1000);
+    if (gameScene.introSprites) gameScene.introSprites.add(sp);
+    // 280 ms / Cubic.easeOut = stejné tempo jako herní posun životů (view/board.js).
+    gameScene.tweens.add({
+        targets: sp, x: toX, y: toY, duration: 280, ease: 'Cubic.easeOut',
+        onComplete: () => {
+            if (sp?.active) sp.destroy();
+            const e = _introFindPlaced('char:' + idx);
+            if (e) { e.x = toX; e.y = toY; e.hidden = false; }
+            renderUI();
+        }
+    });
+
+    if (isMe) return;
+    const star = gameScene.add.image(sl.starX, sl.starY, 'sheriff_star')
+        .setScale(sl.starScale).setAngle(sl.angle).setAlpha(0).setDepth(1001);
+    if (gameScene.introSprites) gameScene.introSprites.add(star);
+    gameScene.tweens.add({
+        targets: star, alpha: 1, duration: 600, delay: 280, ease: 'Power2',
+        onComplete: () => {
+            if (star?.active) star.destroy();
+            if (_introState) _introState.placedCards.push(
+                { tex: 'sheriff_star', x: sl.starX, y: sl.starY,
+                  scale: sl.starScale, angle: sl.angle, depth: 24, key: 'star:' + idx }
+            );
+            renderUI();
+        }
+    });
+}
+
 function renderIntroScene() {
     if (!_introState || !gameScene) return;
     const s = _introState;
@@ -483,6 +851,15 @@ function renderIntroScene() {
         'shuffle_deck': '',
         'deal_cards': '',
     };
+    // Navazující hra: kdo se nerozhoduje (mrtvý hráč, divák, už rozhodnutý přeživší)
+    // musí vědět, na co se čeká – jinak jen kouká na nehybnou desku.
+    const iAmDeciding = (s.survivors || []).some(v => v.idx === _introMyIdx()) && !s.myKeepDecided;
+    if (s.nextGame && s.keepShown && !s.rolesStarted && !iAmDeciding) {
+        _iAdd(gameScene.add.text(960, 80, '⏳ Přeživší se rozhodují, jestli si nechají svou postavu…',
+            { fontFamily: THEME.fontUI, fontSize: '30px', color: THEME.color.textMuted,
+              backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 20, y: 10 } })
+            .setOrigin(0.5).setDepth(50));
+    }
     // Pokud už mám roli odkrytou (čeká se na OK), ukaž odpovídající popisek
     // bez ohledu na to, v jaké přesné fázi rozdávání zrovna server je.
     const showReveal = (s.showRoleReveal || sub === 'await_role_ok') && s.myRole && !App.introRoleOkSent;
@@ -498,6 +875,11 @@ function renderIntroScene() {
     // překlápěcího revealu (roleRevealReady) – během flipu běží sprite v introSprites.
     if (showReveal && s.roleRevealReady) {
         _renderRoleReveal(s.myRole);
+    }
+
+    // Navazující hra: moje postava doletěla doprostřed → „nechám si ji?" (ANO/NE).
+    if (s.myKeepReady && !s.myKeepDecided) {
+        _renderKeepChoice();
     }
 
     _introLeaderEndButton();

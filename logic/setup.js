@@ -167,7 +167,10 @@ const SetupMixin = {
         p.hand.push(this.deck.draw(), this.deck.draw());
     },
 
-    setupNextGame(playerNames, prevSurvivorChars = {}, options = {}, nextSheriffName = null) {
+    // prevSurvivorHealth: kolik životů měl přeživší na konci minulé hry – jen pro
+    // zobrazení během intra navazující hry (postava leží na stole s tolika životy,
+    // kolik jich měla). Po rozhodnutí „nechám si ji" se doplní na maximum.
+    setupNextGame(playerNames, prevSurvivorChars = {}, options = {}, nextSheriffName = null, prevSurvivorHealth = {}) {
         this.deck.initializeStandardDeck(this._deckDataFor(options));
         this.options = options;
 
@@ -208,6 +211,7 @@ const SetupMixin = {
             const p = new Player(name, role, null, 4);
             if (prevSurvivorChars[i]) {
                 p._survivorChar = prevSurvivorChars[i];
+                p._survivorHealth = prevSurvivorHealth[i] ?? null;
                 p._awaitingKeepChoice = true;
             }
             this.players.push(p);
@@ -229,9 +233,13 @@ const SetupMixin = {
         p.character = charName;
         p._awaitingKeepChoice = false;
         p._survivorChar = null;
-        const { max } = healthForCharacter(charName, p.role);
+        p._survivorHealth = null;
+        const { base, max } = healthForCharacter(charName, p.role);
         p.maxHealth = max;
         p.health = p.maxHealth;
+        // _baseHealth = počet startovních karet (viz _checkNextGameAllChosen a
+        // intro rozdávání). Bez něj by šerif-přeživší dostal v animaci o kartu víc.
+        p._baseHealth = base;
         this._checkNextGameAllChosen();
     },
 
@@ -241,6 +249,7 @@ const SetupMixin = {
         const rejectedChar = p._survivorChar;
         p._awaitingKeepChoice = false;
         p._survivorChar = null;
+        p._survivorHealth = null;
         p.character = null;
         if (rejectedChar && this._remainingChars) {
             this._remainingChars.push(rejectedChar);

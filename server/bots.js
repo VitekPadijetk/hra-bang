@@ -170,10 +170,17 @@ module.exports = function installBotService(ctx) {
         const pa = room.gameState ? pendingActor(room.gameState) : null;
         const realTurn = !!pa && pa.kind !== 'CHARACTER_SELECT' && pa.kind !== 'KEEP_CHOICE';
 
+        // Potvrzení role během intra NENÍ herní akce a musí projít i přes gate níž:
+        // boti si postavu vybírají hned po startu, takže než se rozdají role, je fáze
+        // často už DRAW (= „realTurn"). Bez této výjimky by se tick zahodil, boti by
+        // roli nikdy nepotvrdili a intro by uvázlo napořád na await_role_ok.
+        const introConfirmPending = !!room._introRoleConfirmed &&
+            room.players.some(p => (p.isBot || p.botControlled) && !room._introRoleConfirmed.has(p.playerIdx));
+
         // Během intra (animace rolí/postav/rozdávání balíčku) bot herní akce NEDĚLÁ –
         // počkají na 'done' (jinak by sheriff-bot lízal/hrál během deck animace, neviditelně).
         // Výběr postav během intra ale běží normálně (řídí ho také policy).
-        if (room._introPlaying && realTurn) return;
+        if (room._introPlaying && realTurn && !introConfirmPending) return;
 
         let delay = botThinkTime();
         // Domíchání balíčku: dokud běží klientská míchací cinematika (_reshuffleBlockUntil
@@ -181,9 +188,18 @@ module.exports = function installBotService(ctx) {
         // broadcast odejde hned. Jinak by bot zahrál „přes" 5,5s animaci míchání.
         const reshuffleWait = Math.max(0, (room._reshuffleBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
-        if (room._botStartupSettle && realTurn && room.players[pa.idx]?.isBot) {
+        if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
             delay = startupSettleMs();
+        }
+        // Intro navazující hry: „nechám si postavu?" má u lidí animaci (karta vyletí
+        // doprostřed, po rozhodnutí se usadí/odletí na balíček). Bot počká, ať ji hráč
+        // stihne vidět – první rozhodnutí déle (běží ještě nálet karty), další svižněji.
+        if (pa && pa.kind === 'KEEP_CHOICE') {
+            if (!room._keepSettled) { room._keepSettled = true; delay = 2600; }
+            else delay = Math.max(delay, 1500);
+        } else if (room._keepSettled) {
+            room._keepSettled = false;
         }
         // Sejmutí / Black Jack: bot drží odhalenou kartu jako reveal animace u lidí
         // (CHECK_REVEAL_MS), teprve pak ji vyhodnotí (resolve_check/resolve_black_jack).
@@ -213,6 +229,9 @@ module.exports = function installBotService(ctx) {
 
         // Míchací cinematika má přednost před vším ostatním časováním – bot čeká, než doběhne.
         delay = Math.max(delay, reshuffleWait);
+        // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
+        // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
+        if (introConfirmPending) delay = botThinkTime();
 
         room._botTick = setTimeout(() => {
             room._botTick = null;

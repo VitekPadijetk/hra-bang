@@ -343,3 +343,33 @@ test('scheduleBotTick: startup settle se spotřebuje až u první herní akce', 
     assert.equal(room._botStartupSettle, false, 'první herní akce settle spotřebuje');
     clearTimeout(room._botTick); room._botTick = null;
 });
+
+// ── Intro gate: potvrzení role musí projít, i když je fáze už herní ────────────
+// Boti si postavu vybírají hned po startu, takže než se rozdají role, je fáze často
+// už DRAW. Bez výjimky by se tick zahodil, boti by roli nikdy nepotvrdili a intro
+// by uvázlo napořád na await_role_ok.
+test('scheduleBotTick: potvrzení role během intra projde i při herní fázi', () => {
+    const ctx = buildCtx();
+    ctx.botThinkTime = 5;
+    const gs = mkGame([{ role: 'Sheriff' }], { phase: 'DRAW', current: 0 });
+    gs.drawPhaseState = { active: true, playerIdx: 0, cardsDrawn: 0 };
+    const room = { id: 'gi1', players: [], gameState: gs, maxPlayers: 4 };
+    ctx.rooms.set('gi1', room);
+    ctx.createBot(room, gs.players[0].name);
+    room._introPlaying = true;
+
+    // (1) Bez čekajícího potvrzení se herní akce během intra neplánuje
+    ctx.scheduleBotTick(room);
+    assert.ok(!room._botTick, 'herní akce během intra se neplánuje');
+
+    // (2) S čekajícím potvrzením role tick projde (runBotTickOnce ho vyřídí první)
+    room._introRoleConfirmed = new Set();
+    ctx.scheduleBotTick(room);
+    assert.ok(room._botTick, 'potvrzení role projde i přes intro gate');
+    clearTimeout(room._botTick); room._botTick = null;
+
+    // (3) Jakmile bot potvrdil, gate zase platí
+    room._introRoleConfirmed = new Set([0]);
+    ctx.scheduleBotTick(room);
+    assert.ok(!room._botTick, 'po potvrzení se herní akce zase odloží');
+});

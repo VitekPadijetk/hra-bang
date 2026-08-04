@@ -28,9 +28,9 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `logic/checks.js` | **Mixin GameState.** Kontrolní líznutí na začátku tahu (Dynamit/Vězení) a vyhodnocení checků: `handleStartOfTurnChecks`, `triggerCheckDraw`, `_applyCheckResult` (Dynamit/Vězení/Barel/Jourdonnais), `resolveCheck`. |
 | `server.js` | **Socket.IO bootstrap (~76 ř.).** Express/io setup → poskládá sdílený `ctx` (`require('./server/*')(ctx)` v pořadí rooms→gamelog→ledger→guard→intro→anim→lifecycle→bots) → `io.on('connection')` jen definuje per-connection `withRoom` a zavolá `register*Handlers(socket, ctx, withRoom)` → `server.listen`. Veškerá logika je v `server/*`. |
 | `server/rooms.js` | Factory `installRoomService(ctx)` – vlastní `rooms` Map + roomCounter, vystaví na `ctx`: `makeRoom`, `roomPayload`, `broadcastRoom(+Delayed)`, `broadcastLobbyList`, `getLobbyList`, `getGameList`, `findRoomBySocket`, `leaveRoom`, `disbandRoom`. Bez listenu → testovatelné s fake io (`test/server.rooms.test.js`). |
-| `server/intro.js` | Factory `installIntroService(ctx)` (bere `io`, `broadcastRoom`) – serverová intro sekvence přes timeouty: `emitIntro`/`emitIntroRole`/`emitIntroChars`, `runIntroSequence`, `introStartCharPhase`, `introStartDeckPhase`. Test: `test/server.intro.test.js`. |
+| `server/intro.js` | Factory `installIntroService(ctx)` (bere `io`, `broadcastRoom`) – serverová intro sekvence přes timeouty: `emitIntro`/`emitIntroRole`/`emitIntroChars`, `runIntroSequence`, `introAfterRoles`, `introStartCharPhase`, `introStartDeckPhase`. **Navazující hra** má vlastní vstup `runNextGameIntro` + `introKeepResult` (viz „Intro navazující hry“ níže). Test: `test/server.intro.test.js`. |
 | `server/anim.js` | Factory `installAnimService(ctx)` (bere `io`, `broadcastRoomDelayed`) – `emitAnim`, `emitDeathAnim` (Vulture Sam vs odhoz), `handleAutoEndTurn`, `handleReshuffleAndBroadcast`, `storeCinematicMs` (časování cinematiky hokynářství = zvednutí + rozdání + míchání; zrcadlí `game.js`, používá ho bot settle i čekání na dojezd míchání). Test: `test/server.lifecycle.test.js`. |
-| `server/lifecycle.js` | Factory `installLifecycle(ctx)` (bere `cardData`, `GameState`, `broadcastRoom`, `broadcastLobbyList`, `emitIntro`, `runIntroSequence`) – `startGame`, `startNextGame` (rotující šerif, přeskočení intra; `botGame` přeskočí intro jako debug/singleChar). Test: `test/server.lifecycle.test.js`. |
+| `server/lifecycle.js` | Factory `installLifecycle(ctx)` (bere `cardData`, `GameState`, `broadcastRoom`, `broadcastLobbyList`, `emitIntro`, `runIntroSequence`) – `startGame`, `startNextGame` (rotující šerif, přenos postav+životů přeživších, spuštění `runNextGameIntro`). Intro přeskakuje jen debug/singleChar/botGame. Test: `test/server.lifecycle.test.js`. |
 | `server/gamelog.js` | Factory `installGameLog(ctx)` – **strukturovaný herní log** (JSONL soubor na hru v `logs/<roomId>_<ts>.jsonl` + stručný konzolový mirror). Vystaví `ctx.glog`: `openGame`/`closeGame`, `action` (ingress hráče/bota), `rule` (událost pravidel z `gs._onEvent`), `snapshot` (egress stavu v `broadcastRoom`, dedup), `system`/`error`/`clientLog`. Instaluje se v `server.js` **první** (rooms nastaví no-op fallback `ctx.glog`, gamelog ho přepíše reálným). Nahradil VŠECH ~86 ad-hoc `console.*`. Rules-level události chodí přes injektovaný sink `gs._onEvent` (funkce → JSON.stringify ji zahodí, neuniká do klienta); nastaví lifecycle/debug PŘED setupem. Formát/snapshot řeší izomorfní `core/gameLog.js`. Test: `test/gamelog.test.js`. **Když uživatel hlásí chybu, přečti nejnovější `logs/*.jsonl`.** |
 | `server/guard.js` | Factory `installActionGuard(ctx)` – **autorizace herních akcí na hráče**. Vystaví `ctx.guardedOn(socket)` = náhrada za `socket.on` pro `handlers.game.js`/`handlers.characters.js`. Handlery čtou aktéra ze STAVU, ne z odesílatele, takže bez guardu posunul hru každý příchozí event (na pomalé lince dvojklik na „Ukončit tah" přeskočil několik hráčů, opožděný klik vybral kartu za jiného hráče). Guard porovná seat odesílatele s `pendingActor(gs)` (core/pending.js); nesedící akci zahodí, zaloguje (`glog.reject`) a pošle `action_rejected` (klient si odemkne UI). Výjimky: akce mimo pořadí (Sid Ketchum) se kontrolují jen na „hraje za sebe"; debug hra (jeden socket = všechna místa) se přeskakuje; `pendingActor === null` propouští. Test: `test/server.guard.test.js`. |
 | `server/ledger.js` | Factory `installLedger(ctx)` – **veřejný ledger chování** (`room.behaviorLedger`): kdo na koho útočil / koho léčil. `recordBehavior`/`initLedger`. Handlery (`play_bang`/`play_special`/`doc_holyday`/`activate_green_card`/`discard_extra_choose`) ho plní; bot z něj přes `core/beliefs.js` dedukuje skryté role. Mimo broadcastovaný `gameState`. Reset při startu hry (lifecycle). Test: `test/server.ledger.test.js`. |
@@ -51,6 +51,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | Soubor | Co dělá |
 |---|---|
 | `view/board.js` | **Herní deska.** `renderGameBoard()` orchestrátor → `drawOpponents` / `drawMyArea` / `drawSpectatorPlayer` / `drawPhaseOverlays` / `drawDrawPiles`. |
+| `view/intro.js` | **Intro cinematika.** Míchání/rozdávání (`_animateIntroShuffle`, `renderIntroScene`, `_renderRoleReveal`, `_renderIntroCharSelect`), pozice bloku soupeře `_introOppSlots` (sdílí i slide-in v `net/handlers.js`) a **navazující hra**: `_introPlaceSurvivors`, `_startKeepReveal`/`_renderKeepChoice`/`_confirmKeepChoice`, `_introKeepAnimateOther`, `_introSheriffReveal`. |
 | `view/screens.js` | `renderWinnerScreen()` + `renderCharacterSelectScreen()`. |
 
 ### Čisté helpery (`core/`) — BEZ Phaseru/DOM, izomorfní, testované
@@ -87,6 +88,29 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
   - **`ctx`-destructuring pattern** pro sub-renderery: `function drawX(ctx) { const { a, b } = ctx; <byte-přesné tělo> }`, voláno `drawX({ a, b })`. Drží tělo identické a vyhýbá se kolizím v globálním scope.
   - Po úpravě render kódu **požádej uživatele o ověření v prohlížeči** (pravidelně to kontroluje).
 - **Verifikace každého kroku:** `node --check <soubor>`, `npm test`, boot serveru (`node server.js`, port 3000), HTTP 200 na změněné soubory.
+
+## Intro navazující hry
+
+Navazující hra **má stejné intro jako první hra**, jen s předehrou pro přeživší.
+Server (`server/intro.js`) → klient (`net/handlers.js` `intro_phase` → `view/intro.js`):
+
+1. `init` (`nextGame: true`, `survivors: [{idx,char,health}]`, reálné `roleCount/charCount/deckCount`) –
+   deska se rozloží: tři balíčky + postavy přeživších s tolika životy, kolik jim zbylo
+   (balíček postav je o jejich karty menší). **Hvězda šerifa ještě ne** – role se rozdají později.
+2. `nextgame_keep` (po 1 s) – MOJE postava vyletí zvětšená doprostřed + tlačítka ANO/NE.
+3. `keep_result {playerIdx, keep}` po každém rozhodnutí – ANO: karta se usadí na svůj
+   **základní** max (šerifův +1 je pořád tajný); NE: překlopí se, odletí zmenšená na balíček
+   postav (`charCount++`) a karta životů zmizí fade-outem. Vlastní rozhodnutí se animuje
+   hned z kliknutí, cizí z tohoto eventu.
+4. Až se rozhodnou všichni → klasické `runIntroSequence` (role) beze změny.
+5. `sheriff_reveal {playerIdx}` – jen když je šerifem **keeper**: +1 život (posun karty,
+   280 ms jako herní posun životů) a fade-in hvězdy. `room._introKeepers` (snapshot z bodu 3)
+   je jediné kritérium – „má postavu" nestačí, boti si ji vybírají hned po startu.
+6. `introStartCharPhase` rozdá postavy jen hráčům mimo `_introKeepers`, dál už klasicky
+   (výběr ze 2, `chars_slide_in` keepery přeskočí, míchání balíčku, rozdání karet, `done`).
+
+Stav klienta drží `_introState.placedCards`; položky mají `key` (`char:3`, `lives:3`,
+`name:3`, `star:3`), aby je šlo za běhu posunout/schovat/odstranit.
 
 ## Testy
 

@@ -33,6 +33,73 @@ module.exports = function installIntroService(ctx) {
         if (s) s.emit('intro_chars', { playerIdx, charChoices });
     }
 
+    // ── Navazující hra ──────────────────────────────────────────────────────
+    // Úvod navazující hry: na stole leží tři balíčky jako na startu klasické hry,
+    // přeživší mají svou postavu (s tolika životy, kolik jim zbylo) a rozhodují se,
+    // jestli si ji nechají. Teprve pak jede klasické rozdání rolí a postav.
+    //
+    // room._introKeepers = seaty, které si postavu nechaly. Snapshot se dělá TEĎ,
+    // ne až v char fázi: boti si postavu (charChoices) vybírají hned po broadcastu,
+    // takže „kdo nemá postavu" by v char fázi už nesedělo.
+    function runNextGameIntro(room) {
+        const gs = room.gameState;
+        const n = room.players.length;
+        room._introKeepers = new Set();
+
+        const survivors = gs.players
+            .map((p, idx) => ({ p, idx }))
+            .filter(({ p }) => p._awaitingKeepChoice)
+            .map(({ p, idx }) => ({ idx, char: p._survivorChar, health: p._survivorHealth ?? p.health ?? 4 }));
+
+        emitIntro(room, {
+            sub: 'init', playerCount: n, nextGame: true,
+            roleCount: n,
+            // Balíček postav bez postav přeživších (ti si je drží na stole).
+            charCount: Math.max(0, (n - survivors.length) * 2),
+            deckCount: gs.deck.cards.length,
+            survivors,
+        });
+
+        ctx.glog.system(`[INTRO] Navazující hra, přeživších: ${survivors.length}/${n}`);
+
+        if (!survivors.length) { runIntroSequence(room); return; }
+
+        room._keepPhase = true;
+        // Chvíli ať hráč vidí rozloženou desku, teprve pak vyletí jeho postava.
+        setTimeout(() => emitIntro(room, { sub: 'nextgame_keep' }), 1000);
+    }
+
+    // Volá handlers.nextgame.js po každém rozhodnutí přeživšího: rozešle animaci
+    // a jakmile jsou rozhodnutí všichni, spustí klasické rozdávání rolí.
+    function introKeepResult(room, playerIdx, keep) {
+        if (!room._keepPhase) return;
+        if (keep) (room._introKeepers = room._introKeepers || new Set()).add(playerIdx);
+        emitIntro(room, { sub: 'keep_result', playerIdx, keep });
+        if (room.gameState.players.some(p => p._awaitingKeepChoice)) return;
+        room._keepPhase = false;
+        // Nech doletět animaci posledního rozhodnutí (otočení/posun karty), pak role.
+        setTimeout(() => runIntroSequence(room), 1600);
+    }
+
+    // Po potvrzení rolí všemi hráči. V navazující hře může být šerifem hráč, který už
+    // postavu na stole má – tomu se teď přidá 1 život a fade-inem hvězda; v klasické
+    // hře nemá postavu nikdo, takže se rovnou pokračuje char fází (chování beze změny).
+    function introAfterRoles(room) {
+        const gs = room.gameState;
+        const sheriffIdx = gs.players.findIndex(p => p.role === 'Sheriff');
+        // Pozor na „má postavu" jako podmínku: boti si ji vybírají hned po startu, takže
+        // ji šerif má i v klasické hře. Rozhoduje jen to, jestli si ji NECHAL z minulé hry.
+        const sheriffKeeps = sheriffIdx !== -1 && !!room._introKeepers?.has(sheriffIdx);
+        if (!sheriffKeeps) {
+            setTimeout(() => introStartCharPhase(room), 700);
+            return;
+        }
+        setTimeout(() => {
+            emitIntro(room, { sub: 'sheriff_reveal', playerIdx: sheriffIdx });
+            setTimeout(() => introStartCharPhase(room), 1200);
+        }, 700);
+    }
+
     // Spustí intro sekvenci míchání + rozdávání rolí
     function runIntroSequence(room) {
         const gs = room.gameState;
@@ -43,6 +110,7 @@ module.exports = function installIntroService(ctx) {
         const roleCount = n;
 
         ctx.glog.system(`[INTRO] Start, players: ${n}, sheriffIdx: ${sheriffIdx}`);
+        room._introRolesDone = false;
 
         // Fáze 1: míchání rolí
         emitIntro(room, { sub: 'shuffle_roles', roleCount });
@@ -67,6 +135,10 @@ module.exports = function installIntroService(ctx) {
 
             const waitAfterDeal = roleOrder.length * 500 + 600;
             setTimeout(() => {
+                // Roli už potvrdili všichni (stihnou to boti dřív, než sem sekvence
+                // dojde) – Set se NESMÍ obnovit ani poslat await_role_ok, jinak by se
+                // potvrzování rozjelo podruhé a s ním celá fáze postav.
+                if (room._introRolesDone) return;
                 // Set už existuje (vytvořen výše) – jen fallback label pro klienty,
                 // kterým by se reveal náhodou nezobrazil dřív. NEPŘEPISOVAT Set!
                 if (!room._introRoleConfirmed) room._introRoleConfirmed = new Set();
@@ -80,10 +152,23 @@ module.exports = function installIntroService(ctx) {
         const gs = room.gameState;
         const n = room.players.length;
         const sheriffIdx = gs.players.findIndex(p => p.role === 'Sheriff');
-        const charOrder = Array.from({ length: n }, (_, k) => (sheriffIdx + k) % n);
-        const charCount = n * 2;
+        // Klasicky od šerifa doprava; přeživší, kteří si postavu nechali, se přeskočí
+        // (v klasické hře je _introKeepers prázdné → pořadí i počet beze změny).
+        const keepers = room._introKeepers || new Set();
+        const charOrder = Array.from({ length: n }, (_, k) => (sheriffIdx + k) % n)
+            .filter(idx => !keepers.has(idx));
+        const charCount = charOrder.length * 2;
 
-        ctx.glog.system('[INTRO] Char phase');
+        ctx.glog.system(`[INTRO] Char phase (${charOrder.length}/${n} hráčů vybírá)`);
+
+        // Nikdo nevybírá (všichni si postavu nechali) → rovnou balíček.
+        if (!charOrder.length) {
+            room._introActive = false;
+            if (gs.phase !== 'CHARACTER_SELECT') room.phase = 'playing';
+            broadcastRoom(room);
+            setTimeout(() => introStartDeckPhase(room), 200);
+            return;
+        }
 
         emitIntro(room, { sub: 'shuffle_chars', charCount });
 
@@ -102,6 +187,14 @@ module.exports = function installIntroService(ctx) {
             setTimeout(() => {
                 // Nejdriv posli broadcast (CHARACTER_SELECT) az po intro_chars eventech
                 broadcastRoom(room); // phase=CHARACTER_SELECT
+                // Nikdo už nevybírá (typicky boti, kteří postavu zvolili dřív, než intro
+                // došlo k char fázi) → žádné select_character už nepřijde, na balíček
+                // musí navázat sekvence sama, jinak by intro uvázlo.
+                if (room._introActive && gs.phase !== 'CHARACTER_SELECT') {
+                    room._introActive = false;
+                    room.phase = 'playing';
+                    setTimeout(() => introStartDeckPhase(room), 200);
+                }
             }, waitAfterDeal + 100);
 
         }, charShuffleDelay);
@@ -172,6 +265,7 @@ module.exports = function installIntroService(ctx) {
     Object.assign(ctx, {
         emitIntro, emitIntroRole, emitIntroChars,
         runIntroSequence, introStartCharPhase, introStartDeckPhase,
+        runNextGameIntro, introKeepResult, introAfterRoles,
     });
     return ctx;
 };

@@ -24,6 +24,9 @@ module.exports = function installLifecycle(ctx) {
         // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
         room._botStartupSettle = true;
         room._introPlaying = false;
+        room._introKeepers = null;   // klasická hra: postavu si nikdo „nenechává"
+        room._keepPhase = false;
+        room._keepSettled = false;   // tempo botů u „nechám si postavu?" (server/bots.js)
         broadcastLobbyList();
         // debug, singleChar nebo hra jen botů: preskocime intro
         if (gs.isDebug || room.options?.singleChar || room.options?.botGame) {
@@ -59,11 +62,13 @@ module.exports = function installLifecycle(ctx) {
         const gs = room.gameState;
         const playerNames = room.players.map(p => p.name);
         const prevSurvivorChars = {};
+        const prevSurvivorHealth = {};
         room.players.forEach((rp, i) => {
             if (!rp.wasOriginalSurvivor) return;
             const gsPlayer = gs.players.find(p => p.name === rp.name);
             if (gsPlayer && gsPlayer.health > 0) {
                 prevSurvivorChars[i] = gsPlayer.character;
+                prevSurvivorHealth[i] = gsPlayer.health;
             }
         });
 
@@ -91,7 +96,7 @@ module.exports = function installLifecycle(ctx) {
         // Nová hra ve stejné místnosti → nový log (openGame zavře předchozí) + sink před setupem.
         ctx.glog.openGame(room);
         room.gameState._onEvent = (evt) => ctx.glog.rule(room, evt);
-        room.gameState.setupNextGame(playerNames, prevSurvivorChars, room.options || {}, nextSheriffName);
+        room.gameState.setupNextGame(playerNames, prevSurvivorChars, room.options || {}, nextSheriffName, prevSurvivorHealth);
         room.gameState.logEvent('gamestart', {
             players: room.gameState.players.map(p => ({ n: p.name, role: p.role, ch: p.character || null, hp: p.health })),
             opts: room.options || {},
@@ -105,6 +110,7 @@ module.exports = function installLifecycle(ctx) {
         // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
         room._botStartupSettle = true;
         room._introPlaying = false;
+        room._keepSettled = false;   // tempo botů u „nechám si postavu?" (server/bots.js)
 
         // singleChar: přeskočíme výběr pro hráče bez survivora
         if (room.options?.singleChar) {
@@ -118,19 +124,17 @@ module.exports = function installLifecycle(ctx) {
             if (sheriffPlayer) room.lastSheriffName = sheriffPlayer.name;
         }
 
-        // Pokud jsou prezivsi hraci nebo debug/singleChar/botGame: preskocime intro
-        if (room.gameState.isDebug || room.options?.singleChar || room.options?.botGame ||
-            room.gameState.players.some(p => p._awaitingKeepChoice)) {
+        // debug/singleChar/botGame: intro se přeskakuje (klasická obrazovka výběru).
+        if (room.gameState.isDebug || room.options?.singleChar || room.options?.botGame) {
             broadcastRoom(room);
             return;
         }
         broadcastRoom(room);
         // Intro běží: boti nehrají herní akce (líznutí/karty) dokud nepřijde 'done' (intro.js).
         room._introPlaying = true;
-        setTimeout(() => {
-            emitIntro(room, { sub: 'init', playerCount: room.players.length });
-            runIntroSequence(room);
-        }, 50);
+        // Navazující hra má vlastní úvod: balíčky na stole, přeživší s postavami,
+        // rozhodnutí „nechám si ji?" a teprve pak klasické rozdání rolí (viz intro.js).
+        setTimeout(() => ctx.runNextGameIntro(room), 50);
     }
 
     Object.assign(ctx, { startGame, startNextGame });

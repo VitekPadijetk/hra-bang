@@ -62,3 +62,33 @@ test('Přeživší odmítne postavu → dostane normální výběr', () => {
     assert.equal(g.players[0]._awaitingKeepChoice, false);
     assert.equal(g.players[0].charChoices.length, 2);
 });
+
+// ── Životy přeživšího pro intro navazující hry ───────────────────────────────
+test('setupNextGame si pamatuje životy přeživšího (pro rozložení desky v intru)', () => {
+    const g = newGame();
+    g.setupNextGame(['A', 'B', 'C'], { 0: 'Willy the Kid' }, {}, null, { 0: 2 });
+    assert.equal(g.players[0]._survivorHealth, 2);
+    // Bez údaje o životech (starší volání) se nic nerozbije
+    const g2 = newGame();
+    g2.setupNextGame(['A', 'B', 'C'], { 0: 'Willy the Kid' }, {});
+    assert.equal(g2.players[0]._survivorHealth, null);
+});
+
+test('Ponechaná postava se dolije na maximum a nastaví _baseHealth (počet startovních karet)', () => {
+    const g = newGame();
+    // Šerif si nechá 4životou postavu → max 5, ale startovních karet 4.
+    g.setupNextGame(['A', 'B', 'C'], { 0: 'Willy the Kid' }, {}, 'A', { 0: 1 });
+    assert.equal(g.players[0].role, 'Sheriff');
+    g.selectCharacterForNextGame(0);
+    assert.equal(g.players[0].health, 5);
+    assert.equal(g.players[0].maxHealth, 5);
+    assert.equal(g.players[0]._baseHealth, 4);
+    assert.equal(g.players[0]._survivorHealth, null);
+});
+
+test('Odmítnutá postava zahodí i zapamatované životy', () => {
+    const g = newGame();
+    g.setupNextGame(['A', 'B', 'C'], { 0: 'Paul Regret' }, {}, null, { 0: 3 });
+    g.rejectCharacterForNextGame(0);
+    assert.equal(g.players[0]._survivorHealth, null);
+});

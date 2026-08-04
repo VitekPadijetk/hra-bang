@@ -29,9 +29,20 @@ socket.on('intro_phase', (data) => {
         _introState = {
             sub: 'init',
             playerCount: data.playerCount,
-            roleCount: data.playerCount,
-            charCount: data.playerCount * 2,
-            deckCount: 80,
+            // Navazující hra posílá skutečné počty (balíček postav je bez postav
+            // přeživších); klasická hra je neposílá → výchozí hodnoty jako dosud.
+            roleCount: data.roleCount ?? data.playerCount,
+            charCount: data.charCount ?? data.playerCount * 2,
+            deckCount: data.deckCount ?? 80,
+            nextGame: !!data.nextGame,
+            survivors: data.survivors || [],
+            placedForIdx: [],        // seaty, které už mají postavu na stole (přeživší)
+            myNamePlaced: false,     // moje jmenovka už je v placedCards
+            keepShown: false,        // „nechám si postavu?" už se spustilo
+            myKeepReady: false,      // moje postava doletěla doprostřed → ukaž tlačítka
+            myKeepDecided: null,     // 'keep' | 'reject'
+            rolesStarted: false,     // začalo míchání rolí (konec fáze rozhodování)
+            charPhaseStarted: false, // začala fáze postav (gate pro fallback z room_update)
             myRole: null,
             myCharChoices: null,
             myCharSelected: null,
@@ -50,6 +61,9 @@ socket.on('intro_phase', (data) => {
             deckMoving: false,   // zaverecny presun balicku na herni pozici (skryj staticky)
             coltShown: false,    // Colt .45 fade-in u me uz probehl
         };
+        // Navazující hra: přeživší mají svou postavu na stole hned (s tolika životy,
+        // kolik jim zbylo z minulé hry) – ještě bez šerifovy hvězdy, role se teprve rozdají.
+        if (_introState.nextGame) _introPlaceSurvivors();
         renderUI();
         return;
     }
@@ -60,8 +74,27 @@ socket.on('intro_phase', (data) => {
     if (sub === 'await_role_ok' && App.introRoleOkSent) return;
     _introState.sub = sub;
 
+    // ── Navazující hra: rozhodnutí přeživších o postavě ──────────────────────
+    if (sub === 'nextgame_keep') {
+        _startKeepReveal();
+        return;
+    }
+
+    if (sub === 'keep_result') {
+        const myIdx = (typeof myIndex === 'number') ? myIndex : App.myIntroIndex;
+        // Vlastní rozhodnutí je odanimované už z kliknutí (žádná prodleva na server).
+        if (data.playerIdx !== myIdx) _introKeepAnimateOther(data.playerIdx, data.keep);
+        return;
+    }
+
+    if (sub === 'sheriff_reveal') {
+        _introSheriffReveal(data.playerIdx);
+        return;
+    }
+
     if (sub === 'shuffle_roles') {
         _introState.roleCount = data.roleCount;
+        _introState.rolesStarted = true;
         _introState.shuffleAnimDone = false;
         _clearIntroSprites();
         if (gameScene) {
@@ -106,6 +139,7 @@ socket.on('intro_phase', (data) => {
     else if (sub === 'shuffle_chars') {
         _introState.charCount = data.charCount;
         _introState.roleCount = 0;
+        _introState.charPhaseStarted = true;
         _introState.shuffleAnimDone = false;
         _clearIntroSprites();
         if (gameScene) {
@@ -151,69 +185,24 @@ socket.on('intro_phase', (data) => {
         renderUI();
         // Slide-in bloku lives+char pro ostatni hrace
         if (gameScene && state && state.players) {
-            const oppScale = 0.27;
-            const oppCardH  = 500 * oppScale;          // 135
-            const oppBulletH = oppCardH * 0.93 / 5;   // 25.11
-            const oppOffset  = oppCardH * 1.1;         // 148.5 (ruka od anchor)
             state.players.forEach((p, idx) => {
                 if (idx === myIndex || !p.character) return;
+                // Navazující hra: přeživší, který si postavu nechal, ji na stole už má
+                // (položila ji intro init / animace rozhodnutí) → nesmí přiletět znovu.
+                if (_introState.placedForIdx && _introState.placedForIdx.includes(idx)) return;
                 const health   = p.health || 4;
                 const charData = gameScene.cache.json.get('characters_data');
                 const charInfo = charData && charData.find(c => c.name === p.character);
                 const charTex  = charInfo && gameScene.textures.exists('char_' + charInfo.id)
                     ? 'char_' + charInfo.id : 'placeholder';
 
-                // Zjisti anchor pozici z hand pozice
-                const hand = getPlayerHandPos(idx);
-                let ax, ay, side;
-                if (hand.x < 50)        { ax = hand.x + oppOffset; ay = hand.y; side = 'left'; }
-                else if (hand.y < 50)   { ax = hand.x; ay = hand.y + oppOffset; side = 'top'; }
-                else if (hand.x > 1870) { ax = hand.x - oppOffset; ay = hand.y; side = 'right'; }
-                else                    { ax = hand.x; ay = hand.y - oppOffset; side = 'bottom'; }
-
-                // Natočení karet podle strany (stejně jako herní render)
-                const angle = side === 'left' ? 90 : side === 'top' ? 180 : side === 'right' ? -90 : 0;
-
-                // Jmenovka soupeře – PŘESNĚ na herní pozici (drawOpponents): x = anchor.x,
-                // y = anchor.y + offset dle strany (left +38.25, top/right +85.5). Styl shodný.
-                const nameOffY = side === 'left' ? 38.25 : 85.5;
-                const NAME_X = ax, NAME_Y = ay + nameOffY;
-                const OPP_NAME_STYLE = { fontSize: '18px', color: '#cccccc',
-                    backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } };
-
-                // Cílové pozice lives + postavy – PŘESNĚ podle herního renderu
-                // (renderUI: anchor.side větve). numBlue=0, protože na začátku hry
-                // nemá nikdo karty na stole. (ax,ay) == herní anchor.
-                const cardW  = 325 * oppScale;              // 97.5
-                const numBlue = 0;
-                const groupH = (1 + numBlue) * cardW;       // == cardW
-                let livesEndX, livesEndY, charEndX, charEndY;
-                if (side === 'left') {
-                    livesEndX = ax;
-                    livesEndY = ay + groupH / 2 - oppCardH / 2;
-                    charEndX  = livesEndX + oppBulletH * health;
-                    charEndY  = livesEndY;
-                } else if (side === 'top') {
-                    livesEndX = ax;                          // groupStartX + cardW/2 == ax při numBlue=0
-                    livesEndY = ay;
-                    charEndX  = livesEndX;
-                    charEndY  = livesEndY + oppBulletH * health;
-                } else if (side === 'right') {
-                    livesEndX = ax;
-                    livesEndY = ay - groupH / 2 + oppCardH / 2;
-                    charEndX  = livesEndX - oppBulletH * health;
-                    charEndY  = livesEndY;
-                } else {
-                    livesEndX = ax; livesEndY = ay;
-                    charEndX  = ax; charEndY  = ay;
-                }
-
-                // Start mimo obrazovku - obe karty se posunou o stejny vektor
-                let dx = 0, dy = 0;
-                if (side === 'left')   dx = -(ax + oppCardH + 50);
-                else if (side === 'top')    dy = -(ay + oppCardH + 50);
-                else if (side === 'right')  dx = 1920 - ax + oppCardH + 50;
-                else                       dy = 1080 - ay + oppCardH + 50;
+                // Pozice bloku (životy/postava/jmenovka/hvězda) + vektor „ze zákulisí".
+                const slot = _introOppSlots(idx, health);
+                const { angle, scale: oppScale,
+                        livesX: livesEndX, livesY: livesEndY,
+                        charX: charEndX, charY: charEndY,
+                        nameX: NAME_X, nameY: NAME_Y, nameStyle: OPP_NAME_STYLE,
+                        dx, dy } = slot;
 
                 const delay = idx * 80;
                 const dur   = 520;
@@ -229,7 +218,7 @@ socket.on('intro_phase', (data) => {
                         if (livesSp?.active) livesSp.destroy();
                         // Ulož jako trvalou kartu, ať po doletu nezmizí
                         if (_introState) _introState.placedCards.push(
-                            { tex: 'lives', x: livesEndX, y: livesEndY, scale: oppScale, angle, depth: 21 }
+                            { tex: 'lives', x: livesEndX, y: livesEndY, scale: oppScale, angle, depth: 21, key: 'lives:' + idx }
                         );
                         renderUI();
                     }
@@ -247,10 +236,10 @@ socket.on('intro_phase', (data) => {
                         // Ulož jako trvalou kartu + jmenovku, ať po doletu nezmizí.
                         if (_introState) {
                             _introState.placedCards.push(
-                                { tex: charTex, x: charEndX, y: charEndY, scale: oppScale, angle, depth: 23 }
+                                { tex: charTex, x: charEndX, y: charEndY, scale: oppScale, angle, depth: 23, key: 'char:' + idx }
                             );
                             _introState.placedCards.push(
-                                { text: p.name, x: NAME_X, y: NAME_Y, style: OPP_NAME_STYLE, depth: 50 }
+                                { text: p.name, x: NAME_X, y: NAME_Y, style: OPP_NAME_STYLE, depth: 50, key: 'name:' + idx }
                             );
                         }
                         renderUI();
@@ -261,12 +250,8 @@ socket.on('intro_phase', (data) => {
                 // usadí se nad kartou postavy – přesně jako v herním renderu (drawOpponents).
                 // Bez toho odznak naskočil až po startu hry. Offsety dle strany zrcadlí board.js.
                 if (p.role === 'Sheriff') {
-                    const starScale = 0.3;
-                    let starDx = 0, starDy = 0;
-                    if (side === 'left')       { starDx =  oppCardH * 0.45; starDy = -cardW * 0.42; }
-                    else if (side === 'top')   { starDx =  cardW * 0.42;    starDy =  oppCardH * 0.45; }
-                    else if (side === 'right') { starDx = -oppCardH * 0.45; starDy =  cardW * 0.42; }
-                    const starEndX = charEndX + starDx, starEndY = charEndY + starDy;
+                    const starScale = slot.starScale;
+                    const starEndX = slot.starX, starEndY = slot.starY;
                     const starSp = gameScene.add.image(starEndX + dx, starEndY + dy, 'sheriff_star')
                         .setScale(starScale).setAngle(angle).setDepth(64);
                     if (gameScene.introSprites) gameScene.introSprites.add(starSp);
@@ -276,7 +261,7 @@ socket.on('intro_phase', (data) => {
                         onComplete: () => {
                             if (starSp?.active) starSp.destroy();
                             if (_introState) _introState.placedCards.push(
-                                { tex: 'sheriff_star', x: starEndX, y: starEndY, scale: starScale, angle, depth: 24 }
+                                { tex: 'sheriff_star', x: starEndX, y: starEndY, scale: starScale, angle, depth: 24, key: 'star:' + idx }
                             );
                             renderUI();
                         }
@@ -286,9 +271,13 @@ socket.on('intro_phase', (data) => {
 
             // Vlastní jmenovka – PŘESNĚ jako drawMyArea: (roleX=850, myBaseY+145=1115),
             // styl 20px / bg 0.6 / padding {7,4}, origin(0.5, 0).
-            if (_introState && myIndex !== null && state.players[myIndex]?.character) {
+            // (V navazující hře ji přeživší dostal už při rozložení desky – myNamePlaced.)
+            if (_introState && myIndex !== null && state.players[myIndex]?.character
+                && !_introState.myNamePlaced) {
+                _introState.myNamePlaced = true;
                 _introState.placedCards.push({
                     text: state.players[myIndex].name, x: 850, y: 1115, depth: 50,
+                    key: 'name:' + myIndex,
                     style: { fontSize: '20px', color: '#cccccc',
                         backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 7, y: 4 } },
                 });
@@ -1247,9 +1236,15 @@ function _applyRoomUpdate(payload) {
         roomState?.gameState?.phase !== 'CHARACTER_SELECT') {
         App.debugSelectFor = null;
     }
-    // Pokud roomPhase prechazi z lobby -> char_select, intro brzy dorazi
-    if (payload.roomPhase === 'char_select' &&
-        roomState?.roomPhase === 'lobby' && !_introActive()) {
+    // Pokud roomPhase prechazi z lobby -> char_select, intro brzy dorazi.
+    // Navazující hra startuje z 'finished' / 'next_lobby' – i tam se čeká na intro,
+    // jinak by na 50 ms probliklo staré okno výběru postavy.
+    // Režimy, kde server intro přeskakuje (lifecycle.js), musí zůstat bez flagu –
+    // jinak by klient čekal na cinematiku, která nikdy nepřijde.
+    const _introSkipped = !!(payload.gameState?.isDebug
+        || payload.gameState?.options?.singleChar || payload.gameState?.options?.botGame);
+    if (payload.roomPhase === 'char_select' && !_introActive() && !_introSkipped &&
+        ['lobby', 'next_lobby', 'finished'].includes(roomState?.roomPhase)) {
         App.introExpected = true;
     }
     // Jakmile intro dorazilo, zrus flag
@@ -1362,7 +1357,10 @@ function _applyRoomUpdate(payload) {
     App.pedroDrawLock = false;
 
     // Intro + CHARACTER_SELECT: pokud intro_chars jeste nedorazil, pouzij state jako fallback
+    // Navazující hra broadcastuje stav i BĚHEM rozhodování přeživších (charChoices už
+    // v něm jsou) – tam se výběr postav spustit nesmí, teprve až začne char fáze.
     if (_introActive() && state?.phase === 'CHARACTER_SELECT' &&
+        (!_introState.nextGame || _introState.charPhaseStarted) &&
         !_introState.myCharChoices && state.players?.[myIndex]?.charChoices?.length) {
         _introState.myCharChoices = state.players[myIndex].charChoices;
         // Pojistka: kdyby intro_chars (a tím i reveal-let) nedorazil, spusť ho teď.
