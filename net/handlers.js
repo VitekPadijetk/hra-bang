@@ -5,6 +5,16 @@
 // roomState, selectedState – deklarované v game.js) a volá renderUI / intro / menu
 // funkce cross-file. Načítá se PO game.js (kvůli `socket`) i view/*.
 
+// ── PREZENTAČNÍ FRONTA ────────────────────────────────────────────────────────
+// `card_animation` a `room_update` se NEpřehrávají hned při doručení, ale projdou
+// frontou (core/animQueue.js): animace jedou jedna po druhé a stav se aplikuje až
+// doběhne to, co mu předcházelo. Bez ní se na pomalé lince oba eventy slijí do
+// jednoho okamžiku a karta „už je v odhozu", zatímco ještě letí. Podrobně viz
+// hlavička core/animQueue.js.
+const _animQ = createAnimQueue({
+    onDrop: (n) => clog('warn', `animační fronta zaostala – přeskočeno ${n} animací`),
+});
+
 // ── INTRO SOCKET HANDLERY ─────────────────────────────────────────────────────
 
 socket.on('intro_phase', (data) => {
@@ -599,7 +609,7 @@ function _hideStolenBoardCard(data) {
     renderUI();
 }
 
-socket.on('card_animation', (data) => {
+function _playCardAnim(data) {
     if (!gameScene || !state) return;   // divák (myIndex === null) animace také vidí
     const deck    = deckTopPos();      // vrch balíčku (odkud karta vzlétá / kam dosedá)
     const discard = discardTopPos();   // vrch odhozu (ne základna) – ať karty dosednou na hromádku
@@ -1070,9 +1080,64 @@ socket.on('card_animation', (data) => {
             break;
         }
     }
+}
+
+// Jak dlouho která animace vizuálně trvá (ms) – o tuhle dobu fronta počká, než pustí
+// další položku (další animaci nebo aplikaci stavu). MUSÍ sedět s `duration` použitým
+// v _playCardAnim; když se změní délka letu, srovnej i tady, jinak vznikne mezera nebo
+// překryv. Nesedící číslo frontu nikdy nezasekne – jen posune pacing.
+const ANIM_MS = {
+    draw:              380,
+    discard:           380,
+    hand_to_discard:   380,
+    hand_to_board:     400,
+    jesse_jones_draw:  380,
+    pedro_draw:        380,
+    discard_to_hand:   400,
+    ragtime_steal:     360,
+    beer_auto_save:    380,
+    beer_blocked:      410,   // nahoru 200 + pauza 210 + zpět 200
+    jail_sequence:     400,
+    dynamite_pass:     500,
+    dynamite_explode:  350,
+    board_to_discard:  380,
+    duel_exchange:     280,
+    store_pick:        420,
+    panic_sequence:    640,   // 320 k cíli + 320 s ukradenou kartou zpět
+    catbalou_sequence: 640,   // 320 k cíli + 320 se zničenou kartou do odhozu
+};
+
+function _animDurationMs(data) {
+    // Smrt: karty odlétají po jedné se staggerem, doba = poslední start + její dolet.
+    // Colt .45 (fade-out bez letu) se do počtu nepočítá, proto malá rezerva navíc.
+    if (data.type === 'player_death_discard' || data.type === 'vulture_sam_steal') {
+        const n = (data.blue?.length || 0) + (data.weapon ? 1 : 0) + (data.hand?.length || 0);
+        return Math.max(1, n) * _DEATH_STAGGER + 450;
+    }
+    // Výsledek Lucky Duke checku klient záměrně zdrží (_runResult), ať dosedne až po
+    // obou odhalených kartách – ta prodleva se musí započítat. Fázi čteme stejně jako
+    // _runResult; server posílá výsledkovou animaci PŘED stavem, který LUCKY_DUKE
+    // opouští, takže je tu i v okamžiku přehrání pořád LUCKY_DUKE.
+    const lucky = (state?.phase === 'LUCKY_DUKE' &&
+        (data.type === 'dynamite_pass' || data.type === 'dynamite_explode' ||
+         data.type === 'board_to_discard')) ? 850 : 0;
+    return (ANIM_MS[data.type] ?? 400) + lucky;
+}
+
+socket.on('card_animation', (data) => {
+    // Mimo scénu/hru není co přehrát – nezařazuj, ať fronta nedrží následující stav.
+    if (!gameScene || !state || !data) return;
+    _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data));
+});
+
+socket.on('room_update', (payload) => {
+    if (!payload) return;
+    _animQ.pushState(() => _applyRoomUpdate(payload));
 });
 
 // ── ANIMACE MÍCHÁNÍ BALÍČKU ─────────────────────────────────────────────────
+// Míchání frontou NEjde: server u něj sám odkládá broadcast o 5,7 s (delší než
+// cinematika), u proaktivního míchání naopak stav schválně nečeká a hra běží dál.
 socket.on('reshuffle_anim', ({ cardCount, proactive, topCardId }) => {
     if (!gameScene) return;
 
@@ -1238,7 +1303,7 @@ function attemptRejoin() {
     if (sess.name && !playerName) playerName = sess.name;   // obnov jméno po F5
     socket.emit('rejoin', { roomId: sess.roomId, token: bangToken });
 }
-socket.on('connect', () => { _rejoinDone = false; _rejoinTries = 0; attemptRejoin(); });
+socket.on('connect', () => { _rejoinDone = false; _rejoinTries = 0; _animQ.reset(); attemptRejoin(); });
 
 // Server naše místo (zatím) nedrží. Po zavření a rychlém otevření nového okna může
 // server zpracovat náš 'rejoin' DŘÍV než disconnect starého socketu (hráč ještě není
@@ -1266,8 +1331,7 @@ socket.on('action_rejected', (info) => {
     if (gameScene) renderUI();
 });
 
-socket.on('room_update', (payload) => {
-    if (!payload) return;
+function _applyRoomUpdate(payload) {
     const _prevPhase = roomState?.gameState?.phase;   // fáze před tímto updatem (pro reveal trigger)
     const _prevCurrentPlayer = roomState?.gameState?.currentPlayerIndex;  // kdo byl na tahu (Kit Carlson exit)
     // Životy před tímto updatem (pro posun postavy při zásahu/vyléčení – Návrh 1).
@@ -1430,7 +1494,7 @@ socket.on('room_update', (payload) => {
     }
 
     if (gameScene) renderUI();
-});
+}
 
 socket.on('lobby_list', (list) => {
     App.lobbyList = list || [];
@@ -1454,6 +1518,7 @@ socket.on('game_list', (list) => {
 socket.on('go_to_menu', () => {
     clearBangSession();   // záměrný odchod → po F5 se nevracet do hry
     _resetIntro();        // odchod během intra → zahoď zbytky cinematiky (jinak se zdědí do další hry)
+    _animQ.reset();       // rozdělaná fronta patří opuštěné hře – nic z ní už nedocommitovat
     roomState = null; state = null; myIndex = null; _myNextGameVote = null;
     App.menuScreen = 'main';
     if (gameScene) renderUI();
@@ -1462,6 +1527,7 @@ socket.on('go_to_menu', () => {
 socket.on('kicked_from_game', (msg) => {
     clearBangSession();
     _resetIntro();
+    _animQ.reset();
     roomState = null; state = null; myIndex = null; _myNextGameVote = null;
     App.menuScreen = 'kicked';
     App.kickedMsg = msg || 'Game leader ukončil hru.';
