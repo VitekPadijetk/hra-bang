@@ -34,8 +34,12 @@ function computeDistance(state, fromIdx, toIdx) {
         effectiveCharacter(state.players[state.currentPlayerIndex]) === "Belle Star")
         ? state.currentPlayerIndex : -1;
     const ignoreTargetBoard = belleActiveIdx === fromIdx;   // Belle útočí → cizí board cíle neplatí
-    if (!ignoreTargetBoard && (target.board || []).some(c => c.effect === 'mustang')) dist += 1;
-    if ((attacker.board || []).some(c => c.effect === 'scope')) dist -= 1;
+    // Karty se SČÍTAJÍ, každá dá ±1: Mustang + Skrýš (Dodge City) na stole cíle = +2,
+    // Hledí + Dalekohled u útočníka = −2. Různá jména, takže je legální mít obě naráz
+    // (pravidlo D7 zakazuje jen dvě karty stejného jména). Dřív se přes .some() započítala
+    // vždy jen jedna → Rose Doolan „dostřelila" na souseda se Skrýší i Mustangem.
+    if (!ignoreTargetBoard) dist += (target.board || []).filter(c => c.effect === 'mustang').length;
+    dist -= (attacker.board || []).filter(c => c.effect === 'scope').length;
     return Math.max(1, dist);
 }
 

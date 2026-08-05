@@ -55,6 +55,27 @@ test('Mustang na cíli +1, Hledí (scope) na útočníkovi -1', () => {
     assert.equal(computeDistance(scopeUtocnik, 0, 2), 1);
 });
 
+// Dodge City: Skrýš má stejný effect jako Mustang (a Dalekohled jako Hledí), jde o
+// různá jména → hráč smí mít obě naráz a modifikátory se SČÍTAJÍ (+2 / −2).
+test('Mustang + Skrýš na cíli dají +2, Hledí + Dalekohled u útočníka −2', () => {
+    const dvojiSkryt = st([P(), P({ board: [MUSTANG, MUSTANG] }), P(), P()]);
+    assert.equal(computeDistance(dvojiSkryt, 0, 1), 3);   // základ 1 + 2
+    const dvojiHledi = st([P({ board: [SCOPE, SCOPE] }), P(), P(), P()]);
+    assert.equal(computeDistance(dvojiHledi, 0, 2), 1);   // základ 2 − 2 → min 1
+});
+
+// Regrese: soused se Skrýší i Mustangem je ve vzdálenosti 3; Rose Doolan bez zbraně
+// (Colt .45, dostřel 1 + její bonus) na něj NEdostřelí. Dřív se přes .some() započítala
+// jen jedna z karet a vyšla vzdálenost 1 → střílela.
+test('Rose Doolan bez zbraně NEdostřelí na souseda se Skrýší i Mustangem', () => {
+    const s = st([P({ character: 'Rose Doolan' }), P({ board: [MUSTANG, MUSTANG] }), P(), P()]);
+    assert.equal(computeDistance(s, 0, 1), 2);            // základ 1 + 2 − 1 (Rose)
+    assert.equal(computeCanHit(s, 0, 1), false);          // Colt .45 = dostřel 1
+    // S jednou z těch karet (jen Mustang) na ni dostřelí.
+    const jenMustang = st([P({ character: 'Rose Doolan' }), P({ board: [MUSTANG] }), P(), P()]);
+    assert.equal(computeCanHit(jenMustang, 0, 1), true);
+});
+
 test('canHit zohledňuje dostřel zbraně (range i props.range)', () => {
     const base = [P(), P(), P(), P()]; // vzdálenost 0->2 je 2
     assert.equal(computeCanHit(st(base), 0, 2), false); // Colt .45 (dostřel 1)
