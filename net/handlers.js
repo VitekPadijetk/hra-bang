@@ -622,7 +622,10 @@ function playDeathSequence(data) {
 
     // Pozice/orientace zachyť TEĎ, dokud je stav ještě „živý" (viz komentář výše).
     const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || []);
-    const T = deathAnimTimeline(seq.length);
+    // Šerifovu roli zná celý stůl od začátku → neodhaluje se. Sekvence končí odhozením
+    // karet (pak už jen doběhne hra). Server počítá stejně (server/anim.js).
+    const skipReveal = p.role === 'Sheriff';
+    const T = deathAnimTimeline(seq.length, skipReveal);
     const flyCtx = isVulture
         ? { isMine, isVulture: data.toPlayerIdx === myIndex, vid: data.toPlayerIdx,
             to: getPlayerHandPos(data.toPlayerIdx), holdTries: Math.ceil(T.total / 16) }
@@ -668,11 +671,13 @@ function playDeathSequence(data) {
         renderUI();
     }, T.settle);
 
-    // 4) Odhalení role všem ostatním (kdo umřel, ten jen čeká).
-    setTimeout(() => {
-        if (isMine) return;
-        _deathRoleReveal(pid, () => _deathSeqCleanup(pid, seq));
-    }, T.fly);
+    // 4) Odhalení role všem ostatním (kdo umřel, ten jen čeká). U šerifa odpadá.
+    if (!skipReveal) {
+        setTimeout(() => {
+            if (isMine) return;
+            _deathRoleReveal(pid, () => _deathSeqCleanup(pid, seq));
+        }, T.fly);
+    }
 
     // Pojistka: ať se stane cokoli (scéna zmizí, tween se ztratí), po dojezdu sekvence
     // musí být deska zase v normálním stavu – nic skrytého, nic rozanimovaného.
@@ -684,6 +689,94 @@ function playDeathSequence(data) {
         });
         _deathSeqCleanup(pid, seq);
     }, T.total + 150);
+}
+
+// ── Dělení karet mezi víc Vulture Samů ───────────────────────────────────────
+// Karty mrtvého si rozeberou Samové (Vulture Sam + Vera Custer, která ho kopíruje),
+// takže cinematika vyřazení se rozpadne na dva kusy:
+//   1) 'vulture_split_death' – postava klesne na nulu, ale KARTY ZŮSTANOU ležet
+//      (rozebírají se pak po jedné, každá vlastní animací ragtime_steal),
+//   2) 'player_death_reveal' – po rozdělení se místo uklidí a odhalí se role.
+function playVultureSplitDeath(data) {
+    const pid = data.playerIdx;
+    const p = state?.players?.[pid];
+    if (!gameScene || !p) return;
+    App.blockInput = true;
+    App.vultureSplitIdx = pid;      // jeho karty se kreslí dál, karta role ještě ne
+    App.deathSeq[pid] = 'dying';
+    App.healthAnims[pid] = { fromHealth: Math.max(1, p.health) };
+    p.health = 0;
+    renderUI();
+    // Po poklesu na nulu fázi smrti zase pusť – dál už se jen vybírá (a vybírat může
+    // i tenhle klient), takže deska nesmí zůstat zamčená cinematikou.
+    setTimeout(() => {
+        if (App.deathSeq[pid] === 'dying') delete App.deathSeq[pid];
+        if (gameScene) renderUI();
+    }, DEATH_ANIM.healthMs + DEATH_ANIM.pauseMs);
+}
+
+// Konec dělení: ruka i stůl mrtvého jsou prázdné, postava doklouže k místu pro kartu
+// role a role se odhalí (u šerifa se přeskakuje – zná ji celý stůl).
+function playDeathRoleReveal(data) {
+    const pid = data.playerIdx;
+    const p = state?.players?.[pid];
+    App.vultureSplitIdx = null;
+    if (!gameScene || !p) return;
+    const skipReveal = p.role === 'Sheriff';
+    const isMine = pid === myIndex;   // umírám já → odhalení role nevidím, jen čekám
+    App.blockInput = true;
+    p.hand = [];
+    p.board = [];
+    p.weapon = { id: -1, name: 'Colt .45', type: 'Zbraň', props: { range: 1 } };
+    App.deathSeq[pid] = 'settled';
+    delete App.deathHandHide[pid];
+    renderUI();
+    const done = () => { delete App.deathSeq[pid]; if (gameScene) renderUI(); };
+    setTimeout(() => {
+        if (skipReveal || isMine) { done(); return; }
+        _deathRoleReveal(pid, done);
+    }, DEATH_ANIM.settleMs);
+}
+
+// ── Šerif zabil pomocníka: přijde o všechny karty ────────────────────────────
+// Vizuálně TOTÉŽ odhazování jako při vyřazení (karty odlétají po jedné do odhozu a
+// u hráče mizí ve chvíli, kdy je zvedne animace), ale hráč žije dál: žádný pokles
+// životů, žádné odhalení role – a Colt .45 mu zůstává (ze sekvence ho vyhodíme).
+// Časování drží core/deathAnim.js (penaltyDiscardMs), server o tu dobu čeká s boty.
+function playSheriffPenaltyDiscard(data) {
+    const pid = data.playerIdx;
+    const p = state?.players?.[pid];
+    if (!gameScene || !p) return;
+    const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || [])
+        .filter(it => it.kind !== 'colt');
+    if (!seq.length) return;
+    const flyCtx = { isMine: pid === myIndex, ang: _renderSideAngle(pid),
+                     sc: _renderSideScale(pid), discard: discardTopPos() };
+
+    App.blockInput = true;
+    App.deathHandHide[pid] = new Set();
+    seq.forEach(it => { if (it.id != null) App.deathDiscardHideIds.add(it.id); });
+    renderUI();
+
+    seq.forEach((it, k) => {
+        setTimeout(() => {
+            if (!gameScene) return;
+            _deathHideSource(pid, it);
+            renderUI();
+            _deathFlyToDiscard(it, flyCtx);
+        }, DEATH_ANIM.pauseMs + k * _DEATH_STAGGER);
+    });
+
+    // Pojistka po dojezdu: nic skrytého, nic rozanimovaného (stav dorazí z fronty hned poté).
+    setTimeout(() => {
+        delete App.deathHandHide[pid];
+        seq.forEach(it => {
+            if (it.id == null) return;
+            App.deathDiscardHideIds.delete(it.id);
+            App.stealHideIds.delete(it.id);
+        });
+        if (gameScene) renderUI();
+    }, penaltyDiscardMs(seq.length) + 150);
 }
 
 // Odkud má vyletět karta, kterou hraju/odhazuju JÁ: z konkrétního slotu v mé ruce
@@ -1065,6 +1158,15 @@ function _playCardAnim(data) {
         case 'vulture_sam_steal':
             playDeathSequence(data);
             break;
+        case 'sheriff_penalty_discard':
+            playSheriffPenaltyDiscard(data);
+            break;
+        case 'vulture_split_death':
+            playVultureSplitDeath(data);
+            break;
+        case 'player_death_reveal':
+            playDeathRoleReveal(data);
+            break;
         case 'beer_auto_save': {
             const from = getMyPlayedCardPos(data.fromPlayerIdx, data.cardId);
             const beerCard = state?.players?.[data.fromPlayerIdx]?.hand?.find?.(c => c.id === data.cardId);
@@ -1135,11 +1237,15 @@ function _playCardAnim(data) {
             renderUI();
             // Dynamit se během letu dotočí do orientace cílového hráče (bok = 90°) a zmenší
             // se z „zvednuté" velikosti na velikost karty na cílovém boardu.
+            // holdUntil: sprite drž na cíli, dokud dynamit reálně neleží na stole nového
+            // majitele (room_update). Bez toho se po dojezdu letu odkryje dřív, než stav
+            // dorazí, a dynamit na okamžik problikne zpátky na PŮVODNÍM místě.
             _runResult(() => animateCard(from.x, from.y, to.x, to.y, getCardTex(data.cardId), 500, () => {
                 App.stealHideIds.delete(data.cardId); renderUI();
             }, { startAngle: sideAngle(data.fromIdx), endAngle: sideAngle(data.toIdx),
                  exactAngle: true,   // naproti (0°→180°) se musí opravdu otočit, ne srovnat na 0
-                 startScale: 0.42, endScale: sideScale(data.toIdx) }));
+                 startScale: 0.42, endScale: sideScale(data.toIdx),
+                 holdUntil: () => onBoardOf(data.toIdx, data.cardId) }));
             break;
         }
         case 'dynamite_explode': {
@@ -1248,7 +1354,18 @@ function _animDurationMs(data) {
     // Počet položek odhozu = modré + zbraň/Colt (vždy jedna) + ruka, viz _deathCardSeq;
     // stejný vzorec počítá server (server/anim.js), aby o tu dobu podržel boty.
     if (data.type === 'player_death_discard' || data.type === 'vulture_sam_steal') {
-        return deathSequenceMs((data.blue?.length || 0) + 1 + (data.hand?.length || 0));
+        const dIdx = data.type === 'vulture_sam_steal' ? data.fromPlayerIdx : data.playerIdx;
+        const skipReveal = state?.players?.[dIdx]?.role === 'Sheriff';
+        return deathSequenceMs((data.blue?.length || 0) + 1 + (data.hand?.length || 0), skipReveal);
+    }
+    // Šerifova ztráta karet za zabití pomocníka (bez Coltu → bez „+1" jako u smrti).
+    if (data.type === 'sheriff_penalty_discard') {
+        return penaltyDiscardMs((data.blue?.length || 0) + (data.weapon ? 1 : 0) + (data.hand?.length || 0));
+    }
+    // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
+    if (data.type === 'vulture_split_death') return deathFallMs();
+    if (data.type === 'player_death_reveal') {
+        return deathRevealMs(state?.players?.[data.playerIdx]?.role === 'Sheriff');
     }
     // Výsledek Lucky Duke checku klient záměrně zdrží (_runResult), ať dosedne až po
     // obou odhalených kartách – ta prodleva se musí započítat. Fázi čteme stejně jako
@@ -1266,7 +1383,9 @@ socket.on('card_animation', (data) => {
     // Cinematika vyřazení je `essential`: nikdy se nesmí zahodit kvůli zaostávání
     // fronty. Nechává za sebou lokálně upravený stav (skryté karty, mezifáze) a bez
     // dojezdu by ho nikdo neuklidil – navíc na ni čeká i server (drží boty).
-    const essential = data.type === 'player_death_discard' || data.type === 'vulture_sam_steal';
+    const essential = data.type === 'player_death_discard' || data.type === 'vulture_sam_steal' ||
+                      data.type === 'sheriff_penalty_discard' ||
+                      data.type === 'vulture_split_death' || data.type === 'player_death_reveal';
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 
@@ -1403,7 +1522,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Jen u
     // živého hráče v běžící hře (smrt řeší vlastní odhozová animace → vyžadujeme health>0).

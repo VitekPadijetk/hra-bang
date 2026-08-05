@@ -52,6 +52,8 @@ const CharactersMixin = {
         } else if (action.type === 'UHYB_DRAW') {
             this.pendingUhybDraw = { playerIdx: action.playerIdx };
             this.phase = "UHYB_DRAW";
+        } else if (action.type === 'VULTURE_SPLIT') {
+            this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {
             this.drawPhaseState = {
                 active: true, playerIdx: action.playerIdx,
@@ -75,6 +77,73 @@ const CharactersMixin = {
             this.phase = this.interruptedPhase || "PLAY";
             this.interruptedPhase = null;
         }
+    },
+
+    // ── Dělení karet mezi víc Vulture Samů ──────────────────────────────────────
+    // Nastane, když má schopnost Vulture Sama zároveň víc hráčů (Vulture Sam + Vera
+    // Custer, která ho kopíruje). Pravidlo: karty mrtvého si rozdělí – první si bere
+    // ten, kdo je za mrtvým první po směru hodinových ručiček, pak druhý, a tak dál,
+    // dokud karty nedojdou. Každý výběr je „stylem Panika": z ruky náhodná karta,
+    // ze stolu konkrétní. Technicky se recykluje pendingSelection / SELECTING_TARGET_CARD,
+    // takže klik klienta, bot i guard fungují beze změny (viz resolveCardSelection).
+
+    // Kolik karet mrtvému ještě zbývá k rozebrání.
+    _vultureSplitLeft() {
+        const vs = this.pendingVultureSplit;
+        const d = vs ? this.players[vs.deadIdx] : null;
+        if (!d) return 0;
+        return d.hand.length + d.board.length + ((d.weapon && d.weapon.id !== -1) ? 1 : 0);
+    },
+
+    // Připraví výběr pro Sama, který je na řadě. Když už není co brát (nebo nezbyl
+    // žádný živý Sam), dělení skončí.
+    _nextVultureSplitPick() {
+        const vs = this.pendingVultureSplit;
+        if (!vs) { this._resumeAfterSpecial(); return; }
+        if (this._vultureSplitLeft() <= 0) { this._finishVultureSplit(); return; }
+        let tries = 0;
+        while (tries < vs.pickers.length && !(this.players[vs.pickers[vs.next]]?.health > 0)) {
+            vs.next = (vs.next + 1) % vs.pickers.length;
+            tries++;
+        }
+        if (tries >= vs.pickers.length) { this._finishVultureSplit(); return; }
+        this.pendingSelection = {
+            attackerIdx: vs.pickers[vs.next],
+            targetIdx: vs.deadIdx,
+            sourceCardType: CardType.PANIC,
+            ignoreDistance: true,
+            isVultureSplit: true
+        };
+        this.phase = "SELECTING_TARGET_CARD";
+    },
+
+    // Po každém vzetí karty: na řadu jde další Sam (nebo dělení skončí).
+    _advanceVultureSplit() {
+        const vs = this.pendingVultureSplit;
+        if (!vs) { this._resumeAfterSpecial(); return; }
+        vs.next = (vs.next + 1) % vs.pickers.length;
+        this._nextVultureSplitPick();
+    },
+
+    // Konec dělení: cokoli by u mrtvého zbylo (nemělo by nic) padá do odhozu, jeho
+    // místo se uklidí jako u běžné smrti a hra pokračuje frontou (odměna za banditu…).
+    // _pendingDeathReveal říká serveru, že teď má dohrát cinematiku vyřazení (odhalení role).
+    _finishVultureSplit() {
+        const vs = this.pendingVultureSplit;
+        this.pendingVultureSplit = null;
+        this.pendingSelection = null;
+        if (vs) {
+            const d = this.players[vs.deadIdx];
+            if (d) {
+                const w = (d.weapon && d.weapon.id !== -1) ? [d.weapon] : [];
+                this.deck.discardPile.push(...d.hand, ...d.board, ...w);
+                d.hand = [];
+                d.board = [];
+                d.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+            }
+            this._pendingDeathReveal = vs.deadIdx;
+        }
+        this._resumeAfterSpecial();
     },
 
     bartCassidyDraw(playerIdx) {

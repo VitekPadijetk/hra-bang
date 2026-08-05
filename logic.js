@@ -72,6 +72,10 @@ class GameState {
         // Dodge City – „odhoď další kartu" (cíl se volí PŘED zaplacením další karty).
         this.pendingDiscardAnother = null;
         this.pendingVeraCopy = null;   // Vera Custer – čeká na volbu kopírované postavy
+        // Dělení karet mrtvého mezi VÍC Vulture Samů (Vulture Sam + Vera Custer, která ho
+        // kopíruje): { deadIdx, pickers, next }. Viz logic/characters.js.
+        this.pendingVultureSplit = null;
+        this._pendingDeathReveal = null;   // po dodělení: server dohraje odhalení role
         this.brawlQueue = null;
         this.brawlAttackerIdx = null;
         this.interruptedPhase = null;
@@ -162,7 +166,9 @@ class GameState {
         if (origCount < aliveCount) mode = 'blocking';
         else if (origCount === aliveCount) mode = 'proactive';
         const shuffleCount = this.deck._reshuffleOccurred ? (this.deck._reshuffleCount || 0) : 0;
-        this.storeAnim = { dealtBefore: k, mode, shuffleCount, total: dealt };
+        // origCount = kolik karet měl balíček PŘED rozdáním. Klient podle něj kreslí
+        // hromádku po dobu rozdávání (stav už obsahuje případně zamíchaný balíček).
+        this.storeAnim = { dealtBefore: k, mode, shuffleCount, total: dealt, origCount };
         // Míchání si přebírá klientská cinematika → potlač legacy reshuffle_anim a
         // jeho zpoždění broadcastu (handleReshuffleAndBroadcast).
         this.deck._reshuffleOccurred = false;

@@ -2,8 +2,8 @@
 // reakce, odhoz, Kit Carlson/Lucky Duke/Barel výběry, Sid/dynamit/pivo záchrany,
 // hokynářství). registerGameHandlers(socket, ctx, withRoom) – těla byte-identická.
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
-    const { emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn, handleReshuffleAndBroadcast,
-            broadcastRoom, broadcastRoomDelayed } = ctx;
+    const { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, handleAutoEndTurn,
+            handleReshuffleAndBroadcast, broadcastRoom, broadcastRoomDelayed } = ctx;
     // Registrace přes guard „čí je tah" (server/guard.js) – zahodí opožděný/duplicitní
     // klik od hráče, na kterého hra nečeká. Bez guardu v ctx (testy s holým ctx) padne
     // zpět na obyčejné socket.on.
@@ -277,6 +277,18 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const isBrawl = sel?.isBrawl;
             const victimIdx = sel?.targetIdx;
             const victim = gs.players[victimIdx];
+            // Dělení karet mrtvého mezi víc Vulture Samů: vzatá karta letí od mrtvého do
+            // ruky Sama (stejná animace jako Ragtime). ID ze stolu/výzbroje čteme PŘED
+            // resolvem, z ruky až po něm (je to skrytá karta – majitel ji uvidí, ostatní rub).
+            const isVultureSplit = sel?.isVultureSplit;
+            let vsCardId = null, vsVisBoardIdx = null;
+            if (isVultureSplit && victim) {
+                if (d.area === 'weapon') { vsCardId = victim.weapon?.id ?? null; vsVisBoardIdx = 0; }
+                else if (d.area === 'board') {
+                    vsVisBoardIdx = 1 + (d.cardIdx ?? 0);
+                    vsCardId = victim.board?.[d.cardIdx]?.id ?? null;
+                }
+            }
             let brawlBoardId = null, brawlVisBoardIdx = null;
             if (isBrawl && victim) {
                 if (d.area === 'weapon') { brawlBoardId = victim.weapon?.id ?? null; brawlVisBoardIdx = 0; }
@@ -286,6 +298,25 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 }
             }
             gs.resolveCardSelection(d.attackerIdx, d.area, d.cardIdx);
+            if (isVultureSplit && victimIdx != null) {
+                const atkIdx = d.attackerIdx;
+                const base = { type: 'ragtime_steal', attackerIdx: atkIdx, targetIdx: victimIdx,
+                               area: d.area, boardIdx: vsVisBoardIdx };
+                if (d.area === 'hand') {
+                    // Z ruky mrtvého jde náhodná karta – Sam ji zná (poslední v jeho ruce),
+                    // ostatní vidí jen rub.
+                    const atkHand = gs.players[atkIdx].hand;
+                    const ownerId = atkHand[atkHand.length - 1]?.id ?? null;
+                    emitAnimPrivate(room, atkIdx, { ...base, stolenCardId: ownerId },
+                                                  { ...base, stolenCardId: null });
+                } else {
+                    emitAnim(room, { ...base, stolenCardId: vsCardId });
+                }
+                // Poslední karta rozdělena → dohraj cinematiku vyřazení (odhalení role).
+                emitPendingDeathReveal?.(room, gs);
+                broadcastRoomDelayed(room, 420);
+                return;
+            }
             if (isBrawl && victimIdx != null) {
                 if (d.area === 'hand') {
                     const top = gs.deck.discardPile[gs.deck.discardPile.length - 1];

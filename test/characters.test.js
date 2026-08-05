@@ -85,3 +85,65 @@ test('Vulture Sam sebere ruku i stůl mrtvého hráče', () => {
     assert.equal(g.players[1].hand.length, 0);
     assert.equal(g.players[1].board.length, 0);
 });
+
+// ── Dva Vulture Samové (Vulture Sam + Vera Custer, která ho kopíruje) ─────────
+// Karty mrtvého se DĚLÍ: bere se střídavě po jedné, začíná ten, kdo je za mrtvým
+// první po směru hodinových ručiček. Odměna za banditu (3 karty) až po rozdělení.
+test('Dva Vulture Samové si karty mrtvého dělí střídavě, začíná první po směru', () => {
+    const g = mkGame([
+        { role: 'Sheriff' },                                     // 0 = zabiják
+        { role: 'Outlaw', health: 0 },                           // 1 = mrtvý
+        { role: 'Deputy', character: 'Vulture Sam' },            // 2 = první za mrtvým
+        { role: 'Renegade', character: 'Vera Custer' },          // 3 = druhý
+    ]);
+    g.players[3]._copiedCharacter = 'Vulture Sam';
+    g.players[3]._veraCopiedTurn = g.turnId;
+    give(g, 1, CardType.BEER);
+    give(g, 1, CardType.BANG);
+    board(g, 1, CardType.BARREL, { name: 'Barel' });
+
+    g.handlePlayerDeath(1, 0);
+    // Karty zůstávají u mrtvého, dokud si je Samové nerozeberou.
+    assert.equal(g.players[1].hand.length, 2);
+    assert.equal(g.players[1].board.length, 1);
+
+    g._processSpecialQueue();
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    assert.equal(g.pendingSelection.attackerIdx, 2);   // první za mrtvým
+
+    g.resolveCardSelection(2, 'board', 0);             // Sam bere Barel ze stolu
+    assert.equal(g.players[2].hand.length, 1);
+    assert.equal(g.pendingSelection.attackerIdx, 3);   // teď Vera
+
+    g.resolveCardSelection(3, 'hand', null);           // náhodná z ruky
+    assert.equal(g.players[3].hand.length, 1);
+    assert.equal(g.pendingSelection.attackerIdx, 2);   // zase Sam
+
+    g.resolveCardSelection(2, 'hand', null);           // poslední karta
+    assert.equal(g.players[2].hand.length, 2);
+    assert.equal(g.players[1].hand.length, 0);
+    assert.equal(g.players[1].board.length, 0);
+    assert.equal(g.pendingVultureSplit, null);
+    assert.equal(g._pendingDeathReveal, 1);            // server dohraje odhalení role
+
+    // Teprve teď odměna za zabitého banditu (3 karty pro hráče na tahu).
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.isKillReward, true);
+    assert.equal(g.drawPhaseState.playerIdx, 0);
+    assert.equal(g.drawPhaseState.cardsNeeded, 3);
+});
+
+test('Dva Vulture Samové: mrtvý bez karet → žádné dělení, hra běží dál', () => {
+    const g = mkGame([
+        { role: 'Sheriff' },
+        { role: 'Outlaw', health: 0 },
+        { role: 'Deputy', character: 'Vulture Sam' },
+        { role: 'Renegade', character: 'Vera Custer' },
+    ]);
+    g.players[3]._copiedCharacter = 'Vulture Sam';
+    g.players[3]._veraCopiedTurn = g.turnId;
+
+    g.handlePlayerDeath(1, 0);
+    assert.equal(g.pendingVultureSplit, null);
+    assert.ok(!g.specialActionQueue.some(a => a.type === 'VULTURE_SPLIT'));
+});

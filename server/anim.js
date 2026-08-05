@@ -1,7 +1,7 @@
 // server/anim.js — animační a auto-tah helpery: emit card_animation/reshuffle_anim,
 // smrt (Vulture Sam vs odhoz), automatické ukončení tahu po smrti, reshuffle broadcast.
 // Factory installAnimService(ctx): bere { io, broadcastRoomDelayed } z ctx. Bez listenu.
-const { deathSequenceMs } = require('../core/deathAnim.js');
+const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 
 module.exports = function installAnimService(ctx) {
     const { io, broadcastRoomDelayed } = ctx;
@@ -50,6 +50,26 @@ module.exports = function installAnimService(ctx) {
         const info = gs._deathAnimData?.[deadIdx];
         if (!info) return;
         const blue = info.blue || [], weapon = info.weapon || null, hand = info.hand || [];
+        // Šerif zabil pomocníka → přijde o všechny karty. Odhozová animace jde ve frontě
+        // hned za cinematikou vyřazení (klient ji přehraje až po ní).
+        const emitSheriffPenalty = () => {
+            const pen = gs._sheriffPenaltyAnim;
+            if (!pen) return;
+            gs._sheriffPenaltyAnim = null;
+            emitAnim(room, { type: 'sheriff_penalty_discard', ...pen });
+            room._deathBlockUntil += penaltyDiscardMs(
+                (pen.blue?.length || 0) + (pen.weapon ? 1 : 0) + (pen.hand?.length || 0));
+        };
+        // Karty si dělí VÍC Vulture Samů → zůstávají ležet na stole a rozeberou se po
+        // jedné (každá vlastní animací). Teď se přehraje jen pokles na nulu; úklid místa
+        // a odhalení role dojedou po rozdělení (emitPendingDeathReveal).
+        if (gs.pendingVultureSplit?.deadIdx === deadIdx) {
+            emitAnim(room, { type: 'vulture_split_death', playerIdx: deadIdx });
+            room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + deathFallMs());
+            emitSheriffPenalty();
+            if (gs._deathAnimData) delete gs._deathAnimData[deadIdx];
+            return;
+        }
         const vultureIdx = gs.players.findIndex(
             (p, idx) => idx !== deadIdx && p.character === "Vulture Sam" && p.health > 0
         );
@@ -63,9 +83,24 @@ module.exports = function installAnimService(ctx) {
         // Boti o tu dobu nesmí hrát, jinak by hráli „přes" ni – viz scheduleBotTick.
         // Počet položek odhozu musí sedět s _deathCardSeq: modré + zbraň/Colt (vždy
         // jedna) + ruka.
+        // Šerif svou roli neodhaluje (zná ji celý stůl) → jeho sekvence končí odhozením
+        // karet a je o odhalovací část kratší (core/deathAnim.js, klient počítá stejně).
+        const skipReveal = gs.players[deadIdx]?.role === 'Sheriff';
         room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
-            Date.now() + deathSequenceMs(blue.length + 1 + hand.length));
+            Date.now() + deathSequenceMs(blue.length + 1 + hand.length, skipReveal));
+        emitSheriffPenalty();
         if (gs._deathAnimData) delete gs._deathAnimData[deadIdx];
+    }
+
+    // Dělení karet mezi víc Vulture Samů skončilo (logic: _finishVultureSplit nastavilo
+    // _pendingDeathReveal) → dohraj zbytek cinematiky vyřazení: úklid místa + odhalení role.
+    function emitPendingDeathReveal(room, gs) {
+        const di = gs._pendingDeathReveal;
+        if (di === null || di === undefined) return;
+        gs._pendingDeathReveal = null;
+        emitAnim(room, { type: 'player_death_reveal', playerIdx: di });
+        room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
+            Date.now() + deathRevealMs(gs.players[di]?.role === 'Sheriff'));
     }
 
     function handleAutoEndTurn(room, gs) {
@@ -77,6 +112,10 @@ module.exports = function installAnimService(ctx) {
             if (deadIdx !== undefined) {
                 emitDeathAnim(room, gs, deadIdx);
             }
+            // Běží dělení karet mezi víc Vulture Samů (nebo cokoli dalšího ve frontě, co
+            // smrt spustila)? Tah se posune až po jeho dobrání – jinak by nový hráč začal
+            // hrát „přes" rozdělané rozhodnutí a hra by ve fázi výběru uvázla.
+            if (gs.pendingVultureSplit) { gs._nextTurnAfterQueue = true; return; }
             gs.nextTurn?.();
         }
     }
@@ -140,7 +179,7 @@ module.exports = function installAnimService(ctx) {
         }
     }
 
-    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn,
-                         handleReshuffleAndBroadcast, storeCinematicMs });
+    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
+                         handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs });
     return ctx;
 };

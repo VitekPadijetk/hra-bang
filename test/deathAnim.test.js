@@ -3,7 +3,8 @@
 // že fáze jdou po sobě a že celková délka roste s počtem odlétajících karet.
 const test = require('node:test');
 const assert = require('node:assert');
-const { DEATH_ANIM, deathAnimTimeline, deathSequenceMs } = require('../core/deathAnim.js');
+const { DEATH_ANIM, deathAnimTimeline, deathSequenceMs, penaltyDiscardMs,
+        deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 
 test('fáze jdou po sobě ve správném pořadí', () => {
     const t = deathAnimTimeline(4);
@@ -34,4 +35,25 @@ test('odhalená role je vidět dost dlouho (2 s) a rub před ní taky', () => {
 test('nesmyslný počet karet sekvenci nerozbije (nikdy kratší než pro jednu)', () => {
     assert.strictEqual(deathSequenceMs(0), deathSequenceMs(1));
     assert.ok(deathSequenceMs(undefined) > 0);
+});
+
+test('šerif roli neodhaluje → sekvence končí odhozením karet', () => {
+    const t = deathAnimTimeline(3, true);
+    assert.strictEqual(t.total, t.fly, 'konec = okamžik, kdy by jinak vyletěla karta role');
+    assert.ok(deathSequenceMs(3, true) < deathSequenceMs(3), 'kratší než s odhalením');
+});
+
+test('rozdělená smrt (víc Vulture Samů): pád + odhalení dá dohromady celou sekvenci', () => {
+    // Mezi oběma kusy se karty rozebírají po jedné, takže je vynecháme; zbytek musí
+    // odpovídat běžné sekvenci bez fáze odlétajících karet.
+    const full = deathAnimTimeline(1);
+    assert.strictEqual(deathFallMs(), full.cards);
+    assert.strictEqual(deathFallMs() + deathRevealMs(), full.total - DEATH_ANIM.cardMs);
+    assert.strictEqual(deathRevealMs(true), DEATH_ANIM.settleMs, 'u šerifa jen úklid místa');
+});
+
+test('šerifova ztráta karet za pomocníka: bez poklesu životů, roste se stagger', () => {
+    assert.strictEqual(penaltyDiscardMs(4) - penaltyDiscardMs(1), 3 * DEATH_ANIM.staggerMs);
+    assert.ok(penaltyDiscardMs(1) < deathSequenceMs(1), 'kratší než celá cinematika vyřazení');
+    assert.strictEqual(penaltyDiscardMs(0), penaltyDiscardMs(1));
 });

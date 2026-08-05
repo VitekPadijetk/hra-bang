@@ -209,4 +209,21 @@ test('Šerif zabije vlastního pomocníka → přijde o všechny karty', () => {
     assert.equal(g.players[0].board.length, 0);
     assert.equal(g.players[0].weapon.id, -1);
     assert.equal(g.winner, null); // bandita ještě žije
+
+    // Snapshot pro odhozovou animaci (klient odhodí karty po jedné jako při smrti,
+    // ale Colt .45 šerifovi zůstává) – viz server/anim.js + net/handlers.js.
+    assert.equal(g._sheriffPenaltyAnim.playerIdx, 0);
+    assert.equal(g._sheriffPenaltyAnim.hand.length, 2);
+    assert.equal(g._sheriffPenaltyAnim.blue.length, 1);
+    assert.equal(g._sheriffPenaltyAnim.weapon, null);   // Colt se neodhazuje
+});
+
+test('Šerif zabije pomocníka s prázdnou rukou i stolem → není co animovat', () => {
+    const g = mkGame([
+        { role: 'Sheriff' },
+        { role: 'Deputy', health: 1 },
+        { role: 'Outlaw' },
+    ]);
+    g.handleDamage(1, 0);
+    assert.equal(g._sheriffPenaltyAnim, undefined);
 });

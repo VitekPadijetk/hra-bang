@@ -68,22 +68,42 @@ const CombatMixin = {
             hand: deadPlayer.hand.map(c => ({ id: c.id })),
         };
 
-        const vulture = this.players.find(p => effectiveCharacter(p) === "Vulture Sam" && p.health > 0);
+        // Vulture Samů může být u stolu víc – prakticky Vulture Sam + Vera Custer, která
+        // jeho schopnost zrovna kopíruje. Pořadí = po směru hodinových ručiček od mrtvého
+        // (první za ním si vybírá první kartu), viz _startVultureSplit v logic/characters.js.
+        const vultures = [];
+        for (let step = 1; step <= this.players.length; step++) {
+            const i = (deadIdx + step) % this.players.length;
+            const p = this.players[i];
+            if (i === deadIdx || !p || p.health <= 0) continue;
+            if (effectiveCharacter(p) === "Vulture Sam") vultures.push(i);
+        }
 
         // Skutečná zbraň (ne výchozí Colt) jde do hry stejně jako modré/ruka – buď ji sebere
         // Vulture Sam, nebo padne do odhozu. Dřív se ztrácela (jen se resetovala na Colt).
         const deadWeapon = (deadPlayer.weapon && deadPlayer.weapon.id !== -1) ? [deadPlayer.weapon] : [];
+        const deadCardCount = deadPlayer.hand.length + deadPlayer.board.length + deadWeapon.length;
 
-        if (vulture) {
-            vulture.hand.push(...deadPlayer.hand, ...deadPlayer.board, ...deadWeapon);
-            this.checkSuzyLafayette(vulture);
+        if (vultures.length > 1 && deadCardCount > 0) {
+            // Dva a víc Samů → karty se DĚLÍ: střídavě si berou po jedné (jako Panika –
+            // z ruky náhodně, ze stolu konkrétní kartu), dokud karty nedojdou. Hra se do
+            // té doby pozastaví; karty zůstávají u mrtvého, aby bylo z čeho vybírat.
+            // Fronta: VULTURE_SPLIT je před odměnou za banditu (ta se přidává níž).
+            this.pendingVultureSplit = { deadIdx, pickers: vultures, next: 0 };
+            this.specialActionQueue.push({ type: 'VULTURE_SPLIT' });
         } else {
-            this.deck.discardPile.push(...deadPlayer.hand, ...deadPlayer.board, ...deadWeapon);
-        }
+            if (vultures.length === 1) {
+                const vulture = this.players[vultures[0]];
+                vulture.hand.push(...deadPlayer.hand, ...deadPlayer.board, ...deadWeapon);
+                this.checkSuzyLafayette(vulture);
+            } else {
+                this.deck.discardPile.push(...deadPlayer.hand, ...deadPlayer.board, ...deadWeapon);
+            }
 
-        deadPlayer.hand = [];
-        deadPlayer.board = [];
-        deadPlayer.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+            deadPlayer.hand = [];
+            deadPlayer.board = [];
+            deadPlayer.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+        }
 
         if (deadPlayer.role === "Outlaw" && killerIdx !== null && killerIdx !== deadIdx) {
             this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: killerIdx, cardsNeeded: 3 });
@@ -91,6 +111,17 @@ const CombatMixin = {
 
         if (deadPlayer.role === "Deputy" && killer && killer.role === "Sheriff") {
             const killerWeapon = (killer.weapon && killer.weapon.id !== -1) ? [killer.weapon] : [];
+            // Snapshot PŘED přesunem: klient odhodí šerifovy karty stejnou animací jako
+            // při smrti (po jedné do odhozu), jen bez poklesu životů a bez odhalení role –
+            // a Colt .45 mu zůstává. Emituje server/anim.js (emitDeathAnim).
+            if (killer.hand.length || killer.board.length || killerWeapon.length) {
+                this._sheriffPenaltyAnim = {
+                    playerIdx: killerIdx,
+                    blue: killer.board.map(c => ({ id: c.id })),
+                    weapon: killerWeapon.length ? { id: killerWeapon[0].id } : null,
+                    hand: killer.hand.map(c => ({ id: c.id })),
+                };
+            }
             this.deck.discardPile.push(...killer.hand, ...killer.board, ...killerWeapon);
             killer.hand = []; killer.board = [];
             killer.weapon = new Card(-1, "Colt .45", CardType.WEAPON, null, null, { range: 1 });

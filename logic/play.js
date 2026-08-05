@@ -341,10 +341,19 @@ const PlayMixin = {
         this.logEvent('special', { who: attacker.name, card: `${srcType} kartu`, target: target.name, area: targetCardArea, taken: cardToMove?.name });
 
         const wasBrawl = sel.isBrawl;
+        const wasVultureSplit = sel.isVultureSplit;
+        // Dělení karet mezi Samy: klik do oblasti, kde už nic neleží, nic nepřesune –
+        // výběr proto nech běžet dál (jinak by se dělení zacyklilo na kartách, které
+        // nikdo nemůže vzít, protože tam nejsou).
+        if (wasVultureSplit && !cardToMove) return;
         this.pendingSelection = null;
         this.checkSuzyLafayette(attacker);
         this.checkSuzyLafayette(target);
-        if (wasBrawl) {
+        if (wasVultureSplit) {
+            // Dělení karet mrtvého mezi víc Vulture Samů: na řadu jde druhý Sam,
+            // dokud karty nedojdou (viz logic/characters.js).
+            this._advanceVultureSplit();
+        } else if (wasBrawl) {
             // Rvačka: pokračuj dalším cílem ve frontě (každý ostatní odhodí 1 kartu).
             this._advanceBrawl();
         } else {

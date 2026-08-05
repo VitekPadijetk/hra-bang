@@ -80,6 +80,10 @@ function waitingStatus(state) {
     if (pa.kind === 'RESPOND' && state.pendingResponse?.sourceCard) {
         text = 'brání se proti ' + _sourceLabel(state.pendingResponse);
     }
+    // Víc Vulture Samů si dělí karty vyřazeného hráče (viz logic/characters.js).
+    if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isVultureSplit) {
+        text = 'Vulture Sam – dělí karty vyřazeného';
+    }
     return { idx: pa.idx, kind: pa.kind, text };
 }
 

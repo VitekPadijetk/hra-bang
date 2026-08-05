@@ -71,6 +71,10 @@ const App = {
     // Které SLOTY ruky vyřazeného hráče už odletěly (playerIdx -> Set slotů). Slot
     // zůstává prázdný (vějíř se nepřeskládá), karta se prostě přestane kreslit.
     deathHandHide: {},
+    // Dělení karet mrtvého mezi VÍC Vulture Samů: index vyřazeného hráče, jehož karty
+    // zatím leží na stole a Samové si je střídavě rozebírají. Po tu dobu se jeho místo
+    // kreslí pořád s kartami (a bez karty role) – ta se odhalí až po rozdělení.
+    vultureSplitIdx: null,
     // ID karet právě ukradených z výzbroje/stolu hráče (Panika/Cat Balou). board.js
     // je na boardu/výzbroji NEvykreslí, dokud plovoucí animace nedoletí – jinak by
     // byla karta po dobu letu vidět dvakrát (reálná i letící).
@@ -100,7 +104,13 @@ const App = {
     // nekreslí, stejně jako u klasického domíchání); storeShuffleBlock = hráči byli
     // rychlejší než míchání a hra na jeho dokončení čeká se zamčeným UI (blockInput,
     // který room_update kvůli tomuhle flagu nesmí předčasně odemknout).
+    // storeDeckCount = kolik karet má PO DOBU rozdávání ukazovat dobírací balíček.
+    // Stav už v okamžiku otevření hokynářství obsahuje zamíchaný (velký) balíček, takže
+    // by hromádka skočila z „4 karet" na sto ještě než se z ní vůbec začne rozdávat.
+    // Držíme proto vlastní počet, který ubývá s každou odlétající kartou (a na nule
+    // hromádka zmizí – přesně s poslední rozdanou kartou). null = kresli podle stavu.
     storePileLiftY: 0,
+    storeDeckCount: null,
     storeDealIds: new Set(),
     storeLocked: false,
     storeShuffleEndAt: 0,

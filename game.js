@@ -800,6 +800,8 @@ function animatePileLift(target, onDone) {
 
 // Rozdá storeCards[from..to) z balíčku do řady (flip rub→líc, stagger). Po doletu
 // poslední zavolá onDone. Sloty jsou gated (App.storeDealIds), board.js je ukáže až po doletu.
+// S každou odlétající kartou ubere jednu vrstvu z kresleného balíčku (App.storeDeckCount),
+// takže hromádka viditelně mizí a s poslední kartou je pryč (viz startStoreCinematic).
 function dealStoreCards(cards, from, to, onDone) {
     const indices = [];
     for (let i = from; i < to; i++) if (cards[i]) indices.push(i);
@@ -811,11 +813,13 @@ function dealStoreCards(cards, from, to, onDone) {
         setTimeout(() => {
             const card = cards[i];
             if (!card) return;
+            if (App.storeDeckCount !== null) App.storeDeckCount = Math.max(0, App.storeDeckCount - 1);
             if (!gameScene) { App.storeDealIds.delete(card.id); return; }
             const slot = getStoreSlotPos(i, count, App.storePileLiftY || 0);
             animateCardFlip(deckX, deckY, slot.x, slot.y, 'card_back', getCardTex(card.id),
                 { flip: true, startScale: 0.26, endScale: 0.3, duration: STORE_DEAL_MS,
                   onComplete: () => { App.storeDealIds.delete(card.id); renderUI(); } });
+            renderUI();   // hromádka o kartu nižší (s poslední rozdanou kartou zmizí úplně)
         }, n * STORE_DEAL_STAGGER);
     });
     const total = (indices.length - 1) * STORE_DEAL_STAGGER + STORE_DEAL_MS + 40;
@@ -851,6 +855,14 @@ function startStoreCinematic() {
     App.storeLocked = (sa.mode === 'blocking');
     const N = cards.length;
     const k = Math.min(sa.dealtBefore ?? N, N);
+    // Kolik karet měl balíček PŘED rozdáním. Stav, který s fází STORE dorazil, už má
+    // balíček případně zamíchaný (velký) – kdybychom kreslili jeho počet, hromádka by
+    // v okamžiku zvednutí skočila ze čtyř karet na sto. Kreslíme proto vlastní počet,
+    // který ubývá s každou rozdanou kartou (dealStoreCards).
+    const origCount = sa.origCount ?? (sa.mode === 'none'
+        ? (state.deck?.cards?.length ?? 0) + N
+        : (sa.mode === 'proactive' ? N : k));
+    App.storeDeckCount = origCount;
     renderUI();
     const shufN = sa.shuffleCount || 20;
     animatePileLift(STORE_LIFT, () => {
@@ -858,14 +870,19 @@ function startStoreCinematic() {
             // Nedostatek karet: rozdej zbylé (zamčené) → zamíchej → dorozdej → odemkni.
             dealStoreCards(cards, 0, k, () => {
                 playStoreShuffle(shufN, () => {
-                    dealStoreCards(cards, k, N, () => { App.storeLocked = false; renderUI(); });
+                    // Po zamíchání je na stole nový (velký) balíček; zbylé karty se z něj
+                    // teprve rozdají, takže do doletu poslední drž počet o ně vyšší.
+                    App.storeDeckCount = (state?.deck?.cards?.length ?? 0) + (N - k);
+                    dealStoreCards(cards, k, N, () => {
+                        App.storeDeckCount = null; App.storeLocked = false; renderUI();
+                    });
                 });
             });
         } else if (sa.mode === 'proactive') {
             // Přesně tolik: rozdej vše, pak míchej paralelně (výběr už běží).
-            dealStoreCards(cards, 0, N, () => { playStoreShuffle(shufN, () => {}); });
+            dealStoreCards(cards, 0, N, () => { playStoreShuffle(shufN, () => { App.storeDeckCount = null; renderUI(); }); });
         } else {
-            dealStoreCards(cards, 0, N, () => {});
+            dealStoreCards(cards, 0, N, () => { App.storeDeckCount = null; renderUI(); });
         }
     });
 }
@@ -876,6 +893,7 @@ function startStoreCinematic() {
 // klasického proaktivního domíchání. Boty drží server (room._reshuffleBlockUntil).
 function endStoreCinematic() {
     App.storeLocked = false;
+    App.storeDeckCount = null;
     App.storeDealIds = new Set();
     const wait = Math.max(0, (App.storeShuffleEndAt || 0) - Date.now());
     if (wait > 0) {

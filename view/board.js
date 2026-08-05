@@ -152,7 +152,10 @@ function renderGameBoard() {
 // odhazuje karty, patří karty pořád jemu a kreslí se – jen postupně mizí, jak
 // odlétají (App.stealHideIds / App.deathHandHide). Teprve fáze 'settled' má stůl
 // i ruku prázdné a drží jen slot pro kartu role, která zrovna letí doprostřed.
+// Totéž platí po celou dobu dělení karet mezi víc Vulture Samů: karty mrtvého leží
+// dál na svém místě (je z čeho vybírat) a role se odhalí až po rozdělení.
 function deathCardsStillShown(playerIdx) {
+    if (App.vultureSplitIdx === playerIdx) return true;
     const s = App.deathSeq[playerIdx];
     return s === 'dying' || s === 'discarding';
 }
@@ -216,9 +219,21 @@ function reflowCard(key, staticSprite, x, y, tex, scale, angle, depth = 0) {
         if (staticSprite?.isTinted) spr.setTint(staticSprite.tintTopLeft);
         else spr.clearTint();
     };
+    // Klouzající (plovoucí) sprite musí v display-listu ležet přesně tam, kde leží jeho
+    // statická karta – jinak se pořadí vrstev rozpadne. Statické karty renderUI vytváří
+    // znovu každý snímek (tedy AŽ ZA přeživšími plovoucími), takže karta, která se zrovna
+    // neposouvá (typicky ta úplně vlevo, která je ukotvená), se ocitla NAD všemi
+    // klouzajícími, ačkoli patří dolů. Přerovnáme proto plovoucí sprite pod jeho statický
+    // protějšek při KAŽDÉM renderu (statická je po dobu klouzání skrytá, takže se tím
+    // jen zdědí její místo ve vrstvách).
+    const stackUnderStatic = (spr) => {
+        if (!spr?.active || !staticSprite?.active) return;
+        if (gameScene.children?.moveBelow) gameScene.children.moveBelow(spr, staticSprite);
+    };
     const slide = App.cardSlides[key];
     if (slide) {
         syncTint(slide.sprite);
+        stackUnderStatic(slide.sprite);
         // Klouzání už běží → drž statickou skrytou, plovoucí doletí sama. Když se cíl
         // za letu změnil (další přeskládání), přesměruj tween (jako retargetDrawAnims).
         if (slide.tween && (slide.tx !== x || slide.ty !== y)) {
@@ -239,6 +254,7 @@ function reflowCard(key, staticSprite, x, y, tex, scale, angle, depth = 0) {
         // Výjimka: co má vlastní depth i staticky (šerifova hvězda), si ho drží i za letu.
         const spr = gameScene.add.image(home.x, home.y, tex).setScale(scale).setAngle(angle).setDepth(depth);
         syncTint(spr);
+        stackUnderStatic(spr);
         const rec = { sprite: spr, tx: x, ty: y };
         rec.tween = gameScene.tweens.add({
             targets: spr, x, y, duration: REFLOW_MS, ease: 'Cubic.easeOut',
@@ -1893,9 +1909,14 @@ function drawDrawPiles(ctx) {
     // Během míchání se balíček nekreslí (místo počtu 🔀) – platí i pro míchání
     // v hokynářství, které běží ve zvednuté poloze (App.storeShuffling).
     const _hideDeck = App.reshuffleAnimating || App.reshuffleIsProactive || App.storeShuffling;
+    // Po dobu rozdávání v hokynářství kreslíme balíček podle vlastního počtu
+    // (App.storeDeckCount), ne podle stavu – ten už obsahuje zamíchaný balíček. Viz
+    // startStoreCinematic/dealStoreCards v game.js.
+    const _deckCount = App.storeDeckCount !== null && App.storeDeckCount !== undefined
+        ? App.storeDeckCount : (state.deck.cards?.length ?? 0);
 
     {
-        const total = _hideDeck ? 0 : (state.deck.cards?.length ?? 0);
+        const total = _hideDeck ? 0 : _deckCount;
         if (total > 0) {
             const topY = stackTop(total);
             // Vykreslíme jen horních max 80 vrstev (výkon), ale VŽDY včetně k===0 –
@@ -1926,7 +1947,7 @@ function drawDrawPiles(ctx) {
 
     // Počet karet v balíčku
     {
-        const cnt = _hideDeck ? '🔀' : String(state.deck.cards?.length ?? 0);
+        const cnt = _hideDeck ? '🔀' : String(_deckCount);
         const cntTxt = gameScene.add.text(deckX, deckY - 105, cnt,
             { fontSize: '22px', color: '#ffcc00', backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 8, y: 4 } })
             .setOrigin(0.5).setDepth(60);
