@@ -117,4 +117,8 @@ const App = {
     cardHome: {},
     cardSlides: {},
     _cardSeen: new Set(),
+    // Kreslil PŘEDCHOZÍ render herní desku? Klouzání navazuje jen na předchozí render
+    // desky; když se mezi tím ukazovalo intro/výběr postav/menu/vítěz, jsou pozice v
+    // cardHome z JINÉ hry a musí se zahodit (viz resetBoardSlides v view/board.js).
+    boardShown: false,
 };

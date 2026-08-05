@@ -260,6 +260,27 @@ function pruneCardSlides() {
     }
 }
 
+// Tvrdý reset klouzání: zapomeň všechny domovské pozice a ukliď rozjeté slidy. Volá se,
+// když deska začíná „od nuly" (start hry po intru, debug start, návrat z výběru postav /
+// vítězné obrazovky) – v cardHome jsou tehdy pozice z PŘEDCHOZÍ hry a každá karta i
+// postava by doklouzala z dávného místa. Vypadalo to jako posun všech postav o kousek,
+// i když se reálně nic neposunulo (statická karta už ležela na správném místě).
+// Stejně tak zahoď nedojeté posuny životů – patřily k minulé hře.
+function resetBoardSlides() {
+    for (const key in App.cardSlides) {
+        const rec = App.cardSlides[key];
+        if (rec?.tween) rec.tween.stop();
+        if (rec?.sprite?.active) rec.sprite.destroy();
+    }
+    App.cardSlides = {};
+    App.cardHome = {};
+    for (const idx in App.healthAnims) {
+        const spr = App.healthAnims[idx]?.sprite;
+        if (spr?.active) spr.destroy();
+    }
+    App.healthAnims = {};
+}
+
 // Plynulý posun „statické" postavy / životů / šerifovy hvězdy, když se skupina soupeře
 // přeskládá (přibude/ubyde karta na boardu → skupina se přecentruje a postava se posune).
 // Reuse reflowCard (klouže z minulé pozice na novou). Když ale zrovna běží health-slide

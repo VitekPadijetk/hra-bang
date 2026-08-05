@@ -877,6 +877,12 @@ function endStoreCinematic() {
 // musí mít stejné tempo, ať odhoz/ruka naskočí přesně po doletu.
 const CHECK_REVEAL_MS = 3850;
 const REVEAL_CX = 960, REVEAL_CY = 470, REVEAL_BIG = 0.7;
+// Odhalená karta letí a drží uprostřed NAD vším (820 > letové karty 800). Jakmile ale
+// dosedne do odhozu, je to už jen „vrchní karta hromádky" a musí být POD kartami, které
+// přiletí po ní: výsledek sejmutí (vězení do odhozu, dynamit) se posílá hned po revealu
+// a s depth 800 se pod ni zasouval – objevil se navrchu až ve chvíli, kdy reveal sprite
+// zanikl (čeká na broadcast). Pod hromádkou (depth 0) přitom zůstat nesmí.
+const REVEAL_PILE_DEPTH = 700;
 
 // Zvýraznění zkoumané hodnoty/barvy při snímání: přes odkrytou kartu se překryjí marky
 // hodnoty+barvy (stejné textury jako zapečené) a pulzují (zvětší se a zpět). Vrací
@@ -940,7 +946,10 @@ function startCheckReveal(check) {
     // holdThenFinish), je ten rozdíl vidět.
     const _checkDiscard = discardTopPos();   // vrch odhozu, ať kontrolní karta dosedne na hromádku
     gameScene.tweens.add({ targets: sprite, x: _checkDiscard.x, y: _checkDiscard.y, scaleX: PILE_SCALE, scaleY: PILE_SCALE,
-        delay: 450 + 3000, duration: 400, ease: 'Cubic.easeIn', onStart: stopPulse,
+        delay: 450 + 3000, duration: 400, ease: 'Cubic.easeIn',
+        // Se začátkem sestupu do odhozu jde karta z „reveal" vrstvy do vrstvy hromádky –
+        // výsledek sejmutí (vězení/dynamit) letí za ní a musí dosednout NAD ni.
+        onStart: () => { stopPulse(); sprite.setDepth(REVEAL_PILE_DEPTH); },
         onComplete: () => holdThenFinish(sprite, () => {
             // Drž, dokud kontrolní karta není ve stavu odhozu A zároveň skončila fáze
             // CHECKING (board.js ji do té doby navrchu schovává). NEvyžaduj, aby byla
@@ -1662,6 +1671,12 @@ function mAdd(obj, depth = 201) {
 function renderUI() {
     if (!gameScene) return;
 
+    // Kreslila deska v předchozím renderu? Reflow slide (klouzání karet z minulé pozice)
+    // smí navazovat jen na PŘEDCHOZÍ render desky – po intru / výběru postav / menu /
+    // vítězné obrazovce jsou uložené pozice z jiné hry a musí se zahodit (viz níž).
+    const _boardWasShown = App.boardShown;
+    App.boardShown = false;
+
     const isSpectator = myIndex === null && !!state;
 
     gameScene.cardsSprites.clear(true, true);
@@ -1783,6 +1798,11 @@ function renderUI() {
 
     if (state.phase === "CHARACTER_SELECT") { renderCharacterSelectScreen(); return; }
 
+    // Deska se kreslí po pauze (start hry, návrat z výběru/vítěze) → zahoď domovské
+    // pozice klouzání z předchozí hry, jinak by všechny karty i postavy doklouzaly
+    // z dávných míst (vypadá to jako posun, po kterém se reálně nic nezmění).
+    if (!_boardWasShown) resetBoardSlides();
+    App.boardShown = true;
     renderGameBoard();
     // Dodge City – Vera Custer volí kopírovanou postavu (overlay přes desku).
     if (state.phase === "VERA_COPY") renderVeraCopyOverlay();
