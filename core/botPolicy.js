@@ -495,7 +495,8 @@ function decideBotAction(state, myIndex, beliefs) {
             const sel = state.pendingSelection;
             const target = state.players[sel.targetIdx];
             const { area, cardIdx } = chooseTargetCardArea(target, sel.sourceCardType);
-            return { event: 'select_target_card', payload: { attackerIdx: myIndex, area, cardIdx } };
+            // targetIdx = pro koho se vybírá (guard tím pozná klik do starého stavu).
+            return { event: 'select_target_card', payload: { attackerIdx: myIndex, targetIdx: sel.targetIdx, area, cardIdx } };
         }
 
         case 'BART_DRAW':       return { event: 'bart_cassidy_draw' };

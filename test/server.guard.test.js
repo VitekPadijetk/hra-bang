@@ -140,6 +140,24 @@ test('klik navíc na balíček po dolízání nespustí falešnou animaci líznu
     assert.equal(s0.emits.filter(e => e.ev === 'card_animation').length, animsAfterDraw);
 });
 
+// Rvačka / dělení karet mezi Vulture Samy: vybírá pořád TENTÝŽ hráč, jen postupně u
+// různých cílů → pendingActor je celou dobu stejný a klik navíc (do ještě zvýrazněné
+// ruky už vyřízeného hráče, než dojede animace) by vybral kartu za dalšího v pořadí.
+// Klient proto posílá targetIdx a guard porovná s aktuálním pendingSelection.
+test('opožděný klik do už posunutého výběru karty se zahodí (Rvačka)', () => {
+    const { gs, sock } = mkEnv({ phase: 'SELECTING_TARGET_CARD' });
+    gs.players[2].hand = [mkCard(CardType.BANG), mkCard(CardType.BANG)];
+    gs.pendingSelection = { attackerIdx: 0, targetIdx: 2, sourceCardType: CardType.CAT_BALOU, isBrawl: true };
+    const s0 = sock(0);
+    s0.fire('select_target_card', { attackerIdx: 0, targetIdx: 1, area: 'hand', cardIdx: null });
+    assert.equal(gs.players[2].hand.length, 2);   // za #1 (starý cíl) se nic nevybralo
+    assert.equal(s0.rejected.length, 1);
+    // Klik na aktuální cíl projde.
+    s0.fire('select_target_card', { attackerIdx: 0, targetIdx: 2, area: 'hand', cardIdx: null });
+    assert.equal(gs.players[2].hand.length, 1);
+    assert.equal(s0.rejected.length, 1);
+});
+
 test('po konci hry se herní akce už nepřijímají', () => {
     const { gs, sock } = mkEnv();
     gs.winner = 'Zákon';

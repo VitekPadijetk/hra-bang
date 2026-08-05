@@ -86,7 +86,10 @@ function renderGameBoard() {
         // pendingSelection už na serveru existuje – jen pošli, kterou kartu vzít.
         if (state.phase === 'SELECTING_TARGET_CARD' && state.pendingSelection?.attackerIdx === myIndex &&
             state.pendingSelection?.targetIdx === targetIdx) {
-            socket.emit('select_target_card', { attackerIdx: myIndex, area, cardIdx: boardIdx });
+            // targetIdx = pro KOHO kartu vybírám. Server podle něj pozná opožděný klik do
+            // už vyřízeného výběru (Rvačka/Vulture split posune výběr na dalšího hráče,
+            // aktér zůstává stejný) a zahodí ho – viz server/guard.js.
+            socket.emit('select_target_card', { attackerIdx: myIndex, targetIdx, area, cardIdx: boardIdx });
             App.blockInput = true;
             renderUI();
             return true;
@@ -105,8 +108,12 @@ function renderGameBoard() {
             cardIdx: capturedIdx
         });
         setTimeout(() => {
-            socket.emit('select_target_card', { attackerIdx: myIndex, area: area, cardIdx: boardIdx });
+            socket.emit('select_target_card', { attackerIdx: myIndex, targetIdx, area: area, cardIdx: boardIdx });
         }, 50);
+        // Klik je odeslán → zhasni zvýraznění a zamkni vstup do dojezdu animace (odemkne
+        // ho až nový stav). Jinak jde v mezičase kliknout na další kartu a rozjet druhou
+        // paniku/CB, kterou už ruka nemá čím zaplatit.
+        App.blockInput = true;
 
         // Kartu (Panika/Cat Balou) NEodebíráme z ruky hned – nechť v ní zůstane, dokud
         // ji nezvedne letová animace (viz _liftCardFromHand v card_animation). Jinak
@@ -349,8 +356,14 @@ function drawOpponents(ctx) {
         const isServerCardSelect = state.phase === 'SELECTING_TARGET_CARD' &&
             state.pendingSelection?.attackerIdx === myIndex &&
             state.pendingSelection?.targetIdx === actualIdx;
-        const canTargetThisPlayer = (isPanicCBActive && panicInRange && player.health > 0) ||
-            (isDeSteal && player.health > 0) || isServerCardSelect;
+        // !App.blockInput: klik na kartu odemyká zvýraznění AŽ nový stav (dorazí po dojezdu
+        // animace, viz core/animQueue.js). Do té doby drží stav pořád starý pendingSelection,
+        // takže bez tohohle šlo klikat dál – u Rvačky/dělení mezi Vulture Samy se druhý klik
+        // (do stále zvýrazněné ruky už vyřízeného hráče) vyhodnotil jako výběr karty DALŠÍHO
+        // hráče v pořadí. Stejně to platí pro Paniku/Cat Balou/Ragtime/zelené krádeže.
+        const canTargetThisPlayer = !App.blockInput && (
+            (isPanicCBActive && panicInRange && player.health > 0) ||
+            (isDeSteal && player.health > 0) || isServerCardSelect);
         // Pat Brennan (Dodge City): ve své fázi lízání smí místo balíčku vzít 1 kartu ze
         // stolu libovolného hráče do ruky (klik na kartu na stole soupeře).
         // !App.blockInput: jakmile Pat kliknutím vezme kartu (nastaví blockInput), zvýraznění
@@ -1342,6 +1355,11 @@ function drawMyArea(ctx) {
                 });
 
                 cSprite.on('pointerdown', () => {
+                    // Zamčený vstup (běží animace po předchozím kliku / míchání) = ignoruj.
+                    // Hlavní cesta to řeší přes decideCardClick(blockInput) níž, ale větve
+                    // „odhoď další kartu"/José/Doc jdou mimo ni – bez tohohle šel v mezidobí
+                    // odeslat druhý klik (a zvýraznění zůstalo svítit až do příchodu stavu).
+                    if (App.blockInput) return;
                     // „Odhoď další kartu": klik na hlavní kartu = zrušit; na jinou = zaplatit.
                     if (isDiscardAnother) {
                         if (isDAmain) {

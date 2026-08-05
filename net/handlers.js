@@ -800,6 +800,28 @@ function _liftCardFromHand(playerIdx, cardId) {
     if (k !== -1) { h.splice(k, 1); if (gameScene) renderUI(); }
 }
 
+// Karta braná z RUKY cíle (Panika/Cat Balou/Ragtime/Krytý vůz/dělení mezi Vulture Samy):
+// server posílá `stolenIndex` = slot ve vějíři, ze kterého karta odešla (bere se náhodná).
+// Vrací { pos, slot } – odkud karta vzlétne a který slot z ruky odebrat, aby se vějíř
+// přeskládal hned a správně (u MOJÍ ruky je vidět, která karta zmizela). Bez indexu
+// (starší server) padáme na poslední kartu a obecnou kotvu ruky jako dřív.
+function _stolenHandSlot(playerIdx, stolenIndex) {
+    const hand = state?.players?.[playerIdx]?.hand;
+    const len = hand?.length ?? 0;
+    if (!len) return { pos: getPlayerHandPos(playerIdx), slot: -1 };
+    const known = stolenIndex != null && stolenIndex >= 0 && stolenIndex < len;
+    const slot = known ? stolenIndex : len - 1;
+    return { pos: getHandSlotPos(playerIdx, slot, len), slot };
+}
+
+// Odeber ukradenou/odhozenou kartu z ruky cíle se startem letu (ne až s room_update).
+function _removeStolenFromHand(playerIdx, slot) {
+    const hand = state?.players?.[playerIdx]?.hand;
+    if (!hand?.length) return;
+    hand.splice(slot >= 0 && slot < hand.length ? slot : hand.length - 1, 1);
+    renderUI();
+}
+
 function getMyPlayedCardPos(playerIdx, cardId) {
     if (playerIdx === myIndex && myIndex !== null && cardId != null) {
         // Pozici slotu zachycenou při kliknutí (před optimistickým odebráním z ruky)
@@ -962,9 +984,11 @@ function _playCardAnim(data) {
         case 'panic_sequence': {
             const atk = getMyPlayedCardPos(data.attackerIdx, data.cardId);
             const isBoard = data.area !== 'hand';
+            // Z ruky: přesný slot vějíře (stolenIndex), ne obecná kotva ruky.
+            const handSrc = isBoard ? null : _stolenHandSlot(data.targetIdx, data.stolenIndex);
             const from = isBoard
                 ? getBoardPos(data.targetIdx, data.boardIdx ?? 1)
-                : getPlayerHandPos(data.targetIdx);
+                : handSrc.pos;
             const panicTex = getCardTex(data.cardId);
             const atkAngle = sideAngle(data.attackerIdx);
             const tgtAngle = sideAngle(data.targetIdx);
@@ -974,16 +998,18 @@ function _playCardAnim(data) {
             // spočítal z její pozice) – ať z ruky nezmizí dřív, než začne letět.
             _liftCardFromHand(data.attackerIdx, data.cardId);
             const afterReach = () => {
+                // Panika letí dál do odhozu a srovná se do 0°. exactAngle: leží LÍCEM nahoru,
+                // takže 0° ≠ 180° – u cíle naproti by ji nearestCardAngle nechal ležet vzhůru
+                // nohama (a v odhozu by pak po room_update „přeskočila" do správné orientace).
                 animateCard(from.x, from.y, discard.x, discard.y, panicTex, 250, null,
-                    { startAngle: tgtAngle, endAngle: 0, scale: 0.3, holdUntil: () => inDiscard(data.cardId) });
+                    { startAngle: tgtAngle, endAngle: 0, exactAngle: true, scale: 0.3, holdUntil: () => inDiscard(data.cardId) });
                 // Ukradenou kartu z výzbroje/stolu skryj AŽ TEĎ, když se odlepuje (jinak
                 // by z boardu zmizela hned a teprve po doletu paniky vylétla z prázdna).
                 if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
-                // Panika z RUKY: kartu (rub) uber z ruky cíle TEĎ, když se odlepuje k útočníkovi
-                // – ať ji cíl nedrží déle, než letí (dřív mizela až s room_update = viditelně pozdě).
-                else if (state?.players?.[data.targetIdx]?.hand?.length) {
-                    state.players[data.targetIdx].hand.splice(-1, 1); renderUI();
-                }
+                // Panika z RUKY: kartu (rub) uber cíli TEĎ, když se odlepuje k útočníkovi
+                // – ať ji nedrží déle, než letí (dřív mizela až s room_update = viditelně
+                // pozdě) a ať zmizí SPRÁVNÁ karta (slot ze stolenIndex, ne poslední).
+                else _removeStolenFromHand(data.targetIdx, handSrc.slot);
                 // Ukradená karta zpět k útočníkovi: majitel ji vidí (z ruky skrytě →
                 // flip, z výzbroje/stolu lícem → jen růst) + staging do slotu. Cíl letu =
                 // KONCOVÝ slot ruky útočníka (ne střed vějíře). Dotočí se z orientace cíle
@@ -992,16 +1018,29 @@ function _playCardAnim(data) {
                         { duration: 320, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle })) {
                     const dLen = state?.players?.[data.attackerIdx]?.hand?.length ?? 0;
                     const toAtk = getHandSlotPos(data.attackerIdx, dLen, dLen + 1);
-                    const stolenTex = data.stolenCardId ? getCardTex(data.stolenCardId) : 'card_back';
-                    animateCard(from.x, from.y, toAtk.x, toAtk.y, stolenTex, 320, revealStolen,
-                        { startAngle: tgtAngle, endAngle: atkAngle, scale: sideScale(data.attackerIdx) });
+                    if (isBoard && data.stolenCardId) {
+                        // Viditelná karta ze stolu mizí do SKRYTÉ ruky jiného hráče → pro
+                        // ostatní se za letu překlopí lícem→rub (jako u Ragtime), zmenší se
+                        // na velikost jeho ruky a dotočí do jeho orientace.
+                        animateCardFlip(from.x, from.y, toAtk.x, toAtk.y, 'card_back', getCardTex(data.stolenCardId),
+                            { reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
+                              startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx),
+                              duration: 320, onComplete: revealStolen });
+                    } else {
+                        // Skrytá karta z ruky do ruky: jen rub. exactAngle – mezi hráči
+                        // naproti (180°) by se rotace jinak zrušila a karta letí „placatě".
+                        animateCard(from.x, from.y, toAtk.x, toAtk.y, 'card_back', 320, revealStolen,
+                            { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true, scale: sideScale(data.attackerIdx) });
+                    }
                 }
             };
             // 1. leg: svoji paniku znám (líc rovnou); cizí (botí) se za letu odhalí (rub→líc).
-            // Otočí se z orientace útočníka do orientace cíle.
+            // Otočí se z orientace útočníka do orientace cíle (exactAngle – líc nahoru, viz
+            // výše; flip varianta níž se točí přesně vždy, tady je to potřeba doplnit ručně,
+            // ať na kartu v obou případech navazuje 2. leg ze stejného úhlu).
             if (isMyPanic) {
                 animateCard(atk.x, atk.y, from.x, from.y, panicTex, 320, afterReach,
-                    { startAngle: atkAngle, endAngle: tgtAngle, scale: 0.3 });
+                    { startAngle: atkAngle, endAngle: tgtAngle, exactAngle: true, scale: 0.3 });
             } else {
                 animateCardFlip(atk.x, atk.y, from.x, from.y, 'card_back', panicTex,
                     { flip: true, startAngle: atkAngle, endAngle: tgtAngle, startScale: 0.3, endScale: 0.3, duration: 320, onComplete: afterReach });
@@ -1011,9 +1050,11 @@ function _playCardAnim(data) {
         case 'catbalou_sequence': {
             const atk = getMyPlayedCardPos(data.attackerIdx, data.cardId);
             const isBoard = data.area !== 'hand';
+            // Z ruky: přesný slot vějíře (stolenIndex), ne obecná kotva ruky.
+            const handSrc = isBoard ? null : _stolenHandSlot(data.targetIdx, data.stolenIndex);
             const from = isBoard
                 ? getBoardPos(data.targetIdx, data.boardIdx ?? 1)
-                : getPlayerHandPos(data.targetIdx);
+                : handSrc.pos;
             const cbTex = getCardTex(data.cardId);
             const stolenTex = data.stolenCardId ? getCardTex(data.stolenCardId) : 'card_back';
             const atkAngle = sideAngle(data.attackerIdx);
@@ -1024,15 +1065,15 @@ function _playCardAnim(data) {
             // už spočítal z její pozice) – ať z ruky nezmizí dřív, než začne letět.
             _liftCardFromHand(data.attackerIdx, data.cardId);
             const afterReach = () => {
+                // Cat Balou letí dál do odhozu a srovná se do 0° (exactAngle – líc nahoru,
+                // u cíle naproti by jinak dosedla vzhůru nohama; viz panic_sequence).
                 animateCard(from.x, from.y, discard.x, discard.y, cbTex, 250, null,
-                    { startAngle: tgtAngle, endAngle: 0, scale: 0.3, holdUntil: () => inDiscard(data.cardId) });
+                    { startAngle: tgtAngle, endAngle: 0, exactAngle: true, scale: 0.3, holdUntil: () => inDiscard(data.cardId) });
                 // Zničenou kartu z výzbroje/stolu skryj AŽ TEĎ, když se odlepuje.
                 if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
-                // Cat Balou z RUKY: kartu (rub) uber z ruky cíle TEĎ, když letí do odhozu –
-                // ať ji cíl nedrží déle, než letí (dřív mizela až s room_update = pozdě).
-                else if (state?.players?.[data.targetIdx]?.hand?.length) {
-                    state.players[data.targetIdx].hand.splice(-1, 1); renderUI();
-                }
+                // Cat Balou z RUKY: kartu uber cíli TEĎ, když letí do odhozu – ať ji nedrží
+                // déle, než letí, a ať zmizí SPRÁVNÁ karta (slot ze stolenIndex).
+                else _removeStolenFromHand(data.targetIdx, handSrc.slot);
                 // Odhozená (zničená) karta letí z cíle do odhozu a srovná se do 0°. Z RUKY
                 // byla skrytá (rub) → za letu se přetočí na líc (reveal); z výzbroje/stolu
                 // už byla lícem nahoru → jen srovnání bez překlopení.
@@ -1045,7 +1086,7 @@ function _playCardAnim(data) {
             // z orientace útočníka do orientace cíle.
             if (isMyCB) {
                 animateCard(atk.x, atk.y, from.x, from.y, cbTex, 320, afterReach,
-                    { startAngle: atkAngle, endAngle: tgtAngle, scale: 0.3 });
+                    { startAngle: atkAngle, endAngle: tgtAngle, exactAngle: true, scale: 0.3 });
             } else {
                 animateCardFlip(atk.x, atk.y, from.x, from.y, 'card_back', cbTex,
                     { flip: true, startAngle: atkAngle, endAngle: tgtAngle, startScale: 0.3, endScale: 0.3, duration: 320, onComplete: afterReach });
@@ -1123,17 +1164,17 @@ function _playCardAnim(data) {
             // (Samotná Ragtime i „další" karta letí do odhozu přes hand_to_discard.)
             // Odpovídá druhé části paniky (afterReach) – bez první nohy (nic k cíli neletí).
             const isBoard = data.area !== 'hand';
+            // Z ruky: přesný slot vějíře (stolenIndex), ne obecná kotva ruky.
+            const handSrc = isBoard ? null : _stolenHandSlot(data.targetIdx, data.stolenIndex);
             const from = isBoard
                 ? getBoardPos(data.targetIdx, data.boardIdx ?? 1)
-                : getPlayerHandPos(data.targetIdx);
+                : handSrc.pos;
             const tgtAngle = sideAngle(data.targetIdx);
             const atkAngle = sideAngle(data.attackerIdx);
             const revealStolen = () => { if (data.stolenCardId) { App.stealHideIds.delete(data.stolenCardId); renderUI(); } };
-            // Kartu z výzbroje/stolu skryj (letí), z ruky uber cíli poslední rub.
+            // Kartu z výzbroje/stolu skryj (letí), z ruky uber cíli tu SPRÁVNOU (stolenIndex).
             if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
-            else if (state?.players?.[data.targetIdx]?.hand?.length) {
-                state.players[data.targetIdx].hand.splice(-1, 1); renderUI();
-            }
+            else _removeStolenFromHand(data.targetIdx, handSrc.slot);
             if (!animateDrawToMyHand(data.attackerIdx, data.stolenCardId, from.x, from.y,
                     { duration: 360, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle })) {
                 const dLen = state?.players?.[data.attackerIdx]?.hand?.length ?? 0;
@@ -1147,9 +1188,11 @@ function _playCardAnim(data) {
                           startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx),
                           duration: 360, onComplete: revealStolen });
                 } else {
+                    // Skrytá karta z ruky do ruky: jen rub. exactAngle – mezi hráči naproti
+                    // (180°) by se rotace jinak zrušila a karta by letěla „placatě".
                     const stolenTex = data.stolenCardId ? getCardTex(data.stolenCardId) : 'card_back';
                     animateCard(from.x, from.y, toAtk.x, toAtk.y, stolenTex, 360, revealStolen,
-                        { startAngle: tgtAngle, endAngle: atkAngle, scale: sideScale(data.attackerIdx) });
+                        { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true, scale: sideScale(data.attackerIdx) });
                 }
             }
             break;

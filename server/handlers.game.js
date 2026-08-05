@@ -225,6 +225,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 const isPanic = pending.type === 'panic_sequence';
                 const attackerIdx = pending.attackerIdx;
                 const held = pending.held || [];
+                // Z ruky se bere NÁHODNÁ karta – zapamatuj si pořadí ruky cíle PŘED resolvem,
+                // ať pak dopočítáš, ze kterého slotu vějíře karta odešla (stolenIndex). Klient
+                // podle něj odebere správnou kartu (u vlastní ruky je to vidět!) a rozehraje
+                // let z jejího místa – stejně jako Jesse Jones.
+                const victimHandBefore = (d.area === 'hand' && target) ? target.hand.map(c => c.id) : null;
                 delete room._pendingPanicCard;
                 // Paniku/CB jsme na play_special dočasně vrátili do ruky útočníka (ať v ní
                 // zůstane vidět, než ji zvedne animace). Teď, když animaci pouštíme, ji z ruky
@@ -242,16 +247,24 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 if (!isPanic && d.area === 'hand') {
                     stolenCardId = gs.deck.discardPile[gs.deck.discardPile.length - 1]?.id ?? null;
                 }
+                // Slot ve vějíři cíle (jen z ruky). Posílá se VŠEM – identitu karty to
+                // neprozradí (ostatní vidí pořád jen rub), ale ruka se přeskládá správně.
+                const handSlotOf = (id) => {
+                    const i = victimHandBefore ? victimHandBefore.indexOf(id) : -1;
+                    return i === -1 ? null : i;
+                };
                 if (isPanic && d.area === 'hand') {
                     // Panika z ruky: útočník si vzal kartu do ruky a zná ji (poslední
                     // v ruce), ostatní vidí jen rub.
                     const atkHand = gs.players[attackerIdx].hand;
                     const ownerStolenId = atkHand[atkHand.length - 1]?.id;
+                    const stolenIndex = handSlotOf(ownerStolenId);
                     emitAnimPrivate(room, attackerIdx,
-                        { ...pending, area: d.area, boardIdx, stolenCardId: ownerStolenId },
-                        { ...pending, area: d.area, boardIdx, stolenCardId: null });
+                        { ...pending, area: d.area, boardIdx, stolenIndex, stolenCardId: ownerStolenId },
+                        { ...pending, area: d.area, boardIdx, stolenIndex, stolenCardId: null });
                 } else {
-                    emitAnim(room, { ...pending, area: d.area, boardIdx, stolenCardId });
+                    emitAnim(room, { ...pending, area: d.area, boardIdx, stolenCardId,
+                                     stolenIndex: d.area === 'hand' ? handSlotOf(stolenCardId) : null });
                 }
                 // Cat Balou: ukradená karta právě skončila navrchu odhozu – taky ji
                 // podržíme, ať se u diváků neobjeví dřív, než ji tam doveze animace.
@@ -289,6 +302,12 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     vsCardId = victim.board?.[d.cardIdx]?.id ?? null;
                 }
             }
+            // Pořadí ruky oběti PŘED resolvem → slot náhodně vzaté karty (viz stolenIndex výše).
+            const victimHandIds = (d.area === 'hand' && victim) ? victim.hand.map(c => c.id) : null;
+            const handSlotOf = (id) => {
+                const i = victimHandIds ? victimHandIds.indexOf(id) : -1;
+                return i === -1 ? null : i;
+            };
             let brawlBoardId = null, brawlVisBoardIdx = null;
             if (isBrawl && victim) {
                 if (d.area === 'weapon') { brawlBoardId = victim.weapon?.id ?? null; brawlVisBoardIdx = 0; }
@@ -304,11 +323,12 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                                area: d.area, boardIdx: vsVisBoardIdx };
                 if (d.area === 'hand') {
                     // Z ruky mrtvého jde náhodná karta – Sam ji zná (poslední v jeho ruce),
-                    // ostatní vidí jen rub.
+                    // ostatní vidí jen rub. stolenIndex = slot, ze kterého karta odešla.
                     const atkHand = gs.players[atkIdx].hand;
                     const ownerId = atkHand[atkHand.length - 1]?.id ?? null;
-                    emitAnimPrivate(room, atkIdx, { ...base, stolenCardId: ownerId },
-                                                  { ...base, stolenCardId: null });
+                    const stolenIndex = handSlotOf(ownerId);
+                    emitAnimPrivate(room, atkIdx, { ...base, stolenIndex, stolenCardId: ownerId },
+                                                  { ...base, stolenIndex, stolenCardId: null });
                 } else {
                     emitAnim(room, { ...base, stolenCardId: vsCardId });
                 }
@@ -319,6 +339,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             }
             if (isBrawl && victimIdx != null) {
                 if (d.area === 'hand') {
+                    // Odhozená karta je navrchu odhozu (veřejná) → klient si její slot v ruce
+                    // najde podle ID sám (hand_to_discard, getMyPlayedCardPos).
                     const top = gs.deck.discardPile[gs.deck.discardPile.length - 1];
                     if (top) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: victimIdx, cardId: top.id });
                 } else if (brawlBoardId != null) {
@@ -424,6 +446,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // nevezme/neodhodí → nesmí se pak přehrát animace brané/odhozené karty).
             const stealHandBefore = gs.players[playerIdx].hand.length;
             const discardBefore = gs.deck.discardPile.length;
+            // Krádež z ruky (Krytý vůz): pořadí ruky oběti PŘED aktivací → slot vzaté karty.
+            const victimHandIds = (isSteal && target?.area === 'hand')
+                ? (gs.players[target.targetIdx]?.hand || []).map(c => c.id) : null;
             gs.activateGreenCard(playerIdx, d.cardId, target);
             // Cílená zelená karta (bang-efekt / krádež / odhoz) → ledger chování (dedukce rolí).
             // Střelba/odhoz na sebe se do ledgeru nepočítá (není to nepřátelský akt).
@@ -435,7 +460,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 const atkHand = gs.players[playerIdx].hand;
                 if (atkHand.length <= stealHandBefore) { broadcastRoomDelayed(room, 500); return; }  // nic neukradeno (Apache) → bez animace
                 const ownerStolenId = atkHand[atkHand.length - 1]?.id;
-                const anim = { type: 'ragtime_steal', attackerIdx: playerIdx, targetIdx: target.targetIdx, area: target.area, boardIdx: victimVisIdx };
+                const vsi = victimHandIds ? victimHandIds.indexOf(ownerStolenId) : -1;
+                const anim = { type: 'ragtime_steal', attackerIdx: playerIdx, targetIdx: target.targetIdx, area: target.area,
+                               boardIdx: victimVisIdx, stolenIndex: vsi === -1 ? null : vsi };
                 emitAnimPrivate(room, playerIdx,
                     { ...anim, stolenCardId: target.area === 'hand' ? ownerStolenId : victimPublicId },
                     { ...anim, stolenCardId: target.area === 'hand' ? null : victimPublicId });
@@ -503,11 +530,15 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     visBoardIdx = 1 + (boardIdx ?? 0);
                     publicStolenId = victim?.board?.[boardIdx]?.id ?? null;
                 }
+                // Pořadí ruky oběti PŘED resolvem → slot náhodně vzaté karty (stolenIndex).
+                const victimHandIds = (area === 'hand' && victim) ? victim.hand.map(c => c.id) : null;
                 gs.discardAnotherCard(attackerIdx, d.extraCardIdx);
                 // Ukradená karta je teď poslední v ruce útočníka (z ruky ji zná jen on).
                 const atkHand = gs.players[attackerIdx].hand;
                 const ownerStolenId = atkHand[atkHand.length - 1]?.id;
-                const anim = { type: 'ragtime_steal', attackerIdx, targetIdx, area, boardIdx: visBoardIdx };
+                const vsi = victimHandIds ? victimHandIds.indexOf(ownerStolenId) : -1;
+                const anim = { type: 'ragtime_steal', attackerIdx, targetIdx, area, boardIdx: visBoardIdx,
+                               stolenIndex: vsi === -1 ? null : vsi };
                 emitAnimPrivate(room, attackerIdx,
                     { ...anim, stolenCardId: area === 'hand' ? ownerStolenId : publicStolenId },
                     { ...anim, stolenCardId: area === 'hand' ? null : publicStolenId });

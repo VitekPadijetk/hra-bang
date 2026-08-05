@@ -54,6 +54,14 @@ module.exports = function installActionGuard(ctx) {
         }
         if (!TURN_ACTIONS.has(event)) return null;
         if (gs.winner) return 'hra už skončila';
+        // Opožděný klik do UŽ VYŘÍZENÉHO výběru karty. Aktér zůstává stejný (Rvačka i
+        // dělení karet mezi Vulture Samy vybírá pořád tentýž hráč, jen u dalšího cíle),
+        // takže pendingActor to nechytí – klient proto posílá, PRO KOHO kartu vybírá.
+        // Když se stav mezitím posunul na další cíl, je to klik do starého snímku.
+        if (event === 'select_target_card' && payload && payload.targetIdx != null &&
+            gs.pendingSelection && gs.pendingSelection.targetIdx !== payload.targetIdx) {
+            return `výběr už běží u #${gs.pendingSelection.targetIdx}, klik mířil na #${payload.targetIdx}`;
+        }
         const pa = pendingActor(gs);
         // pendingActor === null = přechodný/neznámý stav (např. SID_SAVE): nic
         // nepřidáváme, ať guard nikdy nezablokuje víc než dosavadní chování.

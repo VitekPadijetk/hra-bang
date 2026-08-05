@@ -113,6 +113,59 @@ test('animace karty ze stolu posílá slot v konvenci „0 = zbraň" i bez zbran
     assert.equal(a.boardIdx, 1);   // board[0] = slot 1 (slot 0 patří zbrani/Coltu)
 });
 
+// Krádež/odhoz z RUKY bere NÁHODNOU kartu – animace proto musí nést i slot, ze kterého
+// karta odešla (stolenIndex). Klient podle něj kartu odebere z ruky a rozehraje let z
+// jejího místa; dřív mizela vždy poslední (u vlastní ruky viditelně špatná karta).
+test('panika z ruky posílá stolenIndex = slot vzaté karty', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    const anims = [];
+    s.emit = (ev, data) => { if (ev === 'card_animation') anims.push(data); };
+    s.fire('debug_start', { playerCount: 3, roles: [] });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+
+    const hand = [{ id: 801 }, { id: 802 }, { id: 803 }, { id: 804 }];
+    gs.players[1].hand = hand.map(c => ({ ...c, name: 'X', type: 'Bang!' }));
+    gs.players[0].hand = [];
+    gs.phase = 'SELECTING_TARGET_CARD';
+    gs.pendingSelection = { attackerIdx: 0, targetIdx: 1, sourceCardType: 'Panika!' };
+    room._pendingPanicCard = { type: 'panic_sequence', attackerIdx: 0, targetIdx: 1, cardId: 990 };
+
+    s.fire('select_target_card', { attackerIdx: 0, area: 'hand', cardIdx: null });
+    const a = anims.find(x => x.type === 'panic_sequence');
+    assert.ok(a, 'animace panic_sequence se musí odeslat');
+    // Ukradená karta je teď poslední v ruce útočníka – stolenIndex ukazuje na její
+    // původní slot v ruce oběti (ne slepě na poslední).
+    const stolenId = gs.players[0].hand[gs.players[0].hand.length - 1].id;
+    assert.equal(a.stolenIndex, hand.findIndex(c => c.id === stolenId));
+    assert.ok(a.stolenIndex >= 0 && a.stolenIndex < 4);
+});
+
+test('dělení karet mezi Vulture Samy: ragtime_steal z ruky nese stolenIndex', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    const anims = [];
+    s.emit = (ev, data) => { if (ev === 'card_animation') anims.push(data); };
+    s.fire('debug_start', { playerCount: 3, roles: [] });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+
+    const dead = gs.players[2];
+    dead.health = 0;
+    dead.hand = [{ id: 811, name: 'A', type: 'Bang!' }, { id: 812, name: 'B', type: 'Bang!' }, { id: 813, name: 'C', type: 'Bang!' }];
+    gs.players[0].hand = [];
+    gs.phase = 'SELECTING_TARGET_CARD';
+    gs.pendingSelection = { attackerIdx: 0, targetIdx: 2, sourceCardType: 'Panika!', ignoreDistance: true, isVultureSplit: true };
+    gs.pendingVultureSplit = { deadIdx: 2, pickers: [0, 1], next: 0 };
+
+    s.fire('select_target_card', { attackerIdx: 0, area: 'hand', cardIdx: null });
+    const a = anims.find(x => x.type === 'ragtime_steal');
+    assert.ok(a, 'animace ragtime_steal se musí odeslat');
+    const stolenId = gs.players[0].hand[gs.players[0].hand.length - 1].id;
+    assert.equal(a.stolenIndex, [811, 812, 813].indexOf(stolenId));
+});
+
 test('end_turn / chat handlery běží bez chyby (game + lobby modul)', () => {
     const { ctx, mkSocket } = mkEnv();
     const s = mkSocket('s1');
