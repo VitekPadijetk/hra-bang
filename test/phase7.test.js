@@ -3,7 +3,7 @@
 // Vera Custer (kopíruje cizí schopnost).
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { mkGame, mkCard, give, board, CardType, Suits } = require('./_helpers.js');
+const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 
 before(() => { console.log = () => {}; });
 
@@ -214,16 +214,52 @@ test('Vera Custer: kopie drží i mimo její tah, nová volba až příští tah
     assert.ok(g.specialActionQueue.some(a => a.type === 'BART_DRAW' && a.playerIdx === 0));
 });
 
-test('Vera Custer: volba postavy je PŘED checkem na Dynamit (VERA_COPY, ne CHECK_DRAW)', () => {
+test('Vera Custer: volba postavy je AŽ PO checku na Dynamit (CHECK_DRAW, pak VERA_COPY)', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Vera Custer' }, { role: 'Outlaw', character: 'Lucky Duke' }], { current: 0 });
     g.turnId = 3;
     board(g, 0, CardType.DYNAMITE);
     g.handleStartOfTurnChecks();
-    assert.equal(g.phase, 'VERA_COPY');            // nejdřív volba, ne rovnou check
+    assert.equal(g.phase, 'CHECK_DRAW');           // nejdřív check, volba až před lízáním
+    topDeck(g, Suits.CLUBS, 'Q');                  // ne ♠2-9 → nevybuchne
+    for (let i = 0; i < 4; i++) g.deck.cards.unshift(mkCard(CardType.BANG));
+    g.triggerCheckDraw();
+    g.resolveCheck();                              // dynamit odejde na dalšího hráče
+    assert.equal(g.phase, 'VERA_COPY');            // teprve teď volba (těsně před lízáním)
     g.veraCopyCharacter(0, 'Lucky Duke');
-    // po volbě se rozjede check na Dynamit – Vera teď „je" Lucky Duke (2 karty na check)
-    assert.equal(g.phase, 'CHECK_DRAW');
+    assert.equal(g.phase, 'DRAW');
     assert.equal(g.players[0]._copiedCharacter, 'Lucky Duke');
+});
+
+test('Vera Custer: check na Dynamit běží s kopií z MINULÉHO tahu (Lucky Duke → 2 karty)', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Vera Custer' }, { role: 'Outlaw', character: 'Lucky Duke' }], { current: 0 });
+    g.turnId = 4;
+    g.players[0]._copiedCharacter = 'Lucky Duke';  // zkopírováno minulý tah
+    g.players[0]._veraCopiedTurn = 2;
+    board(g, 0, CardType.DYNAMITE);
+    g.handleStartOfTurnChecks();
+    assert.equal(g.phase, 'CHECK_DRAW');
+    for (let i = 0; i < 4; i++) g.deck.cards.push(mkCard(CardType.BANG));
+    g.triggerCheckDraw();
+    assert.equal(g.phase, 'LUCKY_DUKE');           // kopie ještě platí → 2 karty na výběr
+});
+
+test('Vera Custer: ve vězení (tah propadl) kopie vyprší – bez schopnosti do dalšího tahu', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Vera Custer' }, { role: 'Outlaw', character: 'Bart Cassidy' }], { current: 0 });
+    g.turnId = 4;
+    g.players[0]._copiedCharacter = 'Bart Cassidy';
+    g.players[0]._veraCopiedTurn = 2;
+    board(g, 0, CardType.JAIL);
+    g.handleStartOfTurnChecks();
+    assert.equal(g.phase, 'CHECK_DRAW');
+    topDeck(g, Suits.SPADES, '8');                 // ne srdce → tah propadá
+    for (let i = 0; i < 4; i++) g.deck.cards.unshift(mkCard(CardType.BANG));
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.currentPlayerIndex, 1);         // tah přeskočen
+    assert.equal(g.players[0]._copiedCharacter, null);
+    // zásah mimo její tah už NEspustí Bartovo líznutí – kopie vypršela
+    g.handleDamage(0, 1);
+    assert.equal(g.specialActionQueue.some(a => a.type === 'BART_DRAW'), false);
 });
 
 test('Vera Custer: neplatná volba (ne v choices) se odmítne', () => {

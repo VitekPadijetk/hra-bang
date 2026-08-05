@@ -8,8 +8,21 @@ const DrawMixin = {
         player._joseUses = 0;      // Dodge City: José Delgado max 2×/tah
         player._docUsed = false;   // Dodge City: Doc Holyday 1×/tah
 
-        // Vera Custer (Dodge City) si postavu ke kopírování volí už v handleStartOfTurnChecks
-        // (před checky na Dynamit/Vězení) – tady už je `_copiedCharacter` nastavené.
+        // Vera Custer (Dodge City): postavu ke kopírování si volí TĚSNĚ PŘED fází lízání,
+        // tedy AŽ PO kontrolních líznutích na Dynamit/Vězení. Kopie z minulého tahu tady
+        // vyprší (drží přesně jedno kolo – od tohoto bodu do stejného bodu příštího tahu),
+        // proto se `_copiedCharacter` nuluje ještě před volbou. Volba 1×/tah: po ní se sem
+        // vrátíme s `_veraCopiedTurn === turnId` a lízání se rozjede s převzatou schopností.
+        if (player.character === "Vera Custer" && player._veraCopiedTurn !== this.turnId) {
+            player._copiedCharacter = null;
+            const choices = this._veraCopyChoices();
+            if (choices.length > 0) {
+                this.pendingVeraCopy = { playerIdx: this.currentPlayerIndex, choices };
+                this.phase = "VERA_COPY";
+                return;
+            }
+            player._veraCopiedTurn = this.turnId;   // nikdo ke kopírování → bez kopie
+        }
 
         if (effectiveCharacter(player) === "Kit Carlson") {
             this.startKitCarlsonDraw();
@@ -74,6 +87,9 @@ const DrawMixin = {
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
             ds.options = ['deck'];
+            // Okradený mohl přijít o poslední kartu (Suzy Lafayette si pak líže). Frontu
+            // zpracuje až _finishDraw – během aktivního lízání ji _processSpecialQueue drží.
+            this.checkSuzyLafayette(opponent);
         }
         else if (source === 'discard' && effectiveCharacter(player) === "Pedro Ramirez" && ds.cardsDrawn === 0) {
             if (this.deck.discardPile.length === 0) return;

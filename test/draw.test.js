@@ -106,6 +106,27 @@ test('Jesse Jones lízne první kartu z ruky soupeře', () => {
     assert.ok(g.players[0].hand.some(c => c.name === 'soupeřova'));
 });
 
+// Regrese: Jesse Jones sebral Suzy poslední kartu z ruky → Suzy si musí líznout.
+// Dřív se checkSuzyLafayette v této větvi nevolal a Suzy zůstala s prázdnou rukou
+// (v logu: měla na začátku svého tahu 0 karet).
+test('Jesse Jones vezme Suzy poslední kartu → Suzy si líže', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Jesse Jones' }, { role: 'Outlaw', character: 'Suzy Lafayette' }]);
+    give(g, 1, CardType.BEER, { name: 'poslední' });
+    g.deck.cards = [mkCard(CardType.BANG, { name: 'suzyina' }), mkCard(CardType.BANG)];
+
+    g.startDrawPhase();
+    g.drawCard('opponent_hand', 1);
+    assert.equal(g.players[1].hand.length, 0);
+    assert.ok(g.specialActionQueue.some(a => a.type === 'SUZY_DRAW' && a.playerIdx === 1));
+
+    g.drawCard('deck');                       // Jesse dolízl → fronta se zpracuje
+    assert.equal(g.phase, 'SUZY_DRAW');
+    assert.equal(g.pendingSuzyDraw.playerIdx, 1);
+    g.suzyLafayetteDraw(1);
+    assert.equal(g.players[1].hand.length, 1);
+    assert.equal(g.phase, 'PLAY');
+});
+
 // ── Pedro Ramirez: první kartu z odhazovacího balíčku ────────────────────────
 test('Pedro Ramirez lízne první kartu z odhozu', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Pedro Ramirez' }, { role: 'Outlaw' }]);

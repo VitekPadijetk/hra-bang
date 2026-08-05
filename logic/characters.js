@@ -309,8 +309,10 @@ const CharactersMixin = {
     },
 
     // ── Vera Custer (Dodge City) ────────────────────────────────────────────────
-    // Na začátku svého tahu si zvolí žijící postavu, jejíž schopnost převezme (effectiveCharacter
-    // pak vrací kopii) až do svého příštího tahu. Nekopíruje sama sebe (jen jedna Vera).
+    // Volí si žijící postavu, jejíž schopnost převezme (effectiveCharacter pak vrací kopii).
+    // Volba padne TĚSNĚ PŘED fází lízání (po checku na Dynamit/Vězení – viz startDrawPhase)
+    // a kopie platí přesně jedno kolo: do stejného bodu jejího příštího tahu. Nekopíruje
+    // sama sebe (jen jedna Vera).
     _veraCopyChoices() {
         const me = this.currentPlayerIndex;
         const out = [];
@@ -332,10 +334,18 @@ const CharactersMixin = {
         player._copiedCharacter = charName;
         player._veraCopiedTurn = this.turnId;
         this.pendingVeraCopy = null;
-        // Zpět do začátku tahu: teď se rozjedou checky (Dynamit/Vězení) už s převzatou
-        // schopností (např. Lucky Duke → 2 karty na check), pak fáze lízání.
-        this.handleStartOfTurnChecks();
+        // Zpátky do fáze lízání – tentokrát už s převzatou schopností (Kit Carlson,
+        // Jesse Jones, Pixie Pete…); guard `_veraCopiedTurn === turnId` znovu neptá.
+        this.startDrawPhase();
         return true;
+    },
+
+    // Kopie vyprší přesně v bodě, kde by si Vera volila novou (těsně před fází lízání).
+    // Když se tam hra nedostane (Vězení jí sebralo tah), zůstane pro tohle kolo bez kopie.
+    _veraExpireCopy(playerIdx) {
+        const p = this.players[playerIdx];
+        if (!p || p.character !== "Vera Custer") return;
+        p._copiedCharacter = null;
     }
 };
 

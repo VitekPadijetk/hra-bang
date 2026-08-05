@@ -10,20 +10,9 @@ const ChecksMixin = {
             return;
         }
 
-        // Vera Custer (Dodge City): postavu ke kopírování si volí HNED na začátku tahu,
-        // ještě PŘED kontrolním líznutím na Dynamit/Vězení (může tak převzít např. Lucky
-        // Duka a líznout si na check 2 karty). Volba 1×/tah; po volbě se sem vrátíme
-        // (už s `_veraCopiedTurn === turnId`, takže se checky rozjedou normálně).
-        if (p.character === "Vera Custer" && p._veraCopiedTurn !== this.turnId) {
-            const choices = this._veraCopyChoices();
-            if (choices.length > 0) {
-                this.pendingVeraCopy = { playerIdx: this.currentPlayerIndex, choices };
-                this.phase = "VERA_COPY";
-                return;
-            }
-            p._veraCopiedTurn = this.turnId;   // nikdo ke kopírování → bez kopie
-            p._copiedCharacter = null;
-        }
+        // Vera Custer (Dodge City) si postavu ke kopírování volí až TĚSNĚ PŘED fází lízání
+        // (viz startDrawPhase) – checky na Dynamit/Vězení tedy ještě běží s kopií z minulého
+        // tahu. Když jí Vězení tah sebere, k volbě se nedostane a kopie vyprší (_veraExpireCopy).
 
         const dynamiteIdx = p.board.findIndex(c => c.type === CardType.DYNAMITE);
         const jailIdx = p.board.findIndex(c => c.type === CardType.JAIL);
@@ -159,6 +148,9 @@ const ChecksMixin = {
             if (suit === Suits.HEARTS) {
                 this.startDrawPhase();
             } else {
+                // Vera Custer se z vězení nedostala → k volbě kopie (těsně před lízáním)
+                // se nedostane a stará kopie tady vyprší: pro tohle kolo je bez schopnosti.
+                this._veraExpireCopy(check.playerIdx);
                 this.nextTurn();
             }
         } else if (check.reason === "BARREL" || check.reason === "JOURDONNAIS") {
