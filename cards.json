@@ -61,7 +61,7 @@
   {"id":59,"name":"Indiáni!","type":"INDIANS","suit":"DIAMONDS","value":"K","art":"indiani"},
   {"id":60,"name":"Indiáni!","type":"INDIANS","suit":"DIAMONDS","value":"A","art":"indiani"},
   {"id":61,"name":"Kulomet","type":"GATLING","suit":"HEARTS","value":"10","art":"kulomet"},
-  {"id":62,"name":"Salón","type":"SALOON","suit":"HEARTS","value":"5","art":"salon"},
+  {"id":62,"name":"Salón","type":"SALOON","suit":"HEARTS","value":"5","art":"saloon"},
   {"id":63,"name":"Volcanic","type":"WEAPON","suit":"CLUBS","value":"10","art":"volcanic","props":{"range":1,"unlimited":true}},
   {"id":64,"name":"Volcanic","type":"WEAPON","suit":"SPADES","value":"10","art":"volcanic","props":{"range":1,"unlimited":true}},
   {"id":65,"name":"Schofield","type":"WEAPON","suit":"CLUBS","value":"J","art":"schofield","props":{"range":2}},

@@ -1392,6 +1392,7 @@ function _applyRoomUpdate(payload) {
     if (!payload.gameState?.winner && roomState?.gameState?.winner) _myNextGameVote = null;
     roomState = payload;
     state = payload.gameState;
+    registerCardTexAliases(state);   // creative karty: id -> id upečené textury
     // Karty právě odlétající z ruky (hraná/odhazovaná, panika/CB) drž mimo ruce, dokud
     // animace běží – server je mohl dočasně vrátit do ruky a znovu rozeslat, jinak by
     // naskočily zpět doprostřed letu a přepočítaly rozteč (ukradená karta by mířila vedle).
@@ -1402,7 +1403,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Jen u
     // živého hráče v běžící hře (smrt řeší vlastní odhozová animace → vyžadujeme health>0).

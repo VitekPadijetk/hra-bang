@@ -99,7 +99,17 @@ const SetupMixin = {
         // Apache Kidova imunita vůči ♦ (porovnává se Suits.DIAMONDS) na givenutých kartách
         // nefungovala.
         const resolvedSuit = Suits[cardData.suit] || cardData.suit;
-        const card = new Card(cardData.id, cardData.name, resolvedType, resolvedSuit, cardData.value, cardData.props || {});
+        // Karta MUSÍ dostat nové, nikde nepoužité id. Kopie s původním id zůstává v
+        // balíčku (creative ji odtud nebere) a při druhém rozdání téže karty by v ruce
+        // ležely dvě se stejným id – klient přitom drží identitu karty právě podle id
+        // (reflow slide `h<id>`, staging líznutí, zoom, výběr cíle). Dvě karty s jedním
+        // id = jeden klíč na dvou pozicích: obě se schovají a plovoucí sprite mezi nimi
+        // donekonečna lítá sem a tam. Původní id si karta nese v `texId`, ať si klient
+        // najde správnou grafiku (textury card_<id> se pečou z cards.json).
+        this._debugCardSeq = (this._debugCardSeq || 0) + 1;
+        const uniqueId = 100000 + this._debugCardSeq;
+        const card = new Card(uniqueId, cardData.name, resolvedType, resolvedSuit, cardData.value, cardData.props || {});
+        card.texId = cardData.id;
         card.effect = cardData.props?.effect || cardData.effect || null;
         // Render metadata rozšíření (Dodge City); chování přenáší konstruktor Card z props.
         card.art = cardData.art || null;

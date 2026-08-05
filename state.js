@@ -33,6 +33,10 @@ const App = {
     // karta tady, board.js ji v ruce nevykreslí – slot je rezervovaný a karta se
     // objeví až po dosednutí své animace (rychlé líznutí po sobě → postupně).
     pendingDrawIds: new Set(),
+    // Karta rozdaná v creative módu má vlastní unikátní id (aby nekolidovala s kopií
+    // v balíčku), ale grafiku má upečenou pod původním id z cards.json. Tady je mapa
+    // id -> texId, kterou plní registerCardTexAliases z každého stavu.
+    cardTexAlias: {},
     // Aktivní letící líznutí ({ cardId, slotIndex, sprite }) – při novém líznutí se
     // jejich cíle přepočítají na aktuální rozteč ruky (retargetDrawAnims), aby karta
     // dosedla přesně tam, kam ji board.js vykreslí (jinak posun při přerozprostření).

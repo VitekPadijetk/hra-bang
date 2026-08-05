@@ -615,9 +615,32 @@ function animateDrawToMyHand(playerIdx, cardId, fromX, fromY, opts = {}) {
     return true;
 }
 
+// ── Identita karty vs. její grafika ──────────────────────────────────────────
+// Textury `card_<id>` se pečou z cards.json, takže platí jen pro id z dat. Karta
+// rozdaná v creative módu má vlastní (unikátní) id – v `texId` si nese to původní.
+// Alias id → texId si klient zapíše z každého stavu, aby ho našel i tehdy, když už
+// karta ve stavu není (letící sprite se kreslí dřív/později než dorazí stav).
+function registerCardTexAliases(st) {
+    if (!st?.players) return;
+    const note = (c) => { if (c && c.texId !== undefined && c.texId !== null) App.cardTexAlias[c.id] = c.texId; };
+    st.players.forEach(p => {
+        (p.hand || []).forEach(note);
+        (p.board || []).forEach(note);
+        note(p.weapon);
+    });
+    (st.deck?.discardPile || []).forEach(note);
+}
+
+// id karty → id, pod kterým je upečená její textura (creative karty mají alias).
+function texIdOf(cardId) {
+    const alias = App.cardTexAlias[cardId];
+    return alias === undefined ? cardId : alias;
+}
+
 function getCardTex(cardId) {
     if (cardId === undefined || cardId === null) return 'card_back';
-    return gameScene.textures.exists('card_' + cardId) ? 'card_' + cardId : 'card_back';
+    const id = texIdOf(cardId);
+    return gameScene.textures.exists('card_' + id) ? 'card_' + id : 'card_back';
 }
 
 // ── MÍCHACÍ CINEMATIKA BALÍČKU ───────────────────────────────────────────────

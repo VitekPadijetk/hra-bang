@@ -38,7 +38,8 @@ function renderGameBoard() {
     const centerY = 1080 / 2;
     const getTex = (id) => {
         if (id === null || id === undefined) return 'card_back';
-        return gameScene.textures.exists('card_' + id) ? 'card_' + id : 'placeholder';
+        const t = texIdOf(id);   // creative karta má vlastní id, grafiku pod texId
+        return gameScene.textures.exists('card_' + t) ? 'card_' + t : 'placeholder';
     };
 
     const getCharTex = (name) => {
