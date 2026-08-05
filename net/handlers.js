@@ -19,6 +19,9 @@ const _animQ = createAnimQueue({
 
 socket.on('intro_phase', (data) => {
     if (!gameScene) return;
+    // Doběhlé intro ze hry, kterou už nesledujeme (event nenese roomId, ale bez místnosti
+    // a s aktivním filtrem může jít jen odtud) – jinak by se zbytky cinematiky zdědily.
+    if (App.ignoreRoomId && !roomState) return;
     const sub = data.sub;
     App.myIntroIndex = data.myIndex;
 
@@ -1446,7 +1449,9 @@ socket.on('room_update', (payload) => {
 // Míchání frontou NEjde: server u něj sám odkládá broadcast o 5,7 s (delší než
 // cinematika), u proaktivního míchání naopak stav schválně nečeká a hra běží dál.
 socket.on('reshuffle_anim', ({ cardCount, proactive, topCardId }) => {
-    if (!gameScene) return;
+    // `!state` = nejsme v žádné hře (doběhlá zpráva z právě opuštěného sledování) –
+    // jinak by se karty rozjely přes menu.
+    if (!gameScene || !state) return;
 
     App.reshuffleAnimating = true;
     App.blockInput = true;
@@ -1483,6 +1488,8 @@ socket.on('reshuffle_anim', ({ cardCount, proactive, topCardId }) => {
 
 socket.on('room_joined', ({ roomId, myIndex: idx }) => {
     myIndex = idx;
+    App.ignoreRoomId = null;   // vlastní hra – filtr diváckých zbytků už nemá co blokovat
+    App.spectating = false;
     App.debugViewAs = null;
     _rejoinDone = true;        // jsme v místnosti → auto-rejoin už neřeš
     saveBangSession(roomId);   // umožní automatický návrat po F5/výpadku
@@ -1551,6 +1558,9 @@ socket.on('action_rejected', (info) => {
 });
 
 function _applyRoomUpdate(payload) {
+    // Doběhlý update ze hry, kterou už nesledujeme (viz stopSpectating). Bez tohohle
+    // filtru by nás pár set milisekund po kliku na „Opustit sledování" hodil zpátky do hry.
+    if (App.ignoreRoomId && payload.roomId === App.ignoreRoomId) return;
     const _prevPhase = roomState?.gameState?.phase;   // fáze před tímto updatem (pro reveal trigger)
     const _prevCurrentPlayer = roomState?.gameState?.currentPlayerIndex;  // kdo byl na tahu (Kit Carlson exit)
     // Životy před tímto updatem (pro posun postavy při zásahu/vyléčení – Návrh 1).
@@ -1740,11 +1750,34 @@ socket.on('game_list', (list) => {
     if (gameScene && focused?.tagName !== 'INPUT') renderUI();
 });
 
+// ── KONEC SLEDOVÁNÍ HRY ──────────────────────────────────────────────────────
+// Divák sedí v serverovém kanálu '<roomId>_spectators' a chodí mu odtud room_update,
+// animace i intro. Klik na „Opustit sledování" proto musí serveru poslat
+// 'leave_spectate' (jinak nás první další broadcast vrátí z menu do hry) a než
+// odhlášení doběhne, ignorujeme zprávy té místnosti i lokálně.
+function stopSpectating(roomId) {
+    App.ignoreRoomId = roomId || roomState?.roomId || null;
+    _resetIntro();        // odchod během intra → zahoď zbytky cinematiky
+    _animQ.reset();       // rozdělaná fronta patří opuštěné hře
+    roomState = null; state = null; myIndex = null; _myNextGameVote = null;
+    App.spectating = false;
+    App.blockInput = false;
+    App.menuScreen = 'spectate_list';
+    App.spectateListFetched = false;   // seznam her se načte znovu (mohl se změnit)
+    if (gameScene) renderUI();
+}
+
+// Server potvrdil odhlášení z kanálu. Pořadí zpráv na jednom socketu je zaručené,
+// takže starší updaty té místnosti už dorazily → filtr může jít pryč.
+socket.on('spectate_left', () => { App.ignoreRoomId = null; });
+
 socket.on('go_to_menu', () => {
+    App.ignoreRoomId = null;
     clearBangSession();   // záměrný odchod → po F5 se nevracet do hry
     _resetIntro();        // odchod během intra → zahoď zbytky cinematiky (jinak se zdědí do další hry)
     _animQ.reset();       // rozdělaná fronta patří opuštěné hře – nic z ní už nedocommitovat
     roomState = null; state = null; myIndex = null; _myNextGameVote = null;
+    App.spectating = false;
     App.menuScreen = 'main';
     if (gameScene) renderUI();
 });

@@ -3,7 +3,7 @@
 // s původním io.on('connection'); helpery se berou z ctx.
 module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     const { rooms, makeRoom, roomPayload, broadcastRoom, broadcastLobbyList,
-            findRoomBySocket, leaveRoom, disbandRoom, getGameList, startGame, io,
+            findRoomBySocket, leaveRoom, leaveSpectate, disbandRoom, getGameList, startGame, io,
             createBot, removeBot, botSockets, botControl, botRelease } = ctx;
 
     // Hra jen botů: tvůrce je pouze divák (není mezi players). Po jeho odchodu
@@ -23,6 +23,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     socket.on('create_room', ({ name, maxPlayers, playerName, options, token }) => {
         const existing = findRoomBySocket(socket.id);
         if (existing) return;
+        leaveSpectate(socket);   // hráč nesmí zůstat divákem jinde (stavy dvou her by se praly)
         const room = makeRoom(name, maxPlayers, socket.id, playerName, options || {}, token || null);
         socket.join(room.id);
         socket.emit('room_joined', { roomId: room.id, myIndex: 0 });
@@ -41,6 +42,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
                 return socket.emit('join_error', `Jméno "${playerName}" je již používáno jiným hráčem na serveru`);
             }
         }
+        leaveSpectate(socket);   // hráč nesmí zůstat divákem jinde (stavy dvou her by se praly)
         const idx = room.players.length;
         room.players.push({ socketId: socket.id, playerIdx: idx, name: playerName, ready: false, wantsNext: null, wasOriginalSurvivor: false, token: token || null });
         socket.join(room.id);
@@ -65,6 +67,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         if (!room || !token) return socket.emit('rejoin_failed');
         const p = room.players.find(pl => pl.token === token && pl.disconnected);
         if (!p) return socket.emit('rejoin_failed');
+        leaveSpectate(socket);               // návrat na svoje místo → přestaň být divákem jinde
         botRelease(room, p);                 // zruš dočasného bota (před přepojením socketu)
         const oldId = p.socketId;
         p.socketId = socket.id;              // přepoj místo na nový reálný socket
@@ -145,8 +148,17 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     socket.on('spectate', ({ roomId }) => {
         const room = rooms.get(roomId);
         if (!room || (room.phase !== 'playing' && room.phase !== 'char_select')) return;
+        leaveSpectate(socket);   // přepnutí mezi hrami: ať nekouká do dvou najednou
         socket.join(roomId + '_spectators');
         socket.emit('room_update', { ...roomPayload(room), myIndex: null });
+    });
+
+    // Konec sledování. Bez odhlášení z kanálu by divákovi chodily další room_update
+    // a klient by ho z menu vracel zpátky do sledované hry.
+    socket.on('leave_spectate', () => {
+        if (disbandBotGameWatchedBy(socket.id)) { leaveSpectate(socket); socket.emit('go_to_menu'); return; }
+        leaveSpectate(socket);
+        socket.emit('spectate_left');
     });
 
     // Spustí hru složenou jen z botů a tvůrce do ní rovnou nechá koukat (spectate).
@@ -158,6 +170,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         room.players = [];                  // hra je jen botů – žádný člověk mezi hráči
         room._watcherSocketId = socket.id;  // tvůrce = divák
         for (let i = 0; i < n; i++) createBot(room);
+        leaveSpectate(socket);              // ať nekouká zároveň do jiné hry
         socket.join(room.id + '_spectators');
         startGame(room);                    // botGame → přeskočí intro (lifecycle)
         socket.emit('room_update', { ...roomPayload(room), myIndex: null });
@@ -166,7 +179,8 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     });
 
     socket.on('go_to_menu', () => {
-        if (disbandBotGameWatchedBy(socket.id)) { socket.emit('go_to_menu'); return; }
+        if (disbandBotGameWatchedBy(socket.id)) { leaveSpectate(socket); socket.emit('go_to_menu'); return; }
+        leaveSpectate(socket);   // i hráč mohl předtím někde koukat – ať mu to menu nepřebíjí
         const room = findRoomBySocket(socket.id);
         if (room) leaveRoom(socket, room);
         socket.emit('go_to_menu');

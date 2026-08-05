@@ -1811,10 +1811,11 @@ function renderUI() {
                     socket.emit('go_to_menu');
                     return;
                 }
-                roomState = null; state = null; myIndex = null;
-                App.spectating = false;
-                App.menuScreen = 'spectate_list';
-                renderUI();
+                // Server nás musí odhlásit z kanálu diváků, jinak nás další room_update
+                // z menu vrátí zpátky do hry. Než ale odhlášení doběhne, můžou být updaty
+                // téhle místnosti už na cestě → ignoruj je lokálně (App.ignoreRoomId).
+                socket.emit('leave_spectate');
+                stopSpectating(roomState?.roomId);
             },
         });
         specBack.setDepth(500);

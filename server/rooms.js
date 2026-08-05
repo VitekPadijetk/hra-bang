@@ -106,6 +106,26 @@ module.exports = function installRoomService(ctx) {
         return null;
     }
 
+    // Odhlášení diváka ze VŠECH sledovaných kanálů. Divák není v room.players, takže
+    // ho leaveRoom ani disconnect-větev nevyhodí – dokud sedí v '<roomId>_spectators',
+    // chodí mu dál room_update/card_animation/intro_phase a klient se z menu překlopí
+    // zpátky do sledované hry (a při vlastní hře by se mu stavy dvou her praly).
+    // Vrací true, pokud nějaký kanál opustil.
+    function leaveSpectate(socket) {
+        // Reálný socket.io zná svoje kanály (Set) – z toho odejdeme i z kanálů už
+        // smazaných místností. Fake sockety (boti/testy) `rooms` nemají → projdeme registr.
+        const joined = socket.rooms instanceof Set
+            ? [...socket.rooms]
+            : Array.from(rooms.keys()).map(id => id + '_spectators');
+        let left = false;
+        for (const ch of joined) {
+            if (typeof ch !== 'string' || !ch.endsWith('_spectators')) continue;
+            socket.leave(ch);
+            left = true;
+        }
+        return left;
+    }
+
     function leaveRoom(socket, room) {
         // Debug hra běží celá na jednom socketu (všechny „seaty" mají stejné socketId).
         // Když debug okno odejde, nemá smysl hru držet (nic se v ní už neděje, jen by
@@ -172,7 +192,7 @@ module.exports = function installRoomService(ctx) {
     Object.assign(ctx, {
         rooms, genId, makeRoom, roomPayload, broadcastRoom, broadcastRoomDelayed,
         broadcastLobbyList, getLobbyList, getGameList, findRoomBySocket,
-        leaveRoom, disbandRoom,
+        leaveRoom, leaveSpectate, disbandRoom,
     });
     return ctx;
 };

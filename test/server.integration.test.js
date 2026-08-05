@@ -20,10 +20,20 @@ before(() => { console.log = () => {}; });
 // Plnohodnotnější mock io + socket, který umí vyvolat zaregistrované handlery.
 function mkEnv() {
     const sockets = new Map();
+    // io.to(kanál) doručuje jen socketům, které v kanálu SKUTEČNĚ jsou (join/leave) –
+    // jinak by odhlášení diváka nešlo otestovat.
     const io = {
         sockets: { sockets },
         emit() {},
-        to() { return { emit() {} }; },
+        to(channel) {
+            return {
+                emit(ev, payload) {
+                    for (const s of sockets.values()) {
+                        if (s.rooms.has(channel)) s.emit(ev, payload);
+                    }
+                },
+            };
+        },
     };
     const ctx = { io, cardData, GameState };
     installRoomService(ctx);
@@ -35,8 +45,11 @@ function mkEnv() {
         const handlers = {};
         const socket = {
             id,
+            rooms: new Set([id]),          // jako reálný socket.io: vlastní kanál + join/leave
             on(ev, fn) { handlers[ev] = fn; },
-            emit() {}, join() {}, leave() {},
+            emit() {},
+            join(r) { socket.rooms.add(r); },
+            leave(r) { socket.rooms.delete(r); },
             fire(ev, ...args) { if (handlers[ev]) handlers[ev](...args); },
             handlers,
         };
@@ -76,6 +89,58 @@ test('join_room handler přidá druhého hráče', () => {
     s2.fire('join_room', { roomId: room.id, playerName: 'Bob' });
     assert.equal(room.players.length, 2);
     assert.equal(room.players[1].name, 'Bob');
+});
+
+// Divák nesedí v room.players, takže ho z kanálu '<roomId>_spectators' nic nevyhodilo –
+// po návratu do menu mu chodily další room_update a klient ho překlopil zpátky do hry.
+test('leave_spectate odhlásí diváka – další broadcast už mu nechodí', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s1 = mkSocket('s1');
+    s1.fire('debug_start', { playerCount: 3, roles: [] });
+    const room = [...ctx.rooms.values()][0];
+    room.phase = 'playing';
+
+    const spec = mkSocket('spec');
+    const seen = [];
+    spec.emit = (ev) => seen.push(ev);
+
+    spec.fire('spectate', { roomId: room.id });
+    assert.ok(spec.rooms.has(room.id + '_spectators'), 'divák je v kanálu');
+    ctx.broadcastRoom(room);
+    assert.equal(seen.filter(e => e === 'room_update').length, 2);   // vstupní + broadcast
+
+    spec.fire('leave_spectate');
+    assert.equal(spec.rooms.has(room.id + '_spectators'), false, 'divák je z kanálu venku');
+    assert.ok(seen.includes('spectate_left'));
+
+    ctx.broadcastRoom(room);
+    assert.equal(seen.filter(e => e === 'room_update').length, 2, 'po odhlášení už nic nechodí');
+});
+
+test('spectate jiné hry odhlásí z předchozí (nekouká do dvou najednou)', () => {
+    const { ctx, mkSocket } = mkEnv();
+    mkSocket('s1').fire('debug_start', { playerCount: 3, roles: [] });
+    mkSocket('s2').fire('debug_start', { playerCount: 3, roles: [] });
+    const [a, b] = [...ctx.rooms.values()];
+    a.phase = 'playing'; b.phase = 'playing';
+
+    const spec = mkSocket('spec');
+    spec.fire('spectate', { roomId: a.id });
+    spec.fire('spectate', { roomId: b.id });
+    assert.equal(spec.rooms.has(a.id + '_spectators'), false);
+    assert.ok(spec.rooms.has(b.id + '_spectators'));
+});
+
+test('join_room odhlásí diváka ze sledované hry (vlastní hra vítězí)', () => {
+    const { ctx, mkSocket } = mkEnv();
+    mkSocket('s1').fire('debug_start', { playerCount: 3, roles: [] });
+    const watched = [...ctx.rooms.values()][0];
+    watched.phase = 'playing';
+
+    const spec = mkSocket('spec');
+    spec.fire('spectate', { roomId: watched.id });
+    spec.fire('create_room', { name: 'Můj stůl', maxPlayers: 4, playerName: 'Alice', options: {} });
+    assert.equal(spec.rooms.has(watched.id + '_spectators'), false);
 });
 
 test('debug_start handler rozjede debug hru (resolved makeRoom/cardData/setupDebugGame)', () => {

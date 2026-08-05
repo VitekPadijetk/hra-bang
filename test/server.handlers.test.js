@@ -27,7 +27,7 @@ function mkCtx() {
 const GROUPS = {
     lobby: { reg: registerLobby, events: [
         'create_room', 'join_room', 'leave_room', 'rejoin', 'start_game', 'cancel_game',
-        'get_game_list', 'spectate', 'go_to_menu', 'chat_message', 'disconnect',
+        'get_game_list', 'spectate', 'leave_spectate', 'go_to_menu', 'chat_message', 'disconnect',
         'add_bot', 'remove_bot', 'create_bot_game',
     ] },
     nextgame: { reg: registerNextGame, events: [
@@ -60,13 +60,13 @@ for (const [name, { reg, events }] of Object.entries(GROUPS)) {
     });
 }
 
-test('všechny moduly dohromady pokrývají 64 unikátních eventů', () => {
+test('všechny moduly dohromady pokrývají 65 unikátních eventů', () => {
     const all = [];
     for (const { reg } of Object.values(GROUPS)) {
         const socket = mkSocket();
         reg(socket, mkCtx(), () => {});
         all.push(...socket._events);
     }
-    assert.equal(all.length, 64);
-    assert.equal(new Set(all).size, 64, 'žádný event se nesmí registrovat dvakrát');
+    assert.equal(all.length, 65);
+    assert.equal(new Set(all).size, 65, 'žádný event se nesmí registrovat dvakrát');
 });

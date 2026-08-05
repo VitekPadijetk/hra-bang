@@ -11,6 +11,10 @@ const App = {
     // změní (DRAW → DRAW jiného hráče, řetěz kill-rewardů), počítadlo se musí vynulovat.
     lastDrawOwner: null,
     spectating: false,
+    // Místnost, jejíž zprávy už nás nezajímají (právě jsme přestali sledovat její hru).
+    // Odhlášení z kanálu diváků na serveru je asynchronní, takže updaty odeslané těsně
+    // předtím ještě dorazí – bez tohohle filtru by nás z menu vrátily zpátky do hry.
+    ignoreRoomId: null,
     allCardsData: null,
     allTakenNames: [],
     selectedLobby: null,

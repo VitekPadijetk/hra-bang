@@ -633,6 +633,7 @@ function renderMenuScreen(screen) {
                 const y = 180 + i * 90;
                 menuRow(960, y, 900, 74, () => {
                     socket.emit('spectate', { roomId: g.id });
+                    App.ignoreRoomId = null;   // sledujeme znovu (klidně i tu samou hru)
                     App.spectating = true;
                     App.spectateListFetched = false;
                 });

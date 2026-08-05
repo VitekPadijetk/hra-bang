@@ -18,10 +18,10 @@ function mkIo() {
     function addSocket(id) {
         const s = {
             id,
-            joined: [], left: [],
+            joined: [], left: [], rooms: new Set([id]),   // rooms = jako reálný socket.io
             emit(ev, payload) { emits.push({ scope: 'socket:' + id, ev, payload }); },
-            join(r) { s.joined.push(r); },
-            leave(r) { s.left.push(r); },
+            join(r) { s.joined.push(r); s.rooms.add(r); },
+            leave(r) { s.left.push(r); s.rooms.delete(r); },
         };
         sockets.set(id, s);
         return s;
@@ -100,6 +100,25 @@ test('leaveRoom odebere posledního hráče a smaže místnost', () => {
     ctx.leaveRoom(s1, room);
     assert.equal(ctx.rooms.size, 0);
     assert.ok(s1.left.includes(room.id));
+});
+
+test('leaveSpectate opustí kanály diváka, ale ne vlastní místnost', () => {
+    const { ctx, addSocket } = setup();
+    const s = addSocket('s1');
+    const room = ctx.makeRoom('A', 4, 's1', 'Alice', {});
+    s.join(room.id);                       // hráč
+    s.join('game9_spectators');            // a zároveň divák jinde
+    assert.equal(ctx.leaveSpectate(s), true);
+    assert.deepEqual(s.left, ['game9_spectators']);
+    assert.ok(s.rooms.has(room.id), 'vlastní místnost zůstává');
+});
+
+test('leaveSpectate bez sledované hry nic nedělá', () => {
+    const { ctx, addSocket } = setup();
+    const s = addSocket('s1');
+    s.join(ctx.makeRoom('A', 4, 's1', 'Alice', {}).id);
+    assert.equal(ctx.leaveSpectate(s), false);
+    assert.deepEqual(s.left, []);
 });
 
 test('leaveRoom přepíše lídra při odchodu lídra (zůstávají hráči)', () => {
