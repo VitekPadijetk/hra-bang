@@ -7,6 +7,9 @@ const App = {
     reshuffleIsProactive: false,
     pendingDrawCount: 0,
     lastConfirmedDrawn: 0,
+    // Vlastník fáze lízání, ke které pendingDrawCount/lastConfirmedDrawn patří. Když se
+    // změní (DRAW → DRAW jiného hráče, řetěz kill-rewardů), počítadlo se musí vynulovat.
+    lastDrawOwner: null,
     spectating: false,
     allCardsData: null,
     allTakenNames: [],
@@ -121,6 +124,9 @@ const App = {
     // ať se během letové animace nedá klikat znovu (jinak by se odpálilo víc animací).
     // Ruší se v room_update, jakmile server potvrdí líznutí.
     pedroDrawLock: false,
+    // Jesse Jones: totéž pro klik na ruku soupeře (vzít první kartu z cizí ruky). Balíček
+    // přitom zůstává klikatelný – Jesse hned nato líže druhou kartu z něj.
+    jesseStealLock: false,
     // Když hraju/odhazuju kartu já, zachytíme PŘED optimistickým odebráním z ruky
     // přesnou pozici jejího slotu (cardId -> {x,y}). Letová animace z ní vyjde, ať
     // karta letí z místa, kde reálně ležela, ne z obecné kotvy ruky. Čte se jednou.

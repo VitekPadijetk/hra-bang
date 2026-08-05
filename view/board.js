@@ -585,7 +585,13 @@ function drawOpponents(ctx) {
             // Smrt: karta z tohoto slotu už odletěla do odhozu / k Vulture Samovi.
             // Slot zůstává prázdný, zbytek vějíře se pod ní nepřeskládá.
             if (slot !== undefined && App.deathHandHide[actualIdx]?.has(slot)) return;
-            const isJesseJonesDraw = isMyDraw && state.drawPhaseState.options.includes('opponent_hand') && state.drawPhaseState.cardsDrawn === 0;
+            // Jesse Jones: !App.jesseStealLock – po kliknutí zvýraznění cizích rukou HNED
+            // zhasne a nejde na ně klikat znovu (server druhý pokus stejně zahodí, protože
+            // už nelíže z ruky). Nepoužívá se blockInput jako u Pata Brennana: Jesse musí
+            // hned nato kliknout na BALÍČEK pro druhou kartu, a ten by mu zámek zhasl taky.
+            // Zámek odemkne až potvrzení stavu (viz _applyRoomUpdate), stejně jako u Pedra.
+            const isJesseJonesDraw = isMyDraw && !App.jesseStealLock &&
+                state.drawPhaseState.options.includes('opponent_hand') && state.drawPhaseState.cardsDrawn === 0;
             const isElGringoSteal = state.phase === "EL_GRINGO_STEAL" &&
                 state.pendingElGringoSteal?.playerIdx === myIndex &&
                 state.pendingElGringoSteal?.attackerIdx === actualIdx;
@@ -593,7 +599,12 @@ function drawOpponents(ctx) {
             if (isJesseJonesDraw) {
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });
-                hCard.on('pointerdown', () => socket.emit('draw_card', { source: 'opponent_hand', sourceIdx: actualIdx }));
+                hCard.on('pointerdown', () => {
+                    if (App.jesseStealLock) return;
+                    App.jesseStealLock = true;
+                    socket.emit('draw_card', { source: 'opponent_hand', sourceIdx: actualIdx });
+                    renderUI();          // zhasni ruce soupeřů hned, balíček zůstává aktivní
+                });
             } else if (isElGringoSteal) {
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });

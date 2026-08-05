@@ -1139,11 +1139,16 @@ function _playCardAnim(data) {
             const pedroDone = () => { App.discardFlyHideIds.delete(data.cardId); renderUI(); };
             // Karta z odhozu (lícem nahoru) → bez otáčení, jen dolet + růst + staging.
             if (!animateDrawToMyHand(data.playerIdx, data.cardId, discard.x, discard.y, { faceUp: true, duration: 380, onComplete: pedroDone })) {
-                // Soupeř bere veřejnou vrchní kartu odhozu (líc) → letí do jeho ruky a
-                // dotočí se do jeho orientace (bok = ±90°, protější = 180°), jako běžné líznutí.
-                const handPos = getPlayerHandPos(data.playerIdx);
-                animateCard(discard.x, discard.y, handPos.x, handPos.y, getCardTex(data.cardId), 380, pedroDone,
-                    { startAngle: 0, endAngle: sideAngle(data.playerIdx) });
+                // Soupeř bere veřejnou vrchní kartu odhozu (líc) do SKRYTÉ ruky → za letu
+                // se musí přetočit lícem→rub (reverse), stejně jako krádež ze stolu u Ragtime.
+                // Dřív doletěla pořád lícem nahoru a „přetočení" nebylo vidět vůbec. Zároveň
+                // se dotočí do jeho orientace (bok ±90°, protější 180°) a zmenší na velikost
+                // karet v jeho ruce; míří na KONCOVÝ slot vějíře, ne na obecnou kotvu.
+                const dLen = state?.players?.[data.playerIdx]?.hand?.length ?? 0;
+                const to = getHandSlotPos(data.playerIdx, dLen, dLen + 1);
+                animateCardFlip(discard.x, discard.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
+                    { reverse: true, startAngle: 0, endAngle: sideAngle(data.playerIdx),
+                      startScale: 0.3, endScale: sideScale(data.playerIdx), duration: 380, onComplete: pedroDone });
             }
             break;
         }
@@ -1662,19 +1667,13 @@ function _applyRoomUpdate(payload) {
     }
 
     if (state?._cardData && !App.allCardsData) App.allCardsData = state._cardData;
-    // _pendingDrawCount: pocet kliku ktery jeste nebyl potvrzen room_update
-    // Snizime o pocet novych karet ktere server potvrdil
-    if (state?.phase === 'DRAW') {
-        const _confirmed = state?.drawPhaseState?.cardsDrawn ?? 0;
-        const _prev = App.lastConfirmedDrawn ?? 0;
-        App.pendingDrawCount = Math.max(0, (App.pendingDrawCount ?? 0) - (_confirmed - _prev));
-        App.lastConfirmedDrawn = _confirmed;
-    } else {
-        App.pendingDrawCount = 0;
-        App.lastConfirmedDrawn = 0;
-    }
+    // Naklikaná, ale ještě nepotvrzená líznutí (core/drawCounter.js – včetně resetu při
+    // změně vlastníka fáze lízání, tj. u řetězu kill-rewardů: odměna za banditu → Herb Hunter).
+    Object.assign(App, nextDrawCounters(App, state?.phase, state?.drawPhaseState));
     // Pedro Ramirez: server potvrdil stav → odemkni odhoz pro případné další tahy.
     App.pedroDrawLock = false;
+    // Jesse Jones: totéž pro krádež z ruky soupeře (zámek drží jen do potvrzení stavu).
+    App.jesseStealLock = false;
 
     // Intro + CHARACTER_SELECT: pokud intro_chars jeste nedorazil, pouzij state jako fallback
     // Navazující hra broadcastuje stav i BĚHEM rozhodování přeživších (charChoices už
