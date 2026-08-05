@@ -87,9 +87,23 @@ const DrawMixin = {
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
             ds.options = ['deck'];
-            // Okradený mohl přijít o poslední kartu (Suzy Lafayette si pak líže). Frontu
-            // zpracuje až _finishDraw – během aktivního lízání ji _processSpecialQueue drží.
-            this.checkSuzyLafayette(opponent);
+            // Okradený mohl přijít o poslední kartu → Suzy Lafayette si líže HNED, ještě
+            // než si Jesse vezme druhou kartu z balíčku (pořadí: Jesse 1. karta z ruky →
+            // Suzy → Jesse 2. karta). Běžnou frontu tady nejde použít: _processSpecialQueue
+            // během aktivního lízání záměrně nic nepouští (jinak by kill-reward přepsal
+            // drawPhaseState), tak si SUZY_DRAW z fronty vyzvedneme sami. drawPhaseState
+            // zůstává aktivní a interruptedPhase="DRAW" vrátí Jesseho po Suzyině líznutí
+            // přesně sem (viz _resumeAfterSpecial).
+            if (this.checkSuzyLafayette(opponent) && ds.cardsDrawn < ds.cardsNeeded) {
+                const qi = this.specialActionQueue.findIndex(a => a.type === 'SUZY_DRAW' && a.playerIdx === sourceIdx);
+                if (qi !== -1) {
+                    this.specialActionQueue.splice(qi, 1);
+                    this.interruptedPhase = "DRAW";
+                    this.pendingSuzyDraw = { playerIdx: sourceIdx };
+                    this.phase = "SUZY_DRAW";
+                    return;
+                }
+            }
         }
         else if (source === 'discard' && effectiveCharacter(player) === "Pedro Ramirez" && ds.cardsDrawn === 0) {
             if (this.deck.discardPile.length === 0) return;

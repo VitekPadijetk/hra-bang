@@ -108,23 +108,31 @@ test('Jesse Jones lízne první kartu z ruky soupeře', () => {
 
 // Regrese: Jesse Jones sebral Suzy poslední kartu z ruky → Suzy si musí líznout.
 // Dřív se checkSuzyLafayette v této větvi nevolal a Suzy zůstala s prázdnou rukou
-// (v logu: měla na začátku svého tahu 0 karet).
-test('Jesse Jones vezme Suzy poslední kartu → Suzy si líže', () => {
+// (v logu: měla na začátku svého tahu 0 karet). Pořadí: Jesse 1. karta (Suzyina
+// poslední) → Suzy si líže → teprve pak Jesse 2. karta z balíčku.
+test('Jesse Jones vezme Suzy poslední kartu → Suzy si líže HNED, pak Jesse dobírá', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Jesse Jones' }, { role: 'Outlaw', character: 'Suzy Lafayette' }]);
     give(g, 1, CardType.BEER, { name: 'poslední' });
-    g.deck.cards = [mkCard(CardType.BANG, { name: 'suzyina' }), mkCard(CardType.BANG)];
+    g.deck.cards = [mkCard(CardType.BANG, { name: 'jesseho2' }), mkCard(CardType.BANG, { name: 'suzyina' })];
 
     g.startDrawPhase();
     g.drawCard('opponent_hand', 1);
     assert.equal(g.players[1].hand.length, 0);
-    assert.ok(g.specialActionQueue.some(a => a.type === 'SUZY_DRAW' && a.playerIdx === 1));
-
-    g.drawCard('deck');                       // Jesse dolízl → fronta se zpracuje
+    // Přerušení nastane HNED – Jesse má teprve 1 kartu, Suzy je na řadě.
     assert.equal(g.phase, 'SUZY_DRAW');
     assert.equal(g.pendingSuzyDraw.playerIdx, 1);
+    assert.equal(g.drawPhaseState.cardsDrawn, 1);
+    assert.equal(g.drawPhaseState.active, true);
+
     g.suzyLafayetteDraw(1);
-    assert.equal(g.players[1].hand.length, 1);
+    assert.equal(g.players[1].hand[0].name, 'suzyina');
+    assert.equal(g.phase, 'DRAW');            // zpátky k Jesseho lízání
+    assert.equal(g.drawPhaseState.playerIdx, 0);
+
+    g.drawCard('deck');                       // Jesse dobral druhou kartu
     assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.players[0].hand[1].name, 'jesseho2');
 });
 
 // ── Pedro Ramirez: první kartu z odhazovacího balíčku ────────────────────────
