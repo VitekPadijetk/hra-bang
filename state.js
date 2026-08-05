@@ -56,6 +56,17 @@ const App = {
     // ID karet právě odlétajících do odhozu při smrti hráče (Návrh 2). board.js je
     // navrchu odhozu skryje, dokud nedoletí – objeví se postupně, jak dosedají.
     deathDiscardHideIds: new Set(),
+    // Cinematika vyřazení hráče (core/deathAnim.js): playerIdx -> fáze.
+    //   'dying'      – postava klesá na 0 životů, karty ještě leží na místě
+    //   'discarding' – karty odlétají (u zdroje mizí postupně, viz deathHandHide)
+    //   'settled'    – ruka i stůl jsou pryč, místo pro kartu role je rezervované,
+    //                  ale karta se NEkreslí (letí zrovna doprostřed obrazovky)
+    // Dokud je hráč v některé fázi, board.js podle toho kreslí jeho místo; po dojezdu
+    // se záznam smaže a karta role se objeví staticky.
+    deathSeq: {},
+    // Které SLOTY ruky vyřazeného hráče už odletěly (playerIdx -> Set slotů). Slot
+    // zůstává prázdný (vějíř se nepřeskládá), karta se prostě přestane kreslit.
+    deathHandHide: {},
     // ID karet právě ukradených z výzbroje/stolu hráče (Panika/Cat Balou). board.js
     // je na boardu/výzbroji NEvykreslí, dokud plovoucí animace nedoletí – jinak by
     // byla karta po dobu letu vidět dvakrát (reálná i letící).

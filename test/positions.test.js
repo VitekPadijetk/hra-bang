@@ -1,7 +1,7 @@
 const { test, before, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    getPlayerPosition, getPlayerHandPos, getBoardCardPos, getOpponentAnchors,
+    getPlayerPosition, getPlayerHandPos, getBoardCardPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
 
 // getPlayerHandPos/getBoardCardPos čtou globály state/myIndex (bare identifiers).
@@ -132,6 +132,25 @@ test('getBoardCardPos (soupeř vlevo): pozice dle kotvy a počtu modrých', () =
     // numBlue=0; groupH=87.75; livesCY = 540 + 43.875 - 67.5 = 516.375
     // boardIdx 0: col 0, rowInCol 0 → x=180, y = 516.375 - 97.75 = 418.625
     assert.deepEqual(getBoardCardPos(1, 0), { x: 180, y: 418.625 });
+});
+
+// ── getDeadRoleCardPos: kam dosedne odhalená role vyřazeného hráče ───────────
+test('getDeadRoleCardPos: slot 0 skupiny mrtvého (hned vedle jeho postavy)', () => {
+    // Mrtvý soupeř vlevo s prázdným stolem: skupina = postava + 1 karta (role).
+    setWorld([{}, { health: 0, weapon: { id: -1 }, board: [] }, {}], 0);
+    // numBlue=1; groupH = 2*87.75 + 10 = 185.5; livesCY = 540 + 92.75 - 67.5 = 565.25
+    // displayIdx 0 → y = 565.25 - 97.75 = 467.5
+    assert.deepEqual(getDeadRoleCardPos(1), { x: 180, y: 467.5 });
+});
+
+test('getDeadRoleCardPos: sedí na místo, kde roli kreslí deska (slot před modrými)', () => {
+    // Kdyby mrtvý ještě něco na stole měl, role je pořád první – logický boardIdx 0
+    // (první modrá) musí ležet až ZA ní.
+    setWorld([{}, { health: 0, weapon: { id: -1 }, board: [{ id: 7 }] }, {}], 0);
+    const role = getDeadRoleCardPos(1);
+    const firstBlue = getBoardCardPos(1, 0);
+    assert.notDeepEqual(role, firstBlue);
+    assert.ok(role.y > firstBlue.y, 'role je blíž postavě než první modrá');
 });
 
 test('getBoardCardPos: bez stavu → střed', () => {

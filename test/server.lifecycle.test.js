@@ -69,6 +69,22 @@ test('emitDeathAnim: s živým Vulture Samem pošle vulture_sam_steal', () => {
     assert.equal(a.payload.toPlayerIdx, 1);
 });
 
+test('emitDeathAnim nastaví _deathBlockUntil na délku celé cinematiky (boti čekají)', () => {
+    const { io } = mkIo();
+    const ctx = { io, broadcastRoomDelayed() {} };
+    installAnimService(ctx);
+    const { deathSequenceMs } = require('../core/deathAnim.js');
+    const gs = { players: [{ character: 'Bart Cassidy', health: 0 }, { character: 'Willy the Kid', health: 4 }],
+        _deathAnimData: { 0: { blue: [{ id: 1 }], weapon: { id: 2 }, hand: [{ id: 3 }, { id: 4 }] } } };
+    const room = { id: 'g1', players: [] };
+    const t0 = Date.now();
+    ctx.emitDeathAnim(room, gs, 0);
+    // 1 modrá + zbraň/Colt (vždy jedna položka) + 2 z ruky = 4 karty
+    const want = deathSequenceMs(4);
+    assert.ok(room._deathBlockUntil >= t0 + want, 'bot nesmí hrát dřív, než cinematika doběhne');
+    assert.ok(room._deathBlockUntil <= Date.now() + want);
+});
+
 test('handleAutoEndTurn zavolá nextTurn jen když je pending a není vítěz', () => {
     const { io } = mkIo();
     const ctx = { io, broadcastRoomDelayed() {} };

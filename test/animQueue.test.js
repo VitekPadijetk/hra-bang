@@ -166,6 +166,39 @@ test('po zahození fronty se pokračuje normálně dál', () => {
     assert.deepStrictEqual(log, ['a1', 's1', 'a4', 's2']);
 });
 
+test('essential animace se při zaostávání nezahodí a udrží pořadí', () => {
+    // Cinematika vyřazení hráče: nechává za sebou lokálně upravený stav (skryté karty,
+    // mezifáze) a čeká na ni i server (drží boty) – zahodit se nesmí ani při zaostávání.
+    const clock = mkClock();
+    const dropped = [];
+    const q = mkQueue(clock, { maxLagMs: 700, onDrop: n => dropped.push(n) });
+    const log = [];
+    q.pushAnim(() => log.push('a1'), 400);                          // hraje hned
+    q.pushAnim(() => log.push('smrt'), 6000, { essential: true });   // čeká, ale nezahoditelná
+    q.pushAnim(() => log.push('a2'), 400);
+    q.pushAnim(() => log.push('a3'), 400);                          // 400+400 > 700 → zahodit
+    q.pushState(() => log.push('s'));
+    assert.deepStrictEqual(dropped, [2], 'zahodit se smí jen ta dvě obyčejná čekání');
+    clock.advance(400);
+    assert.deepStrictEqual(log, ['a1', 'smrt']);
+    clock.advance(6000);
+    assert.deepStrictEqual(log, ['a1', 'smrt', 's']);
+});
+
+test('samotná dlouhá essential animace nezahodí animace kolem sebe', () => {
+    const clock = mkClock();
+    const dropped = [];
+    const q = mkQueue(clock, { maxLagMs: 700, onDrop: n => dropped.push(n) });
+    const log = [];
+    q.pushAnim(() => log.push('a1'), 300);                          // hraje hned
+    q.pushAnim(() => log.push('smrt'), 6000, { essential: true });
+    q.pushAnim(() => log.push('a2'), 400);
+    assert.deepStrictEqual(dropped, [], 'jedna obyčejná čekající animace není zaostávání');
+    clock.advance(300);
+    clock.advance(6000);
+    assert.deepStrictEqual(log, ['a1', 'smrt', 'a2']);
+});
+
 test('reset zahodí rozdělanou frontu (odchod ze hry) a nic nedocommituje', () => {
     const clock = mkClock();
     const q = mkQueue(clock);

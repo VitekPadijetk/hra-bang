@@ -1,6 +1,8 @@
 // server/anim.js — animační a auto-tah helpery: emit card_animation/reshuffle_anim,
 // smrt (Vulture Sam vs odhoz), automatické ukončení tahu po smrti, reshuffle broadcast.
 // Factory installAnimService(ctx): bere { io, broadcastRoomDelayed } z ctx. Bez listenu.
+const { deathSequenceMs } = require('../core/deathAnim.js');
+
 module.exports = function installAnimService(ctx) {
     const { io, broadcastRoomDelayed } = ctx;
 
@@ -56,6 +58,13 @@ module.exports = function installAnimService(ctx) {
         } else {
             emitAnim(room, { type: 'player_death_discard', playerIdx: deadIdx, blue, weapon, hand });
         }
+        // Klient hraje celou cinematiku vyřazení (pokles na nulu → odhoz karet po jedné →
+        // odhalení role uprostřed obrazovky) a stav si do jejího konce drží ve frontě.
+        // Boti o tu dobu nesmí hrát, jinak by hráli „přes" ni – viz scheduleBotTick.
+        // Počet položek odhozu musí sedět s _deathCardSeq: modré + zbraň/Colt (vždy
+        // jedna) + ruka.
+        room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
+            Date.now() + deathSequenceMs(blue.length + 1 + hand.length));
         if (gs._deathAnimData) delete gs._deathAnimData[deadIdx];
     }
 

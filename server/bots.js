@@ -187,6 +187,11 @@ module.exports = function installBotService(ctx) {
         // nastaví handleReshuffleAndBroadcast), bot čeká – i u proaktivního zamíchání, kde
         // broadcast odejde hned. Jinak by bot zahrál „přes" 5,5s animaci míchání.
         const reshuffleWait = Math.max(0, (room._reshuffleBlockUntil || 0) - Date.now());
+        // Vyřazení hráče: dokud běží cinematika smrti (pokles na nulu, odhoz karet,
+        // odhalení role uprostřed obrazovky – core/deathAnim.js, nastaví emitDeathAnim),
+        // bot nehraje. Klient do té doby drží stav ve frontě animací, takže by bot hrál
+        // divákům „poslepu".
+        const deathWait = Math.max(0, (room._deathBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
         if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
@@ -227,14 +232,19 @@ module.exports = function installBotService(ctx) {
             room._charPickSettled = false;
         }
 
-        // Míchací cinematika má přednost před vším ostatním časováním – bot čeká, než doběhne.
-        delay = Math.max(delay, reshuffleWait);
+        // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
+        // časováním – bot čeká, než doběhnou.
+        delay = Math.max(delay, reshuffleWait, deathWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();
 
         room._botTick = setTimeout(() => {
             room._botTick = null;
+            // Cinematika vyřazení mohla začít až PO naplánování tohoto ticku (debounce
+            // room._botTick ho znovu nepřeplánoval) – pak by bot zahrál doprostřed
+            // odhalení role. Přeplánuj se; nové zpoždění už ji zahrne (deathWait výše).
+            if ((room._deathBlockUntil || 0) > Date.now()) { scheduleBotTick(room); return; }
             try { runBotTickOnce(room); }
             catch (e) { ctx.glog.error('bot-tick', e, room); }
         }, delay);
@@ -244,6 +254,7 @@ module.exports = function installBotService(ctx) {
         if (!ctx.rooms.has(room.id)) return;     // místnost rozpuštěna → nic nedělej
         const gs = room.gameState;
         if (!gs) return;
+
 
         // Po konci hry: boti automaticky chtějí navazující hru (lidský leader ji
         // pak může spustit; u hry jen botů je to neškodné – divák stejně jen odejde).

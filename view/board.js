@@ -147,6 +147,15 @@ function renderGameBoard() {
 }
 
 
+// Cinematika vyřazení hráče (core/deathAnim.js): dokud postava klesá na nulu a
+// odhazuje karty, patří karty pořád jemu a kreslí se – jen postupně mizí, jak
+// odlétají (App.stealHideIds / App.deathHandHide). Teprve fáze 'settled' má stůl
+// i ruku prázdné a drží jen slot pro kartu role, která zrovna letí doprostřed.
+function deathCardsStillShown(playerIdx) {
+    const s = App.deathSeq[playerIdx];
+    return s === 'dying' || s === 'discarding';
+}
+
 // Šerifova hvězda leží prostorově NAD kartou postavy, takže musí být nad kartami
 // vyloženými vedle ní (modré/zelené/zbraň se kreslí až po ní → bez depth by je měla
 // pod sebou a schovaly by ji). Pod jmenovkami (50) a overlaye (200+) zůstává.
@@ -348,7 +357,13 @@ function drawOpponents(ctx) {
 
         const deadRoleMap = { 'Sheriff': 'role_000', 'Outlaw': 'role_001', 'Renegade': 'role_002', 'Deputy': 'role_003' };
         const isDead = player.health <= 0;
-        const displayCards = isDead
+        // Cinematika vyřazení (core/deathAnim.js): dokud hráč klesá na nulu a odhazuje
+        // karty, kreslí se jeho místo pořád ještě BEZ karty role – ta se odhaluje až
+        // nakonec. Ve fázi 'settled' je slot role rezervovaný (postava se k němu posune),
+        // ale karta se nekreslí: zrovna letí doprostřed obrazovky a teprve doletí sem.
+        const _deathStage = App.deathSeq[actualIdx] || null;
+        const _roleSlot = isDead && !deathCardsStillShown(actualIdx);
+        const displayCards = _roleSlot
             ? [{ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' }, ...allBoardCards]
             : allBoardCards;
 
@@ -495,7 +510,10 @@ function drawOpponents(ctx) {
         const drawBoardCard = (x, y, card, angle, bIdx) => {
             // Karta právě ukradená Panikou/Cat Balou: po dobu letu ji nekresli (slot
             // ale zůstává obsazený – jiné karty se neposunou), objeví se zpět po doletu.
+            // Stejnou cestou mizí i karty odlétající při smrti – jedna po druhé.
             if (!card._isRole && App.stealHideIds.has(card.id)) return;
+            // Karta role letí zrovna doprostřed obrazovky (odhalení) – slot drž prázdný.
+            if (card._isRole && _deathStage === 'settled') return;
             const tex = card._isRole ? card._roleTex : getTex(card.id);
             let bCard = gameScene.add.image(x, y, tex).setScale(scaleOpp).setAngle(angle);
 
@@ -509,7 +527,7 @@ function drawOpponents(ctx) {
             if (canTargetThisPlayer && !card._isRole) {
                 bCard.setTint(0xffff44);
                 bCard.on('pointerdown', () => {
-                    const realBIdx = bIdx - (isDead ? 1 : 0);
+                    const realBIdx = bIdx - (_roleSlot ? 1 : 0);
                     const hasWeapon = player.weapon && player.weapon.id !== -1;
                     const isWeapon = hasWeapon && realBIdx === 0;
                     const boardIdx = isWeapon ? null : (hasWeapon ? realBIdx - 1 : realBIdx);
@@ -519,7 +537,7 @@ function drawOpponents(ctx) {
                 // Pat Brennan: klik na kartu ze stolu soupeře = vezmi si ji (konec lízání).
                 bCard.setTint(0xffff44);
                 bCard.on('pointerdown', () => {
-                    const realBIdx = bIdx - (isDead ? 1 : 0);
+                    const realBIdx = bIdx - (_roleSlot ? 1 : 0);
                     const hasWeapon = player.weapon && player.weapon.id !== -1;
                     const isWeapon = hasWeapon && realBIdx === 0;
                     const boardIdx = isWeapon ? null : (hasWeapon ? realBIdx - 1 : realBIdx);
@@ -534,6 +552,9 @@ function drawOpponents(ctx) {
         };
 
         const drawHandCard = (x, y, angle, slot) => {
+            // Smrt: karta z tohoto slotu už odletěla do odhozu / k Vulture Samovi.
+            // Slot zůstává prázdný, zbytek vějíře se pod ní nepřeskládá.
+            if (slot !== undefined && App.deathHandHide[actualIdx]?.has(slot)) return;
             const isJesseJonesDraw = isMyDraw && state.drawPhaseState.options.includes('opponent_hand') && state.drawPhaseState.cardsDrawn === 0;
             const isElGringoSteal = state.phase === "EL_GRINGO_STEAL" &&
                 state.pendingElGringoSteal?.playerIdx === myIndex &&
@@ -829,8 +850,12 @@ function drawMyArea(ctx) {
             livesImg.setTint(0xff4444);
             livesImg.setInteractive({ useHandCursor: true });
             livesImg.on('pointerdown', () => {
+                // Zamčené UI (běží animace / cinematika vyřazení) → klik ignoruj; jinak
+                // by šlo „schytat zásah" ještě jednou, než dorazí nový stav.
+                if (App.blockInput) return;
                 socket.emit('respond_to_card', { playerIdx: myIndex, cardIndex: null });
                 if (state.pendingResponse) state.pendingResponse.active = false;
+                App.blockInput = true;
                 renderUI();
             });
         } else if (isMyDynamiteDamage) {
@@ -942,7 +967,9 @@ function drawMyArea(ctx) {
 
         let myBoardCards = [];
 
-        if (me.health > 0) {
+        // Umírám-li, moje karty zůstávají na stole, dokud jedna po druhé neodletí
+        // (viz deathCardsStillShown) – ne že by všechny zmizely v okamžiku zásahu.
+        if (me.health > 0 || deathCardsStillShown(myIndex)) {
             if (me.weapon && me.weapon.id !== -1) {
                 myBoardCards.push({ ...me.weapon, _isWeapon: true });
             } else {
@@ -982,7 +1009,9 @@ function drawMyArea(ctx) {
         myBoardCards.forEach((card, i) => {
             // Karta právě ukradená Panikou/Cat Balou: po dobu letu ji nekresli (slot
             // zůstává prázdný), objeví se zpět po doletu animace.
-            if (!card._isColt && App.stealHideIds.has(card.id)) return;
+            // (i Colt .45 – při smrti se místo letu rozplyne, viz _fadeOutColt; jeho
+            //  klíč '_colt' se s ID skutečných karet nikdy nepotká)
+            if (App.stealHideIds.has(card.id)) return;
             const bRow = Math.floor(i / boardMaxPerRow);
             const bCol = i % boardMaxPerRow;
             const bx = roleX - boardCardW - (bCol * boardCardW);
@@ -1183,6 +1212,9 @@ function drawMyArea(ctx) {
                     App.gatedSlotPos[card.id] = { x: posX, y: myBaseY };
                     return;
                 }
+                // Smrt: karta z tohoto slotu už odletěla do odhozu. Slot zůstává
+                // prázdný – ruka se během odhazování nepřeskládá (viz deathHandHide).
+                if (App.deathHandHide[myIndex]?.has(index)) return;
                 const isMySidMode = selectedState.sidKetchum !== undefined;
                 const isStagedCard = isMySidMode && selectedState.sidKetchum?.stagedIdx === index;
                 // „Odhoď další kartu" (Dodge City): hlavní (hraná) karta se zmenší jako u
@@ -1598,8 +1630,12 @@ function drawSpectatorPlayer(ctx) {
         // Mrtvý hráč dole (divák): zobraz postavu + ODHALENOU roli + zbylé karty jako
         // u soupeřů (drawOpponents), ne lebku.
         const deadRoleMap = { 'Sheriff': 'role_000', 'Outlaw': 'role_001', 'Renegade': 'role_002', 'Deputy': 'role_003' };
+        // Cinematika vyřazení – viz shodné gate v drawOpponents: karta role se objeví
+        // teprve po odhalení uprostřed obrazovky, ve fázi 'settled' jen drží slot.
+        const _deathStage = App.deathSeq[0] || null;
+        const _roleSlot = isDead && !deathCardsStillShown(0);
         const allBoard = [];
-        if (isDead) allBoard.push({ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' });
+        if (_roleSlot) allBoard.push({ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' });
         if (player.weapon && player.weapon.id !== -1) allBoard.push(player.weapon);
         if (player.board) allBoard.push(...player.board);
 
@@ -1629,7 +1665,9 @@ function drawSpectatorPlayer(ctx) {
         );
 
         const texOf = (c) => c._isRole ? c._roleTex : getTex(c.id);
-        const stealHidden = (c) => !c._isRole && App.stealHideIds.has(c.id);   // skrytá při letu Paniky/Cat Balou
+        // Skrytá při letu Paniky/Cat Balou i při odhazování karet po smrti; karta role
+        // se nekreslí, dokud letí doprostřed obrazovky (fáze 'settled').
+        const stealHidden = (c) => c._isRole ? (_deathStage === 'settled') : App.stealHideIds.has(c.id);
         const specBoardKey = (c) => 'ob0_' + (c._isRole ? 'role' : c.id);
         for (let i = 0; i < firstRowN; i++) {
             if (stealHidden(allBoard[i])) continue;
@@ -1654,6 +1692,7 @@ function drawSpectatorPlayer(ctx) {
             const hSpacing = Math.min(cW * 0.35, 32);
             const totalSpread = (handCount - 1) * hSpacing;
             for (let h = 0; h < handCount; h++) {
+                if (App.deathHandHide[0]?.has(h)) continue;   // slot už odletěl (smrt)
                 const hx = livesCX - totalSpread / 2 + h * hSpacing;
                 const hImg = gameScene.add.image(hx, handY, 'card_back').setScale(sOpp);
                 gameScene.cardsSprites.add(hImg);

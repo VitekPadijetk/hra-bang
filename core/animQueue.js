@@ -43,11 +43,20 @@ function createAnimQueue(opts = {}) {
         return { ms, n };
     }
 
+    // Totéž, ale jen ze ZAHODITELNÝCH animací – `essential` se nezahazuje, takže se ani
+    // nesmí počítat do zaostávání (jinak by dlouhá cinematika sama vyvolala zahození
+    // ostatních jen tím, že čeká ve frontě).
+    function waitingDroppable() {
+        let ms = 0, n = 0;
+        for (const it of items) if (it.kind === 'anim' && !it.essential) { ms += it.est; n++; }
+        return { ms, n };
+    }
+
     // Zaostáváme? Měří se jen ČEKAJÍCÍ animace, a to nejmíň dvě: jedna animace není
     // zaostávání, ať trvá jakkoli dlouho (smrt s plnou rukou letí přes sekundu a musí
     // se přehrát celá – ne se zahodit jen proto, že sama přesáhne limit).
     function isLagging() {
-        const w = waiting();
+        const w = waitingDroppable();
         return w.n > 1 && w.ms > maxLagMs;
     }
 
@@ -55,13 +64,18 @@ function createAnimQueue(opts = {}) {
     function pendingMs() { return busyMs + waiting().ms; }
 
     // Zaostáváme moc → čekající animace zahoď a nech jen poslední stav (plný snímek).
+    // `essential` animace (cinematika vyřazení hráče) přežijí v původním pořadí – nechávají
+    // za sebou lokálně upravený stav a čeká na ně i server, zahodit je nelze.
     function dropToLastState() {
         let dropped = 0, lastState = null;
+        const keep = [];
         for (const it of items) {
-            if (it.kind === 'anim') dropped++;
-            else lastState = it;
+            if (it.kind !== 'anim') { lastState = it; continue; }
+            if (it.essential) keep.push(it);
+            else dropped++;
         }
         items.length = 0;
+        for (const it of keep) items.push(it);
         if (lastState) items.push(lastState);
         if (dropped && onDrop) onDrop(dropped);
     }
@@ -94,7 +108,10 @@ function createAnimQueue(opts = {}) {
 
     return {
         // run() spustí animaci, est = její odhadované trvání v ms (0 = fronta nečeká).
-        pushAnim(run, est) { push({ kind: 'anim', run, est: Math.max(0, Math.round(est) || 0) }); },
+        // opts.essential = animace se nesmí zahodit ani při zaostávání fronty.
+        pushAnim(run, est, opts) {
+            push({ kind: 'anim', run, est: Math.max(0, Math.round(est) || 0), essential: opts?.essential === true });
+        },
         // commit() aplikuje stav; zavolá se, až doběhne vše, co mu předcházelo.
         pushState(commit) { push({ kind: 'state', commit }); },
         // Odchod ze hry / nová hra: zahoď všechno rozdělané (nic se nedocommituje).

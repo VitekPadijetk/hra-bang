@@ -135,6 +135,14 @@ function getBoardCardPos(playerIdx, boardIdx) {
     return getPlayerHandPos(playerIdx);
 }
 
+// Kam u vyřazeného hráče dosedne jeho odhalená karta role: je to display-slot 0
+// jeho skupiny (viz displayCards v drawOpponents), tj. o jednu pozici PŘED prvním
+// „logickým" boardIdx – proto boardIdx = −1 (getBoardCardPos mrtvému připočítává +1).
+// Volat až ve chvíli, kdy je hráč ve stavu opravdu mrtvý a stůl prázdný.
+function getDeadRoleCardPos(playerIdx) {
+    return getBoardCardPos(playerIdx, -1);
+}
+
 // Pozice i-tého slotu řady hokynářství na stole (vodorovná řada pod zvednutými
 // balíčky). lift = aktuální vyzvednutí balíčků (App.storePileLiftY). MUSÍ zrcadlit
 // rozložení v board.js (drawPhaseOverlays STORE + drawDrawPiles).
@@ -148,5 +156,5 @@ function getStoreSlotPos(i, count, lift) {
 
 // Izomorfní: v prohlížeči globály, v Node/testech require('./positions.js').
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getStoreSlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
+    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getDeadRoleCardPos, getStoreSlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
 }

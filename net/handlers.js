@@ -425,12 +425,15 @@ socket.on('intro_chars', (data) => {
 
 
 
-// ── ODHOZ KARET PŘI SMRTI (Návrh 2) ───────────────────────────────────────────
-// Pozice odletu zachytíme HNED (stav je v tu chvíli ještě „živý" – card_animation
-// dorazí před room_update), animace pak odpalujeme postupně. Pořadí: modré od
-// nejnovější po nejstarší, zbraň jako poslední modrá (jen colt → fade-out), pak
-// karty z ruky od nejvyššího indexu. Délka roste s počtem karet.
-const _DEATH_STAGGER = 95;
+// ── CINEMATIKA VYŘAZENÍ HRÁČE ─────────────────────────────────────────────────
+// Celý sled a jeho časování je v core/deathAnim.js (sdílené se serverem, který o tu
+// dobu pozdrží boty – nikdo nesmí hrát „přes" odhalení role).
+// Pozice odletu zachytíme HNED na začátku: stav je v tu chvíli ještě „živý"
+// (card_animation dorazí před room_update a fronta animací ho drží až do konce
+// sekvence), takže karty odlétají přesně z míst, kde ležely. Pořadí odhozu: modré od
+// nejnovější po nejstarší, zbraň jako poslední modrá (jen Colt → rozplyne se na
+// místě), pak karty z ruky od nejvyššího slotu.
+const _DEATH_STAGGER = DEATH_ANIM.staggerMs;
 
 // Úhel a velikost, pod kterými jsou karty daného hráče vykreslené (viz drawOpponents):
 // já/spodní 0°/0.36, vlevo 90°, nahoře 180°, vpravo −90°; soupeři 0.27. Aby odhoz při
@@ -460,9 +463,33 @@ function _deathCardSeq(pid, blue, weapon, hand) {
     if (hasW) seq.push({ kind: 'weapon', id: weapon.id, from: getBoardCardPos(pid, 0) });
     else      seq.push({ kind: 'colt',   id: null,      from: getBoardCardPos(pid, 0) });
     for (let h = hand.length - 1; h >= 0; h--) {
-        seq.push({ kind: 'hand', id: hand[h].id, from: getHandSlotPos(pid, h, hand.length) });
+        seq.push({ kind: 'hand', id: hand[h].id, slot: h, from: getHandSlotPos(pid, h, hand.length) });
     }
     return seq;
+}
+
+// Karta se ve chvíli, kdy ji zvedne animace, přestane u hráče kreslit – ale její
+// místo zůstane obsazené, takže se ruka ani stůl pod ní nepřeskládají. Modré/zbraň
+// se skrývají podle ID (stejná cesta jako u Paniky/Cat Balou), karty z ruky podle
+// SLOTU (ruby soupeřů žádné ID nemají). Colt .45 nemá ID → vlastní klíč '_colt'.
+function _deathHideSource(pid, it) {
+    if (it.kind === 'hand') {
+        (App.deathHandHide[pid] || (App.deathHandHide[pid] = new Set())).add(it.slot);
+    } else if (it.kind === 'colt') {
+        App.stealHideIds.add('_colt');
+    } else if (it.id != null) {
+        App.stealHideIds.add(it.id);
+    }
+}
+
+// Po dojezdu cinematiky ukliď všechno, čím jsme si drželi „mezistav" umírajícího
+// hráče. Od téhle chvíle ho kreslí normální stav (mrtvý, s odhalenou rolí).
+function _deathSeqCleanup(pid, seq) {
+    delete App.deathSeq[pid];
+    delete App.deathHandHide[pid];
+    App.stealHideIds.delete('_colt');
+    seq.forEach(it => { if (it.id != null) App.stealHideIds.delete(it.id); });
+    if (gameScene) renderUI();
 }
 
 function _fadeOutColt(pos) {
@@ -472,82 +499,191 @@ function _fadeOutColt(pos) {
         onComplete: () => { if (spr.active) spr.destroy(); } });
 }
 
-// Smrt → odhoz: já vidím vše lícem, modré vidí lícem všichni (bez otáčení), karty
-// z ruky se ostatním za letu odhalí (rub→líc).
-function playDeathDiscard(data) {
-    const pid = data.playerIdx;
-    const isMine = pid === myIndex;
-    const discard = discardTopPos();   // vrch odhozu (ne základna) – ať karty dosednou na hromádku
-    const ang = _renderSideAngle(pid);  // orientace, ve které jsou karty umírajícího vykreslené
-    const sc  = _renderSideScale(pid);  // a jejich velikost (odkud se karty odlepují)
-    const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || []);
-    seq.forEach(it => { if (it.id != null) App.deathDiscardHideIds.add(it.id); });
-    seq.forEach((it, k) => {
-        setTimeout(() => {
-            if (!gameScene) return;
-            if (it.kind === 'colt') { if (isMine) _fadeOutColt(it.from); return; }
-            // Kartu na vrcholu odhozu odkryj AŽ když už opravdu je ve stavu odhozu, a letící
-            // sprite do té chvíle drž na místě (holdUntil) – jinak po jeho zániku problikne
-            // předchozí vrchní karta, než dorazí room_update (dřív se odkrývalo dávkově pozdě).
-            const reveal = () => { if (it.id != null) { App.deathDiscardHideIds.delete(it.id); if (gameScene) renderUI(); } };
-            const hold = () => (state?.deck?.discardPile || []).some(c => c.id === it.id);
-            if (isMine || it.kind !== 'hand') {
-                // Znám líc (moje karty / veřejné modré+zbraň) → jen letí do odhozu,
-                // z orientace hráče do 0° a z velikosti na stole (0.36/0.27) na 0.3.
-                animateCard(it.from.x, it.from.y, discard.x, discard.y, getCardTex(it.id), 380, reveal,
-                    { startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, holdUntil: hold });
-            } else {
-                // Cizí karta z ruky se za letu odhalí (rub→líc) – stejně jako běžný odhoz z ruky.
-                animateCardFlip(it.from.x, it.from.y, discard.x, discard.y, 'card_back', getCardTex(it.id),
-                    { flip: true, startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, duration: 400, onComplete: reveal, holdUntil: hold });
-            }
-        }, k * _DEATH_STAGGER);
-    });
-    // Pojistka: cokoli zbylo skrytého (colt bez animace, neúspěšný holdUntil) po dojezdu odkryj.
-    const totalMs = seq.length * _DEATH_STAGGER + 450;
-    setTimeout(() => {
-        seq.forEach(it => { if (it.id != null) App.deathDiscardHideIds.delete(it.id); });
-        if (gameScene) renderUI();
-    }, totalMs);
+// Jeden let do odhozu: já vidím vše lícem, modré vidí lícem všichni (bez otáčení),
+// karty z ruky se ostatním za letu odhalí (rub→líc).
+function _deathFlyToDiscard(it, o) {
+    const { isMine, ang, sc, discard } = o;
+    // Kartu na vrcholu odhozu odkryj AŽ když už opravdu je ve stavu odhozu, a letící
+    // sprite do té chvíle drž na místě (holdUntil) – jinak po jeho zániku problikne
+    // předchozí vrchní karta, než dorazí room_update (dřív se odkrývalo dávkově pozdě).
+    const reveal = () => { if (it.id != null) { App.deathDiscardHideIds.delete(it.id); if (gameScene) renderUI(); } };
+    const hold = () => (state?.deck?.discardPile || []).some(c => c.id === it.id);
+    if (isMine || it.kind !== 'hand') {
+        // Znám líc (moje karty / veřejné modré+zbraň) → jen letí do odhozu,
+        // z orientace hráče do 0° a z velikosti na stole (0.36/0.27) na 0.3.
+        animateCard(it.from.x, it.from.y, discard.x, discard.y, getCardTex(it.id), 380, reveal,
+            { startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, holdUntil: hold });
+    } else {
+        // Cizí karta z ruky se za letu odhalí (rub→líc) – stejně jako běžný odhoz z ruky.
+        animateCardFlip(it.from.x, it.from.y, discard.x, discard.y, 'card_back', getCardTex(it.id),
+            { flip: true, startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, duration: 400, onComplete: reveal, holdUntil: hold });
+    }
 }
 
 // Smrt s Vulture Samem → karty letí do JEHO ruky (ne do odhozu). Otáčení rub/líc
 // podle toho, kdo kartu uvidí v jeho ruce lícem (jen Sam) vs rubem (ostatní):
 //  modré – Sam lícem (bez otáčení), já i ostatní líc→rub; karty z ruky – Sam rub→líc,
-//  já líc→rub, ostatní zůstávají rubem. Sam má nové karty v ruce zhratované (pendingDrawIds),
-//  dokud nedoletí.
-function playVultureSteal(data) {
-    const pid = data.fromPlayerIdx;
-    const vid = data.toPlayerIdx;
-    const isMine = pid === myIndex;     // umírám
-    const isVulture = vid === myIndex;  // beru si karty
-    const to = getPlayerHandPos(vid);
+//  já líc→rub, ostatní zůstávají rubem. Sam má nové karty v ruce zhratované
+//  (pendingDrawIds), dokud nedoletí; sprite pak ještě leží na jeho ruce, dokud kartu
+//  nepotvrdí stav (ten dorazí až po celé cinematice odhalení role – holdTries).
+function _deathFlyToVulture(it, o) {
+    const { isMine, isVulture, to, holdTries } = o;
+    const fc = getCardTex(it.id);
+    const done = () => { if (isVulture && it.id != null) { App.pendingDrawIds.delete(it.id); renderUI(); } };
+    const hold = () => (state?.players?.[o.vid]?.hand || []).some(c => c.id === it.id);
+    if (it.kind === 'hand') {
+        if (isVulture)      animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { flip: true, startScale: 0.3, endScale: 0.3, duration: 420, onComplete: done, holdUntil: hold, holdTries });
+        else if (isMine)    animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { flip: true, reverse: true, startScale: 0.3, endScale: 0.3, duration: 420, holdUntil: hold, holdTries });
+        else                animateCard(it.from.x, it.from.y, to.x, to.y, 'card_back', 400, null, { holdUntil: hold, holdTries });
+    } else {
+        if (isVulture)      animateCard(it.from.x, it.from.y, to.x, to.y, fc, 400, done, { holdUntil: hold, holdTries });
+        else                animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { flip: true, reverse: true, startScale: 0.3, endScale: 0.3, duration: 420, holdUntil: hold, holdTries });
+    }
+}
+
+// ── Odhalení role uprostřed obrazovky ────────────────────────────────────────
+// Rubová karta role vyletí zpoza okraje stolu u mrtvého hráče doprostřed jako VELKÁ
+// karta (stejná velikost jako reveal role v intru), chvíli je vidět rubem, překlopí
+// se (= odhalení, co to bylo za hráče), zůstane všem na očích a nakonec se zmenší
+// a odletí na své místo vedle mrtvého. Sprite žije MIMO cardsSprites (přežije
+// překreslení desky) a nad všemi kartami. Textury rolí bere z RoleImages (game.js).
+
+// Odkud karta vyletí: zpoza okraje stolu u mrtvého hráče (mimo plátno 1920×1080),
+// ať je vidět, že přichází od NĚJ.
+function _deathRoleStartPos(pid) {
+    const view = myIndex === null ? 0 : myIndex;
+    const total = state?.players?.length || 0;
+    const anchor = pid === view ? null : getOpponentAnchors(total)[((pid - view + total) % total) - 1];
+    if (!anchor) return { x: 960, y: 1400 };            // spodní hráč (já / divákova nula)
+    if (anchor.side === 'left')  return { x: -280, y: anchor.y };
+    if (anchor.side === 'right') return { x: 2200, y: anchor.y };
+    return { x: anchor.x, y: -320 };                    // 'top'
+}
+
+// Velikost, ve které karta role u hráče leží. Pozor: divák kreslí i spodního hráče
+// v soupeřově měřítku (drawSpectatorPlayer), proto ne _renderSideScale.
+function _deathRoleEndScale(pid) {
+    return (myIndex !== null && pid === myIndex) ? 0.36 : 0.27;
+}
+
+function _deathRoleReveal(pid, onDone) {
+    const player = state?.players?.[pid];
+    if (!gameScene || !player) { if (onDone) onDone(); return; }
+    const D = DEATH_ANIM;
+    const BIG = 0.80, CX = 960, CY = 480;
+    const from = _deathRoleStartPos(pid);
+    const startAngle = _renderSideAngle(pid);
+    const faceTex = RoleImages[player.role] || 'role_001';
+    const spr = gameScene.add.image(from.x, from.y, 'role_card_back')
+        .setScale(0.27).setAngle(startAngle).setDepth(900).setAlpha(0.97);
+    const finish = () => { if (spr.active) spr.destroy(); if (onDone) onDone(); };
+
+    // 1) nálet doprostřed: cestou se zvětší a dotočí do čitelné polohy. Otáčení bez
+    //    180° symetrie (nearestAngle360) – od horního hráče se musí opravdu otočit.
+    gameScene.tweens.add({ targets: spr, x: CX, y: CY, duration: D.flyMs, ease: 'Power2' });
+    gameScene.tweens.add({ targets: spr, scaleX: BIG, scaleY: BIG, duration: D.flyMs, ease: 'Power2' });
+    if (startAngle !== 0) {
+        gameScene.tweens.add({ targets: spr, angle: nearestAngle360(startAngle, 0), duration: D.flyMs, ease: 'Power2' });
+    }
+
+    // 2) rub chvíli drží, pak překlopení rub→líc (scaleX na nulu, výměna textury, zpět).
+    gameScene.time.delayedCall(D.flyMs + D.holdBackMs, () => {
+        if (!spr.active) return;
+        gameScene.tweens.add({
+            targets: spr, scaleX: 0, duration: D.flipMs / 2, ease: 'Sine.easeIn',
+            onComplete: () => {
+                if (!spr.active) return;
+                spr.setTexture(faceTex);
+                gameScene.tweens.add({ targets: spr, scaleX: BIG, duration: D.flipMs / 2, ease: 'Sine.easeOut' });
+            }
+        });
+    });
+
+    // 3) odhalená role zůstane všem na očích, pak se zmenší a odletí na své místo.
+    gameScene.time.delayedCall(D.flyMs + D.holdBackMs + D.flipMs + D.holdFaceMs, () => {
+        if (!spr.active) { if (onDone) onDone(); return; }
+        const to = getDeadRoleCardPos(pid);
+        const end = _deathRoleEndScale(pid);
+        gameScene.tweens.add({ targets: spr, x: to.x, y: to.y, duration: D.toSlotMs, ease: 'Power2', onComplete: finish });
+        gameScene.tweens.add({ targets: spr, scaleX: end, scaleY: end, duration: D.toSlotMs, ease: 'Power2' });
+        if (startAngle !== 0) {
+            gameScene.tweens.add({ targets: spr, angle: nearestAngle360(0, startAngle), duration: D.toSlotMs, ease: 'Power2' });
+        }
+    });
+}
+
+// ── Celá cinematika vyřazení (sled a časování viz core/deathAnim.js) ─────────
+function playDeathSequence(data) {
+    const isVulture = data.type === 'vulture_sam_steal';
+    const pid = isVulture ? data.fromPlayerIdx : data.playerIdx;
+    const p = state?.players?.[pid];
+    if (!gameScene || !p) return;
+    const isMine = pid === myIndex;   // umírám já → odhalení role nevidím, jen čekám
+
+    // Pozice/orientace zachyť TEĎ, dokud je stav ještě „živý" (viz komentář výše).
     const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || []);
-    if (isVulture) seq.forEach(it => { if (it.id != null) App.pendingDrawIds.add(it.id); });
+    const T = deathAnimTimeline(seq.length);
+    const flyCtx = isVulture
+        ? { isMine, isVulture: data.toPlayerIdx === myIndex, vid: data.toPlayerIdx,
+            to: getPlayerHandPos(data.toPlayerIdx), holdTries: Math.ceil(T.total / 16) }
+        : { isMine, ang: _renderSideAngle(pid), sc: _renderSideScale(pid), discard: discardTopPos() };
+
+    // Po celou sekvenci nikdo nehraje: klik je zamčený, nový stav čeká ve frontě
+    // animací a boti stojí na serveru (room._deathBlockUntil).
+    App.blockInput = true;
+    App.deathSeq[pid] = 'dying';
+    App.deathHandHide[pid] = new Set();
+    if (isVulture) { if (flyCtx.isVulture) seq.forEach(it => { if (it.id != null) App.pendingDrawIds.add(it.id); }); }
+    else seq.forEach(it => { if (it.id != null) App.deathDiscardHideIds.add(it.id); });
+
+    // 1) Postava klesne po kartě životů na nulu – stejný posun jako u každého zásahu.
+    App.healthAnims[pid] = { fromHealth: Math.max(1, p.health) };
+    p.health = 0;
+    renderUI();
+
+    // 2) Po pauze odlétají karty jedna po druhé a KAŽDÁ u hráče zmizí ve chvíli, kdy
+    //    ji zvedne animace (ne až všechny naráz s novým stavem).
     seq.forEach((it, k) => {
         setTimeout(() => {
             if (!gameScene) return;
+            App.deathSeq[pid] = 'discarding';
+            _deathHideSource(pid, it);
+            renderUI();
             if (it.kind === 'colt') { if (isMine) _fadeOutColt(it.from); return; }
-            const fc = getCardTex(it.id);
-            const done = () => { if (isVulture && it.id != null) { App.pendingDrawIds.delete(it.id); renderUI(); } };
-            if (it.kind === 'hand') {
-                if (isVulture)      animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { flip: true, startScale: 0.3, endScale: 0.3, duration: 420, onComplete: done });
-                else if (isMine)    animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { flip: true, reverse: true, startScale: 0.3, endScale: 0.3, duration: 420 });
-                else                animateCard(it.from.x, it.from.y, to.x, to.y, 'card_back', 400);
-            } else {
-                if (isVulture)      animateCard(it.from.x, it.from.y, to.x, to.y, fc, 400, done);
-                else                animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { flip: true, reverse: true, startScale: 0.3, endScale: 0.3, duration: 420 });
-            }
-        }, k * _DEATH_STAGGER);
+            if (isVulture) _deathFlyToVulture(it, flyCtx);
+            else _deathFlyToDiscard(it, flyCtx);
+        }, T.cards + k * _DEATH_STAGGER);
     });
-    if (isVulture) {
-        const totalMs = seq.length * _DEATH_STAGGER + 600;
-        setTimeout(() => {
-            let changed = false;
-            seq.forEach(it => { if (it.id != null && App.pendingDrawIds.delete(it.id)) changed = true; });
-            if (changed && gameScene) renderUI();
-        }, totalMs);
-    }
+
+    // 3) Ruka i stůl jsou prázdné → postava doklouže vedle místa pro kartu role.
+    //    Slot je rezervovaný, ale karta v něm ještě není (letí doprostřed obrazovky).
+    setTimeout(() => {
+        const dp = state?.players?.[pid];
+        if (!gameScene || !dp) return;
+        dp.hand = [];
+        dp.board = [];
+        dp.weapon = { id: -1, name: 'Colt .45', type: 'Zbraň', props: { range: 1 } };
+        App.deathSeq[pid] = 'settled';
+        delete App.deathHandHide[pid];
+        renderUI();
+    }, T.settle);
+
+    // 4) Odhalení role všem ostatním (kdo umřel, ten jen čeká).
+    setTimeout(() => {
+        if (isMine) return;
+        _deathRoleReveal(pid, () => _deathSeqCleanup(pid, seq));
+    }, T.fly);
+
+    // Pojistka: ať se stane cokoli (scéna zmizí, tween se ztratí), po dojezdu sekvence
+    // musí být deska zase v normálním stavu – nic skrytého, nic rozanimovaného.
+    setTimeout(() => {
+        seq.forEach(it => {
+            if (it.id == null) return;
+            App.deathDiscardHideIds.delete(it.id);
+            App.pendingDrawIds.delete(it.id);
+        });
+        _deathSeqCleanup(pid, seq);
+    }, T.total + 150);
 }
 
 // Odkud má vyletět karta, kterou hraju/odhazuju JÁ: z konkrétního slotu v mé ruce
@@ -926,10 +1062,8 @@ function _playCardAnim(data) {
             break;
         }
         case 'player_death_discard':
-            playDeathDiscard(data);
-            break;
         case 'vulture_sam_steal':
-            playVultureSteal(data);
+            playDeathSequence(data);
             break;
         case 'beer_auto_save': {
             const from = getMyPlayedCardPos(data.fromPlayerIdx, data.cardId);
@@ -1110,11 +1244,11 @@ const ANIM_MS = {
 };
 
 function _animDurationMs(data) {
-    // Smrt: karty odlétají po jedné se staggerem, doba = poslední start + její dolet.
-    // Colt .45 (fade-out bez letu) se do počtu nepočítá, proto malá rezerva navíc.
+    // Smrt: celá cinematika vyřazení (pokles na nulu → odhoz karet → odhalení role).
+    // Počet položek odhozu = modré + zbraň/Colt (vždy jedna) + ruka, viz _deathCardSeq;
+    // stejný vzorec počítá server (server/anim.js), aby o tu dobu podržel boty.
     if (data.type === 'player_death_discard' || data.type === 'vulture_sam_steal') {
-        const n = (data.blue?.length || 0) + (data.weapon ? 1 : 0) + (data.hand?.length || 0);
-        return Math.max(1, n) * _DEATH_STAGGER + 450;
+        return deathSequenceMs((data.blue?.length || 0) + 1 + (data.hand?.length || 0));
     }
     // Výsledek Lucky Duke checku klient záměrně zdrží (_runResult), ať dosedne až po
     // obou odhalených kartách – ta prodleva se musí započítat. Fázi čteme stejně jako
@@ -1129,7 +1263,11 @@ function _animDurationMs(data) {
 socket.on('card_animation', (data) => {
     // Mimo scénu/hru není co přehrát – nezařazuj, ať fronta nedrží následující stav.
     if (!gameScene || !state || !data) return;
-    _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data));
+    // Cinematika vyřazení je `essential`: nikdy se nesmí zahodit kvůli zaostávání
+    // fronty. Nechává za sebou lokálně upravený stav (skryté karty, mezifáze) a bez
+    // dojezdu by ho nikdo neuklidil – navíc na ni čeká i server (drží boty).
+    const essential = data.type === 'player_death_discard' || data.type === 'vulture_sam_steal';
+    _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 
 socket.on('room_update', (payload) => {
@@ -1221,7 +1359,9 @@ attemptRejoin();   // pokus hned při načtení (buffered – odejde po connectu
 // zahozené akci NEPŘIJDE, takže si UI musíme odemknout sami, ať tlačítka nezůstanou
 // mrtvá; správný stav dorazí běžným broadcastem.
 socket.on('action_rejected', (info) => {
-    App.blockInput = false;
+    // Výjimka: běží-li cinematika vyřazení, UI zůstane zamčené až do jejího konce
+    // (jinak by ji odemkl právě ten zahozený dvojklik, který smrt spustil).
+    if (Object.keys(App.deathSeq).length === 0) App.blockInput = false;
     clog('warn', 'akce zahozena serverem: ' + (info?.event || '?'), { reason: info?.reason });
     if (gameScene) renderUI();
 });
@@ -1262,7 +1402,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Jen u
     // živého hráče v běžící hře (smrt řeší vlastní odhozová animace → vyžadujeme health>0).
