@@ -932,3 +932,31 @@ function showStats(players) {
         </div></div>`;
     document.body.appendChild(div);
 }
+
+// ── Výzva k načtení stránky po nasazení nové verze ───────────────────────────
+// Volá net/handlers.js, když se po reconnectu změnil otisk kódu na serveru
+// (`server_version`, viz server/version.js). Prohlížeč drží starý JS, případná
+// rozehraná místnost je po restartu serveru pryč – hráč potřebuje vědět, že to
+// není chyba, ale aktualizace, a že stačí načíst stránku znovu.
+// Záměrně DOM (ne Phaser): musí být vidět v menu, v lobby i uprostřed hry,
+// a přežije to i scénu, která se zrovna nepřekresluje.
+function showUpdateBanner() {
+    if (document.getElementById('update-banner')) return;   // jednou stačí
+
+    const bar = document.createElement('div');
+    bar.id = 'update-banner';
+    bar.style.cssText = `position:fixed;top:0;left:0;width:100%;z-index:2000;
+        background:rgba(74,58,18,0.97);border-bottom:2px solid #e0b23c;
+        box-shadow:0 4px 24px rgba(0,0,0,0.6);font-family:'Oswald',sans-serif;
+        display:flex;align-items:center;justify-content:center;gap:18px;
+        padding:10px 16px;box-sizing:border-box;`;
+    bar.innerHTML = `
+        <span style="color:#e0b23c;font-size:20px;font-weight:600">
+            🔄 Vyšla nová verze hry – načti stránku znovu (F5).
+        </span>
+        <button id="update-reload" style="font-family:'Oswald',sans-serif;font-size:18px;font-weight:600;
+            padding:6px 22px;background:#e0b23c;color:#2a2210;border:none;border-radius:8px;
+            cursor:pointer;">Načíst znovu</button>`;
+    document.body.appendChild(bar);
+    document.getElementById('update-reload').onclick = () => location.reload();
+}

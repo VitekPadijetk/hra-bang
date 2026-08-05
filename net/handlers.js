@@ -1457,6 +1457,23 @@ function attemptRejoin() {
 }
 socket.on('connect', () => { _rejoinDone = false; _rejoinTries = 0; _animQ.reset(); attemptRejoin(); });
 
+// ── Nasazení nové verze za běhu ──────────────────────────────────────────────
+// Server posílá otisk svého kódu po každém připojení (server/version.js). Ten první
+// je verze, se kterou se načetla tahle stránka; přijde-li po reconnectu jiný, nahrál
+// se mezitím na server nový kód. Prohlížeč pak běží na starém JS a rozehraná hra je
+// po restartu serveru stejně pryč – ukaž výzvu k načtení stránky, ať hráč nehádá,
+// proč ho to „vyhodilo do menu". Restart beze změny kódu otisk nemění, takže z pádu
+// serveru se hláška neobjeví.
+let _serverBuild = null;
+socket.on('server_version', (build) => {
+    if (!build) return;
+    if (_serverBuild === null) { _serverBuild = build; clog('info', 'server build ' + build); return; }
+    if (_serverBuild === build) return;
+    clog('warn', 'nová verze serveru: ' + _serverBuild + ' → ' + build);
+    _serverBuild = build;
+    showUpdateBanner();
+});
+
 // Server naše místo (zatím) nedrží. Po zavření a rychlém otevření nového okna může
 // server zpracovat náš 'rejoin' DŘÍV než disconnect starého socketu (hráč ještě není
 // 'disconnected'). Pár× to proto zopakuj; teprve pak to vzdej (session pryč + menu).

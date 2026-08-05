@@ -18,6 +18,7 @@ const dodgeCityCardData = JSON.parse(fs.readFileSync('cards.dodge_city.json', 'u
 // Sdílený kontext serveru. Room service (server/rooms.js) vlastní rooms Map
 // a vystaví room helpery zpět na ctx; ostatní moduly/handlery je berou z ctx.
 const ctx = { io, cardData, dodgeCityCardData, GameState };
+require('./server/version.js')(ctx);  // otisk nasazeného kódu (ctx.buildId) – klient podle něj pozná aktualizaci
 require('./server/rooms.js')(ctx);
 require('./server/gamelog.js')(ctx);  // strukturovaný herní log (JSONL na hru + konzole) – před vším ostatním
 require('./server/ledger.js')(ctx);   // ledger chování (dedukce rolí boty) – před handlery
@@ -41,6 +42,10 @@ const registerDebugHandlers = require('./server/handlers.debug.js');
 // ── Connection ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
     glog.system(`socket připojen: ${socket.id}`);
+
+    // Otisk běžícího kódu – klient si ho pamatuje z prvního spojení a po reconnectu
+    // porovná (změna = na server se nahrála nová verze, stránka je stará).
+    socket.emit('server_version', ctx.buildId);
 
     socket.emit('lobby_list', getLobbyList());
     socket.emit('game_list', getGameList());
@@ -102,5 +107,5 @@ const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
     const lan = getLanIP();
-    glog.system(`Bang! server běží – http://localhost:${PORT} (LAN http://${lan}:${PORT})`);
+    glog.system(`Bang! server běží – http://localhost:${PORT} (LAN http://${lan}:${PORT}) [build ${ctx.buildId}]`);
 });
