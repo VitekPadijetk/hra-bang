@@ -105,6 +105,20 @@ const CombatMixin = {
             deadPlayer.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
         }
 
+        // Dodge City – reakce na vyřazení JINÉ postavy (nezáleží, kdo zabil):
+        // Greg Digger +2 životy (do maxima), Herb Hunter lízne 2 karty (kill-reward fronta).
+        // Herb je ve frontě PŘED odměnou za banditu: schopnost postavy se vyhodnotí dřív
+        // než odměna za roli (a u zabijáka-Herba se tak jeho 2 karty nesmíchají s 3 kartami).
+        this.players.forEach((p, idx) => {
+            if (idx === deadIdx || p.health <= 0) return;
+            if (effectiveCharacter(p) === "Greg Digger") {
+                p.health = Math.min(p.health + 2, p.maxHealth);
+            }
+            if (effectiveCharacter(p) === "Herb Hunter") {
+                this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: idx, cardsNeeded: 2 });
+            }
+        });
+
         if (deadPlayer.role === "Outlaw" && killerIdx !== null && killerIdx !== deadIdx) {
             this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: killerIdx, cardsNeeded: 3 });
         }
@@ -126,18 +140,6 @@ const CombatMixin = {
             killer.hand = []; killer.board = [];
             killer.weapon = new Card(-1, "Colt .45", CardType.WEAPON, null, null, { range: 1 });
         }
-
-        // Dodge City – reakce na vyřazení JINÉ postavy (nezáleží, kdo zabil):
-        // Greg Digger +2 životy (do maxima), Herb Hunter lízne 2 karty (kill-reward fronta).
-        this.players.forEach((p, idx) => {
-            if (idx === deadIdx || p.health <= 0) return;
-            if (effectiveCharacter(p) === "Greg Digger") {
-                p.health = Math.min(p.health + 2, p.maxHealth);
-            }
-            if (effectiveCharacter(p) === "Herb Hunter") {
-                this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: idx, cardsNeeded: 2 });
-            }
-        });
 
         const killerName = killerIdx !== null ? this.players[killerIdx]?.name : 'dynamit';
         let deathReward = null;

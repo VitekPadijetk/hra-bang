@@ -276,6 +276,37 @@ test('Herb Hunter: lízne 2 karty při vyřazení jiné postavy (kill-reward fro
     assert.equal(g.players[2].hand.filter(c => c.id === 860 || c.id === 861).length, 2);
 });
 
+// Vyřazení bandity spustí DVĚ líznutí: Herbovo (schopnost postavy) a odměnu za banditu
+// (role). Herb jde ve frontě první a obě líznutí se musí korektně dobrat – žádné uváznutí.
+test('Herb Hunter je ve frontě PŘED odměnou za banditu a obě líznutí doběhnou', () => {
+    const g = mkGame([
+        { role: 'Sheriff', character: 'Herb Hunter' },
+        { role: 'Renegade' },
+        { role: 'Outlaw', health: 1 },
+    ], { current: 1, phase: 'PLAY' });
+    for (let i = 0; i < 10; i++) g.deck.cards.push(mkCard(CardType.BANG));
+
+    const bang = give(g, 1, CardType.BANG);
+    g.playBang(1, 2, bang);
+    g.handleResponse(2, null);                    // bandita nemá Vedle! → umře
+
+    // Herb (#0) líže první, teprve pak zabiják (#1) svoje 3 karty za banditu.
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 0);
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    g.drawCard('deck'); g.drawCard('deck');
+
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 1);
+    assert.equal(g.drawPhaseState.cardsNeeded, 3);
+    g.drawCard('deck'); g.drawCard('deck'); g.drawCard('deck');
+
+    assert.equal(g.phase, 'PLAY');                // fronta dobrána, hra pokračuje
+    assert.equal(g.specialActionQueue.length, 0);
+    assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.players[1].hand.length, 3);
+});
+
 // ── Elena Fuente ─────────────────────────────────────────────────────────────
 test('Elena Fuente: libovolná karta z ruky ubrání Bang! (jako Vedle!)', () => {
     const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw', character: 'Elena Fuente' }]);
