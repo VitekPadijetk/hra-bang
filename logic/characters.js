@@ -143,6 +143,12 @@ const CharactersMixin = {
             }
             this._pendingDeathReveal = vs.deadIdx;
         }
+        // Obnov fázi PŘED resume: `_processSpecialQueue` si při vytažení další odložené
+        // akce (typicky odměny za banditu) uloží AKTUÁLNÍ fázi jako `interruptedPhase` a
+        // po dobrání se do ní vrátí. Bez tohohle by si zapamatoval přechodné
+        // "SELECTING_TARGET_CARD" – jenže `pendingSelection` je už null, takže by hra
+        // po líznutí 3 karet uvázla ve fázi, kde na nikoho nečeká (nešlo by hrát dál).
+        this.phase = this.interruptedPhase || "PLAY";
         this._resumeAfterSpecial();
     },
 

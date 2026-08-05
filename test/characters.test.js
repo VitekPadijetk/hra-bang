@@ -1,6 +1,6 @@
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { mkGame, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
+const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 
 before(() => { console.log = () => {}; });
 
@@ -131,6 +131,36 @@ test('Dva Vulture Samové si karty mrtvého dělí střídavě, začíná první
     assert.equal(g.drawPhaseState.isKillReward, true);
     assert.equal(g.drawPhaseState.playerIdx, 0);
     assert.equal(g.drawPhaseState.cardsNeeded, 3);
+    // …a po dolíznutí se hra musí vrátit do hraní. Dřív si fronta zapamatovala
+    // přechodné "SELECTING_TARGET_CARD" (s pendingSelection už null) a hra uvázla
+    // ve fázi, kde se nečekalo na nikoho.
+    assert.equal(g.interruptedPhase, 'PLAY');
+    for (let i = 0; i < 5; i++) g.deck.cards.push(mkCard(CardType.BANG));
+    g.drawCard('deck'); g.drawCard('deck'); g.drawCard('deck');
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.pendingSelection, null);
+});
+
+test('Dělení Vulture Samů bez odměny za banditu se taky vrátí do hraní', () => {
+    const g = mkGame([
+        { role: 'Sheriff' },
+        { role: 'Deputy', health: 0 },                   // pomocník → žádná odměna
+        { role: 'Outlaw', character: 'Vulture Sam' },
+        { role: 'Renegade', character: 'Vera Custer' },
+    ]);
+    g.players[3]._copiedCharacter = 'Vulture Sam';
+    give(g, 1, CardType.BEER);
+    give(g, 1, CardType.BANG);
+
+    g.handlePlayerDeath(1, 0);
+    g._processSpecialQueue();
+    g.resolveCardSelection(2, 'hand', null);
+    g.resolveCardSelection(3, 'hand', null);
+
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.pendingVultureSplit, null);
+    assert.equal(g.pendingSelection, null);
+    assert.equal(g.interruptedPhase, null);
 });
 
 test('Dva Vulture Samové: mrtvý bez karet → žádné dělení, hra běží dál', () => {
