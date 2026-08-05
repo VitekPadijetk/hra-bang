@@ -89,6 +89,106 @@ test('Tequila Joe: jiné léčení (Salón) mu dá jen +1', () => {
     assert.equal(g.players[0].health, 3);        // jen +1 (není Pivo)
 });
 
+// ── Tequila Joe: Pivo jako záchrana před vyřazením ───────────────────────────
+// Pravidla: Pivo zahrané při ztrátě posledního života vrátí život, který měl hráč
+// ztratit. Joeovi vrací 2 → z útoku za 1 zásah vyjde s 2 HP, u dynamitu (-3 najednou)
+// mu jedno pivo pokryje dva body.
+
+// Rozbuš dynamit u hráče 0 (3 hráči, aby šla záchrana Pivem – při 2 živých je zakázaná).
+function mkDynamite(joeSpec) {
+    const g = mkGame([
+        joeSpec,
+        { role: 'Sheriff' },
+        { role: 'Renegade' },
+    ], { current: 0 });
+    board(g, 0, CardType.DYNAMITE, { name: 'Dynamit' });
+    g.deck.cards = [];
+    g.deck.cards.push(mkCard(CardType.BANG, { suit: Suits.SPADES, value: '5' })); // check → výbuch
+    g.handleStartOfTurnChecks();
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    return g;
+}
+
+test('Tequila Joe: Pivo při posledním životě (Bang!) ho nechá na 2 HP', () => {
+    const g = mkGame([
+        { role: 'Outlaw', character: 'Tequila Joe', health: 1, maxHealth: 4 },
+        { role: 'Sheriff' }, { role: 'Renegade' },
+    ], { phase: 'RESPOND', current: 1 });
+    g.pendingResponse = { active: true, originatorIdx: 1, targetIdx: 0, requiredCard: CardType.MISSED, sourceCard: CardType.BANG, responded: [] };
+    const beer = give(g, 0, CardType.BEER);
+
+    assert.equal(g.beerLastLifeSave(0, beer), true);
+    assert.equal(g.players[0].health, 2);        // 1 − 1 + 2
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Tequila Joe: Pivo při posledním životě nepřeleze maximum', () => {
+    const g = mkGame([
+        { role: 'Outlaw', character: 'Tequila Joe', health: 1, maxHealth: 1 },
+        { role: 'Sheriff' }, { role: 'Renegade' },
+    ], { phase: 'RESPOND', current: 1 });
+    g.pendingResponse = { active: true, originatorIdx: 1, targetIdx: 0, requiredCard: CardType.MISSED, sourceCard: CardType.BANG, responded: [] };
+    const beer = give(g, 0, CardType.BEER);
+
+    assert.equal(g.beerLastLifeSave(0, beer), true);
+    assert.equal(g.players[0].health, 1);        // +1 by přeteklo max → zůstává
+});
+
+test('Tequila Joe na dynamitu: se 2 HP ho zachrání JEDNO pivo (kryje 2 body)', () => {
+    const g = mkDynamite({ role: 'Outlaw', character: 'Tequila Joe', health: 2, maxHealth: 4 });
+    const beer = give(g, 0, CardType.BEER);
+
+    g.takeDynamiteHit(0);                        // 2 → 1 HP, zbývají 2 zásahy
+    assert.equal(g.pendingDynamiteDamage.hitsLeft, 2);
+
+    assert.equal(g.beerLastLifeSave(0, beer), true);
+    assert.equal(g.players[0].health, 1);        // 2 − 3 + 2 = 1
+    assert.equal(g.pendingDynamiteDamage, null); // pivo pokrylo oba zbylé zásahy
+    assert.equal(g.phase, 'DRAW');               // přežil, tah pokračuje
+});
+
+test('Tequila Joe na dynamitu: se 3 HP ho pivo nechá na 2 HP', () => {
+    const g = mkDynamite({ role: 'Outlaw', character: 'Tequila Joe', health: 3, maxHealth: 4 });
+    const beer = give(g, 0, CardType.BEER);
+
+    g.takeDynamiteHit(0);
+    g.takeDynamiteHit(0);                        // 3 → 1 HP, zbývá 1 zásah
+    assert.equal(g.beerLastLifeSave(0, beer), true);
+    assert.equal(g.players[0].health, 2);        // 3 − 3 + 2 = 2
+    assert.equal(g.phase, 'DRAW');
+});
+
+test('Tequila Joe na dynamitu: s 1 HP a dvěma pivy skončí na 2 HP (2×2 životy)', () => {
+    const g = mkDynamite({ role: 'Outlaw', character: 'Tequila Joe', health: 1, maxHealth: 4 });
+    give(g, 0, CardType.BEER);
+    give(g, 0, CardType.BEER);
+
+    assert.equal(g.beerLastLifeSave(0, 0), true);
+    assert.equal(g.players[0].health, 1);        // první pivo zaplatilo 2 zásahy
+    assert.equal(g.pendingDynamiteDamage.hitsLeft, 1);
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+
+    assert.equal(g.beerLastLifeSave(0, 0), true);
+    assert.equal(g.players[0].health, 2);        // 1 − 3 + 4 = 2
+    assert.equal(g.phase, 'DRAW');
+});
+
+test('Běžná postava na dynamitu: pivo dál kryje jen jeden zásah', () => {
+    const g = mkDynamite({ role: 'Outlaw', health: 2, maxHealth: 4 });
+    const beer = give(g, 0, CardType.BEER);
+
+    g.takeDynamiteHit(0);                        // 2 → 1 HP
+    assert.equal(g.beerLastLifeSave(0, beer), true);
+    assert.equal(g.players[0].health, 1);
+    assert.equal(g.pendingDynamiteDamage.hitsLeft, 1);   // poslední zásah pořád čeká
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+
+    g.takeDynamiteHit(0);
+    assert.equal(g.players[0].health, 0);        // bez druhého piva umírá
+});
+
 // ── Reakce na smrt ───────────────────────────────────────────────────────────
 test('Greg Digger: +2 životy (do max) při vyřazení jiné postavy', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Greg Digger', health: 3, maxHealth: 5 }, { role: 'Outlaw', health: 1 }]);

@@ -12,13 +12,27 @@ const ResponseMixin = {
         const aliveCount = this.players.filter(pl => pl.health > 0).length;
         if (aliveCount <= 2) return false;
 
-        this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
-        this.checkSuzyLafayette(p);
+        // Tequila Joe (Dodge City): Pivo mu dá 2 životy i při záchraně před vyřazením.
+        // Jeden život vždy zaplatí zásah, který ho měl vyřadit; přebytek se použije dál
+        // (u dynamitu na další zásah, jinak jako skutečné vyléčení).
+        const gain = effectiveCharacter(p) === "Tequila Joe" ? 2 : 1;
 
+        // Validace fáze PŘED odhozením karty – jinak by se pivo ztratilo i při návratu false.
         if (this.phase === "DYNAMITE_DAMAGE") {
             const pdd = this.pendingDynamiteDamage;
             if (!pdd || pdd.playerIdx !== playerIdx) return false;
+
+            this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+            this.checkSuzyLafayette(p);
+
+            // Dynamit je tu rozložený na 3 zásahy po 1 (klikání), pravidla ho berou jako
+            // -3 najednou. Aby to vyšlo stejně, Joeův druhý život zruší i další zásah
+            // (2 HP + pivo → přežije za jedno pivo), a když už žádný nezbývá, léčí.
             pdd.hitsLeft--;
+            let extra = gain - 1;
+            while (extra > 0 && pdd.hitsLeft > 0) { pdd.hitsLeft--; extra--; }
+            if (extra > 0) p.health = Math.min(p.health + extra, p.maxHealth);
+
             if (pdd.hitsLeft <= 0) {
                 this.pendingDynamiteDamage = null;
                 this.handleStartOfTurnChecks();
@@ -29,6 +43,13 @@ const ResponseMixin = {
         if (this.phase === "RESPOND") {
             const pr = this.pendingResponse;
             if (!pr?.active || pr.targetIdx !== playerIdx) return false;
+
+            this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+            this.checkSuzyLafayette(p);
+
+            // Zásah se nikdy neaplikuje (hráč zůstává na 1 HP) → přebytek je čisté léčení.
+            if (gain > 1) p.health = Math.min(p.health + gain - 1, p.maxHealth);
+
             this._advanceAfterLastLifeSave(playerIdx);
             return true;
         }
