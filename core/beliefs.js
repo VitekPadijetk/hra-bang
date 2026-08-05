@@ -43,9 +43,12 @@ function roleHostility(myRole, targetRole, opts = {}) {
         return -100; // chrání šerifa i ostatní pomocníky
     }
     if (myRole === 'Renegade') {
-        // Chce zůstat poslední → sráží silnější stranu, šerifa nechává na konec (1v1).
-        const outlawsAlive = !!opts.outlawsAlive;
-        if (targetRole === 'Sheriff')  return outlawsAlive ? -50 : 5;
+        // Vyhraje jen jako POSLEDNÍ žijící, tedy až v souboji 1v1 se šerifem. Dokud žije
+        // kdokoli další – bandita NEBO pomocník – je zabití šerifa prohra (vyhráli by
+        // bandité), takže na něj nestřílí. Pořadí: nejdřív bandité a pomocníci, šerif úplně
+        // nakonec. (Dřív se hlídali jen bandité a bot šerifa zabil s živým pomocníkem.)
+        const othersAlive = !!opts.outlawsAlive || !!opts.deputiesAlive;
+        if (targetRole === 'Sheriff')  return othersAlive ? -50 : 5;
         if (targetRole === 'Outlaw')   return 3;
         if (targetRole === 'Deputy')   return 2;
         return -1; // jiný odpadlík (vzácné / prakticky nenastane)
@@ -189,15 +192,19 @@ function computeBeliefs(state, ledger, myIndex) {
     return beliefs;
 }
 
-// Odhad počtu žijících Outlawů (pro renegade timing) z beliefů.
-function estimateOutlawsAlive(state, beliefs) {
+// Odhad počtu žijících hráčů dané role (pro renegade timing) z beliefů.
+function estimateRoleAlive(state, beliefs, role) {
     let sum = 0;
     (state.players || []).forEach((p, i) => {
-        if (p.health > 0 && beliefs[i]) sum += beliefs[i].Outlaw || 0;
+        if (p.health > 0 && beliefs[i]) sum += beliefs[i][role] || 0;
     });
     return sum;
 }
 
+function estimateOutlawsAlive(state, beliefs) { return estimateRoleAlive(state, beliefs, 'Outlaw'); }
+function estimateDeputiesAlive(state, beliefs) { return estimateRoleAlive(state, beliefs, 'Deputy'); }
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { roleHostility, expectedHostility, computeBeliefs, estimateOutlawsAlive, ROLES };
+    module.exports = { roleHostility, expectedHostility, computeBeliefs,
+                       estimateOutlawsAlive, estimateDeputiesAlive, estimateRoleAlive, ROLES };
 }

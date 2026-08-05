@@ -42,6 +42,7 @@ if (typeof require === 'function') {
         globalThis.expectedHostility = __b.expectedHostility;
         globalThis.roleHostility = __b.roleHostility;
         globalThis.estimateOutlawsAlive = __b.estimateOutlawsAlive;
+        globalThis.estimateDeputiesAlive = __b.estimateDeputiesAlive;
     }
 }
 
@@ -69,9 +70,14 @@ function _hasSomething(p) {
     return p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
 }
 
-// Kontext pro roleHostility (renegade timing) odvozený z beliefů.
+// Kontext pro roleHostility (renegade timing) odvozený z beliefů. Odpadlík smí na šerifa
+// teprve, když nežije NIKDO další – ani bandita, ani pomocník (jinak by zabitím šerifa
+// vyhráli bandité, ne on). Viz roleHostility v core/beliefs.js.
 function hostOpts(state, beliefs) {
-    return { outlawsAlive: estimateOutlawsAlive(state, beliefs) > 0.5 };
+    return {
+        outlawsAlive: estimateOutlawsAlive(state, beliefs) > 0.5,
+        deputiesAlive: estimateDeputiesAlive(state, beliefs) > 0.5,
+    };
 }
 
 // Očekávaná nepřátelskost bota (myIndex) vůči cíli podle beliefů.

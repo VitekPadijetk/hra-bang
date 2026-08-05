@@ -71,6 +71,28 @@ test('expectedHostility: nejistota nezmrazí (ořez -100 → bot není paralyzov
     assert.ok(h > -3 && h < 3, `hostilita ${h} nesmí být extrémní kvůli nejistotě`);
 });
 
+// Odpadlík vyhraje jen jako poslední žijící → šerifa smí zabít až v souboji 1v1.
+// Dokud žije kdokoli další (bandita NEBO pomocník), je zabití šerifa jeho prohra.
+test('roleHostility: odpadlík nestřílí na šerifa, dokud žijí bandité NEBO pomocníci', () => {
+    assert.ok(roleHostility('Renegade', 'Sheriff', { outlawsAlive: true }) < 0);
+    assert.ok(roleHostility('Renegade', 'Sheriff', { deputiesAlive: true }) < 0);
+    assert.ok(roleHostility('Renegade', 'Sheriff', { outlawsAlive: false, deputiesAlive: true }) < 0);
+    // Až když nezbyl nikdo další, jde po šerifovi (a to nejsilněji ze všech cílů).
+    const solo = { outlawsAlive: false, deputiesAlive: false };
+    assert.ok(roleHostility('Renegade', 'Sheriff', solo) > 0);
+    assert.ok(roleHostility('Renegade', 'Sheriff', solo) > roleHostility('Renegade', 'Outlaw', solo));
+    // Pomocníky sráží průběžně (jsou před šerifem na řadě).
+    assert.ok(roleHostility('Renegade', 'Deputy', { deputiesAlive: true }) > 0);
+});
+
+test('expectedHostility: odpadlík s živým pomocníkem šerifa nechá být', () => {
+    // 5 hráčů: šerif (veřejný, idx 0), já odpadlík (idx 1), zbytek neznámý.
+    const s = st('Sheriff', 'Renegade', 'Outlaw', 'Outlaw', 'Deputy');
+    const b = computeBeliefs(s, empty, 1);
+    const opts = { outlawsAlive: false, deputiesAlive: true };
+    assert.ok(expectedHostility('Renegade', b[0], opts) < 0, 'šerif nesmí být cíl');
+});
+
 test('estimateOutlawsAlive: součet P(Outlaw) žijících', () => {
     const s = st('Sheriff', 'Outlaw', 'Outlaw', 'Renegade');
     const b = computeBeliefs(s, empty, 0);
