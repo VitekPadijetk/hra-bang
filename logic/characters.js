@@ -147,7 +147,9 @@ const CharactersMixin = {
                 d.board = [];
                 d.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
             }
-            this._pendingDeathReveal = vs.deadIdx;
+            // High Noon – Město duchů: duch při odchodu ze hry roli neodhaluje (zná ji
+            // celý stůl už od jeho vyřazení), takže se dohrávka cinematiky nespouští.
+            if (!vs.isGhost) this._pendingDeathReveal = vs.deadIdx;
         }
         // Obnov fázi PŘED resume: `_processSpecialQueue` si při vytažení další odložené
         // akce (typicky odměny za banditu) uloží AKTUÁLNÍ fázi jako `interruptedPhase` a
@@ -193,7 +195,8 @@ const CharactersMixin = {
     sidKetchumDiscardOne(playerIdx, cardIdx) {
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
-        if (p.health >= p.maxHealth) return;
+        // Mrtvý (i duch při Městě duchů) se neléčí – jinak by se dvěma kartami „obživl".
+        if (p.health <= 0 || p.health >= p.maxHealth) return;
         if (!p.hand[cardIdx]) return;
 
         const card = p.hand.splice(cardIdx, 1)[0];
@@ -242,7 +245,7 @@ const CharactersMixin = {
     useSidKetchum(playerIdx, cardIndices) {
         let p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
-        if (p.health >= p.maxHealth) return;
+        if (p.health <= 0 || p.health >= p.maxHealth) return;   // duch (Město duchů) se neléčí
         if (cardIndices.length !== 2) return;
         cardIndices.sort((a, b) => b - a);
         if (new Set(cardIndices).size !== 2) return;

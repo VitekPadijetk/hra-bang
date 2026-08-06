@@ -62,7 +62,8 @@ function cardPlayability(state, me, myIndex, card) {
         // pro cílené efekty musí existovat smysluplný cíl (jinak by se nic nestalo).
         if (card.discardExtra) {
             if (me.hand.length < 2) return false;
-            if (card.discardExtra === 'heal_self_2') return me.health < me.maxHealth;
+            // Duch (Město duchů, High Noon) má 0 životů a léčit se nemůže → nemá co získat.
+            if (card.discardExtra === 'heal_self_2') return me.health > 0 && me.health < me.maxHealth;
             if (card.discardExtra === 'heal_any') return state.players.some(p => p.health > 0 && p.health < p.maxHealth);
             if (card.discardExtra === 'bang_any') return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
             if (card.discardExtra === 'steal_any') return state.players.some((p, idx) =>
@@ -93,7 +94,7 @@ function cardPlayability(state, me, myIndex, card) {
             if (beerBlockedFor(state)) return false;   // Reverend (High Noon)
             const aliveCount = state.players.filter(p => p.health > 0).length;
             if (aliveCount <= 2) return false;
-            if (me.health >= me.maxHealth) return false;
+            if (me.health <= 0 || me.health >= me.maxHealth) return false;   // duch se neléčí
             return true;
         }
         if (card.type === "Salon") return state.players.some(p => p.health > 0 && p.health < p.maxHealth);

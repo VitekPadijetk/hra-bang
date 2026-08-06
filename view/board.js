@@ -415,7 +415,9 @@ function drawOpponents(ctx) {
         const handLen = Math.max(0, handFan - (App.oppHandHideCount?.[actualIdx] || 0));
 
         const addCharInteraction = (sprite) => {
-            if (isDead) {
+            // Duch (Město duchů, High Noon) je na svůj tah zpátky ve hře – kreslí se
+            // jako hráč na tahu a dá se na něj cílit, i když má 0 životů.
+            if (isDead && !player._ghost) {
                 sprite.setInteractive({ useHandCursor: false });
                 return;
             }
@@ -1041,7 +1043,8 @@ function drawMyArea(ctx) {
 
         // Umírám-li, moje karty zůstávají na stole, dokud jedna po druhé neodletí
         // (viz deathCardsStillShown) – ne že by všechny zmizely v okamžiku zásahu.
-        if (me.health > 0 || deathCardsStillShown(myIndex)) {
+        // Duch (Město duchů, High Noon) hraje s 0 životy, takže potřebuje svůj stůl vidět.
+        if (me.health > 0 || me._ghost || deathCardsStillShown(myIndex)) {
             if (me.weapon && me.weapon.id !== -1) {
                 myBoardCards.push({ ...me.weapon, _isWeapon: true });
             } else {
@@ -1251,7 +1254,7 @@ function drawMyArea(ctx) {
                 } else if (card.bangEffect && card.range === 'mass') {
                     ok = state.players.some((pl, idx) => idx !== myIndex && pl.health > 0);
                 } else if (card.activate === 'heal_self') {
-                    ok = me.health < me.maxHealth;
+                    ok = me.health > 0 && me.health < me.maxHealth;   // duch se neléčí
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
                     // Cíl může být soupeř (má kartu) NEBO já sám (moje karta na stole – mimo
                     // tuhle aktivovanou zelenou), pravidla umožňují cílit i na sebe.
@@ -1584,7 +1587,7 @@ function drawMyArea(ctx) {
         state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidCanHeal = effectiveCharacter(me) === "Sid Ketchum" &&
                 me.hand.filter(c => !c._placeholder).length >= 2 &&
-                me.health < me.maxHealth;
+                me.health > 0 && me.health < me.maxHealth;
             // Zelená karta na mém stole, kterou lze teď aktivovat, se počítá jako
             // hratelná akce (blikání „Ukončit tah" pak nemá smysl). Zrcadlí `ok`-logiku
             // aktivace zelených karet výše v drawMyArea.
@@ -1598,7 +1601,7 @@ function drawMyArea(ctx) {
                 } else if (card.bangEffect && card.range === 'mass') {
                     return state.players.some((pl, idx) => idx !== myIndex && pl.health > 0);
                 } else if (card.activate === 'heal_self') {
-                    return me.health < me.maxHealth;
+                    return me.health > 0 && me.health < me.maxHealth;   // duch se neléčí
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
                     return state.players.some((pl, idx) => idx !== myIndex && pl.health > 0 &&
                         (pl.hand.length > 0 || (pl.weapon && pl.weapon.id !== -1) || (pl.board || []).length > 0));
@@ -1651,7 +1654,7 @@ function drawMyArea(ctx) {
             }
         }
 
-        if (effectiveCharacter(me) === "Sid Ketchum" && me.hand.length >= 2 && me.health < me.maxHealth
+        if (effectiveCharacter(me) === "Sid Ketchum" && me.hand.length >= 2 && me.health > 0 && me.health < me.maxHealth
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE', 'NOON_DAMAGE'].includes(state.phase)
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;

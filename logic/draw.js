@@ -45,9 +45,10 @@ const DrawMixin = {
     // Kolik karet si hráč líže ve fázi 1. JEDINÉ místo, které o tom rozhoduje – čte ho
     // i Kit Carlson (kolik odkryje a nechá si) a Black Jack (základ pro bonus za červenou).
     //   Dodge City: Pixie Pete 3, Bill Noface 1 + 1 za každé zranění
-    //   High Noon:  Žízeň −1, Příjezd vlaku +1
+    //   High Noon:  Město duchů 3 (základ), Žízeň −1, Příjezd vlaku +1
+    // FAQ X3: duch Pixie Pete líže 4 (3+1), duch Bill Noface 5 (vlastní vzorec s 0 životy).
     _drawCountFor(player) {
-        let n = 2;
+        let n = player._ghost ? 3 : 2;
         if (effectiveCharacter(player) === "Pixie Pete") n += 1;
         else if (effectiveCharacter(player) === "Bill Noface") n = 1 + (player.maxHealth - player.health);
         if (this.hasEvent('ZIZEN')) n -= 1;

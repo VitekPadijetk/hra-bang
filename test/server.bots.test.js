@@ -462,3 +462,44 @@ test('20 her jen botů jede i s balíčkem samých Daltonů/Kocovin/Zlatých hor
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Daltonů/Kocoviny/Zlaté horečky');
 });
+
+// Cílená zátěž na etapu 4: v balíčku je JEN Město duchů (vespod Pravé poledne), takže
+// se vyřazení hráči vracejí do hry po celý zbytek partie. Hlídá se, že hra pořád dojde
+// k vítězi – duch má 0 životů, nemůže umřít a na konci tahu ze hry zase odchází, takže
+// právě tady hrozí, že se tah přestane posouvat nebo že se výhra nikdy nevyhodnotí.
+test('20 her jen botů jede i s balíčkem samých Měst duchů', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const ev = (key) => {
+        const c = highNoonCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 4 + (k % 4);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            const opts = { expansions: { dodge_city: k % 2 === 0, high_noon: true } };
+            const room = { id: 'hn4_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Líže se pop() z konce → Pravé poledne musí zůstat na indexu 0.
+            const deck = [ev('PRAVE_POLEDNE')];
+            for (let i = 0; i < 12; i++) deck.push(ev('MESTO_DUCHU'));
+            gs.eventDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `HN4 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `HN4 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            // Duch smí zůstat označený jen tehdy, když hra skončila přímo v jeho tahu.
+            const ghosts = gs.players.filter(p => p._ghost);
+            assert.ok(ghosts.length === 0 || (ghosts.length === 1 && gs.players[gs.currentPlayerIndex]._ghost),
+                `HN4 hra #${k}: po hře nezůstal viset duch mimo svůj tah`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Města duchů');
+});

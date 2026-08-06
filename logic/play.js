@@ -31,13 +31,11 @@ const PlayMixin = {
             [CardType.BEER]: () => {
                 // High Noon – Reverend: po celé kolo nejde zahrát Pivo (Salón ano, FAQ H1).
                 if (this._beerBlocked()) return false;
-                if (player.health < player.maxHealth) {
-                    // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
-                    const gain = effectiveCharacter(player) === "Tequila Joe" ? 2 : 1;
-                    player.health = Math.min(player.health + gain, player.maxHealth);
-                    return true;
-                }
-                return false;
+                // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
+                // Přes _heal, který ohlídá i to, že mrtvý (duch při Městě duchů) se
+                // neléčí – Pivo se pak vůbec nezahraje.
+                const gain = effectiveCharacter(player) === "Tequila Joe" ? 2 : 1;
+                return this._heal(player, gain) > 0;
             },
             [CardType.SALOON]: () => {
                 const anyDamaged = this.players.some(p => p.health > 0 && p.health < p.maxHealth);
@@ -209,7 +207,7 @@ const PlayMixin = {
 
         if (card.type === CardType.JAIL) {
             const alreadyInJail = target.board.some(c => c.type === CardType.JAIL);
-            if (target.role === "Sheriff" || alreadyInJail || target.health <= 0) {
+            if (target.role === "Sheriff" || alreadyInJail || !isInPlay(target)) {
                 attacker.hand.splice(cardIdx, 0, card);
                 this.checkSuzyLafayette(attacker);
                 return;
@@ -395,10 +393,11 @@ const PlayMixin = {
         let nextTarget = (currentPlayerIdx + 1) % this.players.length;
         let loopCount = 0;
 
-        // Přeskoč mrtvé i Apache Kida, když je hromadný útok kárový (imunita vůči ♦).
+        // Přeskoč hráče mimo hru (duch při Městě duchů zůstává cílem) i Apache Kida,
+        // když je hromadný útok kárový (imunita vůči ♦).
         while (
             nextTarget !== originatorIdx &&
-            (this.players[nextTarget].health <= 0 || this._apacheImmune(nextTarget, this._massAttackSuit, originatorIdx)) &&
+            (!isInPlay(this.players[nextTarget]) || this._apacheImmune(nextTarget, this._massAttackSuit, originatorIdx)) &&
             loopCount < this.players.length
         ) {
             nextTarget = (nextTarget + 1) % this.players.length;

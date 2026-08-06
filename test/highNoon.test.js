@@ -824,3 +824,197 @@ test('Zlatá horečka: v hokynářství se vybírá dál po směru (FAQ H3)', ()
     g.pickFromStore(0);
     assert.equal(g.storePickerIndex, 2, 'na řadě je soused po směru');
 });
+
+// ── Město duchů ─────────────────────────────────────────────────────────────
+// Vyřazení hráči se na JEDEN svůj tah vracejí do hry (líznou 3, nemohou umřít,
+// na konci tahu jsou opět vyřazeni). Model: health zůstane 0 + příznak `_ghost`.
+
+test('Město duchů: mrtvý hráč se v pořadí nepřeskočí a stane se duchem', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.currentPlayerIndex = 0;
+    g.nextTurn();
+    assert.equal(g.currentPlayerIndex, 1, 'na tahu je vyřazený hráč');
+    assert.equal(g.players[1]._ghost, true);
+    assert.equal(g.players[1].health, 0, 'životy zůstávají na nule');
+});
+
+test('bez Města duchů se mrtvý přeskočí a duchem se nestane', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}]);
+    g.eventDeck = [];
+    g.currentPlayerIndex = 0;
+    g.nextTurn();
+    assert.equal(g.currentPlayerIndex, 2);
+    assert.ok(!g.players[1]._ghost);
+});
+
+test('Město duchů: duchem se stane každý vyřazený v pořadí', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, { health: 0 }, {}], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.currentPlayerIndex = 0;
+    g.nextTurn();
+    assert.equal(g.currentPlayerIndex, 1);
+    g.phase = 'PLAY';
+    g.tryEndTurn();
+    assert.equal(g.currentPlayerIndex, 2, 'po prvním duchovi jde na řadu druhý');
+    assert.equal(g.players[2]._ghost, true);
+    assert.ok(!g.players[1]._ghost, 'předchozí duch už ve hře není');
+});
+
+test('Město duchů: duch si líže 3 karty', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.currentPlayerIndex = 0;
+    g.nextTurn();
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.cardsNeeded, 3);
+});
+
+test('Město duchů: duch Pixie Pete líže 4, duch Bill Noface 5 (FAQ X3)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' },
+                        { character: 'Pixie Pete', health: 0 },
+                        { character: 'Bill Noface', health: 0 }], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.players[2]._ghost = true;
+    assert.equal(g._drawCountFor(g.players[1]), 4);
+    assert.equal(g._drawCountFor(g.players[2]), 5);
+});
+
+test('Město duchů: duch sedí zase v kole (vzdálenost i dostřel)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    assert.equal(g.getDistance(1, 2), 999, 'mrtvý je mimo kolo');
+    g.players[1]._ghost = true;
+    assert.equal(g.getDistance(1, 2), 1);
+    assert.equal(g.canHit(1, 2), true);
+    assert.equal(g.getDistance(0, 2), 2, 'duch zase zabírá místo v kruhu');
+});
+
+test('Město duchů: duch nemůže během svého tahu umřít', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.handleDamage(1, 0);
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g.players[1]._ghost, true, 'duch zůstává ve hře až do konce svého tahu');
+    assert.equal(g.winner, null);
+});
+
+test('Město duchů: duch se nedá vyléčit Pivem ani Sidem Ketchumem', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Sid Ketchum', health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    const beer = give(g, 1, CardType.BEER);
+    g.playCard(beer);
+    assert.equal(g.players[1].health, 0, 'duch neožije');
+    assert.equal(g.players[1].hand.length, 1, 'nezahrané Pivo zůstává v ruce');
+    give(g, 1, CardType.BANG);
+    g.useSidKetchum(1, [0, 1]);
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g.players[1].hand.length, 2, 'Sid nic neodhodil');
+});
+
+test('Město duchů: konec tahu ducha – karty ze stolu do odhozu', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    board(g, 1, CardType.BARREL);
+    g.players[1].weapon = mkCard(CardType.WEAPON, { name: 'Remington' });
+    g.tryEndTurn();
+    assert.ok(!g.players[1]._ghost, 'duch je zase vyřazený');
+    assert.equal(g.players[1].board.length, 0);
+    assert.equal(g.players[1].weapon.id, -1, 'zpátky Colt .45');
+    assert.equal(g.deck.discardPile.length, 2);
+    assert.equal(g.currentPlayerIndex, 2, 'tah jde dál');
+});
+
+test('Město duchů: konec tahu ducha – karty sebere Vulture Sam', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, { character: 'Vulture Sam' }, {}], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    board(g, 1, CardType.BARREL);
+    g.tryEndTurn();
+    assert.equal(g.players[2].hand.length, 1);
+    assert.equal(g.deck.discardPile.length, 0);
+});
+
+test('Město duchů: odchod ducha spustí Grega Diggera i Herba Huntera (FAQ X4)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 },
+                        { character: 'Greg Digger', health: 1 },
+                        { character: 'Herb Hunter' }], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    for (let i = 0; i < 4; i++) topDeck(g, Suits.CLUBS);
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    g.tryEndTurn();
+    assert.equal(g.players[2].health, 3, 'Greg Digger +2');
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 3, 'Herb Hunter si líže 2');
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    g.drawCard('deck');
+    g.drawCard('deck');
+    assert.equal(g.currentPlayerIndex, 2, 'teprve po dobrání fronty se posune tah');
+});
+
+test('Město duchů: limit karet ducha je 0 – odhodí celou ruku (FAQ H8)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    give(g, 1, CardType.BANG);
+    g.tryEndTurn();
+    assert.equal(g.phase, 'DISCARD');
+    g.discardCard(0);
+    assert.equal(g.currentPlayerIndex, 2);
+    assert.ok(!g.players[1]._ghost);
+});
+
+test('Město duchů: duch se počítá do hokynářství', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    for (let i = 0; i < 10; i++) topDeck(g, Suits.CLUBS);
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.openStore();
+    assert.equal(g.storeCards.length, 4, 'karta i pro ducha');
+    assert.equal(g.storePickerIndex, 1, 'začíná duch');
+    g.pickFromStore(0);
+    assert.equal(g.storePickerIndex, 2);
+});
+
+test('Město duchů: duch Chuck Wengam schopnost použít nemůže (FAQ X5)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Chuck Wengam', health: 0 }, {}], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    assert.equal(g.useChuckWengam(1), false);
+    assert.equal(g.players[1].health, 0);
+});
+
+test('Město duchů: zabije-li duch šerifa, počítá se za živého (FAQ H7)', () => {
+    const g = mkHnGame([{ role: 'Sheriff', health: 1 }, { role: 'Renegade', health: 0 },
+                        { role: 'Outlaw', health: 0 }], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.handleDamage(0, 1);
+    assert.equal(g.winner, 'Odpadlík vyhrál!');
+});
+
+test('Město duchů: odchodem ducha se výhra přepočítá', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { role: 'Outlaw', health: 0 },
+                        { role: 'Renegade', health: 0 }, { role: 'Deputy' }], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    g.checkWinCondition();
+    assert.equal(g.winner, null, 'duch drží banditskou stranu ve hře');
+    g.tryEndTurn();
+    assert.equal(g.winner, 'Zákon vyhrál!');
+    assert.equal(g.currentPlayerIndex, 1, 'po vyhlášení výhry se tah neposouvá');
+});

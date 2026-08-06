@@ -20,10 +20,20 @@ function effectiveCharacter(player) {
     return player._copiedCharacter || player.character;
 }
 
+// High Noon – Město duchů (`_ghost`): vyřazený hráč se na JEDEN svůj tah vrací do hry.
+// Zůstává na 0 životech (aby ho pravidla o životech dál braly jako mrtvého – nejde léčit
+// a nemůže umřít), ale po dobu svého tahu sedí zase v kole: má vzdálenost, může cílit
+// i být cílen a počítá se do hokynářství. Tenhle helper je jediný test „je ve hře";
+// prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger,
+// záchrana posledního života). Příznak drží jen po dobu svého tahu (viz _teardownGhost).
+function isInPlay(player) {
+    return !!player && (player.health > 0 || !!player._ghost);
+}
+
 function computeDistance(state, fromIdx, toIdx) {
     const alivePlayers = state.players
         .map((p, index) => ({ p, index }))
-        .filter(item => item.p.health > 0);
+        .filter(item => isInPlay(item.p));
     const i1 = alivePlayers.findIndex(item => item.index === fromIdx);
     const i2 = alivePlayers.findIndex(item => item.index === toIdx);
     if (i1 === -1 || i2 === -1) return 999;
@@ -73,5 +83,5 @@ function bangEffectReach(card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter };
+    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, isInPlay };
 }

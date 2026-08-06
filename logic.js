@@ -7,6 +7,11 @@ if (typeof computeDistance === 'undefined' && typeof require === 'function') {
     globalThis.bangEffectReach = __dist.bangEffectReach;
     globalThis.effectiveCharacter = __dist.effectiveCharacter;
 }
+// Samostatný shim: core/playability.js si při vlastním require doplní jen část globálů
+// z distance.js, takže by blok výš (hlídaný computeDistance) mohl být přeskočený.
+if (typeof isInPlay === 'undefined' && typeof require === 'function') {
+    globalThis.isInPlay = require('./core/distance.js').isInPlay;
+}
 
 // V Node nejsou entity globály — načteme je z logic/entities.js a vystavíme na globalThis,
 // aby na ně metody GameState mohly sahat bez kvalifikace. V prohlížeči jsou to globály
@@ -153,15 +158,27 @@ class GameState {
     }
 
     nextTurn() {
+        // High Noon – Město duchů: končí-li právě tah ducha, odejde ze hry ještě předtím,
+        // než se posune tah (odloží karty, spustí Grega Diggera/Herba Huntera). Když se
+        // tím naplní fronta odložených akcí, posune tah až _resumeAfterSpecial.
+        if (this._teardownGhost()) return;
         this.turnId = (this.turnId || 0) + 1;   // monotonní ID tahu (zelené karty: „nelze aktivovat ve stejném tahu")
         // High Noon – Zlatá horečka: hraje se proti směru hodinových ručiček. Krok musí
         // použít i cyklus přeskakující mrtvé, jinak by se směr u mrtvého souseda obrátil.
         const step = this._turnStep();
+        // High Noon – Město duchů: vyřazení hráči se na svůj tah vracejí do hry, takže se
+        // v pořadí NEpřeskakují. Událost se mění jen na šerifově tahu (uvnitř _beginTurn),
+        // takže v tomhle bodě už platí ta správná.
+        const ghostTown = this.hasEvent('MESTO_DUCHU');
         this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
         let p = this.players[this.currentPlayerIndex];
-        while (p.health <= 0) {
+        while (p.health <= 0 && !ghostTown) {
             this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
             p = this.players[this.currentPlayerIndex];
+        }
+        if (ghostTown && p.health <= 0) {
+            p._ghost = true;
+            this.logEvent('event', { card: 'Město duchů', who: p.name, msg: 'vrací se na jeden tah do hry' });
         }
         const cp = this.players[this.currentPlayerIndex];
         this.logEvent('turn', { who: cp?.name, role: cp?.role, hp: cp?.health, max: cp?.maxHealth, hand: cp?.hand?.length });
@@ -175,7 +192,9 @@ class GameState {
     openStore() {
         this.phase = "STORE";
         this.storeCards = [];
-        const aliveCount = this.players.filter(p => p.health > 0).length;
+        // Hokynářství rozdává kartu každému hráči VE HŘE – při Městě duchů (High Noon)
+        // tedy i duchovi, který si zrovna odbývá svůj tah.
+        const aliveCount = this.players.filter(p => isInPlay(p)).length;
         const origCount = this.deck.cards.length;
         for (let i = 0; i < aliveCount; i++) {
             this.storeCards.push(this.deck.draw());
@@ -210,7 +229,7 @@ class GameState {
 
         do {
             this.storePickerIndex = (this.storePickerIndex + 1) % this.players.length;
-        } while (this.players[this.storePickerIndex].health <= 0);
+        } while (!isInPlay(this.players[this.storePickerIndex]));
 
         if (this.storeCards.every(c => c === null)) {
             this.phase = "PLAY";

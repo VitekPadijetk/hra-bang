@@ -84,8 +84,8 @@ const DodgeCityMixin = {
     _dispatchDiscardExtraEffect(playerIdx, effect, target, mainName = null) {
         const player = this.players[playerIdx];
         if (effect === 'heal_self_2') {
-            // Whisky: +2 sobě (do maxima).
-            player.health = Math.min(player.health + 2, player.maxHealth);
+            // Whisky: +2 sobě (do maxima). Přes _heal: mrtvý (duch při Městě duchů) se neléčí.
+            this._heal(player, 2);
             this.phase = "PLAY";
             this._processSpecialQueue();
         } else if (effect === 'heal_any') {
@@ -138,7 +138,7 @@ const DodgeCityMixin = {
         const order = [];
         for (let k = 1; k < n; k++) {
             const idx = (attackerIdx + k) % n;
-            if (this.players[idx].health > 0 && this._hasAnyCard(this.players[idx])) order.push(idx);
+            if (isInPlay(this.players[idx]) && this._hasAnyCard(this.players[idx])) order.push(idx);
         }
         this.brawlQueue = order;
         this._advanceBrawl();
@@ -148,7 +148,7 @@ const DodgeCityMixin = {
         while (this.brawlQueue && this.brawlQueue.length > 0) {
             const targetIdx = this.brawlQueue.shift();
             const t = this.players[targetIdx];
-            if (t && t.health > 0 && this._hasAnyCard(t)) {
+            if (isInPlay(t) && this._hasAnyCard(t)) {
                 this.pendingSelection = {
                     attackerIdx: this.brawlAttackerIdx,
                     targetIdx,
@@ -234,9 +234,10 @@ const DodgeCityMixin = {
 
         const eff = card.activate;
         if (eff === 'heal_self') {                       // Čutora – +1 sobě (efekt, ne Pivo)
-            if (player.health >= player.maxHealth) return;
+            // Duch (Město duchů) se neléčit nemůže → karta se ani neaktivuje.
+            if (player.health <= 0 || player.health >= player.maxHealth) return;
             discardAndTrack();
-            player.health = Math.min(player.health + 1, player.maxHealth);
+            this._heal(player, 1);
             this.checkSuzyLafayette(player);
             this.phase = "PLAY";
             this._processSpecialQueue();

@@ -20,8 +20,8 @@ const HighNoonMixin = {
         this._beginTurnStep = 0;
         this._eventEntering = null;
         this.daltonsQueue = null;
-        // Navazující hra přebírá hráče z předchozí – Kocovina po nich nesmí zůstat.
-        (this.players || []).forEach(p => { p._noAbility = false; });
+        // Navazující hra přebírá hráče z předchozí – Kocovina ani duch po nich nesmí zůstat.
+        (this.players || []).forEach(p => { p._noAbility = false; p._ghost = false; });
         const on = options.expansions && options.expansions.high_noon;
         if (!on || !Array.isArray(this.highNoonCardData)) return;
 
@@ -190,6 +190,80 @@ const HighNoonMixin = {
             return;
         }
         this._resumeBeginTurn();
+    },
+
+    // ── Město duchů: konec tahu ducha ─────────────────────────────────────────
+    // Duch se na konci SVÉHO tahu vrací mezi vyřazené. Ruku má v tu chvíli prázdnou
+    // (limit karet = počet životů = 0, FAQ H8) – co mu zbylo na stole, sebere Vulture Sam,
+    // jinak to padá do odhozu. Greg Digger a Herb Hunter se spustí stejně jako při běžném
+    // vyřazení (FAQ X4). Volá se z nextTurn PŘED posunem tahu; vrací true, když se tah
+    // teď posunout NESMÍ (běží fronta odložených akcí, nebo je po hře).
+    _teardownGhost() {
+        const idx = this.currentPlayerIndex;
+        const g = this.players[idx];
+        if (!g || !g._ghost) return false;
+        g._ghost = false;
+
+        const weapon = (g.weapon && g.weapon.id !== -1) ? [g.weapon] : [];
+        const leftCount = g.hand.length + g.board.length + weapon.length;
+        // Pořadí Vulture Samů = po směru od odcházejícího (viz handlePlayerDeath).
+        const vultures = [];
+        for (let step = 1; step <= this.players.length; step++) {
+            const i = (idx + step) % this.players.length;
+            const p = this.players[i];
+            if (i === idx || !p || p.health <= 0) continue;
+            if (effectiveCharacter(p) === "Vulture Sam") vultures.push(i);
+        }
+
+        if (vultures.length > 1 && leftCount > 0) {
+            // Víc Samů → karty se dělí po jedné (stejná cesta jako u smrti), jen se na
+            // konci nedohrává odhalení role: duch ji má odkrytou od svého vyřazení.
+            this.pendingVultureSplit = { deadIdx: idx, pickers: vultures, next: 0, isGhost: true };
+            this.specialActionQueue.push({ type: 'VULTURE_SPLIT' });
+        } else {
+            if (vultures.length === 1) {
+                const vulture = this.players[vultures[0]];
+                vulture.hand.push(...g.hand, ...g.board, ...weapon);
+                this.checkSuzyLafayette(vulture);
+            } else if (leftCount > 0) {
+                // Odhoz je vidět: klient přehraje stejnou animaci jako u šerifovy ztráty
+                // karet (karty po jedné do odhozu, bez poklesu životů a bez role).
+                this._ghostLeaveAnim = {
+                    playerIdx: idx,
+                    blue: g.board.map(c => ({ id: c.id })),
+                    weapon: weapon.length ? { id: weapon[0].id } : null,
+                    hand: g.hand.map(c => ({ id: c.id })),
+                };
+                this.deck.discardPile.push(...g.hand, ...g.board, ...weapon);
+            }
+            g.hand = [];
+            g.board = [];
+            g.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+        }
+
+        this.players.forEach((p, i) => {
+            if (i === idx || p.health <= 0) return;
+            if (effectiveCharacter(p) === "Greg Digger") {
+                p.health = Math.min(p.health + 2, p.maxHealth);
+            }
+            if (effectiveCharacter(p) === "Herb Hunter") {
+                this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: i, cardsNeeded: 2 });
+            }
+        });
+
+        this.logEvent('event', { card: 'Město duchů', who: g.name, msg: 'odchází ze hry' });
+        // Duch se do teď počítal za živého (FAQ H7). Jeho odchodem může padnout
+        // rozhodnutí, které do teď blokoval (poslední bandita/odpadlík byl on).
+        this.checkWinCondition();
+        if (this.winner) return true;
+
+        if (this.specialActionQueue.length > 0) {
+            this.phase = "PLAY";
+            this._nextTurnAfterQueue = true;
+            this._processSpecialQueue();
+            return true;
+        }
+        return false;
     },
 
     // ── Zlatá horečka: hraje se proti směru hodinových ručiček ────────────────

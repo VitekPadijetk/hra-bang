@@ -75,7 +75,7 @@ const CombatMixin = {
         for (let step = 1; step <= this.players.length; step++) {
             const i = (deadIdx + step) % this.players.length;
             const p = this.players[i];
-            if (i === deadIdx || !p || p.health <= 0) continue;
+            if (i === deadIdx || !p || !isInPlay(p)) continue;   // duch (Město duchů) sbírá taky
             if (effectiveCharacter(p) === "Vulture Sam") vultures.push(i);
         }
 

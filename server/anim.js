@@ -203,8 +203,30 @@ module.exports = function installAnimService(ctx) {
         room._hnBlockUntil = Math.max(room._hnBlockUntil || 0, Date.now() + hnRevealMs());
     }
 
+    // ── Město duchů: duch odchází ze hry a odkládá, co mu zbylo na stole ─────
+    // Vizuálně TOTÉŽ jako šerifova ztráta karet za pomocníka (karty po jedné do odhozu,
+    // bez poklesu životů a bez odhalení role) – duch svou roli odhalil už při vyřazení.
+    // Emituje se jen když karty padají do odhozu; sebral-li je Vulture Sam, přesun se
+    // ukáže až v novém stavu.
+    function flushGhostLeave(room) {
+        const gs = room.gameState;
+        const gl = gs && gs._ghostLeaveAnim;
+        if (!gl) return;
+        gs._ghostLeaveAnim = null;
+        emitAnim(room, { type: 'sheriff_penalty_discard', ...gl });
+        room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + penaltyDiscardMs(
+            (gl.blue?.length || 0) + (gl.weapon ? 1 : 0) + (gl.hand?.length || 0)));
+    }
+
+    // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
+    // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost.
+    function beforeBroadcast(room) {
+        flushGhostLeave(room);
+        flushHighNoonReveal(room);
+    }
+
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
                          handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
-                         beforeBroadcast: flushHighNoonReveal });
+                         beforeBroadcast });
     return ctx;
 };

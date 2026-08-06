@@ -331,7 +331,7 @@ function decidePlay(state, myIndex, beliefs) {
         }
         if (action === 'DE_HEAL') { // Tequila: +1 sobě nebo zraněnému spojenci
             let tIdx = null;
-            if (me.health < me.maxHealth) tIdx = myIndex;
+            if (me.health > 0 && me.health < me.maxHealth) tIdx = myIndex;   // duch se neléčí
             else {
                 const ally = state.players.findIndex((p, idx) => idx !== myIndex && p.health > 0
                     && p.health < p.maxHealth && hostilityOf(state, myIndex, idx, beliefs) < -ENEMY_EPS);
@@ -426,7 +426,9 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
         if (card.activate === 'heal_self') {
-            if (me.health < me.maxHealth) consider(me.health <= 2 ? 28 : 8, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
+            // Duch (Město duchů) se neléčí – server by kartu neaktivoval a bot by ji
+            // vybíral pořád dokola (stav by se nezměnil = zaseknutá hra).
+            if (me.health > 0 && me.health < me.maxHealth) consider(me.health <= 2 ? 28 : 8, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
             return;
         }
         if (card.activate === 'draw_3') {
