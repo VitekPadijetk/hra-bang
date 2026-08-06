@@ -36,12 +36,13 @@ if (typeof require === 'function') {
     if (typeof pendingActor === 'undefined') {
         globalThis.pendingActor = require('./pending.js').pendingActor;
     }
-    if (typeof beerBlockedFor === 'undefined') {
+    if (typeof effSuit === 'undefined') {
         const __hn = require('./highNoon.js');
         globalThis.eventActive = __hn.eventActive;
         globalThis.bangLimitFor = __hn.bangLimitFor;
         globalThis.bangBlockedFor = __hn.bangBlockedFor;
         globalThis.beerBlockedFor = __hn.beerBlockedFor;
+        globalThis.effSuit = __hn.effSuit;
     }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
@@ -563,9 +564,10 @@ function decideBotAction(state, myIndex, beliefs) {
             const cards = state.luckyDukeState.cards;
             const reason = state.luckyDukeState.checkContext.reason;
             const num = (v) => ({ J: 11, Q: 12, K: 13, A: 14 }[v] ?? parseInt(v));
+            // Barva podle toho, co PLATÍ (Požehnání/Prokletí přebíjí vytištěnou).
             const favorable = (c) => reason === 'DYNAMITE'
-                ? !(c.suit === SPADES && num(c.value) >= 2 && num(c.value) <= 9) // chci NE „spades 2–9"
-                : c.suit === HEARTS;                                            // barel/vězení: chci srdce
+                ? !(effSuit(state, c) === SPADES && num(c.value) >= 2 && num(c.value) <= 9) // chci NE „spades 2–9"
+                : effSuit(state, c) === HEARTS;                                             // barel/vězení: chci srdce
             const idx = cards.findIndex(favorable);
             return { event: 'lucky_duke_pick', payload: idx !== -1 ? idx : 0 };
         }

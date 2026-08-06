@@ -39,6 +39,18 @@ const HighNoonMixin = {
         return !!this.activeEvent && this.activeEvent.key === key;
     },
 
+    // Požehnání / Prokletí: po celé kolo se VŠECHNY karty počítají jako srdcové / pikové.
+    // Mění se jen barva, hodnota zůstává (Dynamit potřebuje ♠ 2–9, takže při Prokletí
+    // vybuchne na každé kartě s hodnotou 2–9). Jediný zdroj pravdy pro barvu karty –
+    // pravidla se na `card.suit` nikde neptají napřímo. Klientské zrcadlo:
+    // core/highNoon.js `effSuit`, vizuální překreslení marek: buildCardTextures v game.js.
+    _effSuit(card) {
+        if (!card) return null;
+        if (this.hasEvent('POZEHNANI')) return Suits.HEARTS;
+        if (this.hasEvent('PROKLETI')) return Suits.SPADES;
+        return card.suit;
+    },
+
     // ── Start tahu ────────────────────────────────────────────────────────────
     // Volá se z nextTurn() a z obou míst v logic/setup.js, kudy jde PRVNÍ tah hry.
     // Vrací true, když se čeká na rozhodnutí hráče – volající pak NESMÍ pokračovat

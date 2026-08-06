@@ -4,7 +4,7 @@ const { test, before } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { mkGame, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
+const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 
 before(() => { console.log = () => {}; });
 
@@ -22,6 +22,12 @@ function mkHnGame(specs, opts = {}) {
 }
 
 const evCard = (key) => hnData.find(c => c.key === key);
+
+// Start tahu přesně jako nextTurn: nejdřív události (High Noon), pak kontroly Dynamit/Vězení.
+function startTurn(g) {
+    if (g._beginTurn()) return;
+    g.handleStartOfTurnChecks();
+}
 
 // ── Balíček událostí ────────────────────────────────────────────────────────
 
@@ -415,4 +421,143 @@ test('Pravé poledne bere život i šerifovi na začátku jeho tahu', () => {
     assert.equal(g.phase, 'NOON_DAMAGE');
     g.takeNoonHit(0);
     assert.equal(g.players[0].health, 4);
+});
+
+// ── Požehnání / Prokletí ────────────────────────────────────────────────────
+// Obě karty přebíjí BARVU všech karet ve hře (hodnota zůstává). Pravidla se na barvu
+// ptají výhradně přes _effSuit, takže se testuje každý trychtýř zvlášť.
+
+test('_effSuit: Požehnání dělá ze všeho srdce, Prokletí piky, jinak platí vytištěná barva', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}]);
+    const card = mkCard(CardType.BANG, { suit: Suits.DIAMONDS, value: '7' });
+    assert.equal(g._effSuit(card), Suits.DIAMONDS);
+    g.activeEvent = evCard('POZEHNANI');
+    assert.equal(g._effSuit(card), Suits.HEARTS);
+    g.activeEvent = evCard('PROKLETI');
+    assert.equal(g._effSuit(card), Suits.SPADES);
+    assert.equal(card.suit, Suits.DIAMONDS, 'vytištěná barva karty se nemění');
+});
+
+test('Prokletí: dynamit vybuchne i na srdcové kartě (hodnota 2–9 platí dál)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 4 }], { event: 'PROKLETI' });
+    board(g, 1, CardType.DYNAMITE);
+    topDeck(g, Suits.HEARTS, '5');
+    g.currentPlayerIndex = 1;
+    startTurn(g);
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE', 'srdcová 5 se počítá jako piková → výbuch');
+});
+
+test('Prokletí: dynamit na pikové 10 přesto nevybuchne (hodnota mimo 2–9)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 4 }], { event: 'PROKLETI' });
+    board(g, 1, CardType.DYNAMITE);
+    for (let i = 0; i < 5; i++) topDeck(g, Suits.CLUBS);
+    topDeck(g, Suits.HEARTS, '10');   // snímaná karta leží navrchu (draw bere z konce)
+    g.currentPlayerIndex = 1;
+    startTurn(g);
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.notEqual(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.players[1].health, 4);
+});
+
+test('Požehnání: dynamit nevybuchne ani na pikové 5 (všechno je srdcové)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 4 }, {}], { event: 'POZEHNANI' });
+    board(g, 1, CardType.DYNAMITE);
+    for (let i = 0; i < 5; i++) topDeck(g, Suits.CLUBS);
+    topDeck(g, Suits.SPADES, '5');
+    g.currentPlayerIndex = 1;
+    startTurn(g);
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.players[1].health, 4, 'žádný výbuch');
+    assert.equal(g.players[2].board.some(c => c.type === CardType.DYNAMITE), true, 'dynamit putuje dál');
+});
+
+test('Požehnání: z vězení se dostane každý (snímá se srdce)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 4 }], { event: 'POZEHNANI' });
+    board(g, 1, CardType.JAIL);
+    for (let i = 0; i < 5; i++) topDeck(g, Suits.CLUBS);
+    topDeck(g, Suits.SPADES, 'K');
+    g.currentPlayerIndex = 1;
+    startTurn(g);
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'DRAW', 'hráč hraje svůj tah');
+    assert.equal(g.currentPlayerIndex, 1);
+});
+
+test('Prokletí: z vězení se nedostane nikdo (srdce ve hře nejsou)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 4 }], { event: 'PROKLETI' });
+    board(g, 1, CardType.JAIL);
+    for (let i = 0; i < 5; i++) topDeck(g, Suits.CLUBS);
+    topDeck(g, Suits.HEARTS, '4');
+    g.currentPlayerIndex = 1;
+    startTurn(g);
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.notEqual(g.currentPlayerIndex, 1, 'tah přeskočen');
+});
+
+test('Požehnání: barel uhne vždycky, Prokletí: nikdy', () => {
+    const mk = (event, suit) => {
+        const g = mkHnGame([{ role: 'Sheriff' }, { health: 4 }], { event });
+        board(g, 1, CardType.BARREL);
+        topDeck(g, suit, '5');
+        const bang = give(g, 0, CardType.BANG);
+        g.playBang(0, 1, bang);
+        g.triggerBarrelDraw();
+        g.resolveCheck();
+        return g;
+    };
+    // Piková karta pod Požehnáním = srdce → uhnul (žádná fáze obrany, plné životy).
+    const blessed = mk('POZEHNANI', Suits.SPADES);
+    assert.equal(blessed.players[1].health, 4);
+    assert.equal(blessed.phase, 'PLAY');
+    // Srdcová karta pod Prokletím = piky → neuhnul, čeká se na Vedle!.
+    const cursed = mk('PROKLETI', Suits.HEARTS);
+    assert.equal(cursed.phase, 'RESPOND');
+});
+
+test('Prokletí zruší imunitu Apache Kida vůči károvým kartám', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Apache Kid', health: 4 }], { event: 'PROKLETI' });
+    const bang = give(g, 0, CardType.BANG, { suit: Suits.DIAMONDS });
+    g.playBang(0, 1, bang);
+    assert.equal(g.phase, 'RESPOND', 'kárový Bang! je pod Prokletím pikový → normální útok');
+});
+
+test('bez události zůstává Apache Kid vůči károvému Bang! imunní', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Apache Kid', health: 4 }]);
+    const bang = give(g, 0, CardType.BANG, { suit: Suits.DIAMONDS });
+    g.playBang(0, 1, bang);
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[1].health, 4);
+});
+
+test('Požehnání: Black Jack má druhou kartu vždy červenou → líže 3', () => {
+    const g = mkHnGame([{ role: 'Sheriff', character: 'Black Jack' }, {}], { event: 'POZEHNANI' });
+    g.deck.cards = [];
+    for (let i = 0; i < 6; i++) topDeck(g, Suits.SPADES);   // vytištěné piky, platná srdce
+    g.startDrawPhase();
+    g.drawCard('deck');
+    g.drawCard('deck');
+    assert.equal(g.phase, 'BLACK_JACK_CHECK');
+    g.resolveBlackJack(true);
+    assert.equal(g.drawPhaseState.cardsNeeded, 3);
+    g.drawCard('deck');
+    assert.equal(g.players[0].hand.length, 3);
+});
+
+test('Prokletí: Black Jack má druhou kartu vždy černou → líže jen 2', () => {
+    const g = mkHnGame([{ role: 'Sheriff', character: 'Black Jack' }, {}], { event: 'PROKLETI' });
+    g.deck.cards = [];
+    for (let i = 0; i < 6; i++) topDeck(g, Suits.HEARTS);   // vytištěná srdce, platné piky
+    g.startDrawPhase();
+    g.drawCard('deck');
+    g.drawCard('deck');
+    assert.equal(g.phase, 'BLACK_JACK_CHECK');
+    g.resolveBlackJack(true);
+    assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.phase, 'PLAY');
 });

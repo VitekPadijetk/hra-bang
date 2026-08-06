@@ -1069,6 +1069,14 @@ function _playCardAnim(data) {
                 });
             });
 
+            // Požehnání / Prokletí přebarvují všechny karty ve hře – marky na texturách
+            // card_<id> se proto přepečou. Děje se to hned po překlopení, uvnitř výdrže
+            // karty uprostřed obrazovky: nic jiného se v tu chvíli neanimuje (boti jsou
+            // blokovaní, stav čeká ve frontě), takže případné škubnutí není vidět.
+            gameScene.time.delayedCall(A.preMs + A.flyMs + A.holdBackMs + A.flipMs + 120, () => {
+                applySuitOverride(gameScene, suitOverrideForEvent(data.key));
+            });
+
             gameScene.time.delayedCall(A.preMs + A.flyMs + A.holdBackMs + A.flipMs + A.holdFaceMs, () => {
                 if (!spr.active) return;
                 const toY = HN_PILE_Y - (App.storePileLiftY || 0);
@@ -1925,6 +1933,12 @@ function _applyRoomUpdate(payload) {
             App.blockInput = false;
         }
     }
+
+    // Požehnání/Prokletí – pojistka k přepečení karet v cinematice odkrytí (viz
+    // high_noon_reveal). Sem se dostane divák, který přišel doprostřed hry, i konec hry
+    // (activeEvent zmizí → karty zpátky do vytištěných barev). Idempotentní: když platná
+    // barva sedí, neudělá nic, takže se běžný update nezdrží.
+    if (gameScene) applySuitOverride(gameScene, suitOverrideForEvent(state?.activeEvent?.key));
 
     if (gameScene) renderUI();
 }

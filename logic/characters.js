@@ -292,8 +292,8 @@ const CharactersMixin = {
 
         // Apache Kid: Docovy odhozené karty jsou „zahrané jiným hráčem" → jsou-li OBĚ kárové,
         // je vůči nim imunní (bang bez efektu). Suity zjistíme před odhozením.
-        const bothDiamonds = p.hand[cardIndices[0]].suit === Suits.DIAMONDS &&
-                             p.hand[cardIndices[1]].suit === Suits.DIAMONDS;
+        const bothDiamonds = this._effSuit(p.hand[cardIndices[0]]) === Suits.DIAMONDS &&
+                             this._effSuit(p.hand[cardIndices[1]]) === Suits.DIAMONDS;
 
         const idxs = [...cardIndices].sort((a, b) => b - a);
         this.deck.discardPile.push(p.hand.splice(idxs[0], 1)[0]);

@@ -70,8 +70,8 @@ const PlayMixin = {
             [CardType.EQUIPMENT]: () => this.playBoardCard(player, cardIndex),
             [CardType.BARREL]: () => this.playBoardCard(player, cardIndex),
             [CardType.DYNAMITE]: () => this.playBoardCard(player, cardIndex),
-            [CardType.INDIANS]: () => { this._massAttackSuit = card.suit; this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.INDIANS); return true; },
-            [CardType.GATLING]: () => { this._massAttackSuit = card.suit; this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.GATLING); return true; },
+            [CardType.INDIANS]: () => { this._massAttackSuit = this._effSuit(card); this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.INDIANS); return true; },
+            [CardType.GATLING]: () => { this._massAttackSuit = this._effSuit(card); this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.GATLING); return true; },
             [CardType.STORE]: () => { this.openStore(); return true; }
         };
 
@@ -124,7 +124,7 @@ const PlayMixin = {
         this.checkSuzyLafayette(attacker);
 
         // Apache Kid: kárový Bang!/bang-efekt na něj nemá efekt (Bang! se „zahrál" naprázdno).
-        if (this._apacheImmune(targetIdx, card.suit, attackerIdx)) {
+        if (this._apacheImmune(targetIdx, this._effSuit(card), attackerIdx)) {
             this.phase = "PLAY";
             this._processSpecialQueue();
             return;
@@ -215,7 +215,7 @@ const PlayMixin = {
                 return;
             }
             // Apache Kid: kárové Vězení na něj nemá efekt (karta se odhodí naprázdno).
-            if (this._apacheImmune(tarIdx, card.suit, attIdx)) {
+            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
                 this.deck.discardPile.push(card);
                 this.checkSuzyLafayette(attacker);
                 this._processSpecialQueue();
@@ -229,7 +229,7 @@ const PlayMixin = {
         else if (card.type === CardType.CAT_BALOU || card.type === CardType.PANIC) {
             this.deck.discardPile.push(card);
             // Apache Kid: kárová Panika!/Cat Balou na něj nemá efekt (žádný výběr karty).
-            if (this._apacheImmune(tarIdx, card.suit, attIdx)) {
+            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
                 this.checkSuzyLafayette(attacker);
                 this._processSpecialQueue();
                 return;
@@ -248,7 +248,7 @@ const PlayMixin = {
             // Apache Kid: kárový Duel (karta samotná ♦) na něj nemá efekt – odhodí se
             // naprázdno, žádná výměna Bang!. (Bang! zahrané JAKO reakce uvnitř duelu jsou
             // reakce, ne cílené karty, takže ty Apache zasáhnou bez ohledu na barvu.)
-            if (this._apacheImmune(tarIdx, card.suit, attIdx)) {
+            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
                 this._processSpecialQueue();
                 return;
             }
@@ -270,7 +270,7 @@ const PlayMixin = {
             this.checkSuzyLafayette(attacker);
             this.missesRequired = 1;
             this.missesPlayed = 0;
-            this._massAttackSuit = card.suit;   // Apache Kid: kárový hromadný útok ho míjí
+            this._massAttackSuit = this._effSuit(card);   // Apache Kid: kárový hromadný útok ho míjí
             this._massAttackName = card.name;   // UI: skutečná karta (Houfnice ≠ Kulomet)
             this._advanceMassAttack(attIdx, attIdx, card.type);
             this._processSpecialQueue();

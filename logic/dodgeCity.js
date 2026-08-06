@@ -200,7 +200,7 @@ const DodgeCityMixin = {
                 discardAndTrack();
                 this.currentAttacker = playerIdx;
                 this.missesRequired = 1; this.missesPlayed = 0;
-                this._massAttackSuit = card.suit;        // Apache Kid: kárová Houfnice ho míjí
+                this._massAttackSuit = this._effSuit(card);   // Apache Kid: kárová Houfnice ho míjí
                 this._massAttackName = card.name;        // UI: ohrožuje tě Houfnice, ne Kulomet
                 this._advanceMassAttack(playerIdx, playerIdx, CardType.GATLING);
                 this._processSpecialQueue();
@@ -217,7 +217,7 @@ const DodgeCityMixin = {
             if (!t || t.health <= 0) return;
             if (targetIdx !== playerIdx && computeDistance(this, playerIdx, targetIdx) > reach) return;
             // Apache Kid: kárová bang-efekt zelená ho míjí (karta se přesto odhodí).
-            if (this._apacheImmune(targetIdx, card.suit, playerIdx)) {
+            if (this._apacheImmune(targetIdx, this._effSuit(card), playerIdx)) {
                 discardAndTrack();
                 this.phase = "PLAY";
                 this._processSpecialQueue();
@@ -262,7 +262,7 @@ const DodgeCityMixin = {
                 if (selfBoardId == null || selfBoardId === card.id) return;
             }
             // Apache Kid: kárový Krytý vůz (9♦) ho míjí – karta se aktivuje naprázdno.
-            if (this._apacheImmune(targetIdx, card.suit, playerIdx)) {
+            if (this._apacheImmune(targetIdx, this._effSuit(card), playerIdx)) {
                 discardAndTrack();
                 this.checkSuzyLafayette(player);
                 this.phase = "PLAY";

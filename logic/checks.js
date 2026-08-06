@@ -97,14 +97,15 @@ const ChecksMixin = {
             return parseInt(val);
         };
         const p = this.players[check.playerIdx];
-        const suit = check.card.suit;
+        // Barva, která PLATÍ (Požehnání/Prokletí ji přebíjí) – hodnota zůstává vytištěná.
+        const suit = this._effSuit(check.card);
         const numVal = getNum(check.card.value);
 
         let checkResult;
         if (check.reason === "DYNAMITE") checkResult = (suit === Suits.SPADES && numVal >= 2 && numVal <= 9) ? 'výbuch' : 'nevybuchl';
         else if (check.reason === "JAIL") checkResult = (suit === Suits.HEARTS) ? 'srdce → hraje' : 'vězení → konec tahu';
         else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
-        this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${check.card.suit}`, result: checkResult });
+        this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${suit}`, result: checkResult });
 
         if (check.reason === "DYNAMITE") {
             if (suit === Suits.SPADES && numVal >= 2 && numVal <= 9) {

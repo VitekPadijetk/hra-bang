@@ -948,7 +948,7 @@ const REVEAL_PILE_DEPTH = 700;
 // tehdy je hodnota zapečená ve staré kartě a pulz nejde udělat.
 function pulseCheckMark(x, y, scale, card) {
     if (!gameScene) return null;
-    const vKey = valueMarkKey(card), sKey = suitMarkKey(card);
+    const vKey = valueMarkKey(card), sKey = effSuitMarkKey(card);
     if (!vKey || !sKey || !gameScene.textures.exists(vKey) || !gameScene.textures.exists(sKey)) return null;
     const W = CARD_TEX_W, H = CARD_TEX_H, L = MARK_LAYOUT;
     const left = x - (W * scale) / 2, top = y - (H * scale) / 2;   // levý horní roh karty na obrazovce
@@ -1644,7 +1644,13 @@ function buildCardTextures(scene, cardList) {
     const allData = cardList || scene.cache.json.get('cards_data');
     if (!allData) { clog('error', 'cards_data nenačteno – karty zůstanou na rubu'); return; }
     const W = CARD_TEX_W, H = CARD_TEX_H, L = MARK_LAYOUT;
-    scene._cardRTs = scene._cardRTs || [];
+    scene._cardRTs = scene._cardRTs || {};
+    // Který seznam se kdy pekl – přepečení při Požehnání/Prokletí musí projít všechny
+    // (základ + rozšíření, jejichž art se mezitím dotáhl).
+    scene._bakedCardLists = scene._bakedCardLists || [];
+    if (!scene._bakedCardLists.includes(allData)) scene._bakedCardLists.push(allData);
+    // High Noon – Požehnání/Prokletí: marka barvy se přebíjí pro VŠECHNY karty.
+    const overrideSKey = scene._suitOverride ? 'suit_' + SUIT_SLUG[scene._suitOverride] : null;
     const missingArt = [];   // karty složené z placeholderu (chybí art) – do logu
     const drawMarks = (rt, vKey, sKey) => {
         // marky do levého dolního rohu (hodnota, vedle ní barva); origin(0,1) = kotva vlevo dole
@@ -1660,11 +1666,15 @@ function buildCardTextures(scene, cardList) {
         }
     };
     for (const card of allData) {
-        const aKey = artKey(card), vKey = valueMarkKey(card), sKey = suitMarkKey(card);
+        const aKey = artKey(card), vKey = valueMarkKey(card);
+        const sKey = overrideSKey || suitMarkKey(card);
         const hasArt = !!aKey && scene.textures.exists(aKey);
         const isExp = card.exp || null;
         if (!hasArt) missingArt.push(card.id + ':' + (card.name || '?'));
         if (scene.textures.exists('card_' + card.id)) scene.textures.remove('card_' + card.id);
+        // Předchozí RenderTexture téhle karty (přepečení) uvolni – jinak by se při každé
+        // změně Požehnání/Prokletí hromadily desítky mrtvých textur v paměti GPU.
+        if (scene._cardRTs[card.id]) { try { scene._cardRTs[card.id].destroy(); } catch (_) {} }
         const rt = scene.make.renderTexture({ width: W, height: H }, false);
         if (hasArt) {
             // Hlavní cesta: art druhu + marky hodnoty/barvy. Marky se kreslí každá zvlášť,
@@ -1693,12 +1703,44 @@ function buildCardTextures(scene, cardList) {
             rt.draw(bull, L.bullX, L.bullY); bull.destroy();
         }
         rt.saveTexture('card_' + card.id);   // getCardTex/getTex beze změny
-        scene._cardRTs.push(rt);             // RT drží texturu → nedestruovat
+        scene._cardRTs[card.id] = rt;        // RT drží texturu → nedestruovat
     }
     if (missingArt.length) {
         clog('warn', 'Karty bez artu složené z placeholderu: ' + missingArt.length,
              { cards: missingArt.slice(0, 30) });
     }
+}
+
+// ── High Noon: Požehnání / Prokletí přebarvují VŠECHNY karty ───────────────────
+// Karty se nepřebarvují jen v pravidlech (GameState._effSuit), ale i vizuálně – jinak by
+// se hráč rozhodoval podle vytištěné barvy, která zrovna neplatí. Textury card_<id> se
+// přepečou pod STEJNÝMI klíči, jen s jinou markou barvy; sprity vytvořené dřív drží starou
+// texturu, proto se hned po přepečení překresluje celé UI.
+function suitOverrideForEvent(key) {
+    if (key === 'POZEHNANI') return 'HEARTS';
+    if (key === 'PROKLETI') return 'SPADES';
+    return null;
+}
+
+// Marka barvy, která má být na kartě VIDĚT. Používá ji i pulzující zvýraznění při snímání
+// (pulseCheckMark) – jinak by se přes kartu zapečenou jako piková překryla vytištěná srdcová.
+function effSuitMarkKey(card) {
+    const ov = gameScene && gameScene._suitOverride;
+    return ov ? 'suit_' + SUIT_SLUG[ov] : suitMarkKey(card);
+}
+
+// Idempotentní: když se platná barva nemění, neudělá nic. Volá se z cinematiky odkrytí
+// (během výdrže karty uprostřed obrazovky, kdy se nic jiného neanimuje) i z
+// _applyRoomUpdate jako pojistka, kdyby animace nedorazila.
+function applySuitOverride(scene, suitKey) {
+    const want = suitKey || null;
+    if (!scene || (scene._suitOverride || null) === want) return;
+    scene._suitOverride = want;
+    // Otevřené zvětšení drží starou texturu, kterou přepečení zahodí – zhasni ho.
+    // (renderUI níž překreslí jen karty na stole, samostatný zoom-obraz do něj nepatří.)
+    stopCardZoom();
+    (scene._bakedCardLists || []).forEach(list => buildCardTextures(scene, list));
+    renderUI();
 }
 
 // Textura dodaná ve 2× rozlišení (650×1000) srovnaná na standardních 325×500 – přerenderuje

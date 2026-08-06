@@ -26,6 +26,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `logic/response.js` | **Mixin GameState.** Fáze RESPOND: `handleResponse` (Vedle!/Bang!, duel, hromadné útoky), záchrana posledního života `beerLastLifeSave`/`sidLastLifeSave`, `_advanceAfterLastLifeSave`. |
 | `logic/characters.js` | **Mixin GameState.** Schopnosti postav + fronta odložených akcí: `_processSpecialQueue`/`_resumeAfterSpecial`, `checkSuzyLafayette`/`suzyLafayetteDraw`, `bartCassidyDraw`, `elGringoSteal`, `sidKetchumDiscardOne`/`useSidKetchum`, `startLuckyDukeCheck`/`luckyDukePick` + **dělení karet mezi víc Vulture Samů** (`_nextVultureSplitPick`/`_advanceVultureSplit`/`_finishVultureSplit`, viz níže). |
 | `logic/checks.js` | **Mixin GameState.** Kontrolní líznutí na začátku tahu (Dynamit/Vězení) a vyhodnocení checků: `handleStartOfTurnChecks`, `triggerCheckDraw`, `_applyCheckResult` (Dynamit/Vězení/Barel/Jourdonnais), `resolveCheck`. |
+| `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (odkrytí události → její okamžitý efekt → Pravé poledne), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit` a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/**`_effSuit`**. `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí. |
 | `server.js` | **Socket.IO bootstrap (~76 ř.).** Express/io setup → poskládá sdílený `ctx` (`require('./server/*')(ctx)` v pořadí rooms→gamelog→ledger→guard→intro→anim→lifecycle→bots) → `io.on('connection')` jen definuje per-connection `withRoom` a zavolá `register*Handlers(socket, ctx, withRoom)` → `server.listen`. Veškerá logika je v `server/*`. |
 | `server/rooms.js` | Factory `installRoomService(ctx)` – vlastní `rooms` Map + roomCounter, vystaví na `ctx`: `makeRoom`, `roomPayload`, `broadcastRoom(+Delayed)`, `broadcastLobbyList`, `getLobbyList`, `getGameList`, `findRoomBySocket`, `leaveRoom`, `leaveSpectate`, `disbandRoom`. Bez listenu → testovatelné s fake io (`test/server.rooms.test.js`). **Divák je jen v socket.io kanálu `<roomId>_spectators`, ne v `room.players`** – `findRoomBySocket`/`leaveRoom` ho tedy nevidí a odhlásit ho umí jen `leaveSpectate(socket)` (volá se z `leave_spectate`, `go_to_menu`, `spectate`, `create_room`/`join_room`/`rejoin`/`create_bot_game`). Bez odhlášení mu chodí dál `room_update`/`card_animation`/`intro_phase` a klient ho z menu překlopí zpátky do hry. |
 | `server/intro.js` | Factory `installIntroService(ctx)` (bere `io`, `broadcastRoom`) – serverová intro sekvence přes timeouty: `emitIntro`/`emitIntroRole`/`emitIntroChars`, `runIntroSequence`, `introAfterRoles`, `introStartCharPhase`, `introStartDeckPhase`. **Navazující hra** má vlastní vstup `runNextGameIntro` + `introKeepResult` (viz „Intro navazující hry“ níže). Test: `test/server.intro.test.js`. |
@@ -73,6 +74,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `core/deathAnim.js` | `DEATH_ANIM`, `deathAnimTimeline`, `deathSequenceMs`, `deathFallMs`, `deathRevealMs`, `penaltyDiscardMs` | **časování cinematiky vyřazení hráče** (pokles na 0 životů → pauza → karty odlétají po jedné → postava se posune vedle místa role → rubová karta role letí doprostřed, překlopí se, vydrží a odletí na místo). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `playDeathSequence`, fáze drží `App.deathSeq`/`App.deathHandHide`, board.js podle nich kreslí), server o stejnou dobu drží boty (`room._deathBlockUntil` v `server/anim.js`, respektuje `scheduleBotTick`). Stav se do konce sekvence nepustí – animace jde frontou jako `essential` (nezahoditelná). **Varianty:** `skipReveal` (šerif roli neodhaluje – zná ji celý stůl, sekvence končí odhozením karet); `deathFallMs`+`deathRevealMs` = sekvence rozpůlená dělením karet mezi víc Vulture Samů; `penaltyDiscardMs` = šerifova ztráta karet za zabití pomocníka (stejné odhazování, ale bez poklesu životů, bez role a Colt .45 zůstává). |
 | `core/drawCounter.js` | `nextDrawCounters` | **počítadlo naklikaných, ještě nepotvrzených líznutí** (`App.pendingDrawCount`/`lastConfirmedDrawn`/`lastDrawOwner`). Drží dva rychlé kliky na balíček a zároveň brání kliku navíc. Klíčové je, že počítadlo patří JEDNÉ fázi lízání: při změně vlastníka (řetěz kill-rewardů, DRAW → DRAW jiného hráče) se nuluje – jinak vyjde „zbývá ≤ 0", balíček nejde rozkliknout a hra uvázne. |
 | `core/gameLog.js` | `snapshotState`, `formatEvent`, `LogEvent` | čistý formát strukturovaného herního logu: `snapshotState(gs)` = kompaktní stav (role/ruce/board/HP/phase/pendingActor), `formatEvent(evt)` = jednořádkový český popis pro konzoli. Persistenci do souboru řeší `server/gamelog.js`; není v index.html (server-only). |
+| `core/highNoon.js` | `eventActive`, `bangLimitFor`, `bangBlockedFor`, `beerBlockedFor`, `effSuit` | **zrcadlo dotazů na aktivní událost High Noon nad prostým JSON stavem** – server se ptá přes `GameState.hasEvent`/`_effSuit`, klient (`core/playability.js`, `view/*`) a bot (`core/botPolicy.js`) přes tenhle helper. `effSuit(state, card)` = barva, která PLATÍ (Požehnání srdce / Prokletí piky). |
 | `core/highNoonAnim.js` | `HN_ANIM`, `hnRevealMs` | **časování odkrytí karty události High Noon** (pauza `preMs` → let z balíčku doprostřed → výdrž na rubu → překlopení → výdrž lícem → zmenšení na místo platné karty). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `high_noon_reveal`), server o stejnou dobu drží boty (`room._hnBlockUntil`) a fronta si podle `hnRevealMs()` spočítá zdržení stavu. Animace nese i `playerIdx` (šerif je na tahu už během odkrývání – stav dorazí až po ní) a `remaining` (balíček ubývá se startem letu → `App.hnDeckLeft`, ne až se stavem; jinak by u poslední karty zůstal ležet prázdný rub). |
 
 **`core/` je vzor, kam patří nová čistá logika** — jde testovat v Node bez prohlížeče.
@@ -142,6 +144,26 @@ Server (`server/intro.js`) → klient (`net/handlers.js` `intro_phase` → `view
 
 Stav klienta drží `_introState.placedCards`; položky mají `key` (`char:3`, `lives:3`,
 `name:3`, `star:3`), aby je šlo za běhu posunout/schovat/odstranit.
+
+## Požehnání / Prokletí (High Noon): přebarvení karet
+
+Obě události mění barvu **všech** karet ve hře (Požehnání = srdce, Prokletí = piky;
+hodnota zůstává). Musí se to projevit ve dvou vrstvách:
+
+- **Pravidla** — `GameState._effSuit(card)` (logic/highNoon.js). Kód se na `card.suit`
+  nikde neptá napřímo; trychtýře jsou `_applyCheckResult` (Dynamit/Vězení/Barel/
+  Jourdonnais i přes Lucky Duka), `resolveBlackJack`, všechna volání `_apacheImmune`,
+  přiřazení `_massAttackSuit` a Doc Holyday. Bot má zrcadlo `effSuit(state, card)`
+  v `core/highNoon.js` (používá ho volba Lucky Duka).
+- **Vizuál** — textury `card_<id>` se přepečou pod **stejnými klíči**, jen s jinou markou
+  barvy: `buildCardTextures` respektuje `scene._suitOverride` a `applySuitOverride(scene, suit)`
+  (game.js) projde `scene._bakedCardLists` (základ + rozšíření, jejichž art už doteče).
+  Přepečení běží uvnitř výdrže odkryté karty uprostřed obrazovky
+  (`net/handlers.js`, `high_noon_reveal`) – tam se nic jiného neanimuje. Pojistkou je
+  stejné (idempotentní) volání na konci `_applyRoomUpdate` (divák uprostřed hry, konec hry).
+  Sprity vytvořené dřív drží starou texturu, proto se po přepečení **vždy** volá `renderUI()`
+  a zhasíná otevřené zvětšení (`stopCardZoom`). Stejnou markou se řídí i pulzující
+  zvýraznění při snímání (`effSuitMarkKey` → `pulseCheckMark`).
 
 ## Testy
 

@@ -22,6 +22,18 @@ function beerBlockedFor(state) {
     return eventActive(state, 'REVEREND');
 }
 
+// Barva, která u karty PLATÍ. Požehnání = všechno srdcové, Prokletí = všechno pikové;
+// hodnota se nemění. Zrcadlí GameState._effSuit (logic/highNoon.js). Hodnoty jsou stejné
+// řetězce jako Suits v logic/entities.js – ty tady nejsou k dispozici (core je bez závislostí).
+const SUIT_HEARTS = '♥️';
+const SUIT_SPADES = '♠️';
+function effSuit(state, card) {
+    if (!card) return null;
+    if (eventActive(state, 'POZEHNANI')) return SUIT_HEARTS;
+    if (eventActive(state, 'PROKLETI')) return SUIT_SPADES;
+    return card.suit;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { eventActive, bangLimitFor, bangBlockedFor, beerBlockedFor };
+    module.exports = { eventActive, bangLimitFor, bangBlockedFor, beerBlockedFor, effSuit };
 }

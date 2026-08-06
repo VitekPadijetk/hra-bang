@@ -241,7 +241,9 @@ const DrawMixin = {
         if (this.phase !== "BLACK_JACK_CHECK") return;
         const ds = this.drawPhaseState;
         const card = ds.blackJackCard;
-        const isRed = card.suit === Suits.HEARTS || card.suit === Suits.DIAMONDS;
+        // Barva, která platí (Požehnání = vše červené, Prokletí = vše černé).
+        const suit = this._effSuit(card);
+        const isRed = suit === Suits.HEARTS || suit === Suits.DIAMONDS;
         const player = this.players[ds.playerIdx];
         player.hand.push(card);
         this.logEvent('draw', { who: player.name, source: 'deck (Black Jack)', cards: [card.name] });
