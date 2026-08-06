@@ -826,6 +826,14 @@ function renderLobbyScreen() {
 
     const btY = 240 + room.maxPlayers * 68 + 50;
 
+    // Po kliknutí na START se ještě chvíli čeká, než budou mít všichni art zapnutého
+    // rozšíření (stahuje se líně) – bez téhle hlášky by to vypadalo, že se nic neděje.
+    if (roomState?.assetsWaiting) {
+        const wait = gameScene.add.text(960, btY - 62, '⏳ Načítám karty rozšíření u všech hráčů…',
+            { fontFamily: THEME.fontUI, fontSize: '22px', color: THEME.color.gold }).setOrigin(0.5);
+        gameScene.cardsSprites.add(wait);
+    }
+
     const leaderControls = (startEvent) => {
         themeButton(gameScene, 750, btY, 300, 68, 'ZRUŠIT HRU', {
             fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,

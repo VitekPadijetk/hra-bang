@@ -63,9 +63,10 @@ socket.on('intro_phase', (data) => {
             shuffleAnimDone: false, // michaci animace dobehla -> ukaz staticky balicek
             deckMoving: false,   // zaverecny presun balicku na herni pozici (skryj staticky)
             coltShown: false,    // Colt .45 fade-in u me uz probehl
-            // Rozšíření High Noon: balíček událostí (0 = rozšíření se nehraje)
-            hnCount: 0,          // kolik karet hromádka právě ukazuje
-            hnTotal: 0,          // plný počet karet balíčku událostí
+            // Rozšíření High Noon: balíček událostí (0 = rozšíření se nehraje). Leží na
+            // stole od začátku intra, míchá se až ve své fázi (shuffle_highnoon).
+            hnCount: data.hnCount || 0,   // kolik karet hromádka právě ukazuje
+            hnTotal: data.hnCount || 0,   // plný počet karet balíčku událostí
             hnAsideTex: null,    // odložené Pravé poledne lícem nahoru
             hnMoving: false,     // závěrečný přesun hromádky na herní pozici
         };
@@ -319,6 +320,7 @@ socket.on('intro_phase', (data) => {
         const noon = hn.find(c => c.key === 'PRAVE_POLEDNE');
         _introState.hnCount = 0;                 // hromádku zastupuje míchací animace
         _introState.hnTotal = data.hnCount;
+        // Pravé poledne šerif odloží stranou lícem nahoru – nemíchá se s ostatními.
         _introState.hnAsideTex = noon ? 'hn_' + noon.art : null;
         _introState.shuffleAnimDone = false;
         _clearIntroSprites();
@@ -978,7 +980,7 @@ function _playCardAnim(data) {
         // Rozšíření High Noon: šerif odkrývá kartu události. Rub z balíčku vyletí
         // doprostřed obrazovky, zvětší se, překlopí na líc, chvíli tam vydrží (ať ji
         // všichni přečtou) a pak dosedne zmenšený na místo platné karty vedle balíčku.
-        // Po tu dobu drží App.hnRevealing, aby ji stůl nekreslil dvakrát.
+        // Na cílovém místě pak parkuje, dokud ji stav nemá na hromádce odkrytých.
         case 'high_noon_reveal': {
             const A = HN_ANIM;
             const BIG = 0.8, CX = 960, CY = 540;
@@ -987,7 +989,6 @@ function _playCardAnim(data) {
             if (!gameScene.textures.exists(faceTex)) break;   // art se ještě nedotáhl
             const backTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
 
-            App.hnRevealing = true;
             const spr = gameScene.add.image(HN_PILE_X, HN_PILE_Y - lift, backTex)
                 .setScale(0.3).setDepth(880);
 
@@ -1007,12 +1008,17 @@ function _playCardAnim(data) {
             });
 
             gameScene.time.delayedCall(A.flyMs + A.holdBackMs + A.flipMs + A.holdFaceMs, () => {
-                if (!spr.active) { App.hnRevealing = false; return; }
+                if (!spr.active) return;
                 const toY = HN_PILE_Y - (App.storePileLiftY || 0);
                 gameScene.tweens.add({
                     targets: spr, x: HN_ACTIVE_X, y: toY, scaleX: 0.3, scaleY: 0.3,
                     duration: A.toSlotMs, ease: 'Power2',
-                    onComplete: () => { App.hnRevealing = false; if (spr.active) spr.destroy(); renderUI(); }
+                    // Karta na cílovém místě PARKUJE, dokud ji stav nemá na hromádce –
+                    // stav dorazí až po dojezdu animace (fronta), takže bez parkování by
+                    // na okamžik zmizela úplně.
+                    onComplete: () => holdThenFinish(spr,
+                        () => state?.activeEvent?.id === data.id,
+                        () => { if (spr.active) spr.destroy(); renderUI(); })
                 });
             });
             break;
@@ -1554,7 +1560,7 @@ socket.on('card_animation', (data) => {
     // fronty. Nechává za sebou lokálně upravený stav (skryté karty, mezifáze) a bez
     // dojezdu by ho nikdo neuklidil – navíc na ni čeká i server (drží boty).
     // Odkrytí karty High Noon je taky `essential`: na její dojezd čeká i server (drží
-    // boty) a nechává za sebou lokální stav (App.hnRevealing), který nikdo jiný neuklidí.
+    // boty) a bez ní by hromádka odkrytých karet přeskočila rovnou na novou kartu.
     const essential = data.type === 'player_death_discard' || data.type === 'vulture_sam_steal' ||
                       data.type === 'sheriff_penalty_discard' ||
                       data.type === 'vulture_split_death' || data.type === 'player_death_reveal' ||

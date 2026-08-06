@@ -955,6 +955,9 @@ function _renderIntroCharSelect() {
     // Balíček hracích karet za UI (role deck je pryč, char deck taky)
     if (s.deckCount > 0)
         _drawIntroStack(INTRO_PLAY_DECK.x, INTRO_PLAY_DECK.y, 'card_back', s.deckCount, 0.30, '');
+    // Balíček událostí (High Noon) leží na stole po celé intro – i během výběru postav.
+    if (s.hnCount > 0)
+        _drawIntroStack(INTRO_HN_DECK.x, INTRO_HN_DECK.y, 'hn_back', s.hnCount, 0.30);
 
     // Umístěné karty (role atd.) + jmenovky
     if (s.placedCards) s.placedCards.forEach(_drawPlacedCard);

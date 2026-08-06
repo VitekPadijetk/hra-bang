@@ -1955,38 +1955,48 @@ function drawPhaseOverlays(ctx) {
 
 
 // ── Balíčky: dobírací + odhazovací hromádka, zvýraznění lízání/check (vrací isMyDraw) ─
-// Rozšíření High Noon: balíček událostí rubem nahoru a vedle něj platná karta lícem.
-// Leží napravo od odhozu a zvedá se s ním při hokynářství (řada karet hokynářství sahá
-// při 7 hráčích až na x=1320, takže bez zvednutí by přes ně ležela).
-// Platná karta jde zvětšit najetím kurzoru – stejná cesta jako u vrchní karty odhozu.
+// Rozšíření High Noon: balíček událostí rubem nahoru a vedle něj hromádka už odkrytých
+// karet lícem nahoru (nová vždy překryje předchozí, hromádka roste do výšky – stejně jako
+// odhoz). Leží napravo od odhozu a zvedá se s ním při hokynářství (řada karet hokynářství
+// sahá při 7 hráčích až na x=1320, takže bez zvednutí by přes ně ležela).
+// Vrchní (platná) karta jde zvětšit najetím kurzoru – stejná cesta jako u vrchní karty odhozu.
 function drawHighNoonPile(ctx) {
     const { scaleDeck } = ctx;
     if (!state) return;
     const left = state.eventDeck?.length || 0;
-    const active = state.activeEvent || null;
-    if (!left && !active) return;   // rozšíření se nehraje
+    const pile = state.eventPile || [];
+    if (!left && !pile.length) return;   // rozšíření se nehraje
 
     const lift = App.storePileLiftY || 0;
     const pxPerCard = 0.25;
-    const backX = HN_PILE_X, activeX = HN_ACTIVE_X, baseY = HN_PILE_Y - lift;
+    const baseY = HN_PILE_Y - lift;
 
     if (left > 0) {
         const backTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
         const topY = baseY - (left - 1) * pxPerCard / 2;
         for (let k = left - 1; k >= 0; k--) {
-            const layer = gameScene.add.image(backX, topY + k * pxPerCard, backTex).setScale(scaleDeck);
+            const layer = gameScene.add.image(HN_PILE_X, topY + k * pxPerCard, backTex).setScale(scaleDeck);
             gameScene.cardsSprites.add(layer);
         }
     }
 
-    // Platná karta se během své odkrývací cinematiky nekreslí – v tu chvíli letí
-    // doprostřed obrazovky jako samostatný sprite (viz net/handlers.js).
-    if (active && !App.hnRevealing) {
-        const tex = 'hn_' + active.art;
-        if (!gameScene.textures.exists(tex)) return;
-        const spr = gameScene.add.image(activeX, baseY, tex).setScale(scaleDeck);
+    // Hromádka odkrytých: spodní karty vykukují nepatrně natočené, vrchní leží rovně
+    // a je čitelná. Natočení je deterministické z ID karty (stejné u všech hráčů).
+    // Nová karta se sem NEPŘIDÁVÁ dřív, než dorazí stav – během její cinematiky letí
+    // jako samostatný sprite a stav (s ní na vrcholu) čeká ve frontě (net/handlers.js),
+    // takže tady je pořád vidět předchozí platná karta.
+    const topY = baseY - (pile.length - 1) * pxPerCard / 2;
+    for (let i = 0; i < pile.length; i++) {
+        const card = pile[i];
+        const tex = 'hn_' + card.art;
+        if (!gameScene.textures.exists(tex)) continue;
+        const isTop = i === pile.length - 1;
+        const angle = isTop ? 0 : (((card.id * 2654435761) >>> 0) % 700) / 100 - 3.5;
+        const spr = gameScene.add.image(HN_ACTIVE_X, topY + (pile.length - 1 - i) * pxPerCard, tex)
+            .setScale(scaleDeck).setAngle(angle).setDepth(i);
         gameScene.cardsSprites.add(spr);
-        const zoomKey = 'hn:' + active.id;
+        if (!isTop) continue;
+        const zoomKey = 'hn:' + card.id;
         spr.setInteractive();
         spr._zoomKey = zoomKey;
         spr.on('pointerover', () => startCardZoom(tex, zoomKey));

@@ -5,6 +5,61 @@
 module.exports = function installLifecycle(ctx) {
     const { cardData, dodgeCityCardData, highNoonCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
 
+    // ── Čekání na assety rozšíření ──────────────────────────────────────────
+    // Art rozšíření se stahuje líně (game.js loadExpansionAssets), takže hráč, který
+    // se připojil na poslední chvíli, ho ještě nemusí mít v cache. Klient hlásí
+    // `expansion_ready`, jakmile má klíčové textury (rub balíčku a Pravé poledne);
+    // start hry na ně počká, ať nikomu neproblikne balíček z placeholderu. Po vypršení
+    // limitu se hra spustí i tak – radši placeholder než zaseknuté lobby.
+    const ASSET_WAIT_MS = 12000;
+
+    function enabledExpansions(room) {
+        const exps = (room.options && room.options.expansions) || {};
+        return Object.keys(exps).filter(k => exps[k]);
+    }
+
+    // Kdo musí mít assety: lidští hráči (boti nekreslí) + leader (u hry botů je to divák).
+    function assetWaiters(room) {
+        const ids = room.players.filter(p => !p.isBot).map(p => p.socketId);
+        if (room.leaderSocketId && !ids.includes(room.leaderSocketId)) ids.push(room.leaderSocketId);
+        return ids;
+    }
+
+    function assetsReady(room) {
+        const need = enabledExpansions(room);
+        if (!need.length) return true;
+        const ready = room._assetsReady || {};
+        return assetWaiters(room).every(sid => need.every(exp => ready[sid] && ready[sid].has(exp)));
+    }
+
+    function finishAssetWait(room) {
+        if (room._assetWaitTimer) { clearTimeout(room._assetWaitTimer); room._assetWaitTimer = null; }
+        const cb = room._assetWaitCb;
+        room._assetWaitCb = null;
+        room.assetsWaiting = false;
+        if (cb) cb();
+    }
+
+    function whenAssetsReady(room, cb) {
+        if (assetsReady(room)) { cb(); return; }
+        room._assetWaitCb = cb;
+        room.assetsWaiting = true;
+        ctx.glog.system(`"${room.name}" čeká na assety rozšíření (${enabledExpansions(room).join(', ')})`);
+        broadcastRoom(room);
+        room._assetWaitTimer = setTimeout(() => {
+            ctx.glog.system(`"${room.name}" – čekání na assety vypršelo, startuje se`);
+            finishAssetWait(room);
+        }, ASSET_WAIT_MS);
+    }
+
+    // Volá handler `expansion_ready` (server/handlers.lobby.js).
+    function noteAssetsReady(room, socketId, exp) {
+        if (!room || !socketId || !exp) return;
+        const m = room._assetsReady = room._assetsReady || {};
+        (m[socketId] = m[socketId] || new Set()).add(exp);
+        if (room._assetWaitCb && assetsReady(room)) finishAssetWait(room);
+    }
+
     function startGame(room) {
         const gs = room.gameState;
         gs.cardData = cardData;
@@ -44,7 +99,9 @@ module.exports = function installLifecycle(ctx) {
         room._introPlaying = true;
         // intro_phase 'init' musi prijet AZ PO room_update (jinak roomPhase stale 'lobby')
         setTimeout(() => {
-            emitIntro(room, { sub: 'init', playerCount: room.players.length });
+            // hnCount: balíček událostí (High Noon) leží na stole od začátku intra.
+            emitIntro(room, { sub: 'init', playerCount: room.players.length,
+                              hnCount: gs.eventDeck?.length || 0 });
             runIntroSequence(room);
         }, 50);
     }
@@ -139,6 +196,6 @@ module.exports = function installLifecycle(ctx) {
         setTimeout(() => ctx.runNextGameIntro(room), 50);
     }
 
-    Object.assign(ctx, { startGame, startNextGame });
+    Object.assign(ctx, { startGame, startNextGame, whenAssetsReady, noteAssetsReady });
     return ctx;
 };

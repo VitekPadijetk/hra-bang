@@ -29,7 +29,6 @@ const App = {
     debugRoles: [],
     debugDodgeCity: false,
     debugHighNoon: false,
-    hnRevealing: false,   // běží cinematika odkrytí karty High Noon (stůl ji zatím nekreslí)
     chatMessages: [],
     chatOpen: false,
     chatUnread: 0,

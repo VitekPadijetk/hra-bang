@@ -1515,9 +1515,14 @@ const EXPANSION_LOADERS = {
         for (let i = 16; i <= 30; i++) {
             loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.png`);
         }
-        return () => {
-            normalizeCharTextures(scene, 16, 30);
-            buildCardTextures(scene, data);
+        return {
+            // Bez artu jsou karty rozšíření placeholder – kritické je proto všechno,
+            // co se kreslí hned (marka býka + první karty v ruce).
+            critical: ['mark_dodge_city'],
+            done: () => {
+                normalizeCharTextures(scene, 16, 30);
+                buildCardTextures(scene, data);
+            },
         };
     },
 
@@ -1525,13 +1530,22 @@ const EXPANSION_LOADERS = {
         // Karty událostí nejsou hrací karty – nepečou se z artu + marek, kreslí se
         // rovnou jako hotový obrázek (klíč hn_<art>). Rub balíčku má vlastní texturu.
         const data = scene.cache.json.get('cards_high_noon_data') || [];
+        // Pořadí ve frontě loaderu = pořadí stahování. Rub balíčku a Pravé poledne se
+        // ukazují hned v intru (hromádka + odložená karta), takže musí být první;
+        // zbytek karet se stihne dotáhnout, než šerif první událost odkryje.
         loadAsset(scene, 'image', 'hn_back', 'assets/other_cards/high_noon/high_noon_back.png');
+        const noon = data.find(c => c.key === 'PRAVE_POLEDNE');
+        if (noon) loadAsset(scene, 'image', 'hn_' + noon.art, `assets/high_noon_cards/${noon.art}.png`);
         data.forEach(c => loadAsset(scene, 'image', 'hn_' + c.art, `assets/high_noon_cards/${c.art}.png`));
-        return () => {
-            // Dodané ve 2× (650×1000) → srovnat na 325×500, ať platí stejná měřítka
-            // jako u ostatních karet na stole.
-            normalizeTexture(scene, 'hn_back');
-            data.forEach(c => normalizeTexture(scene, 'hn_' + c.art));
+        return {
+            // Kritické = co je vidět hned v intru: rub balíčku a odložené Pravé poledne.
+            critical: ['hn_back'].concat(noon ? ['hn_' + noon.art] : []),
+            done: () => {
+                // Dodané ve 2× (650×1000) → srovnat na 325×500, ať platí stejná měřítka
+                // jako u ostatních karet na stole.
+                normalizeTexture(scene, 'hn_back');
+                data.forEach(c => normalizeTexture(scene, 'hn_' + c.art));
+            },
         };
     },
 };
@@ -1539,7 +1553,10 @@ const EXPANSION_LOADERS = {
 // Dotáhne assety jednoho rozšíření (idempotentní). Rozšíření se řadí do fronty a načítají
 // po jednom – dvě souběžná scene.load.start() by si šlapala po 'complete'.
 function loadExpansionAssets(scene, exp) {
-    if (!scene || !EXPANSION_LOADERS[exp] || ExpansionAssets[exp]) return;
+    if (!scene || !EXPANSION_LOADERS[exp]) return;
+    // Už načtené (jiná hra ve stejné relaci) – jen znovu potvrď serveru připravenost.
+    if (ExpansionAssets[exp] === 'done') { try { socket.emit('expansion_ready', { exp }); } catch (_) {} return; }
+    if (ExpansionAssets[exp]) return;
     ExpansionAssets[exp] = 'loading';
     _expQueue.push(exp);
     _pumpExpansionQueue(scene);
@@ -1550,13 +1567,14 @@ function _pumpExpansionQueue(scene) {
     const exp = _expQueue.shift();
     _expLoading = true;
     clog('info', 'Dotahuji assety rozšíření', { exp });
-    let after;
-    try { after = EXPANSION_LOADERS[exp](scene); }
+    let spec;
+    try { spec = EXPANSION_LOADERS[exp](scene); }
     catch (e) { _expLoading = false; clog('error', 'Assety rozšíření: chyba fronty', { exp, e: String(e) }); return; }
+    _reportWhenCritical(scene, exp, spec.critical || []);
     scene.load.once('complete', () => {
         // Stejná oprava výpadků jako po preloadu: co spadlo, zkusí se znovu.
         ensureAssetsLoaded(scene, () => {
-            try { after(); } catch (e) { clog('error', 'Assety rozšíření: chyba dokončení', { exp, e: String(e) }); }
+            try { spec.done(); } catch (e) { clog('error', 'Assety rozšíření: chyba dokončení', { exp, e: String(e) }); }
             ExpansionAssets[exp] = 'done';
             _expLoading = false;
             renderUI();
@@ -1564,6 +1582,24 @@ function _pumpExpansionQueue(scene) {
         });
     });
     scene.load.start();
+}
+
+// Jakmile jsou v cache KLÍČOVÉ textury rozšíření (rub balíčku a spol.), řekni to serveru –
+// ten na ně čeká se startem hry, aby nikomu neproblikl placeholder. Zbytek artu se
+// dotahuje dál na pozadí. Po limitu se ohlásí tak jako tak (soubor může chybět natrvalo).
+function _reportWhenCritical(scene, exp, keys) {
+    let waited = 0;
+    const tick = () => {
+        const ready = keys.every(k => scene.textures.exists(k));
+        if (ready || waited > 40000) {
+            if (!ready) clog('warn', 'Klíčové textury rozšíření chybí, hlásím připravenost i tak', { exp, keys });
+            try { socket.emit('expansion_ready', { exp }); } catch (_) { /* offline */ }
+            return;
+        }
+        waited += 250;
+        setTimeout(tick, 250);
+    };
+    tick();
 }
 
 // Podle options ze serveru (room.options / gameState.options) dotáhni, co je zapnuté.

@@ -116,13 +116,25 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         room.players = [leader, ...rest];
         room.players.forEach((p, i) => { p.playerIdx = i; });
         broadcastRoom(room);
-        startGame(room);
-        // Zapamatuji šerifa první hry pro rotaci
-        if (room.options?.rotatingSheriff) {
-            const sheriffPlayer = room.gameState.players.find(p => p.role === 'Sheriff');
-            if (sheriffPlayer) room.lastSheriffName = sheriffPlayer.name;
-        }
-        ctx.glog.system(`"${room.name}" startuje – pořadí: ${room.players.map(p => p.name).join(', ')}`);
+        // Se zapnutým rozšířením se počká, až budou mít všichni jeho klíčové textury
+        // (art se stahuje líně) – jinak by prvním hráčům problikly placeholdery.
+        ctx.whenAssetsReady(room, () => {
+            startGame(room);
+            // Zapamatuji šerifa první hry pro rotaci
+            if (room.options?.rotatingSheriff) {
+                const sheriffPlayer = room.gameState.players.find(p => p.role === 'Sheriff');
+                if (sheriffPlayer) room.lastSheriffName = sheriffPlayer.name;
+            }
+            ctx.glog.system(`"${room.name}" startuje – pořadí: ${room.players.map(p => p.name).join(', ')}`);
+        });
+    });
+
+    // Klient hlásí, že má v cache klíčové textury daného rozšíření (art se stahuje líně).
+    // Podle toho se pouští start hry – viz whenAssetsReady v server/lifecycle.js.
+    socket.on('expansion_ready', (d) => {
+        const room = findRoomBySocket(socket.id) ||
+            [...rooms.values()].find(r => r.leaderSocketId === socket.id);
+        if (room) ctx.noteAssetsReady(room, socket.id, d && d.exp);
     });
 
     socket.on('cancel_game', () => {

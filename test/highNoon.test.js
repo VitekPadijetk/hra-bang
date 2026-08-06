@@ -73,6 +73,22 @@ test('karta se odkrývá až od DRUHÉHO šerifova tahu a jen jemu', () => {
     assert.equal(g._pendingHighNoonReveal.key, g.activeEvent.key, 'server dostane podklad pro animaci');
 });
 
+test('odkryté karty se hromadí na sobě – eventPile roste, activeEvent je vrchní', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, {}, {}]);
+    for (let i = 0; i < 30; i++) topDeck(g, Suits.CLUBS);
+    g._sheriffTurns = 1;
+
+    g._beginTurn();
+    const first = g.activeEvent;
+    assert.deepEqual(g.eventPile.map(c => c.key), [first.key]);
+
+    g.eventDeck.push(evCard('DOKTOR'));   // ať je co odkrýt (a nic to nepozastaví)
+    g._beginTurn();
+    assert.equal(g.activeEvent.key, 'DOKTOR');
+    assert.deepEqual(g.eventPile.map(c => c.key), [first.key, 'DOKTOR'],
+        'předchozí karta zůstává ležet pod novou');
+});
+
 test('prázdný balíček událostí nechá platit poslední kartu (Pravé poledne do konce hry)', () => {
     const g = mkHnGame([{ role: 'Sheriff' }, {}], { event: 'PRAVE_POLEDNE' });
     g.eventDeck = [];

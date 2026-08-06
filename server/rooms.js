@@ -51,6 +51,9 @@ module.exports = function installRoomService(ctx) {
             // Nastavení místnosti (rozšíření…) chodí už z lobby: klient podle něj dotahuje
             // art rozšíření, který se v preloadu nestahuje. gs.options existuje až po setupu.
             options: room.options || {},
+            // Čeká se, až budou mít všichni v cache art zapnutého rozšíření (lobby o tom
+            // dá vědět, ať se leader nediví, že se po kliknutí na START nic neděje).
+            assetsWaiting: !!room.assetsWaiting,
             gameState: base,
         };
     }

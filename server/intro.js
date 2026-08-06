@@ -57,6 +57,7 @@ module.exports = function installIntroService(ctx) {
             // Balíček postav bez postav přeživších (ti si je drží na stole).
             charCount: Math.max(0, (n - survivors.length) * 2),
             deckCount: gs.deck.cards.length,
+            hnCount: gs.eventDeck?.length || 0,
             survivors,
         });
 

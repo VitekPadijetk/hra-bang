@@ -84,6 +84,7 @@ class GameState {
         // Rozšíření High Noon – balíček událostí a právě platná karta. Bez zapnutého
         // rozšíření zůstává balíček prázdný a hasEvent() vrací vždy false.
         this.eventDeck = [];
+        this.eventPile = [];            // už odkryté události (nejstarší → nejnovější)
         this.activeEvent = null;
         this.pendingNoonDamage = null;   // Pravé poledne: čeká se na kliknutí na životy
         this._sheriffTurns = 0;          // kolikátý tah šerifa běží (událost až od 2.)

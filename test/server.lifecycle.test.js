@@ -164,3 +164,47 @@ test('beforeBroadcast pošle high_noon_reveal a podrží boty na dobu cinematiky
     ctx.beforeBroadcast(room);
     assert.equal(emits.length, before);
 });
+
+// ── Čekání na assety rozšíření před startem hry ──────────────────────────────
+// Minimální ctx pro lifecycle: stačí broadcasty a log (setup hry se tu nespouští).
+function mkCtx(io) {
+    return {
+        io, cardData: [], dodgeCityCardData: [], highNoonCardData: [],
+        GameState: function () {},
+        broadcastRoom() {}, broadcastLobbyList() {}, emitIntro() {}, runIntroSequence() {},
+        glog: { openGame() {}, system() {}, error() {}, rule() {} },
+    };
+}
+
+test('whenAssetsReady pustí start hned, když žádné rozšíření není zapnuté', () => {
+    const { io } = mkIo();
+    const ctx = mkCtx(io);
+    require('../server/lifecycle.js')(ctx);
+    const room = { id: 'g1', name: 'T', players: [{ socketId: 's0' }], leaderSocketId: 's0', options: {} };
+    let started = 0;
+    ctx.whenAssetsReady(room, () => started++);
+    assert.equal(started, 1);
+    assert.equal(!!room.assetsWaiting, false);
+});
+
+test('se zapnutým rozšířením se čeká, dokud se neozvou všichni lidští hráči', () => {
+    const { io } = mkIo();
+    const ctx = mkCtx(io);
+    require('../server/lifecycle.js')(ctx);
+    const room = {
+        id: 'g1', name: 'T', leaderSocketId: 's0',
+        players: [{ socketId: 's0' }, { socketId: 's1' }, { socketId: 'bot1', isBot: true }],
+        options: { expansions: { high_noon: true } },
+    };
+    let started = 0;
+    ctx.whenAssetsReady(room, () => started++);
+    assert.equal(started, 0, 'čeká se');
+    assert.equal(room.assetsWaiting, true);
+
+    ctx.noteAssetsReady(room, 's0', 'high_noon');
+    assert.equal(started, 0, 'jeden hráč nestačí');
+    ctx.noteAssetsReady(room, 's1', 'high_noon');
+    assert.equal(started, 1, 'bot se nečeká – hra startuje');
+    assert.equal(room.assetsWaiting, false);
+    clearTimeout(room._assetWaitTimer);
+});

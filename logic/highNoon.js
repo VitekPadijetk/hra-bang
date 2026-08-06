@@ -14,6 +14,7 @@ const HighNoonMixin = {
     // takže všechny háky v pravidlech jsou no-op.
     _setupEventDeck(options = {}) {
         this.eventDeck = [];
+        this.eventPile = [];
         this.activeEvent = null;
         this._sheriffTurns = 0;
         this._beginTurnStep = 0;
@@ -75,6 +76,9 @@ const HighNoonMixin = {
         if (!this.eventDeck || !this.eventDeck.length) return false;
 
         this.activeEvent = this.eventDeck.pop();
+        // Odkryté karty zůstávají ležet na sobě (nová překryje předchozí) – klient z nich
+        // kreslí hromádku lícem nahoru. `activeEvent` je vrchní karta hromádky.
+        this.eventPile.push(this.activeEvent);
         this._eventEntering = this.activeEvent.key;
         this._pendingHighNoonReveal = Object.assign({}, this.activeEvent, { remaining: this.eventDeck.length });
         this.logEvent('event', { card: this.activeEvent.name, left: this.eventDeck.length });
