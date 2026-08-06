@@ -50,6 +50,28 @@ test('Suzy Lafayette si po vyprázdnění ruky lízne kartu', () => {
     assert.equal(g.phase, 'PLAY');
 });
 
+test('Suzy si lízne i UPROSTŘED obrany proti Slabovi (poslední karta byla Vedle!)', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Slab the Killer' },
+                      { role: 'Outlaw', character: 'Suzy Lafayette' },
+                      { role: 'Outlaw' }]);
+    const bangIdx = give(g, 0, CardType.BANG);
+    give(g, 1, CardType.MISSED);           // Suzyina JEDINÁ karta
+    g.deck.cards = [mkCard(CardType.MISSED, { id: 900 })];
+
+    g.playBang(0, 1, bangIdx);
+    assert.equal(g.missesRequired, 2);
+    g.handleResponse(1, 0);                // první Vedle! → ruka prázdná
+    assert.equal(g.phase, 'SUZY_DRAW');    // schopnost platí i uprostřed obrany
+    assert.equal(g.pendingSuzyDraw.playerIdx, 1);
+
+    g.suzyLafayetteDraw(1);
+    assert.equal(g.phase, 'RESPOND');      // zpět k obraně (interruptedPhase)
+    assert.equal(g.pendingResponse.active, true);
+
+    g.handleResponse(1, 0);                // druhé Vedle! z dolíznuté karty → uhnula
+    assert.equal(g.players[1].health, 4);
+});
+
 // ── Sid Ketchum: odhodí 2 karty → +1 život ───────────────────────────────────
 test('Sid Ketchum odhodí 2 karty a vyléčí si 1 život', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Sid Ketchum', health: 2 }, { role: 'Outlaw' }]);

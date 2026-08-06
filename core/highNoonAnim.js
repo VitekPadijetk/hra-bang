@@ -5,6 +5,7 @@
 // Izomorfní: globál v prohlížeči, require v Node. Viz CLAUDE.md (vzor core/deathAnim.js).
 
 const HN_ANIM = {
+    preMs: 750,        // pauza, než se karta vůbec zvedne (je vidět, že je na tahu šerif)
     flyMs: 520,        // rub z balíčku doprostřed obrazovky (cestou se zvětší)
     holdBackMs: 200,   // krátká výdrž na rubu, než se karta překlopí
     flipMs: 400,       // překlopení rub → líc
@@ -13,7 +14,8 @@ const HN_ANIM = {
 };
 
 function hnRevealMs() {
-    return HN_ANIM.flyMs + HN_ANIM.holdBackMs + HN_ANIM.flipMs + HN_ANIM.holdFaceMs + HN_ANIM.toSlotMs;
+    return HN_ANIM.preMs + HN_ANIM.flyMs + HN_ANIM.holdBackMs + HN_ANIM.flipMs
+         + HN_ANIM.holdFaceMs + HN_ANIM.toSlotMs;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

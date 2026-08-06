@@ -208,3 +208,93 @@ test('LUCKY_DUKE: pro dynamit vybere kartu, která NENÍ piky 2–9', () => {
     assert.equal(a.event, 'lucky_duke_pick');
     assert.equal(a.payload, 1);
 });
+
+// ── Pozitivní vs. negativní karty na stole ────────────────────────────────────
+test('SELECTING_TARGET_CARD: Cat Balou nepříteli nesundá Vězení (pomohl by mu)', () => {
+    // Nepřítel má na stole jen Vězení + karty v ruce → bot musí sáhnout do ruky.
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }, { role: 'Deputy' }], { phase: 'SELECTING_TARGET_CARD', current: 0 });
+    board(g, 1, CardType.JAIL);
+    give(g, 1, CardType.BANG);
+    g.pendingSelection = { attackerIdx: 0, targetIdx: 1, sourceCardType: CardType.CAT_BALOU };
+    const a = decideBotAction(g, 0);
+    assert.equal(a.event, 'select_target_card');
+    assert.equal(a.payload.area, 'hand');
+});
+
+test('SELECTING_TARGET_CARD: Cat Balou nepříteli zničí barel, ne dynamit', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }, { role: 'Deputy' }], { phase: 'SELECTING_TARGET_CARD', current: 0 });
+    board(g, 1, CardType.DYNAMITE);
+    const barrel = board(g, 1, CardType.BARREL);
+    g.pendingSelection = { attackerIdx: 0, targetIdx: 1, sourceCardType: CardType.CAT_BALOU };
+    const a = decideBotAction(g, 0);
+    assert.equal(a.payload.area, 'board');
+    assert.equal(g.players[1].board[a.payload.cardIdx].id, barrel.id);
+});
+
+test('SELECTING_TARGET_CARD: Rvačka spojenci sundá Vězení (ne jeho barel)', () => {
+    // Ledger: idx2 a idx3 útočili na šerifa (nepřátelé), idx1 na oba → šerifův spojenec.
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Deputy' }, { role: 'Outlaw' }, { role: 'Outlaw' }, { role: 'Renegade' }],
+        { phase: 'SELECTING_TARGET_CARD', current: 0 });
+    g.behaviorLedger = { pairs: { 1: { 2: { hostile: 4 }, 3: { hostile: 4 } },
+                                  2: { 0: { hostile: 4 } }, 3: { 0: { hostile: 4 } } } };
+    board(g, 1, CardType.BARREL);
+    const jail = board(g, 1, CardType.JAIL);
+    give(g, 1, CardType.BANG);
+    g.pendingSelection = { attackerIdx: 0, targetIdx: 1, sourceCardType: CardType.CAT_BALOU, isBrawl: true };
+    const a = decideBotAction(g, 0);
+    assert.equal(a.payload.area, 'board');
+    assert.equal(g.players[1].board[a.payload.cardIdx].id, jail.id);
+});
+
+test('PLAY: Cat Balou nemíří na hráče, kterému leží na stole jen Vězení', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }, { role: 'Deputy' }], { current: 0 });
+    give(g, 0, CardType.CAT_BALOU);
+    board(g, 1, CardType.JAIL);     // jediná „hodnota" šerifa = vězení, které mu škodí
+    const a = decideBotAction(g, 0);
+    assert.equal(a.event, 'end_turn');
+});
+
+// ── Zbraně: jedna za tah, nejlepší z ruky, Volcanic není „jen dostřel 1" ───────
+test('PLAY: bot vyloží jen JEDNU zbraň za tah', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }], { current: 0 });
+    g.turnId = 4;
+    g.players[0].weapon = { id: 70, name: 'Winchester', type: CardType.WEAPON, props: { range: 5 }, range: 5, _playedTurn: 4 };
+    give(g, 0, CardType.WEAPON, { name: 'Rev. Carabine', props: { range: 4 } });
+    const a = decideBotAction(g, 0);
+    assert.equal(a.event, 'end_turn');   // lepší zbraň si nechá „v zásobě" na příště
+});
+
+test('PLAY: z ruky vyloží NEJLEPŠÍ zbraň', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }], { current: 0 });
+    g.turnId = 4;
+    give(g, 0, CardType.WEAPON, { name: 'Schofield', props: { range: 2 } });
+    const remington = give(g, 0, CardType.WEAPON, { name: 'Remington', props: { range: 3 } });
+    const a = decideBotAction(g, 0);
+    assert.equal(a.event, 'play_card');
+    assert.equal(a.payload, remington);
+});
+
+test('PLAY: Volcanic je lepší než Colt .45, i když má taky dostřel 1', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }], { current: 0 });
+    g.turnId = 4;
+    const volcanic = give(g, 0, CardType.WEAPON, { name: 'Volcanic', props: { range: 1 } });
+    const a = decideBotAction(g, 0);
+    assert.equal(a.event, 'play_card');
+    assert.equal(a.payload, volcanic);
+});
+
+// ── Navazující hra: ponechání postavy je náhodné ──────────────────────────────
+test('keep_character: bot si postavu nenechává vždy (šance dle kvality postavy)', () => {
+    const { keepCharacterChance, decideKeepCharacter } = require('../core/botPolicy.js');
+    assert.ok(keepCharacterChance('Willy the Kid') > keepCharacterChance('Vulture Sam'));
+    assert.ok(keepCharacterChance('Vulture Sam') > 0 && keepCharacterChance('Willy the Kid') < 1);
+    assert.equal(decideKeepCharacter('Willy the Kid', () => 0), true);    // vždy „ano" při rnd=0
+    assert.equal(decideKeepCharacter('Willy the Kid', () => 0.99), false); // a „ne" při rnd≈1
+
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { phase: 'CHARACTER_SELECT' });
+    g.players[0]._awaitingKeepChoice = true;
+    g.players[0]._survivorChar = 'Vulture Sam';
+    const a = decideBotAction(g, 0);
+    assert.equal(a.event, 'keep_character');
+    assert.equal(typeof a.payload, 'boolean');
+});

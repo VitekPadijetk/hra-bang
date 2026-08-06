@@ -591,7 +591,15 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
 
     const handleLuckyDuke = (index) => {
         withRoom((room, p, gs) => {
+            // Obě odkryté karty odletí do odhozu VYBRANOU napřed (logika ji tam vloží
+            // první). Posíláme to jako vlastní animaci, aby si ji fronta na klientu
+            // zařadila PŘED výsledek checku (vězení/dynamit) – jinak by výsledná karta
+            // dosedla na hromádku dřív než ty dvě, přes které se pak přehrály.
+            const ld = gs.luckyDukeState;
+            const chosenId = ld?.cards?.[index]?.id ?? null;
+            const otherId = ld?.cards?.[1 - index]?.id ?? null;
             gs.luckyDukePick(index);
+            if (chosenId !== null) emitAnim(room, { type: 'lucky_duke_result', chosenId, otherId });
             if (gs.lastAnimEvent) {
                 emitAnim(room, gs.lastAnimEvent);
                 gs.lastAnimEvent = null;

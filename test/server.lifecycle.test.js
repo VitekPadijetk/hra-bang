@@ -149,13 +149,19 @@ test('beforeBroadcast pošle high_noon_reveal a podrží boty na dobu cinematiky
     const room = {
         id: 'g1',
         players: [{ socketId: 's0', playerIdx: 0 }],
-        gameState: { _pendingHighNoonReveal: { id: 300, key: 'KAZATEL', name: 'Kazatel', art: 'kazatel', remaining: 12 } },
+        gameState: {
+            currentPlayerIndex: 2,
+            _pendingHighNoonReveal: { id: 300, key: 'KAZATEL', name: 'Kazatel', art: 'kazatel', remaining: 12 },
+        },
     };
     ctx.beforeBroadcast(room);
     const anim = emits.find(e => e.ev === 'card_animation');
     assert.equal(anim.payload.type, 'high_noon_reveal');
     assert.equal(anim.payload.key, 'KAZATEL');
     assert.equal(anim.payload.art, 'kazatel');
+    assert.equal(anim.payload.remaining, 12, 'kolik karet zbývá v balíčku (klient jím kreslí hromádku hned)');
+    // Šerif je na tahu už během odkrývání – stav s ním dorazí až po celé cinematice.
+    assert.equal(anim.payload.playerIdx, 2);
     assert.equal(room.gameState._pendingHighNoonReveal, null, 'podklad se spotřebuje (neemituje se dvakrát)');
     assert.ok(room._hnBlockUntil > Date.now(), 'boti čekají na dojezd cinematiky');
 

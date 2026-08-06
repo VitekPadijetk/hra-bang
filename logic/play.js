@@ -61,6 +61,10 @@ const PlayMixin = {
                     player.stats.weaponsCycled++;
                 }
                 player.weapon = player.hand.splice(cardIndex, 1)[0];
+                // Orazítkuj tah položení (stejně jako u zelených karet). Pravidla to
+                // neomezuje – slouží botovi, aby si v jednom tahu nepřevykládal víc
+                // zbraní za sebou a lepší si nechal „v zásobě" (core/botPolicy.js).
+                player.weapon._playedTurn = this.turnId;
                 return false;
             },
             [CardType.EQUIPMENT]: () => this.playBoardCard(player, cardIndex),

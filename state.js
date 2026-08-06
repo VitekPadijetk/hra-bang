@@ -104,6 +104,10 @@ const App = {
     luckyDealIds: new Set(),
     luckyRevealCards: null,
     discardFlyHideIds: new Set(),
+    // High Noon: po dobu cinematiky odkrytí karty události kreslíme balíček událostí
+    // podle animace, ne podle stavu (ten dorazí až po ní) – karta z balíčku odchází
+    // hned se startem letu. null = kresli podle stavu (viz drawHighNoonPile).
+    hnDeckLeft: null,
     // Hokynářství na stole: balíčky se zvednou (storePileLiftY), karty se rozdají do
     // řady pod nimi (storeDealIds = ještě nedoletělé sloty, gated), výběr může být
     // dočasně zamčený (storeLocked, případ nedostatku) a u proaktivního míchání čeká

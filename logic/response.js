@@ -259,7 +259,15 @@ const ResponseMixin = {
                 this.missesPlayed = (this.missesPlayed || 0) + 1;
                 this._mollyPlayedOutOfTurn(playerIdx, false);   // Molly: lízne za každé Vedle! mimo tah
                 const required = this.missesRequired || 1;
-                if (this.missesPlayed < required) return;
+                if (this.missesPlayed < required) {
+                    // Suzy Lafayette: „jakmile nemá v ruce karty, hned si jednu lízne" –
+                    // platí i UPROSTŘED obrany. Proti Slabovi (2× Vedle!) jí zahráním
+                    // posledního Vedle! došly karty, takže si musí líznout hned; jinak by
+                    // druhé Vedle! nemohla dolíznout a schytala by zásah bez schopnosti.
+                    // Fáze se přes interruptedPhase vrátí zpátky do RESPOND.
+                    if (this.checkSuzyLafayette(player)) this._processSpecialQueue();
+                    return;
+                }
                 this.pendingResponse.partialMisses = [];
                 this.missesPlayed = 0;
                 this.missesRequired = 1;

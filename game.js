@@ -417,12 +417,21 @@ function nearestAngle360(start, end) {
 // Bez toho by po doletu – dřív, než dorazí room_update s kartou – problikla stará karta na
 // cíli (např. předchozí vrchní karta odhozu). Strop (maxTries × 16 ms, výchozí ~720 ms)
 // hlídá, ať sprite nezůstane viset, když predikát nikdy nenastane.
+// Strop se ale NEuplatní, dokud animační fronta ještě něco drží (další animace nebo
+// dosud neaplikovaný stav) – jinak by dlouhá cinematika zařazená mezi let a jeho stav
+// (vězení do odhozu → odkrytí karty High Noon) nechala sprite zaniknout dřív, než stav
+// dorazí, a karta by na desce problikla zpátky na původním místě. Tvrdý strop
+// (HOLD_HARD_TRIES ≈ 10 s) hlídá, ať sprite nezůstane viset navždy.
+const HOLD_HARD_TRIES = 625;
 function holdThenFinish(sprite, holdUntil, finish, maxTries = 45) {
     if (!holdUntil || !gameScene) { finish(); return; }
     let tries = 0;
+    const queueHolding = () => (typeof animQueueBusy === 'function') && animQueueBusy();
     const poll = () => {
         if (!sprite?.active) return;
-        if (holdUntil() || ++tries > maxTries) finish();
+        if (holdUntil()) { finish(); return; }
+        tries++;
+        if (tries > HOLD_HARD_TRIES || (tries > maxTries && !queueHolding())) finish();
         else gameScene.time.delayedCall(16, poll);
     };
     poll();
@@ -1245,25 +1254,32 @@ function startLuckyDukeDeal() {
 }
 
 // Lucky výsledek: obě karty letí do odhozu (v odhozu skryté do doletu). Vybraná
-// (logika ji do odhozu vloží PRVNÍ → nižší index) letí hned, NEvybraná o chvilku
-// později. Výsledek checku (dynamit/vězení) animuje server zvlášť a klient ho
-// zdrží, aby dosedl jako poslední (viz card_animation, fáze LUCKY_DUKE).
-function playLuckyDukeResult() {
+// (logika ji do odhozu vloží PRVNÍ → leží níž) letí hned, NEvybraná o chvilku
+// později. Pořadí přichází ze serveru (`lucky_duke_result` nese chosenId) – stav
+// s oběma kartami v odhozu dorazí až po celé sekvenci, takže by se z něj v tuhle
+// chvíli vyčíst nedalo. Bez chosenId (fallback z room_update) se pořadí odvodí
+// z odhozu. Výsledek checku (vězení/dynamit) jde ve frontě AŽ za touhle animací.
+function playLuckyDukeResult(chosenId) {
     stopLuckyPulses();
     const reveal = App.luckyRevealCards || [];
     const dp = state?.deck?.discardPile || [];
-    const posOf = id => { const k = dp.findIndex(c => c.id === id); return k === -1 ? 1e9 : k; };
-    // Vybraná = vložená do odhozu dřív (nižší index); poletí jako první.
+    const posOf = id => {
+        if (chosenId !== undefined && chosenId !== null) return id === chosenId ? 0 : 1;
+        const k = dp.findIndex(c => c.id === id); return k === -1 ? 1e9 : k;
+    };
     const ordered = [...reveal].sort((a, b) => posOf(a.id) - posOf(b.id));
     reveal.forEach(rc => App.discardFlyHideIds.add(rc.id));
     if (reveal.length) renderUI();
     // Sprite se vytvoří hned (sedí na svém slotu), NEvybraná (i=1) se rozletí později
     // přes opts.delay – takže tam vydrží, dokud nezačne její vlastní animace.
+    // holdUntil: po doletu sprite drž na hromádce, dokud karta reálně není v odhozu ve
+    // stavu – ten dorazí až na konci fronty, jinak by karta na okamžik zmizela.
     const _luckyDiscard = discardTopPos();   // vrch odhozu, ať karty dosednou na hromádku
     ordered.forEach((rc, i) => {
         animateCard(rc.x, rc.y, _luckyDiscard.x, _luckyDiscard.y, getCardTex(rc.id), 400, () => {
             App.discardFlyHideIds.delete(rc.id); renderUI();
-        }, { startScale: 0.65, endScale: 0.3, delay: i * 300 });
+        }, { startScale: 0.65, endScale: 0.3, delay: i * 300,
+             holdUntil: () => (state?.deck?.discardPile || []).some(c => c.id === rc.id) });
     });
     App.luckyRevealCards = null;
 }

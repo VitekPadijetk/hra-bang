@@ -246,3 +246,35 @@ test('end_turn / chat handlery běží bez chyby (game + lobby modul)', () => {
     s.fire('end_turn');
     assert.ok(true);
 });
+
+// Lucky Duke: obě odkryté karty musí do odhozu doletět PŘED výsledkem checku (vězení/
+// dynamit), jinak výsledná karta dosedne na hromádku první a ty dvě se přes ni přehrají.
+// Server proto posílá vlastní animaci `lucky_duke_result` (nese, která karta byla vybraná)
+// a teprve za ní výsledek – fronta na klientu to pak přehraje v tomhle pořadí.
+test('lucky_duke_pick: nejdřív lucky_duke_result (s chosenId), pak výsledek checku', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    const anims = [];
+    s.emit = (ev, data) => { if (ev === 'card_animation') anims.push(data); };
+    s.fire('debug_start', { playerCount: 3, roles: [] });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+
+    const jail = { id: 950, name: 'Vězení', type: 'Vězení' };
+    gs.players[0].board = [jail];
+    gs.phase = 'LUCKY_DUKE';
+    gs.luckyDukeState = {
+        cards: [{ id: 941, suit: '♠️', value: '3' }, { id: 942, suit: '♥️', value: '7' }],
+        checkContext: { reason: 'JAIL', playerIdx: 0, boardIdx: 0, checksLeft: 1, active: false },
+    };
+
+    s.fire('lucky_duke_pick', 1);          // srdce → z vězení ven
+    const iRes = anims.findIndex(a => a.type === 'lucky_duke_result');
+    const iJail = anims.findIndex(a => a.type === 'board_to_discard');
+    assert.ok(iRes !== -1, 'lucky_duke_result se musí odeslat');
+    assert.ok(iJail !== -1, 'odlet vězení do odhozu se musí odeslat');
+    assert.ok(iRes < iJail, 'odkryté karty odlétají dřív než výsledek checku');
+    assert.equal(anims[iRes].chosenId, 942);
+    assert.equal(anims[iRes].otherId, 941);
+    assert.equal(anims[iJail].cardId, jail.id);
+});

@@ -1963,7 +1963,10 @@ function drawPhaseOverlays(ctx) {
 function drawHighNoonPile(ctx) {
     const { scaleDeck } = ctx;
     if (!state) return;
-    const left = state.eventDeck?.length || 0;
+    // App.hnDeckLeft: po dobu cinematiky odkrytí kreslíme balíček podle animace, ne podle
+    // stavu (ten dorazí až po ní). Karta z balíčku odchází HNED, takže při odkrytí poslední
+    // (Pravé poledne) musí balíček zmizet se startem letu, ne až na jeho konci.
+    const left = App.hnDeckLeft ?? (state.eventDeck?.length || 0);
     const pile = state.eventPile || [];
     if (!left && !pile.length) return;   // rozšíření se nehraje
 

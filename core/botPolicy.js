@@ -73,10 +73,6 @@ const ENEMY_EPS = 0.1;
 // je globál z pending.js, v Node ho výše require-ujeme na globalThis. Re-export níže drží
 // kompatibilitu pro server/bots.js a testy (require('./botPolicy').pendingActor).
 
-function _hasSomething(p) {
-    return p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
-}
-
 // Kontext pro roleHostility (renegade timing) odvozený z beliefů. Odpadlík smí na šerifa
 // teprve, když nežije NIKDO další – ani bandita, ani pomocník (jinak by zabitím šerifa
 // vyhráli bandité, ne on). Viz roleHostility v core/beliefs.js.
@@ -110,6 +106,37 @@ function rankEnemies(state, myIndex, beliefs, requireReach) {
 }
 
 function weaponRange(w) { return (w && (w.range || w.props?.range)) || 1; }
+
+// Hodnota zbraně pro bota. Volcanic má dostřel 1, zato dovolí neomezené Bang! za tah –
+// v praxi je silnější než Schofield (2), takže se nesmí porovnávat jen podle dostřelu
+// (jinak by ho bot nikdy nevyložil na Colt .45 a hned by ho vyměnil za cokoli delšího).
+function weaponValue(w) {
+    if (!w) return 0;
+    if ((w.name || '').includes('Volcanic')) return 2.5;
+    return weaponRange(w);
+}
+
+// Jak moc karta na STOLE prospívá svému majiteli (kladné = pomáhá, záporné = škodí).
+// Podle toho se pozná, co má smysl nepříteli zničit/ukrást (Vězení a Dynamit mu naopak
+// sundat NEchceme – tím bychom mu pomohli) a co spojenci, když ho Rvačka nutí odhodit.
+function boardCardValue(card) {
+    if (!card) return 0;
+    if (card.type === T.DYNAMITE) return -3;
+    if (card.type === T.JAIL) return -2;
+    if (card.type === T.BARREL) return 3;
+    if (card.type === T.WEAPON) return weaponValue(card);
+    if (card.green) return 2;
+    if (card.type === T.EQUIPMENT) return 2;
+    return 1;
+}
+
+// Má cíl vůbec něco, co stojí za zničení/ukradení? Pouhé „něco má" nestačí: hráč,
+// kterému na stole leží jen Vězení, sice kartu má, ale odhodit mu ji znamená pustit ho
+// z vězení. Takový cíl pro Cat Balou/Paniku/Kankán/Ragtime nechceme vybírat vůbec.
+function _hasWorthTaking(p) {
+    return p.hand.length > 0 || (p.weapon && p.weapon.id !== -1)
+        || (p.board || []).some(c => boardCardValue(c) > 0);
+}
 
 // ── Hodnota karty pro DISCARD (nižší = odhodit dřív) ─────────────────────────
 function keepScore(card) {
@@ -145,20 +172,57 @@ function pickCharacter(choices) {
     return [...choices].sort((a, b) => (CHAR_RANK[b] || 0) - (CHAR_RANK[a] || 0))[0];
 }
 
+// Navazující hra: nechá si přeživší bot svou postavu? Dřív bral vždycky, takže u stolu
+// seděly pořád tytéž postavy. Teď se rozhoduje náhodně a šance roste s kvalitou postavy:
+// silná ~80 %, průměrná ~50 %, slabá ~20 %.
+function keepCharacterChance(charName) {
+    const rank = CHAR_RANK[charName] || 5;
+    return Math.min(0.8, Math.max(0.2, (rank - 2) / 10));
+}
+function decideKeepCharacter(charName, rnd = Math.random) {
+    return rnd() < keepCharacterChance(charName);
+}
+
 // ── Výběr cílové karty pro Panika!/Cat Balou (kind SELECTING_TARGET_CARD) ─────
-function chooseTargetCardArea(target, sourceType) {
+// `friendly` = cíl je (pravděpodobný) spojenec. Nastane u Rvačky, která nutí odhodit
+// kartu i kamarádovi: tomu sundáme něco, co mu spíš škodí (Vězení/Dynamit), a jinak
+// sáhneme do ruky – zničit mu zbraň nebo barel by byla vlastní branka.
+function chooseTargetCardArea(target, sourceType, friendly = false) {
     const hasWeapon = target.weapon && target.weapon.id !== -1;
-    const hasBoard = (target.board || []).length > 0;
+    const board = target.board || [];
+    // Nejcennější / nejméně cenná karta na stole (podle boardCardValue).
+    const pickBoard = (cmp) => {
+        let bi = -1;
+        board.forEach((c, i) => { if (bi === -1 || cmp(boardCardValue(c), boardCardValue(board[bi]))) bi = i; });
+        return bi;
+    };
+    const bestIdx = pickBoard((a, b) => a > b);
+    const worstIdx = pickBoard((a, b) => a < b);
+
+    if (friendly) {
+        const bad = board.findIndex(c => boardCardValue(c) < 0);
+        if (bad !== -1) return { area: 'board', cardIdx: bad };   // Vězení/Dynamit pryč = pomoc
+        if (target.hand.length > 0) return { area: 'hand', cardIdx: null };
+        if (worstIdx !== -1) return { area: 'board', cardIdx: worstIdx };
+        return hasWeapon ? { area: 'weapon', cardIdx: null } : { area: 'hand', cardIdx: null };
+    }
+
     if (sourceType === T.PANIC) {
         // Panika/krádež → líznout z ruky je nejlepší (získám neznámou kartu).
         if (target.hand.length > 0) return { area: 'hand', cardIdx: null };
         if (hasWeapon) return { area: 'weapon', cardIdx: null };
-        if (hasBoard) return { area: 'board', cardIdx: 0 };
+        if (bestIdx !== -1 && boardCardValue(board[bestIdx]) > 0) return { area: 'board', cardIdx: bestIdx };
+        if (board.length) return { area: 'board', cardIdx: 0 };   // zbylo jen Vězení/Dynamit
         return { area: 'hand', cardIdx: null };
     }
-    // Cat Balou/odhoz → likviduj trvalé hodnoty (zbraň/modré), pak ruku.
-    if (hasWeapon) return { area: 'weapon', cardIdx: null };
-    if (hasBoard) return { area: 'board', cardIdx: 0 };
+
+    // Cat Balou/odhoz → znič nejcennější trvalou hodnotu; Vězení a Dynamit nech ležet
+    // (odhodit je nepříteli by mu jen pomohlo) a sáhni radši do ruky.
+    const bestBoard = bestIdx !== -1 ? boardCardValue(board[bestIdx]) : -Infinity;
+    if (hasWeapon && weaponValue(target.weapon) >= bestBoard) return { area: 'weapon', cardIdx: null };
+    if (bestBoard > 0) return { area: 'board', cardIdx: bestIdx };
+    if (target.hand.length > 0) return { area: 'hand', cardIdx: null };
+    if (board.length) return { area: 'board', cardIdx: bestIdx !== -1 ? bestIdx : 0 };
     return { area: 'hand', cardIdx: null };
 }
 
@@ -214,7 +278,7 @@ function decidePlay(state, myIndex, beliefs) {
         if (action === T.PANIC || action === T.CAT_BALOU) {
             const maxDist = action === T.PANIC ? 1 : Infinity;
             const tgt = rankEnemies(state, myIndex, beliefs, false).find(e =>
-                _hasSomething(state.players[e.idx]) && computeDistance(state, myIndex, e.idx) <= maxDist);
+                _hasWorthTaking(state.players[e.idx]) && computeDistance(state, myIndex, e.idx) <= maxDist);
             if (tgt) consider(action === T.CAT_BALOU ? 22 : 18,
                 { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
             return;
@@ -227,7 +291,7 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
         if (action === 'DE_STEAL') { // Ragtime: ukradni kartu libovolnému nepříteli
-            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => _hasSomething(state.players[e.idx]));
+            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => _hasWorthTaking(state.players[e.idx]));
             if (tgt) {
                 const a = chooseTargetCardArea(state.players[tgt.idx], T.PANIC);
                 consider(24, { event: 'discard_extra_choose', payload: { cardIdx: i, targetIdx: tgt.idx, area: a.area, boardIdx: a.cardIdx ?? 0 } });
@@ -283,8 +347,14 @@ function decidePlay(state, myIndex, beliefs) {
         }
         if (card.type === T.SALOON) { if (me.health < me.maxHealth) consider(8, intent); return; }
         if (card.type === T.WEAPON) {
-            const newR = weaponRange(card), curR = weaponRange(me.weapon);
-            consider(me.weapon?.id === -1 ? 35 : (newR > curR ? 40 : 0), intent);
+            // Jednu zbraň za tah stačí – další si nech „v zásobě" na příští tah. Bez
+            // tohohle bot v jednom tahu vyložil Schofield a hned na něj Remington
+            // (zahodí tím kartu, kterou mohl vyložit později).
+            if (me.weapon?._playedTurn === state.turnId) return;
+            const newV = weaponValue(card), curV = weaponValue(me.weapon);
+            // Skóre roste s hodnotou zbraně, aby si bot z ruky vybral tu NEJLEPŠÍ
+            // (dřív měly všechny stejné skóre a vyhrála první v ruce).
+            if (newV > curV) consider(35 + newV, intent);
             return;
         }
         if (card.type === T.BARREL) { consider(25, intent); return; }
@@ -317,7 +387,7 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
         if (card.activate === 'steal_any' || card.activate === 'discard_any') {
-            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => _hasSomething(state.players[e.idx]));
+            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => _hasWorthTaking(state.players[e.idx]));
             if (tgt) {
                 const a = chooseTargetCardArea(state.players[tgt.idx], card.activate === 'steal_any' ? T.PANIC : T.CAT_BALOU);
                 consider(24, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId, target: { targetIdx: tgt.idx, area: a.area, boardIdx: a.cardIdx ?? 0 } } });
@@ -365,7 +435,9 @@ function decideBotAction(state, myIndex, beliefs) {
 
     // Výběr postavy / ponechání přeživší postavy řešíme podle konkrétního hráče.
     if (state.phase === 'CHARACTER_SELECT') {
-        if (me._awaitingKeepChoice) return { event: 'keep_character', payload: true };
+        if (me._awaitingKeepChoice) {
+            return { event: 'keep_character', payload: decideKeepCharacter(me._survivorChar) };
+        }
         if (!me.character && me.charChoices?.length) {
             return { event: 'select_character', payload: pickCharacter(me.charChoices) };
         }
@@ -521,7 +593,12 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'SELECTING_TARGET_CARD': {
             const sel = state.pendingSelection;
             const target = state.players[sel.targetIdx];
-            const { area, cardIdx } = chooseTargetCardArea(target, sel.sourceCardType);
+            // Rvačka nutí odhodit kartu KAŽDÉMU, tedy i pravděpodobnému spojenci – tomu
+            // vybíráme jinak (viz chooseTargetCardArea). Dělení karet po mrtvém (Vulture
+            // Sam) je vždy „ber to nejlepší", tam se na nepřátelskost neohlížíme.
+            const friendly = !sel.isVultureSplit && target.health > 0
+                && hostilityOf(state, myIndex, sel.targetIdx, beliefs) < -ENEMY_EPS;
+            const { area, cardIdx } = chooseTargetCardArea(target, sel.sourceCardType, friendly);
             // targetIdx = pro koho se vybírá (guard tím pozná klik do starého stavu).
             return { event: 'select_target_card', payload: { attackerIdx: myIndex, targetIdx: sel.targetIdx, area, cardIdx } };
         }
@@ -556,5 +633,7 @@ function decideBotAction(state, myIndex, beliefs) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { pendingActor, decideBotAction, roleHostility, rankEnemies, pickCharacter, keepScore, computeBeliefs };
+    module.exports = { pendingActor, decideBotAction, roleHostility, rankEnemies, pickCharacter,
+                       keepScore, computeBeliefs, chooseTargetCardArea, boardCardValue,
+                       weaponValue, keepCharacterChance, decideKeepCharacter };
 }

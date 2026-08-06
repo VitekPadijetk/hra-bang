@@ -193,6 +193,10 @@ module.exports = function installAnimService(ctx) {
         emitAnim(room, {
             type: 'high_noon_reveal',
             id: ev.id, key: ev.key, name: ev.name, art: ev.art, remaining: ev.remaining,
+            // Kartu odkrývá šerif na začátku SVÉHO tahu, jenže stav (s novým hráčem na
+            // tahu) dorazí až po celé cinematice – klient by po celou dobu ukazoval jako
+            // hráče na tahu toho předchozího. Posíláme ho tedy s animací.
+            playerIdx: gs.currentPlayerIndex,
         });
         // Boti po tu dobu nehrají – klient drží stav ve frontě a divák by jinak koukal
         // na odkrytou kartu, zatímco se hra pod ní posouvá dál.
