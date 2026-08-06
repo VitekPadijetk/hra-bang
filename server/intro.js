@@ -201,8 +201,10 @@ module.exports = function installIntroService(ctx) {
         }, charShuffleDelay);
     }
 
-    // Intro beat rozšíření High Noon (viz view/intro.js): míchání 12 karet vedle
-    // odloženého Pravého poledne (~4,0 s pro N=12) a pak jeho zasunutí pod hromádku.
+    // Intro beaty rozšíření High Noon (viz view/intro.js): z kompletního balíčku vyletí
+    // vrchní karta a ukáže se (Pravé poledne), pak se zbytek zamíchá vedle ní (~4,0 s pro
+    // N=12) a nakonec se odložená karta zasune zespodu pod hromádku.
+    const HN_TOP_MS = 2100;      // let 620 ms + výdrž, ať si ji stůl přečte
     const HN_SHUFFLE_MS = 4300;
     const HN_BOTTOM_MS = 1300;
 
@@ -234,14 +236,15 @@ module.exports = function installIntroService(ctx) {
             // Rozdávat se začne AŽ PO zamíchání, ne během něj.
             const deckShuffleDelay = 5400;
             setTimeout(() => {
-                // Rozšíření High Noon: šerif zamíchá balíček událostí zvlášť a Pravé
-                // poledne dá vespod (odloží ho stranou, pak sjede pod hromádku).
-                // Bez rozšíření je hnCount 0 a beat se úplně přeskočí.
+                // Rozšíření High Noon: šerif sejme z kompletního balíčku vrchní kartu
+                // (Pravé poledne, ukáže se vedle), zbytek zamíchá a odloženou kartu dá
+                // vespod. Bez rozšíření je hnCount 0 a beaty se úplně přeskočí.
                 const hnCount = gs.eventDeck?.length || 0;
-                const hnDelay = hnCount ? (HN_SHUFFLE_MS + HN_BOTTOM_MS) : 0;
+                const hnDelay = hnCount ? (HN_TOP_MS + HN_SHUFFLE_MS + HN_BOTTOM_MS) : 0;
                 if (hnCount) {
-                    emitIntro(room, { sub: 'shuffle_highnoon', hnCount });
-                    setTimeout(() => emitIntro(room, { sub: 'highnoon_bottom' }), HN_SHUFFLE_MS);
+                    emitIntro(room, { sub: 'highnoon_top', hnCount });
+                    setTimeout(() => emitIntro(room, { sub: 'shuffle_highnoon', hnCount }), HN_TOP_MS);
+                    setTimeout(() => emitIntro(room, { sub: 'highnoon_bottom' }), HN_TOP_MS + HN_SHUFFLE_MS);
                 }
                 setTimeout(() => {
                 emitIntro(room, { sub: 'deal_cards', order: cardOrder });

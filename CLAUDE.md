@@ -29,7 +29,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (odkrytí události → její okamžitý efekt → Pravé poledne), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit` a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/**`_effSuit`**. `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí. |
 | `server.js` | **Socket.IO bootstrap (~76 ř.).** Express/io setup → poskládá sdílený `ctx` (`require('./server/*')(ctx)` v pořadí rooms→gamelog→ledger→guard→intro→anim→lifecycle→bots) → `io.on('connection')` jen definuje per-connection `withRoom` a zavolá `register*Handlers(socket, ctx, withRoom)` → `server.listen`. Veškerá logika je v `server/*`. |
 | `server/rooms.js` | Factory `installRoomService(ctx)` – vlastní `rooms` Map + roomCounter, vystaví na `ctx`: `makeRoom`, `roomPayload`, `broadcastRoom(+Delayed)`, `broadcastLobbyList`, `getLobbyList`, `getGameList`, `findRoomBySocket`, `leaveRoom`, `leaveSpectate`, `disbandRoom`. Bez listenu → testovatelné s fake io (`test/server.rooms.test.js`). **Divák je jen v socket.io kanálu `<roomId>_spectators`, ne v `room.players`** – `findRoomBySocket`/`leaveRoom` ho tedy nevidí a odhlásit ho umí jen `leaveSpectate(socket)` (volá se z `leave_spectate`, `go_to_menu`, `spectate`, `create_room`/`join_room`/`rejoin`/`create_bot_game`). Bez odhlášení mu chodí dál `room_update`/`card_animation`/`intro_phase` a klient ho z menu překlopí zpátky do hry. |
-| `server/intro.js` | Factory `installIntroService(ctx)` (bere `io`, `broadcastRoom`) – serverová intro sekvence přes timeouty: `emitIntro`/`emitIntroRole`/`emitIntroChars`, `runIntroSequence`, `introAfterRoles`, `introStartCharPhase`, `introStartDeckPhase`. **Navazující hra** má vlastní vstup `runNextGameIntro` + `introKeepResult` (viz „Intro navazující hry“ níže). Test: `test/server.intro.test.js`. |
+| `server/intro.js` | Factory `installIntroService(ctx)` (bere `io`, `broadcastRoom`) – serverová intro sekvence přes timeouty: `emitIntro`/`emitIntroRole`/`emitIntroChars`, `runIntroSequence`, `introAfterRoles`, `introStartCharPhase`, `introStartDeckPhase`. **Navazující hra** má vlastní vstup `runNextGameIntro` + `introKeepResult` (viz „Intro navazující hry“ níže). **High Noon** má v deck fázi tři beaty v řadě: `highnoon_top` (z kompletního balíčku vyletí vrchní karta a ukáže se – Pravé poledne, ve velikosti balíčků) → `shuffle_highnoon` (zamíchá se zbytek) → `highnoon_bottom` (odložená karta sjede pod hromádku). Test: `test/server.intro.test.js`. |
 | `server/anim.js` | Factory `installAnimService(ctx)` (bere `io`, `broadcastRoomDelayed`) – `emitAnim`, `emitDeathAnim` (Vulture Sam vs odhoz), `handleAutoEndTurn`, `handleReshuffleAndBroadcast`, `storeCinematicMs` (časování cinematiky hokynářství = zvednutí + rozdání + míchání; zrcadlí `game.js`, používá ho bot settle i čekání na dojezd míchání). Test: `test/server.lifecycle.test.js`. |
 | `server/lifecycle.js` | Factory `installLifecycle(ctx)` (bere `cardData`, `GameState`, `broadcastRoom`, `broadcastLobbyList`, `emitIntro`, `runIntroSequence`) – `startGame`, `startNextGame` (rotující šerif, přenos postav+životů přeživších, spuštění `runNextGameIntro`). Intro přeskakuje jen debug/singleChar/botGame. Test: `test/server.lifecycle.test.js`. |
 | `server/gamelog.js` | Factory `installGameLog(ctx)` – **strukturovaný herní log** (JSONL soubor na hru v `logs/<roomId>_<ts>.jsonl` + stručný konzolový mirror). Vystaví `ctx.glog`: `openGame`/`closeGame`, `action` (ingress hráče/bota), `rule` (událost pravidel z `gs._onEvent`), `snapshot` (egress stavu v `broadcastRoom`, dedup), `system`/`error`/`clientLog`. Instaluje se v `server.js` **první** (rooms nastaví no-op fallback `ctx.glog`, gamelog ho přepíše reálným). Nahradil VŠECH ~86 ad-hoc `console.*`. Rules-level události chodí přes injektovaný sink `gs._onEvent` (funkce → JSON.stringify ji zahodí, neuniká do klienta); nastaví lifecycle/debug PŘED setupem. Formát/snapshot řeší izomorfní `core/gameLog.js`. Test: `test/gamelog.test.js`. **Když uživatel hlásí chybu, přečti nejnovější `logs/*.jsonl`.** |
@@ -155,15 +155,23 @@ hodnota zůstává). Musí se to projevit ve dvou vrstvách:
   Jourdonnais i přes Lucky Duka), `resolveBlackJack`, všechna volání `_apacheImmune`,
   přiřazení `_massAttackSuit` a Doc Holyday. Bot má zrcadlo `effSuit(state, card)`
   v `core/highNoon.js` (používá ho volba Lucky Duka).
-- **Vizuál** — textury `card_<id>` se přepečou pod **stejnými klíči**, jen s jinou markou
-  barvy: `buildCardTextures` respektuje `scene._suitOverride` a `applySuitOverride(scene, suit)`
+- **Vizuál** — přepeče se **OBSAH** textur `card_<id>`: `buildCardTextures` kreslí do TÉŽE
+  `RenderTexture` (jen ji vyčistí) a respektuje `scene._suitOverride`; `applySuitOverride(scene, suit)`
   (game.js) projde `scene._bakedCardLists` (základ + rozšíření, jejichž art už doteče).
+  **Texturu `card_<id>` nikdy nerušit** (`textures.remove` + nová RT pod stejným klíčem):
+  sprity, které renderUI nepřekresluje (letící karty držené na cíli, klouzající karty
+  při přeskládání ruky, zvětšení), si drží tu zahozenou a renderer na příštím snímku
+  spadne – hra ztuhne nebo zůstane hnědá obrazovka (= pozadí plátna).
   Přepečení běží uvnitř výdrže odkryté karty uprostřed obrazovky
   (`net/handlers.js`, `high_noon_reveal`) – tam se nic jiného neanimuje. Pojistkou je
   stejné (idempotentní) volání na konci `_applyRoomUpdate` (divák uprostřed hry, konec hry).
-  Sprity vytvořené dřív drží starou texturu, proto se po přepečení **vždy** volá `renderUI()`
-  a zhasíná otevřené zvětšení (`stopCardZoom`). Stejnou markou se řídí i pulzující
-  zvýraznění při snímání (`effSuitMarkKey` → `pulseCheckMark`).
+  Stejnou markou se řídí i pulzující zvýraznění při snímání (`effSuitMarkKey` →
+  `pulseCheckMark`); to si pod zvětšenou marku podkládá **záplatu z původního artu**
+  (`_markCoverPatch`), aby pod ní neprosvítala ta malá zapečená.
+- **Pozor na dvě podoby barvy** — v datech (`cards.json`, z nich se pečou textury) je
+  `"HEARTS"`, ve stavu hry už symbol `♥️` (přemapuje `Card` přes `Suits`). `SUIT_SLUG`
+  v `core/cardArt.js` proto zná **obojí**; jinak `suitMarkKey` pro kartu ZE STAVU vrátí
+  null a tiše vypadne celý pulz při snímání.
 
 ## Testy
 

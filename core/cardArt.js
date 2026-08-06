@@ -7,8 +7,16 @@
 // Klient je při startu složí do textury `card_<id>` (viz buildCardTextures v game.js);
 // když art/marky pro daný druh chybí, spadne na starou kartu playing_cards/<id>.png.
 
-// Mapa suit → slug souboru marky barvy.
-const SUIT_SLUG = { HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades' };
+// Mapa suit → slug souboru marky barvy. Klíče jsou DVOJÍ, protože karta má za života
+// dvě podoby barvy: v datech (cards.json, ze kterých se pečou textury) je to 'HEARTS',
+// ve stavu hry (Card konstruktor přemapuje přes Suits) už symbol '♥️'. Bez symbolových
+// aliasů vracel suitMarkKey pro kartu ZE STAVU null – a tichý důsledek byl, že pulzující
+// zvýraznění hodnoty/barvy při snímání (pulseCheckMark) vůbec nenaskočilo, kromě
+// Požehnání/Prokletí, kde se marka bere z přebíjené barvy.
+const SUIT_SLUG = {
+    HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades',
+    '♥️': 'hearts', '♦️': 'diamonds', '♣️': 'clubs', '♠️': 'spades',
+};
 
 // Texturový klíč art-obrázku druhu karty ('art_bang', …). null když karta nemá `art`.
 function artKey(card) {

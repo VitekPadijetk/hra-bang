@@ -195,10 +195,17 @@ test('introStartDeckPhase se zapnutým High Noon zamíchá balíček událostí 
     runWithInstantTimers(() => ctx.introStartDeckPhase(room));
 
     const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase').map(e => e.payload.sub);
+    assert.ok(subs.includes('highnoon_top'), 'chybí sejmutí vrchní karty (Pravé poledne)');
     assert.ok(subs.includes('shuffle_highnoon'), 'chybí míchání balíčku událostí');
     assert.ok(subs.includes('highnoon_bottom'), 'chybí zasunutí Pravého poledne');
-    assert.ok(subs.indexOf('shuffle_deck') < subs.indexOf('shuffle_highnoon'), 'nejdřív hrací balíček');
+    assert.ok(subs.indexOf('shuffle_deck') < subs.indexOf('highnoon_top'), 'nejdřív hrací balíček');
+    // Pořadí beatů: kompletní balíček → sejmutí vrchní → míchání zbytku → vespod.
+    assert.ok(subs.indexOf('highnoon_top') < subs.indexOf('shuffle_highnoon'), 'nejdřív se ukáže vrchní karta');
+    assert.ok(subs.indexOf('shuffle_highnoon') < subs.indexOf('highnoon_bottom'), 'míchá se před zasunutím');
     assert.ok(subs.indexOf('highnoon_bottom') < subs.indexOf('deal_cards'), 'rozdává se až potom');
+    // Oba beaty nesou PLNÝ počet karet – klient si sám odečte odloženou kartu.
+    const top = emits.find(e => e.ev === 'intro_phase' && e.payload.sub === 'highnoon_top');
+    assert.equal(top.payload.hnCount, 13);
     const hn = emits.find(e => e.ev === 'intro_phase' && e.payload.sub === 'shuffle_highnoon');
     assert.equal(hn.payload.hnCount, 13);
 });
@@ -216,6 +223,7 @@ test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', 
     installIntroService(ctx);
     runWithInstantTimers(() => ctx.introStartDeckPhase(room));
     const subs = emits.filter(e => e.ev === 'intro_phase').map(e => e.payload.sub);
+    assert.ok(!subs.includes('highnoon_top'));
     assert.ok(!subs.includes('shuffle_highnoon'));
     assert.ok(subs.includes('deal_cards'));
 });

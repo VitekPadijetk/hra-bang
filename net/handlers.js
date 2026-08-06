@@ -312,16 +312,36 @@ socket.on('intro_phase', (data) => {
         renderUI();
     }
 
-    // Rozšíření High Noon: šerif zamíchá balíček událostí odděleně od hracích karet.
-    // Pravé poledne leží celou dobu odložené lícem nahoru vedle (aby bylo vidět, že se
-    // nemíchá), zbylých 12 karet se zamíchá.
-    else if (sub === 'shuffle_highnoon') {
+    // Rozšíření High Noon, 1. beat: balíček leží kompletní (13, s přibalenými 15) a šerif
+    // z něj sejme vrchní kartu – Pravé poledne. Ta jen kousek přelétne vedle, otočí se
+    // lícem nahoru a zůstane ležet ve stejné velikosti jako balíčky, ať je vidět, která
+    // karta se míchat nebude.
+    else if (sub === 'highnoon_top') {
         const hn = gameScene?.cache.json.get('cards_high_noon_data') || [];
         const noon = hn.find(c => c.key === 'PRAVE_POLEDNE');
+        const tex = noon ? 'hn_' + noon.art : null;
+        _introState.hnTotal = data.hnCount;
+        if (!gameScene || !tex) {
+            _introState.hnCount = Math.max(0, data.hnCount - 1);
+            _introState.hnAsideTex = tex;
+            renderUI();
+        } else {
+            // Karta z balíčku odchází HNED se startem letu (jinak by rub zůstal ležet pod ní).
+            _introState.hnCount = Math.max(0, data.hnCount - 1);
+            renderUI();
+            _introAnimCardFlip(INTRO_HN_DECK.x, INTRO_HN_DECK.y, INTRO_HN_ASIDE.x, INTRO_HN_ASIDE.y,
+                'hn_back', tex, 620,
+                () => { if (_introState) { _introState.hnAsideTex = tex; renderUI(); } },
+                0, 0.30);
+        }
+    }
+
+    // Rozšíření High Noon, 2. beat: šerif zamíchá zbytek balíčku událostí odděleně od
+    // hracích karet. Pravé poledne leží po celou dobu odložené vedle (aby bylo vidět,
+    // že se nemíchá), zbylých 12 karet se zamíchá.
+    else if (sub === 'shuffle_highnoon') {
         _introState.hnCount = 0;                 // hromádku zastupuje míchací animace
         _introState.hnTotal = data.hnCount;
-        // Pravé poledne šerif odloží stranou lícem nahoru – nemíchá se s ostatními.
-        _introState.hnAsideTex = noon ? 'hn_' + noon.art : null;
         _introState.shuffleAnimDone = false;
         _clearIntroSprites();
         if (gameScene) {
@@ -357,7 +377,9 @@ socket.on('intro_phase', (data) => {
             // zasune s hloubkou POD statickými vrstvami. Bez druhého kroku dosedala
             // rovnou na místo balíčku s depth 800 (tj. nad hromádkou) a vypadalo to,
             // že ji šerif dává navrch.
-            const underY = INTRO_HN_DECK.y + 95;
+            // Doletí VÝRAZNĚ pod balíček (karta je 150 px vysoká, takže se s ním kryje
+            // jen posledními ~30 px) – teprve odtud se do něj zespodu zasune.
+            const underY = INTRO_HN_DECK.y + 120;
             _introAnimCardFlip(INTRO_HN_ASIDE.x, INTRO_HN_ASIDE.y, INTRO_HN_DECK.x, underY,
                 tex, 'hn_back', 560,
                 () => {
@@ -372,7 +394,7 @@ socket.on('intro_phase', (data) => {
                         onComplete: () => { if (sp.active) sp.destroy(); _hnBottomDone(); }
                     });
                 },
-                0, 0.30, { startScale: 0.34, endScale: 0.30 });
+                0, 0.30);   // odložená karta už je ve velikosti balíčku – žádné zmenšování
         } else if (_introState) {
             _introState.hnCount = _introState.hnTotal || 0;
         }
@@ -574,7 +596,10 @@ function _deathHideSource(pid, it) {
     if (it.kind === 'hand') {
         (App.deathHandHide[pid] || (App.deathHandHide[pid] = new Set())).add(it.slot);
     } else if (it.kind === 'colt') {
-        App.stealHideIds.add('_colt');
+        // Colt .45 kreslí jen drawMyArea, tedy VÝHRADNĚ na mém místě. `stealHideIds` je
+        // společná pro celou desku, takže při smrti soupeře bez zbraně schovávala MŮJ
+        // Colt (na pár vteřin zmizel, než cinematiku uklidil _deathSeqCleanup).
+        if (myIndex !== null && pid === myIndex) App.stealHideIds.add('_colt');
     } else if (it.id != null) {
         App.stealHideIds.add(it.id);
     }
@@ -639,7 +664,15 @@ function _deathFlyToVulture(it, o, n) {
     // proto ne _renderSideScale – ta by mu pro seat 0 vrátila 0.36 (viz _deathRoleEndScale).
     const endScale = (myIndex !== null && vid === myIndex) ? 0.36 : 0.27;
     const to = getHandSlotPos(vid, baseLen + n, baseLen + incoming);
-    const done = () => { if (isVulture && it.id != null) { App.pendingDrawIds.delete(it.id); renderUI(); } };
+    // Karta se u Sama odkryje PŘESNĚ při dosednutí spritu: v jeho ruce už leží (nastavil ji
+    // _vultureStageIncoming), jen byla schovaná – Samovi přes pendingDrawIds, ostatním přes
+    // oppHandHideCount. Vějíř je proto od začátku rozložený na finální počet.
+    const done = () => {
+        if (it.id == null) return;
+        if (isVulture) App.pendingDrawIds.delete(it.id);
+        else if (App.oppHandHideCount) App.oppHandHideCount[vid] = Math.max(0, (App.oppHandHideCount[vid] || 1) - 1);
+        renderUI();
+    };
     // Sam pozná svou kartu podle ID; ostatní vidí jen rub, takže jim stačí, že Samovi
     // v ruce přibyl odpovídající počet karet (délka ruky je veřejná).
     const hold = isVulture
@@ -648,13 +681,39 @@ function _deathFlyToVulture(it, o, n) {
     const geo = { startAngle: ang, endAngle, startScale: sc, endScale, duration: 420, holdUntil: hold, holdTries };
     if (it.kind === 'hand') {
         if (isVulture)      animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, onComplete: done });
-        else if (isMine)    animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true });
+        else if (isMine)    animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true, onComplete: done });
         // Cizí rub → cizí rub: jen doletí a dotočí se do Samovy orientace (exactAngle,
         // ať se u protějšího hráče opravdu otočí a nesrovná se na 0°).
-        else                animateCard(it.from.x, it.from.y, to.x, to.y, 'card_back', 420, null, { ...geo, exactAngle: true });
+        else                animateCard(it.from.x, it.from.y, to.x, to.y, 'card_back', 420, done, { ...geo, exactAngle: true });
     } else {
         if (isVulture)      animateCard(it.from.x, it.from.y, to.x, to.y, fc, 420, done, { ...geo, exactAngle: true });
-        else                animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true });
+        else                animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true, onComplete: done });
+    }
+}
+
+// Sam si karty vyřazeného BERE: vlož mu je do ruky hned na začátku cinematiky, ale drž je
+// skryté, dokud k němu jedna po druhé nedoletí. Bez toho mířily letící karty na sloty
+// FINÁLNÍHO vějíře, zatímco se ruka pořád kreslila po starém (o karty kratší) – dosedly
+// tak namačkané na sebe (vypadaly „nějak divně malé") a do pořádného vějíře se srovnaly
+// až s příchodem stavu na konci cinematiky.
+function _vultureStageIncoming(pid, flyCtx, seq) {
+    const vid = flyCtx.vid;
+    const hand = state?.players?.[vid]?.hand;
+    const dead = state?.players?.[pid];
+    // Skutečné objekty karet (ne jen ID) – po odkrytí je ruka normálně vykreslí.
+    const cardOf = (id) => dead?.hand?.find(c => c.id === id) || dead?.board?.find(c => c.id === id)
+                        || (dead?.weapon?.id === id ? dead.weapon : null) || { id };
+    let staged = 0;
+    seq.forEach(it => {
+        if (it.id == null) return;
+        if (flyCtx.isVulture) App.pendingDrawIds.add(it.id);
+        if (!hand || hand.some(c => c.id === it.id)) return;
+        hand.push(cardOf(it.id));
+        staged++;
+    });
+    if (!flyCtx.isVulture && staged) {
+        App.oppHandHideCount = App.oppHandHideCount || {};
+        App.oppHandHideCount[vid] = (App.oppHandHideCount[vid] || 0) + staged;
     }
 }
 
@@ -758,7 +817,7 @@ function playDeathSequence(data) {
     App.blockInput = true;
     App.deathSeq[pid] = 'dying';
     App.deathHandHide[pid] = new Set();
-    if (isVulture) { if (flyCtx.isVulture) seq.forEach(it => { if (it.id != null) App.pendingDrawIds.add(it.id); }); }
+    if (isVulture) _vultureStageIncoming(pid, flyCtx, seq);
     else seq.forEach(it => { if (it.id != null) App.deathDiscardHideIds.add(it.id); });
 
     // 1) Postava klesne po kartě životů na nulu – stejný posun jako u každého zásahu.
@@ -812,6 +871,9 @@ function playDeathSequence(data) {
             App.deathDiscardHideIds.delete(it.id);
             App.pendingDrawIds.delete(it.id);
         });
+        // Karty nastagované Samovi (viz _vultureStageIncoming) musí být odkryté i tehdy,
+        // když se některá animace ztratila – jinak by mu ruka zůstala „o karty kratší".
+        if (isVulture && !flyCtx.isVulture && App.oppHandHideCount) App.oppHandHideCount[flyCtx.vid] = 0;
         _deathSeqCleanup(pid, seq);
     }, T.total + 150);
 }

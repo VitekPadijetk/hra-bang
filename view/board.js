@@ -403,7 +403,13 @@ function drawOpponents(ctx) {
         // oppHandHideCount: dočasně skryté karty v ruce soupeře, které k němu právě LETÍ
         // (Kit Carlson – vybraná karta). Objeví se v ruce teprve po dosednutí animace,
         // ne hned s room_update. Klíč = reálný index hráče.
-        const handLen = Math.max(0, player.hand.length - (App.oppHandHideCount?.[actualIdx] || 0));
+        //   handFan = kolik karet ruka NAKONEC bude (vějíř se rozestupem počítá z tohoto),
+        //   handLen = kolik se jich právě kreslí (skryté jsou vždy ty poslední).
+        // Bez odděleného handFan mířily letící karty na sloty finálního vějíře, zatímco se
+        // ruka kreslila po starém – dosedaly namačkané na sebe a srovnaly se až s příchodem
+        // stavu (nejvíc vidět u Vulture Sama, kterému přiletí celá ruka mrtvého naráz).
+        const handFan = player.hand.length;
+        const handLen = Math.max(0, handFan - (App.oppHandHideCount?.[actualIdx] || 0));
 
         const addCharInteraction = (sprite) => {
             if (isDead) {
@@ -677,11 +683,11 @@ function drawOpponents(ctx) {
 
             const handStartX = charX - cardH * 1.1;
             const maxHandH = cardH * 3.5;
-            const rawSpacingL = (handLen > 1) ? Math.min(cardW * 0.35, 36) : 0;
-            const handSpacing = handLen > 1
-                ? Math.min(rawSpacingL, maxHandH / (handLen - 1))
+            const rawSpacingL = (handFan > 1) ? Math.min(cardW * 0.35, 36) : 0;
+            const handSpacing = handFan > 1
+                ? Math.min(rawSpacingL, maxHandH / (handFan - 1))
                 : 0;
-            const totalHandH = (handLen - 1) * handSpacing;
+            const totalHandH = (handFan - 1) * handSpacing;
             for (let c = 0; c < handLen; c++) {
                 drawHandCard(handStartX, charY - totalHandH / 2 + c * handSpacing, angle, c);
             }
@@ -749,11 +755,11 @@ function drawOpponents(ctx) {
 
             const handStartY = charY - cardH * 1.1;
             const maxHandW = cardH * 3.5;
-            const rawSpacingT = handLen > 1 ? Math.min(cardW * 0.35, 36) : 0;
-            const handSpacing = handLen > 1
-                ? Math.min(rawSpacingT, maxHandW / (handLen - 1))
+            const rawSpacingT = handFan > 1 ? Math.min(cardW * 0.35, 36) : 0;
+            const handSpacing = handFan > 1
+                ? Math.min(rawSpacingT, maxHandW / (handFan - 1))
                 : 0;
-            const totalHandW = (handLen - 1) * handSpacing;
+            const totalHandW = (handFan - 1) * handSpacing;
             for (let c = 0; c < handLen; c++) {
                 drawHandCard(charX - totalHandW / 2 + c * handSpacing, handStartY, angle, c);
             }
@@ -820,11 +826,11 @@ function drawOpponents(ctx) {
 
             const handStartX = charX + cardH * 1.1;
             const maxHandHR = cardH * 3.5;
-            const rawSpacingR = handLen > 1 ? Math.min(cardW * 0.35, 36) : 0;
-            const handSpacing = handLen > 1
-                ? Math.min(rawSpacingR, maxHandHR / (handLen - 1))
+            const rawSpacingR = handFan > 1 ? Math.min(cardW * 0.35, 36) : 0;
+            const handSpacing = handFan > 1
+                ? Math.min(rawSpacingR, maxHandHR / (handFan - 1))
                 : 0;
-            const totalHandH = (handLen - 1) * handSpacing;
+            const totalHandH = (handFan - 1) * handSpacing;
             for (let c = 0; c < handLen; c++) {
                 drawHandCard(handStartX, charY - totalHandH / 2 + c * handSpacing, angle, c);
             }
@@ -1878,11 +1884,21 @@ function drawPhaseOverlays(ctx) {
             let cSprite = gameScene.add.image(cx, 480, getTex(card.id)).setScale(0.65);
             mAdd(cSprite);
 
+            // Záplata pod pulzující markou (game.js) musí mít stejný odstín jako karta,
+            // jinak by v rohu svítil obdélník původní barvy. Při hoveru karta navíc roste,
+            // takže se pulz i záplata přeskládají na novou velikost (jinak zapečená marka
+            // vykoukne zpod záplaty).
+            const _pulseTint = (t) => { if (typeof setLuckyPulseTint === 'function') setLuckyPulseTint(i, t); };
+            const _pulseResize = (sc, t) => {
+                if (typeof retuneLuckyPulse === 'function') retuneLuckyPulse(i, card, cx, 480, sc, t);
+            };
+            _pulseTint(isMyCheck ? 0xddffdd : null);
+
             if (isMyCheck) {
                 cSprite.setInteractive({ useHandCursor: true });
                 cSprite.setTint(0xddffdd);
-                cSprite.on('pointerover', () => { cSprite.setScale(0.72); cSprite.setTint(0xffff44); });
-                cSprite.on('pointerout', () => { cSprite.setScale(0.65); cSprite.setTint(0xddffdd); });
+                cSprite.on('pointerover', () => { cSprite.setScale(0.72); cSprite.setTint(0xffff44); _pulseResize(0.72, 0xffff44); });
+                cSprite.on('pointerout', () => { cSprite.setScale(0.65); cSprite.setTint(0xddffdd); _pulseResize(0.65, 0xddffdd); });
                 cSprite.on('pointerdown', () => socket.emit('lucky_duke_pick', i));
             }
         });

@@ -7,6 +7,19 @@ function clog(level, msg, data) {
     try { socket.emit('client_log', { level, msg, data }); } catch (_) { /* logování nesmí shodit klienta */ }
 }
 
+// Nezachycená výjimka klienta = hra „ztuhne" nebo zůstane hnědá obrazovka (pozadí plátna),
+// zatímco sokety běží dál – z logu hry to bez tohohle nešlo poznat. Posíláme jen prvních
+// pár hlášek: padající render loop by jinak zaplavil log stovkami stejných řádků za vteřinu.
+let _crashLogged = 0;
+function _reportCrash(what, err) {
+    if (_crashLogged >= 5) return;
+    _crashLogged++;
+    clog('error', 'PÁD KLIENTA (' + what + '): ' + (err?.message || String(err)),
+         { stack: String(err?.stack || '').split('\n').slice(0, 6).join(' | ') });
+}
+window.addEventListener('error', (e) => _reportCrash('window.onerror', e.error || e));
+window.addEventListener('unhandledrejection', (e) => _reportCrash('promise', e.reason));
+
 const config = {
     type: Phaser.AUTO,
     scale: {
@@ -942,11 +955,40 @@ const REVEAL_CX = 960, REVEAL_CY = 470, REVEAL_BIG = 0.7;
 // zanikl (čeká na broadcast). Pod hromádkou (depth 0) přitom zůstat nesmí.
 const REVEAL_PILE_DEPTH = 700;
 
+// Záplata, která ZAKRYJE zapečené (malé) marky v levém dolním rohu karty. Bere výřez
+// z PŮVODNÍHO artu druhu – tam marky ještě nejsou – posazený přesně na místo karty a ve
+// stejném měřítku, takže je od okolí k nerozeznání. Bez ní pod pulzující zvětšenou markou
+// prosvítá ta malá vytištěná (marky jsou průhledné glyfy, zvětšená ta malá nepřekryje)
+// a obojí se přes sebe rozmaže.
+// `box` = obdélník marek v prostoru karty (CARD_TEX_W×H), viz pulseCheckMark.
+function _markCoverPatch(x, y, scale, card, box) {
+    const aKey = artKey(card);
+    const srcKey = (aKey && gameScene.textures.exists(aKey)) ? aKey
+                 : (gameScene.textures.exists('placeholder') ? 'placeholder' : null);
+    if (!srcKey) return null;
+    const img = gameScene.add.image(x, y, srcKey).setDepth(829);
+    const sw = img.width, sh = img.height;   // rozměr ZDROJOVÉ textury (art je ve 2×)
+    if (!sw || !sh) { img.destroy(); return null; }
+    img.setDisplaySize(CARD_TEX_W * scale, CARD_TEX_H * scale);
+    // Výřez se zadává v pixelech zdrojové textury (Phaser ho pak škáluje s objektem).
+    const pad = 6;                                   // v prostoru karty
+    const fx = sw / CARD_TEX_W, fy = sh / CARD_TEX_H;
+    const cx = Math.max(0, (box.x0 - pad) * fx);
+    const cy = Math.max(0, (box.y0 - pad) * fy);
+    img.setCrop(cx, cy,
+        Math.min(sw - cx, (box.x1 - box.x0 + pad * 2) * fx),
+        Math.min(sh - cy, (box.y1 - box.y0 + pad * 2) * fy));
+    img._isMarkCover = true;
+    return img;
+}
+
 // Zvýraznění zkoumané hodnoty/barvy při snímání: přes odkrytou kartu se překryjí marky
 // hodnoty+barvy (stejné textury jako zapečené) a pulzují (zvětší se a zpět). Vrací
 // { marks, tween } pro úklid, nebo null když karta nemá nové marky (fallback druh) –
 // tehdy je hodnota zapečená ve staré kartě a pulz nejde udělat.
-function pulseCheckMark(x, y, scale, card) {
+// marks[0] je (když se povedla) záplata přes zapečené marky – vidět je tak jen ta
+// pulzující; po skončení pulzu (stopPulse) záplata mizí s ní a zůstane zase jen malá.
+function pulseCheckMark(x, y, scale, card, opts = {}) {
     if (!gameScene) return null;
     const vKey = valueMarkKey(card), sKey = effSuitMarkKey(card);
     if (!vKey || !sKey || !gameScene.textures.exists(vKey) || !gameScene.textures.exists(sKey)) return null;
@@ -960,9 +1002,16 @@ function pulseCheckMark(x, y, scale, card) {
     const suitX = L.valX + val.width * L.scale + L.gap;           // v prostoru karty
     const suit = gameScene.add.image(left + suitX * scale, top + L.suitY * scale, sKey)
         .setOrigin(0, 1).setScale(mScale).setDepth(830);
-    const marks = [val, suit];
+    const cover = _markCoverPatch(x, y, scale, card, {
+        x0: L.valX,
+        y0: Math.min(L.valY - val.height * L.scale, L.suitY - suit.height * L.scale),
+        x1: suitX + suit.width * L.scale,
+        y1: Math.max(L.valY, L.suitY),
+    });
+    if (cover && opts.tint) cover.setTint(opts.tint);
+    const marks = cover ? [cover, val, suit] : [val, suit];
     const tween = gameScene.tweens.add({
-        targets: marks, scaleX: mScale * 1.45, scaleY: mScale * 1.45,
+        targets: [val, suit], scaleX: mScale * 1.45, scaleY: mScale * 1.45,
         duration: 480, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
     });
     return { marks, tween };
@@ -973,6 +1022,26 @@ let _luckyPulses = [];
 function stopLuckyPulses() {
     _luckyPulses.forEach(p => { if (!p) return; if (p.tween) p.tween.remove(); p.marks.forEach(m => m.destroy()); });
     _luckyPulses = [];
+}
+
+// Karty Lucky Duka board.js podbarvuje (výběr, hover) a překresluje je při každém renderu.
+// Záplata pod pulzem ale renderem neprochází, takže by na obarvené kartě svítila původní
+// barvou – tint jí proto board.js přehlásí sem (i při hoveru).
+function setLuckyPulseTint(i, tint) {
+    const cover = (_luckyPulses[i]?.marks || [])[0];
+    if (!cover?.active || !cover._isMarkCover) return;
+    if (tint) cover.setTint(tint); else cover.clearTint();
+}
+
+// Hover kartu Lucky Duka zvětší → pulz i záplata pod ním se musí přeskládat na novou
+// velikost. Voláno jen z hover handlerů (ne z každého renderu), takže pulz nerestartuje
+// pořád dokola.
+function retuneLuckyPulse(i, card, x, y, scale, tint) {
+    const p = _luckyPulses[i];
+    if (!p) return;                       // pulz zatím nevznikl (karta ještě letí)
+    if (p.tween) p.tween.remove();
+    p.marks.forEach(m => m.destroy());
+    _luckyPulses[i] = pulseCheckMark(x, y, scale, card, { tint });
 }
 
 // Sejmutí (Dynamit/Vězení/Barel/Jourdonnais): kontrolní karta vyletí z balíčku do
@@ -1241,14 +1310,20 @@ function startLuckyDukeDeal() {
     App.luckyRevealCards = cards.map((c, i) => ({ id: c.id, x: xOf(i), y: slotY }));
     stopLuckyPulses();
     renderUI();
+    // Karty odcházejí z VRCHU balíčku a v jeho velikosti (PILE_SCALE) – ne ze středu
+    // hromádky a o kus menší, jinak to vypadá, že se v balíčku „objevují" zevnitř.
+    // Vrch se bere hned teď: stav už obě karty z balíčku odebral.
+    const _from = deckTopPos();
+    // Kdo vybírá, tomu board.js karty podbarvuje – záplata pod pulzem musí ladit.
+    const _tint = state.luckyDukeState.checkContext?.playerIdx === myIndex ? 0xddffdd : null;
     cards.forEach((card, i) => {
         setTimeout(() => {
             if (!gameScene) return;
-            animateCardFlip(DECK_X, DECK_Y, xOf(i), slotY, 'card_back', getCardTex(card.id),
-                { flip: true, startScale: 0.28, endScale: slotScale, duration: 420,
+            animateCardFlip(_from.x, _from.y, xOf(i), slotY, 'card_back', getCardTex(card.id),
+                { flip: true, startScale: PILE_SCALE, endScale: slotScale, duration: 420,
                   onComplete: () => { App.luckyDealIds.delete(card.id); renderUI();
                       // zvýrazni zkoumanou hodnotu/barvu po dobu výběru
-                      _luckyPulses.push(pulseCheckMark(xOf(i), slotY, slotScale, card)); } });
+                      _luckyPulses[i] = pulseCheckMark(xOf(i), slotY, slotScale, card, { tint: _tint }); } });
         }, i * 160);
     });
 }
@@ -1671,11 +1746,22 @@ function buildCardTextures(scene, cardList) {
         const hasArt = !!aKey && scene.textures.exists(aKey);
         const isExp = card.exp || null;
         if (!hasArt) missingArt.push(card.id + ':' + (card.name || '?'));
-        if (scene.textures.exists('card_' + card.id)) scene.textures.remove('card_' + card.id);
-        // Předchozí RenderTexture téhle karty (přepečení) uvolni – jinak by se při každé
-        // změně Požehnání/Prokletí hromadily desítky mrtvých textur v paměti GPU.
-        if (scene._cardRTs[card.id]) { try { scene._cardRTs[card.id].destroy(); } catch (_) {} }
-        const rt = scene.make.renderTexture({ width: W, height: H }, false);
+        // PŘEPEČENÍ (Požehnání/Prokletí) kreslí do STEJNÉ RenderTextury, jen ji vyčistí.
+        // Texturu `card_<id>` tím nikdy nerušíme – dřív se odstranila a založila znovu pod
+        // stejným klíčem, jenže sprity, které renderUI nepřekreslí (letící karty držené na
+        // cíli, klouzající karty při přeskládání ruky, zvětšení), si držely tu ZAHOZENOU:
+        // při dalším snímku pak renderer sáhl na uvolněnou GL texturu a spadl – hra ztuhla
+        // nebo zůstala hnědá obrazovka. Navíc se tím ušetří ~100 nových RT (a framebufferů)
+        // na každou změnu události.
+        let rt = scene._cardRTs[card.id];
+        if (rt) rt.clear();
+        else {
+            // Klíč bez vlastní RT (neměl by nastat) – ať saveTexture nekoliduje.
+            if (scene.textures.exists('card_' + card.id)) scene.textures.remove('card_' + card.id);
+            rt = scene.make.renderTexture({ width: W, height: H }, false);
+            scene._cardRTs[card.id] = rt;        // RT drží texturu → nedestruovat
+            rt.saveTexture('card_' + card.id);   // getCardTex/getTex beze změny
+        }
         if (hasArt) {
             // Hlavní cesta: art druhu + marky hodnoty/barvy. Marky se kreslí každá zvlášť,
             // takže i kdyby některá chyběla, art se použije (lepší než náhradní karta).
@@ -1702,8 +1788,6 @@ function buildCardTextures(scene, cardList) {
             const bull = scene.make.image({ key: 'mark_dodge_city', add: false }).setOrigin(1, 0).setScale(L.bullScale);
             rt.draw(bull, L.bullX, L.bullY); bull.destroy();
         }
-        rt.saveTexture('card_' + card.id);   // getCardTex/getTex beze změny
-        scene._cardRTs[card.id] = rt;        // RT drží texturu → nedestruovat
     }
     if (missingArt.length) {
         clog('warn', 'Karty bez artu složené z placeholderu: ' + missingArt.length,
@@ -1713,9 +1797,9 @@ function buildCardTextures(scene, cardList) {
 
 // ── High Noon: Požehnání / Prokletí přebarvují VŠECHNY karty ───────────────────
 // Karty se nepřebarvují jen v pravidlech (GameState._effSuit), ale i vizuálně – jinak by
-// se hráč rozhodoval podle vytištěné barvy, která zrovna neplatí. Textury card_<id> se
-// přepečou pod STEJNÝMI klíči, jen s jinou markou barvy; sprity vytvořené dřív drží starou
-// texturu, proto se hned po přepečení překresluje celé UI.
+// se hráč rozhodoval podle vytištěné barvy, která zrovna neplatí. Přepeče se OBSAH stejných
+// textur card_<id> (buildCardTextures kreslí do téže RenderTextury), takže i sprity vzniklé
+// dřív ukazují novou barvu samy od sebe – textura se nikdy neruší.
 function suitOverrideForEvent(key) {
     if (key === 'POZEHNANI') return 'HEARTS';
     if (key === 'PROKLETI') return 'SPADES';
@@ -1736,8 +1820,8 @@ function applySuitOverride(scene, suitKey) {
     const want = suitKey || null;
     if (!scene || (scene._suitOverride || null) === want) return;
     scene._suitOverride = want;
-    // Otevřené zvětšení drží starou texturu, kterou přepečení zahodí – zhasni ho.
-    // (renderUI níž překreslí jen karty na stole, samostatný zoom-obraz do něj nepatří.)
+    // Zvětšení karty zhasni: obsah textury se pod ním změní, což u nehybného náhledu
+    // vypadá jako „karta se sama přebarvila". Po najetí kurzorem naskočí znovu, správně.
     stopCardZoom();
     (scene._bakedCardLists || []).forEach(list => buildCardTextures(scene, list));
     renderUI();
