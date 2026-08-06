@@ -1561,6 +1561,11 @@ function _applyRoomUpdate(payload) {
     // Doběhlý update ze hry, kterou už nesledujeme (viz stopSpectating). Bez tohohle
     // filtru by nás pár set milisekund po kliku na „Opustit sledování" hodil zpátky do hry.
     if (App.ignoreRoomId && payload.roomId === App.ignoreRoomId) return;
+    // Art rozšíření se nestahuje v preloadu – dotáhne se, jakmile se o zapnutém rozšíření
+    // dozvíme. `payload.options` chodí už z lobby (dřív než hra začne), `gameState.options`
+    // je záloha pro stavy, kde options u místnosti nejsou. Debug ukazuje karty všech.
+    ensureExpansionAssetsFor(payload.options || payload.gameState?.options);
+    if (payload.gameState?.isDebug) ensureAllExpansionAssets();
     const _prevPhase = roomState?.gameState?.phase;   // fáze před tímto updatem (pro reveal trigger)
     const _prevCurrentPlayer = roomState?.gameState?.currentPlayerIndex;  // kdo byl na tahu (Kit Carlson exit)
     // Životy před tímto updatem (pro posun postavy při zásahu/vyléčení – Návrh 1).

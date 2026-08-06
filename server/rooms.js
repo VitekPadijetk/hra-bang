@@ -48,6 +48,9 @@ module.exports = function installRoomService(ctx) {
             roomId: room.id, roomName: room.name, roomPhase: room.phase,
             leaderSocketId: room.leaderSocketId, maxPlayers: room.maxPlayers,
             players: room.players,
+            // Nastavení místnosti (rozšíření…) chodí už z lobby: klient podle něj dotahuje
+            // art rozšíření, který se v preloadu nestahuje. gs.options existuje až po setupu.
+            options: room.options || {},
             gameState: base,
         };
     }

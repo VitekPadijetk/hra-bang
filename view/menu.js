@@ -679,7 +679,13 @@ function renderMenuScreen(screen) {
             themeButton(gameScene, 960, 265, 480, 52,
                 (dcOn ? '☑' : '☐') + '  Rozšíření Dodge City (+40 karet)', {
                 ...themeToggleStyle(dcOn), fontSize: '18px',
-                onClick: () => { App.debugDodgeCity = !App.debugDodgeCity; renderUI(); },
+                onClick: () => {
+                    App.debugDodgeCity = !App.debugDodgeCity;
+                    // Art rozšíření se stahuje líně – ať se stihne dotáhnout dřív, než
+                    // debug hra začne (jinak by karty chvíli visely na placeholderu).
+                    if (App.debugDodgeCity) loadExpansionAssets(gameScene, 'dodge_city');
+                    renderUI();
+                },
             });
         }
 

@@ -1270,6 +1270,7 @@ function playLuckyDukeResult() {
 function showCardGallery() {
     if (!gameScene) return;
     if (gameScene._gallery) { closeCardGallery(); return; }   // toggle
+    ensureAllExpansionAssets();   // galerie ukazuje i karty rozšíření → dotáhni jejich art
     const g = gameScene.add.group();
     gameScene._gallery = g;
     // Galerie: základní karty + karty rozšíření (Dodge City), ať jdou zkontrolovat všechny.
@@ -1435,18 +1436,12 @@ function preload() {
             loadAsset(this, 'image', 'suit_' + s, `assets/card_marks/${s}.png`));
     });
 
-    // Rozšíření Dodge City: vlastní data + art z podsložky card_art/dodge_city/ + marka
-    // symbolu býka (card_marks/dodge_city.png). Art se sdíleným slugem se základem (bang…)
-    // se nenačítá znovu – klíč art_<slug> už drží základní karta (duplicitní klíč Phaser
-    // přeskočí), takže „reskin" karty rozšíření použijí základní art + domalovaný býk.
+    // Data karet rozšíření (JSON je malý, art se dotahuje až se zapnutým rozšířením –
+    // viz loadExpansionAssets). Bez dat by nešla postavit debug galerie ani zapéct textury.
     loadAsset(this, 'json', 'cards_dodge_city_data', 'cards.dodge_city.json');
-    loadAsset(this, 'image', 'mark_dodge_city', 'assets/card_marks/dodge_city.png');
-    this.load.on('filecomplete-json-cards_dodge_city_data', (key, type, data) => {
-        distinctArtKeys(data).forEach(a => loadAsset(this, 'image', 'art_' + a, `assets/card_art/dodge_city/${a}.png`));
-    });
 
     loadAsset(this, 'json', 'characters_data', 'characters.json');
-    for (let i = 0; i <= 30; i++) {   // 0–15 základ, 16–30 Dodge City (chybějící → placeholder)
+    for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
         let paddedId = i.toString().padStart(3, '0');
         loadAsset(this, 'image', 'char_' + i, `assets/characters/${paddedId}.png`);
     }
@@ -1489,18 +1484,90 @@ function ensureAssetsLoaded(scene, done, round) {
     scene.load.start();
 }
 
+// ── Assety rozšíření: dotahují se AŽ když je rozšíření ve hře ───────────────────
+// Art Dodge City (27 MB) a jeho portréty postav (18 MB) tvoří většinu stahování, ale hrají
+// se jen v části her. Preload proto bere jen základ; jakmile klient uvidí zapnuté rozšíření
+// (options v room_update, nebo debug obrazovka), dotáhne jeho soubory za běhu a TEPRVE PAK
+// zapeče jejich textury – kdyby se pekly dřív, zůstal by v nich natrvalo placeholder.
+const ExpansionAssets = {};      // exp -> 'loading' | 'done'
+let _expLoading = false;
+const _expQueue = [];
+
+// Každý loader zařadí své soubory do loaderu a vrátí callback, který se zavolá,
+// až jsou v cache (normalizace velikostí, zapečení textur karet).
+const EXPANSION_LOADERS = {
+    dodge_city(scene) {
+        const data = scene.cache.json.get('cards_dodge_city_data') || [];
+        // Art se sdíleným slugem se základem (bang…) se nenačítá znovu – klíč art_<slug>
+        // už drží základní karta (duplicitní klíč Phaser přeskočí), takže „reskin" karty
+        // rozšíření použijí základní art + domalovaný býk.
+        distinctArtKeys(data).forEach(a => loadAsset(scene, 'image', 'art_' + a, `assets/card_art/dodge_city/${a}.png`));
+        loadAsset(scene, 'image', 'mark_dodge_city', 'assets/card_marks/dodge_city.png');
+        for (let i = 16; i <= 30; i++) {
+            loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.png`);
+        }
+        return () => {
+            normalizeCharTextures(scene, 16, 30);
+            buildCardTextures(scene, data);
+        };
+    },
+};
+
+// Dotáhne assety jednoho rozšíření (idempotentní). Rozšíření se řadí do fronty a načítají
+// po jednom – dvě souběžná scene.load.start() by si šlapala po 'complete'.
+function loadExpansionAssets(scene, exp) {
+    if (!scene || !EXPANSION_LOADERS[exp] || ExpansionAssets[exp]) return;
+    ExpansionAssets[exp] = 'loading';
+    _expQueue.push(exp);
+    _pumpExpansionQueue(scene);
+}
+
+function _pumpExpansionQueue(scene) {
+    if (_expLoading || !_expQueue.length) return;
+    const exp = _expQueue.shift();
+    _expLoading = true;
+    clog('info', 'Dotahuji assety rozšíření', { exp });
+    let after;
+    try { after = EXPANSION_LOADERS[exp](scene); }
+    catch (e) { _expLoading = false; clog('error', 'Assety rozšíření: chyba fronty', { exp, e: String(e) }); return; }
+    scene.load.once('complete', () => {
+        // Stejná oprava výpadků jako po preloadu: co spadlo, zkusí se znovu.
+        ensureAssetsLoaded(scene, () => {
+            try { after(); } catch (e) { clog('error', 'Assety rozšíření: chyba dokončení', { exp, e: String(e) }); }
+            ExpansionAssets[exp] = 'done';
+            _expLoading = false;
+            renderUI();
+            _pumpExpansionQueue(scene);
+        });
+    });
+    scene.load.start();
+}
+
+// Podle options ze serveru (room.options / gameState.options) dotáhni, co je zapnuté.
+function ensureExpansionAssetsFor(options) {
+    const exps = options && options.expansions;
+    if (!exps || !gameScene) return;
+    Object.keys(EXPANSION_LOADERS).forEach(exp => { if (exps[exp]) loadExpansionAssets(gameScene, exp); });
+}
+
+// Debug/kreativní režim ukazuje karty všech rozšíření → potřebuje všechen art.
+function ensureAllExpansionAssets() {
+    if (!gameScene) return;
+    Object.keys(EXPANSION_LOADERS).forEach(exp => loadExpansionAssets(gameScene, exp));
+}
+
 // Složí textury card_<id> z art druhu + marek hodnoty/barvy. Když art chybí (ještě není
 // nakreslený, nebo se nestáhl), poskládá kartu z placeholderu + názvu + marek – texturu
 // dostane KAŽDÁ karta, žádná nikdy nezůstane na rubu (getCardTex by jinak vrátil
-// 'card_back' a karta by ve hře byla k nerozeznání od zakryté). Volá se JEDNOU v create(),
-// před prvním renderUI. Výsledná textura má rozměr CARD_TEX_W×H (teď = současné velikosti).
-function buildCardTextures(scene) {
-    const data = scene.cache.json.get('cards_data');
-    if (!data) { clog('error', 'cards_data nenačteno – karty zůstanou na rubu'); return; }
-    // Karty rozšíření (Dodge City) – zapečou se stejně, navíc dostanou symbol býka a
-    // (dokud chybí art) placeholder s domalovaným názvem/hodnotou/barvou.
-    const dodge = scene.cache.json.get('cards_dodge_city_data') || [];
-    const allData = data.concat(dodge);
+// 'card_back' a karta by ve hře byla k nerozeznání od zakryté). Volá se v create() pro
+// základní karty a pak znovu pro každé rozšíření, až doteče jeho art (loadExpansionAssets).
+// Výsledná textura má rozměr CARD_TEX_W×H (teď = současné velikosti).
+// `cardList` = které karty zapéct. Bez něj se berou základní karty (cards_data); karty
+// rozšíření se pečou zvlášť, až doteče jejich art (viz loadExpansionAssets) – jinak by se
+// jim natrvalo zapekl placeholder.
+function buildCardTextures(scene, cardList) {
+    const allData = cardList || scene.cache.json.get('cards_data');
+    if (!allData) { clog('error', 'cards_data nenačteno – karty zůstanou na rubu'); return; }
     const W = CARD_TEX_W, H = CARD_TEX_H, L = MARK_LAYOUT;
     scene._cardRTs = scene._cardRTs || [];
     const missingArt = [];   // karty složené z placeholderu (chybí art) – do logu
@@ -1520,7 +1587,7 @@ function buildCardTextures(scene) {
     for (const card of allData) {
         const aKey = artKey(card), vKey = valueMarkKey(card), sKey = suitMarkKey(card);
         const hasArt = !!aKey && scene.textures.exists(aKey);
-        const isExp = !!card.exp;
+        const isExp = card.exp || null;
         if (!hasArt) missingArt.push(card.id + ':' + (card.name || '?'));
         if (scene.textures.exists('card_' + card.id)) scene.textures.remove('card_' + card.id);
         const rt = scene.make.renderTexture({ width: W, height: H }, false);
@@ -1544,8 +1611,9 @@ function buildCardTextures(scene) {
             rt.draw(nameTxt, W / 2, H * 0.06); nameTxt.destroy();
             drawMarks(rt, vKey, sKey);
         }
-        // Symbol rozšíření (býk) do pravého horního rohu.
-        if (isExp && scene.textures.exists('mark_dodge_city')) {
+        // Symbol rozšíření (býk) do pravého horního rohu. Jen Dodge City – jiná rozšíření
+        // mají vlastní (nebo žádnou) marku, býka by dostat nesměla.
+        if (isExp === 'dodge_city' && scene.textures.exists('mark_dodge_city')) {
             const bull = scene.make.image({ key: 'mark_dodge_city', add: false }).setOrigin(1, 0).setScale(L.bullScale);
             rt.draw(bull, L.bullX, L.bullY); bull.destroy();
         }
@@ -1558,22 +1626,24 @@ function buildCardTextures(scene) {
     }
 }
 
-// Portréty postav rozšíření (016–030) dodané ve 2× rozlišení (650×1000) srovnáme na
-// standardních 325×500 – přerenderujeme je do menší canvas textury pod stejným klíčem,
-// takže veškeré vykreslování (stejné scale jako u 000–015) funguje beze změny.
-function normalizeCharTextures(scene) {
-    for (let i = 0; i <= 30; i++) {
-        const key = 'char_' + i;
-        if (!scene.textures.exists(key)) continue;
-        const src = scene.textures.get(key).getSourceImage();
-        if (!src || src.width <= 400) continue;   // už v normální velikosti
-        const w = Math.round(src.width / 2);
-        const h = Math.round(src.height / 2);
-        scene.textures.remove(key);
-        const canvasTex = scene.textures.createCanvas(key, w, h);
-        canvasTex.context.drawImage(src, 0, 0, w, h);
-        canvasTex.refresh();
-    }
+// Textura dodaná ve 2× rozlišení (650×1000) srovnaná na standardních 325×500 – přerenderuje
+// se do menší canvas textury pod stejným klíčem, takže veškeré vykreslování (stejné scale
+// jako u ostatních karet/portrétů) funguje beze změny.
+function normalizeTexture(scene, key) {
+    if (!scene.textures.exists(key)) return;
+    const src = scene.textures.get(key).getSourceImage();
+    if (!src || src.width <= 400) return;   // už v normální velikosti
+    const w = Math.round(src.width / 2);
+    const h = Math.round(src.height / 2);
+    scene.textures.remove(key);
+    const canvasTex = scene.textures.createCanvas(key, w, h);
+    canvasTex.context.drawImage(src, 0, 0, w, h);
+    canvasTex.refresh();
+}
+
+// Portréty postav (016–030 z Dodge City jsou dodané ve 2×) srovnané na 325×500.
+function normalizeCharTextures(scene, from = 0, to = 30) {
+    for (let i = from; i <= to; i++) normalizeTexture(scene, 'char_' + i);
 }
 
 function create() {
