@@ -10,6 +10,7 @@
 //   { type: 'SID_STAGE', index, cardId }              – Sid Ketchum: připravit 1. kartu
 //   { type: 'SID_DISCARD_BOTH', cardIdx1, cardIdx2 }  – Sid Ketchum: odhodit obě → léčení
 //   { type: 'BEER_DYNAMITE_SAVE', index }             – Pivo při výbuchu dynamitu (poslední život)
+//   { type: 'BEER_NOON_SAVE', index }                 – Pivo při Pravém poledni (poslední život)
 //   { type: 'UNPLAYABLE_FLASH' }                      – karta nehratelná (červené bliknutí)
 //   { type: 'RESPOND_BEER', index }                   – Pivo jako záchrana při posledním životě
 //   { type: 'RESPOND', index }                        – obranná karta (Vedle!/Bang!)
@@ -57,6 +58,14 @@ function decideCardClick(ctx) {
         me.health === 1 && card.type === "Pivo" &&
         state.players.filter(p => p.health > 0).length > 2) {
         return { type: 'BEER_DYNAMITE_SAVE', index };
+    }
+
+    // Totéž pro ztrátu života od Pravého poledne (High Noon).
+    if (state.phase === "NOON_DAMAGE" &&
+        state.pendingNoonDamage?.playerIdx === myIndex &&
+        me.health === 1 && card.type === "Pivo" &&
+        state.players.filter(p => p.health > 0).length > 2) {
+        return { type: 'BEER_NOON_SAVE', index };
     }
 
     const isMyResponseTurn = isResponseTurn(state, myIndex);

@@ -36,6 +36,13 @@ if (typeof require === 'function') {
     if (typeof pendingActor === 'undefined') {
         globalThis.pendingActor = require('./pending.js').pendingActor;
     }
+    if (typeof beerBlockedFor === 'undefined') {
+        const __hn = require('./highNoon.js');
+        globalThis.eventActive = __hn.eventActive;
+        globalThis.bangLimitFor = __hn.bangLimitFor;
+        globalThis.bangBlockedFor = __hn.bangBlockedFor;
+        globalThis.beerBlockedFor = __hn.beerBlockedFor;
+    }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
         globalThis.computeBeliefs = __b.computeBeliefs;
@@ -383,9 +390,12 @@ function decideBotAction(state, myIndex, beliefs) {
 
         case 'RESPOND': {
             const req = state.pendingResponse.requiredCard;
+            // Kazatel (High Noon): ve svém tahu nesmí hráč zahrát Bang! ani jako odpověď
+            // v duelu (FAQ H2) – server by kartu odmítl a bot by to zkoušel donekonečna.
+            const bangBanned = req === T.BANG && bangBlockedFor(state, myIndex);
             const isDodge = (c) => req === T.MISSED
                 ? (c.type === T.MISSED || c.type === T.UHYB || (effectiveCharacter(me) === 'Calamity Janet' && c.type === T.BANG) || effectiveCharacter(me) === 'Elena Fuente')
-                : (c.type === T.BANG || (effectiveCharacter(me) === 'Calamity Janet' && c.type === T.MISSED));
+                : (!bangBanned && (c.type === T.BANG || (effectiveCharacter(me) === 'Calamity Janet' && c.type === T.MISSED)));
             const dodgeIdx = me.hand.findIndex(isDodge);
             if (dodgeIdx !== -1) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: dodgeIdx } };
 
@@ -403,7 +413,7 @@ function decideBotAction(state, myIndex, beliefs) {
             // Pořád nelze uhnout — záchrana při posledním životě (Pivo / Sid Ketchum).
             const aliveCount = state.players.filter(p => p.health > 0).length;
             if (me.health === 1 && aliveCount > 2) {
-                const beerIdx = me.hand.findIndex(c => c.type === T.BEER);
+                const beerIdx = beerBlockedFor(state) ? -1 : me.hand.findIndex(c => c.type === T.BEER);
                 if (beerIdx !== -1) return { event: 'respond_with_beer', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
                 if (effectiveCharacter(me) === 'Sid Ketchum' && me.hand.length >= 2) {
                     const order = me.hand.map((c, i) => i).sort((a, b) => keepScore(me.hand[a]) - keepScore(me.hand[b]));
@@ -490,11 +500,22 @@ function decideBotAction(state, myIndex, beliefs) {
 
         case 'DYNAMITE_DAMAGE': {
             const aliveCount = state.players.filter(p => p.health > 0).length;
-            if (me.health === 1 && aliveCount > 2) {
+            if (me.health === 1 && aliveCount > 2 && !beerBlockedFor(state)) {
                 const beerIdx = me.hand.findIndex(c => c.type === T.BEER);
                 if (beerIdx !== -1) return { event: 'beer_dynamite_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
             }
             return { event: 'take_dynamite_hit' };
+        }
+
+        // High Noon – Pravé poledne: ztráta života na začátku tahu. Na posledním životě
+        // se zachraň Pivem (pokud ho Reverend zrovna nezakazuje), jinak schytej zásah.
+        case 'NOON_DAMAGE': {
+            const aliveCount = state.players.filter(p => p.health > 0).length;
+            if (me.health === 1 && aliveCount > 2 && !beerBlockedFor(state)) {
+                const beerIdx = me.hand.findIndex(c => c.type === T.BEER);
+                if (beerIdx !== -1) return { event: 'beer_noon_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
+            }
+            return { event: 'take_noon_hit' };
         }
 
         case 'SELECTING_TARGET_CARD': {

@@ -218,6 +218,30 @@ function menuRow(x, y, w, h, onClick) {
     return g;
 }
 
+// Jeden řádek zaškrtávátka rozšíření (zakládání hry i hra botů kreslí totéž).
+// `exps` je objekt s příznaky rozšíření, který se rovnou přepíná; `onToggle` slouží
+// k doprovodné akci (dotažení artu rozšíření, který se v preloadu nestahuje).
+function expansionRow(y, exps, key, label, hint, onToggle) {
+    const checked = !!exps[key];
+    const box = gameScene.add.rectangle(760, y, 36, 36, checked ? 0x4a3a12 : 0x333333)
+        .setOrigin(0.5).setStrokeStyle(2, checked ? 0xe0b23c : 0x666666)
+        .setInteractive({ useHandCursor: true });
+    const tick = gameScene.add.text(760, y, checked ? '✓' : '',
+        { fontSize: '22px', color: '#e0b23c', fontStyle: 'bold' }).setOrigin(0.5);
+    const labelTxt = gameScene.add.text(790, y - 10, label,
+        { fontSize: '20px', color: checked ? '#e8dcc0' : '#aaa', fontStyle: checked ? 'bold' : 'normal' })
+        .setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    const hintTxt = gameScene.add.text(790, y + 14, hint, { fontSize: '14px', color: '#666' }).setOrigin(0, 0.5);
+    const toggle = () => {
+        exps[key] = !exps[key];
+        if (exps[key] && onToggle) onToggle();
+        renderUI();
+    };
+    box.on('pointerup', toggle);
+    labelTxt.on('pointerup', toggle);
+    [box, tick, labelTxt, hintTxt].forEach(o => gameScene.cardsSprites.add(o));
+}
+
 function addLogo(y = 240) {
     if (gameScene.textures.exists('logo')) {
         const logo = gameScene.add.image(960, y, 'logo');
@@ -330,30 +354,17 @@ function renderMenuScreen(screen) {
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(extLabel);
         {
-            if (!App.createOptions.expansions) App.createOptions.expansions = { dodge_city: false };
+            if (!App.createOptions.expansions) App.createOptions.expansions = { dodge_city: false, high_noon: false };
             const exps = App.createOptions.expansions;
-            const ecy = 392;
-            const dcChecked = !!exps.dodge_city;
-            const dcBox = gameScene.add.rectangle(760, ecy, 36, 36, dcChecked ? 0x4a3a12 : 0x333333)
-                .setOrigin(0.5).setStrokeStyle(2, dcChecked ? 0xe0b23c : 0x666666)
-                .setInteractive({ useHandCursor: true });
-            const dcTick = gameScene.add.text(760, ecy, dcChecked ? '✓' : '',
-                { fontSize: '22px', color: '#e0b23c', fontStyle: 'bold' }).setOrigin(0.5);
-            const dcLabel = gameScene.add.text(790, ecy - 10, 'Dodge City',
-                { fontSize: '20px', color: dcChecked ? '#e8dcc0' : '#aaa', fontStyle: dcChecked ? 'bold' : 'normal' })
-                .setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
-            const dcHint = gameScene.add.text(790, ecy + 14, '(+40 karet a +15 postav; karty se symbolem býka)',
-                { fontSize: '14px', color: '#666' }).setOrigin(0, 0.5);
-            const dcToggle = () => { exps.dodge_city = !exps.dodge_city; renderUI(); };
-            dcBox.on('pointerup', dcToggle);
-            dcLabel.on('pointerup', dcToggle);
-            gameScene.cardsSprites.add(dcBox);
-            gameScene.cardsSprites.add(dcTick);
-            gameScene.cardsSprites.add(dcLabel);
-            gameScene.cardsSprites.add(dcHint);
+            expansionRow(384, exps, 'dodge_city', 'Dodge City',
+                '(+40 karet a +15 postav; karty se symbolem býka)',
+                () => loadExpansionAssets(gameScene, 'dodge_city'));
+            expansionRow(440, exps, 'high_noon', 'High Noon',
+                '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
+                () => loadExpansionAssets(gameScene, 'high_noon'));
         }
 
-        const playerCountLabel = gameScene.add.text(960, 460, 'Počet hráčů',
+        const playerCountLabel = gameScene.add.text(960, 508, 'Počet hráčů',
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(playerCountLabel);
 
@@ -361,10 +372,10 @@ function renderMenuScreen(screen) {
         counts.forEach((n, i) => {
             const x = 700 + i * 175;
             const isSelected = App.createPlayerCount === n;
-            const bg = gameScene.add.rectangle(x, 530, 140, 70,
+            const bg = gameScene.add.rectangle(x, 578, 140, 70,
                 isSelected ? 0x4a3a12 : 0x333333)
                 .setOrigin(0.5).setInteractive({ useHandCursor: true });
-            const numTxt = gameScene.add.text(x, 530, String(n),
+            const numTxt = gameScene.add.text(x, 578, String(n),
                 { fontSize: '38px', color: isSelected ? '#e0b23c' : '#bbb', fontStyle: 'bold' }).setOrigin(0.5);
             bg.on('pointerover', () => { if (!isSelected) bg.setFillStyle(0x444444); });
             bg.on('pointerout', () => { if (!isSelected) bg.setFillStyle(0x333333); });
@@ -372,7 +383,7 @@ function renderMenuScreen(screen) {
             gameScene.cardsSprites.add(bg); gameScene.cardsSprites.add(numTxt);
         });
 
-        const advY = 630;
+        const advY = 678;
         const chevron = App.createAdvanced ? '▲' : '▼';
         const advBtn = gameScene.add.text(960, advY, `${chevron}  Pokročilé možnosti  ${chevron}`,
             { fontFamily: THEME.fontUI, fontSize: '20px', color: THEME.color.textMuted, backgroundColor: 'rgba(50,45,55,0.6)', padding: { x: 16, y: 8 } })
@@ -388,7 +399,7 @@ function renderMenuScreen(screen) {
                 { key: 'rotatingSheriff', label: 'Rotující šerif', hint: '(šerif se po každé hře posouvá doleva)' },
             ];
             checkboxes.forEach((opt, i) => {
-                const cy = 680 + i * 70;
+                const cy = 728 + i * 70;
                 const checked = opts[opt.key];
                 const boxBg = gameScene.add.rectangle(700, cy, 36, 36, checked ? 0x4a3a12 : 0x333333)
                     .setOrigin(0.5).setStrokeStyle(2, checked ? 0xe0b23c : 0x666666)
@@ -413,7 +424,7 @@ function renderMenuScreen(screen) {
             });
         }
 
-        const createBtnY = App.createAdvanced ? 910 : 720;
+        const createBtnY = App.createAdvanced ? 958 : 768;
         const canCreate = !!App.createPlayerCount && nameValid;
         themeButton(gameScene, 960, createBtnY, 420, 72, 'VYTVOŘIT HRU', {
             fill: canCreate ? THEME.color.successDarkNum : 0x2a2730,
@@ -428,7 +439,7 @@ function renderMenuScreen(screen) {
                 App.createPlayerCount = null;
                 App.createGameName = null;
                 App.createGameNameOwner = null;
-                App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, expansions: { dodge_city: false } };
+                App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, expansions: { dodge_city: false, high_noon: false } };
             } : undefined,
         });
 
@@ -467,40 +478,30 @@ function renderMenuScreen(screen) {
             gameScene.cardsSprites.add(bg); gameScene.cardsSprites.add(numTxt);
         });
 
-        // Rozšíření (Dodge City) – stejný přepínač jako u vytvoření běžné hry.
-        const extLabel = gameScene.add.text(960, 470, 'Rozšíření',
+        // Rozšíření – stejné přepínače jako u vytvoření běžné hry.
+        const extLabel = gameScene.add.text(960, 462, 'Rozšíření',
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(extLabel);
         {
-            if (!App.botGameExpansions) App.botGameExpansions = { dodge_city: false };
+            if (!App.botGameExpansions) App.botGameExpansions = { dodge_city: false, high_noon: false };
             const bexps = App.botGameExpansions;
-            const bcy = 522;
-            const dcChecked = !!bexps.dodge_city;
-            const dcBox = gameScene.add.rectangle(760, bcy, 36, 36, dcChecked ? 0x4a3a12 : 0x333333)
-                .setOrigin(0.5).setStrokeStyle(2, dcChecked ? 0xe0b23c : 0x666666)
-                .setInteractive({ useHandCursor: true });
-            const dcTick = gameScene.add.text(760, bcy, dcChecked ? '✓' : '',
-                { fontSize: '22px', color: '#e0b23c', fontStyle: 'bold' }).setOrigin(0.5);
-            const dcLabel = gameScene.add.text(790, bcy - 10, 'Dodge City',
-                { fontSize: '20px', color: dcChecked ? '#e8dcc0' : '#aaa', fontStyle: dcChecked ? 'bold' : 'normal' })
-                .setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
-            const dcHint = gameScene.add.text(790, bcy + 14, '(+40 karet a +15 postav; karty se symbolem býka)',
-                { fontSize: '14px', color: '#666' }).setOrigin(0, 0.5);
-            const dcToggle = () => { bexps.dodge_city = !bexps.dodge_city; renderUI(); };
-            dcBox.on('pointerup', dcToggle);
-            dcLabel.on('pointerup', dcToggle);
-            gameScene.cardsSprites.add(dcBox);
-            gameScene.cardsSprites.add(dcTick);
-            gameScene.cardsSprites.add(dcLabel);
-            gameScene.cardsSprites.add(dcHint);
+            expansionRow(510, bexps, 'dodge_city', 'Dodge City',
+                '(+40 karet a +15 postav; karty se symbolem býka)',
+                () => loadExpansionAssets(gameScene, 'dodge_city'));
+            expansionRow(566, bexps, 'high_noon', 'High Noon',
+                '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
+                () => loadExpansionAssets(gameScene, 'high_noon'));
         }
 
-        themeButton(gameScene, 960, 620, 420, 72, '▶  SPUSTIT A SLEDOVAT', {
+        themeButton(gameScene, 960, 664, 420, 72, '▶  SPUSTIT A SLEDOVAT', {
             fill: 0x2a1a33, fillHover: 0x3d2749, fontSize: '26px',
             onClick: () => {
                 socket.emit('create_bot_game', {
                     count: App.botGameCount || 4,
-                    options: { expansions: { dodge_city: !!(App.botGameExpansions && App.botGameExpansions.dodge_city) } },
+                    options: { expansions: {
+                        dodge_city: !!(App.botGameExpansions && App.botGameExpansions.dodge_city),
+                        high_noon: !!(App.botGameExpansions && App.botGameExpansions.high_noon),
+                    } },
                 });
             },
         });
@@ -653,7 +654,7 @@ function renderMenuScreen(screen) {
         const roleColors = THEME.role;
         const roleList = ['Sheriff', 'Deputy', 'Outlaw', 'Renegade'];
 
-        themePanel(gameScene, 960, 270, 980, 320);
+        themePanel(gameScene, 960, 282, 980, 344);
 
         const roleLbl = gameScene.add.text(960, 140,
             `Role: ${App.debugRoles.join(', ') || '(náhodné)'}`,
@@ -673,27 +674,37 @@ function renderMenuScreen(screen) {
             onClick: () => { App.debugRoles = []; renderUI(); },
         });
 
-        // Přepínač rozšíření Dodge City (přidá 40 karet do balíčku debug hry).
+        // Přepínače rozšíření pro debug hru. Art se stahuje líně – při zapnutí ho hned
+        // dotáhni, ať se stihne dřív, než hra začne (jinak by karty visely na placeholderu).
         {
             const dcOn = !!App.debugDodgeCity;
-            themeButton(gameScene, 960, 265, 480, 52,
+            themeButton(gameScene, 960, 252, 480, 46,
                 (dcOn ? '☑' : '☐') + '  Rozšíření Dodge City (+40 karet)', {
                 ...themeToggleStyle(dcOn), fontSize: '18px',
                 onClick: () => {
                     App.debugDodgeCity = !App.debugDodgeCity;
-                    // Art rozšíření se stahuje líně – ať se stihne dotáhnout dřív, než
-                    // debug hra začne (jinak by karty chvíli visely na placeholderu).
                     if (App.debugDodgeCity) loadExpansionAssets(gameScene, 'dodge_city');
+                    renderUI();
+                },
+            });
+            const hnOn = !!App.debugHighNoon;
+            themeButton(gameScene, 960, 304, 480, 46,
+                (hnOn ? '☑' : '☐') + '  Rozšíření High Noon (13 událostí)', {
+                ...themeToggleStyle(hnOn), fontSize: '18px',
+                onClick: () => {
+                    App.debugHighNoon = !App.debugHighNoon;
+                    if (App.debugHighNoon) loadExpansionAssets(gameScene, 'high_noon');
                     renderUI();
                 },
             });
         }
 
         [2, 3, 4, 5].forEach((n, i) => {
-            themeButton(gameScene, 720 + i * 160, 345, 132, 58, `▶  ${n}P`, {
+            themeButton(gameScene, 720 + i * 160, 372, 132, 58, `▶  ${n}P`, {
                 fill: THEME.color.goldDarkNum, fillHover: 0xa8842a,
                 stroke: THEME.color.goldNum, textColor: '#ffffff', fontSize: '24px',
-                onClick: () => socket.emit('debug_start', { playerCount: n, roles: App.debugRoles || [], dodgeCity: !!App.debugDodgeCity }),
+                onClick: () => socket.emit('debug_start', { playerCount: n, roles: App.debugRoles || [],
+                    dodgeCity: !!App.debugDodgeCity, highNoon: !!App.debugHighNoon }),
             });
         });
     }

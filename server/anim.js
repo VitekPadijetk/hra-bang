@@ -2,6 +2,7 @@
 // smrt (Vulture Sam vs odhoz), automatické ukončení tahu po smrti, reshuffle broadcast.
 // Factory installAnimService(ctx): bere { io, broadcastRoomDelayed } z ctx. Bez listenu.
 const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
+const { hnRevealMs } = require('../core/highNoonAnim.js');
 
 module.exports = function installAnimService(ctx) {
     const { io, broadcastRoomDelayed } = ctx;
@@ -179,7 +180,27 @@ module.exports = function installAnimService(ctx) {
         }
     }
 
+    // ── High Noon: odkrytí karty události ────────────────────────────────────
+    // Pravidla jen označí, že se odkryla nová karta (gs._pendingHighNoonReveal); emit
+    // řeší tenhle hook volaný z broadcastRoom PŘED odesláním stavu. Důvod: nextTurn()
+    // se volá z pěti různých cest (end_turn, odhoz, vězení, smrt na dynamit, auto-tah),
+    // ale všechny končí broadcastem – jeden hook je pokryje všechny.
+    function flushHighNoonReveal(room) {
+        const gs = room.gameState;
+        const ev = gs && gs._pendingHighNoonReveal;
+        if (!ev) return;
+        gs._pendingHighNoonReveal = null;
+        emitAnim(room, {
+            type: 'high_noon_reveal',
+            id: ev.id, key: ev.key, name: ev.name, art: ev.art, remaining: ev.remaining,
+        });
+        // Boti po tu dobu nehrají – klient drží stav ve frontě a divák by jinak koukal
+        // na odkrytou kartu, zatímco se hra pod ní posouvá dál.
+        room._hnBlockUntil = Math.max(room._hnBlockUntil || 0, Date.now() + hnRevealMs());
+    }
+
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
-                         handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs });
+                         handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
+                         beforeBroadcast: flushHighNoonReveal });
     return ctx;
 };

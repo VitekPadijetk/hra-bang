@@ -81,6 +81,13 @@ class GameState {
         this.interruptedPhase = null;
         this.lastAnimEvent = null;
         this.pendingDynamiteDamage = null;
+        // Rozšíření High Noon – balíček událostí a právě platná karta. Bez zapnutého
+        // rozšíření zůstává balíček prázdný a hasEvent() vrací vždy false.
+        this.eventDeck = [];
+        this.activeEvent = null;
+        this.pendingNoonDamage = null;   // Pravé poledne: čeká se na kliknutí na životy
+        this._sheriffTurns = 0;          // kolikátý tah šerifa běží (událost až od 2.)
+        this._beginTurnStep = 0;         // krokovač startu tahu (viz logic/highNoon.js)
     }
 
     getCurrentPlayer() {
@@ -123,6 +130,15 @@ class GameState {
         return player ? (player.health || 0) : 0;
     }
 
+    // Vyléčení se stropem na maximu životů. Mrtvého (0 životů) neléčí – ten se vrací
+    // do hry jen přes vlastní pravidla (Pivo při posledním životě, Sid Ketchum).
+    _heal(player, amount = 1) {
+        if (!player || player.health <= 0 || amount <= 0) return 0;
+        const before = player.health;
+        player.health = Math.min(player.health + amount, player.maxHealth);
+        return player.health - before;
+    }
+
     discardCard(cardIdx) {
         const p = this.getCurrentPlayer();
         if (this.phase !== "DISCARD") return;
@@ -144,6 +160,10 @@ class GameState {
         }
         const cp = this.players[this.currentPlayerIndex];
         this.logEvent('turn', { who: cp?.name, role: cp?.role, hp: cp?.health, max: cp?.maxHealth, hand: cp?.hand?.length });
+        // High Noon: odkrytí události (šerif) a Pravé poledne se vyhodnocují PŘED
+        // kontrolami na Dynamit/Vězení. Když si start tahu vyžádá rozhodnutí hráče,
+        // pokračuje se až z _resumeBeginTurn (viz logic/highNoon.js).
+        if (this._beginTurn()) return;
         this.handleStartOfTurnChecks();
     }
 
@@ -270,7 +290,8 @@ if (typeof module !== 'undefined' && typeof require === 'function') {
         require('./logic/response.js'),
         require('./logic/characters.js'),
         require('./logic/checks.js'),
-        require('./logic/dodgeCity.js')
+        require('./logic/dodgeCity.js'),
+        require('./logic/highNoon.js')
     );
 }
 

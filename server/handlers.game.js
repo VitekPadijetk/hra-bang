@@ -621,9 +621,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const player = gs.players[d.playerIdx];
             if (!player || player.health <= 0) return;
 
-            // Záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE)
+            // Záchrana při posledním životě (RESPOND, DYNAMITE_DAMAGE nebo Pravé poledne)
             if (player.health === 1 &&
-                (gs.phase === "RESPOND" || gs.phase === "DYNAMITE_DAMAGE")) {
+                (gs.phase === "RESPOND" || gs.phase === "DYNAMITE_DAMAGE" || gs.phase === "NOON_DAMAGE")) {
                 const indices = [d.cardIdx1, d.cardIdx2].sort((a, b) => b - a);
                 indices.forEach(idx => {
                     const card = player.hand[idx];
@@ -671,6 +671,36 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             }
             handleAutoEndTurn(room, gs);
             broadcastRoom(room);
+        });
+    });
+
+    // High Noon – Pravé poledne: hráč klikl na životy (ztráta 1 života na začátku tahu).
+    on('take_noon_hit', () => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingNoonDamage?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            gs.takeNoonHit(idx);
+            if (gs._deathAnimPlayerIdx !== undefined && gs._deathAnimPlayerIdx !== null) {
+                emitDeathAnim(room, gs, gs._deathAnimPlayerIdx);
+                gs._deathAnimPlayerIdx = null;
+            }
+            handleAutoEndTurn(room, gs);
+            broadcastRoom(room);
+        });
+    });
+
+    // Pivo zruší ztrátu života od Pravého poledne (obdoba beer_dynamite_save).
+    on('beer_noon_save', (d) => {
+        withRoom((room, p, gs) => {
+            const player = gs.players[d.playerIdx];
+            const card = player?.hand[d.cardIdx];
+            if (card) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.playerIdx, cardId: card.id });
+            const ok = gs.beerLastLifeSave(d.playerIdx, d.cardIdx);
+            if (ok) {
+                broadcastRoomDelayed(room, 380);
+            } else {
+                broadcastRoom(room); // fallback
+            }
         });
     });
 

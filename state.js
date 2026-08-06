@@ -28,13 +28,15 @@ const App = {
     debugSelectFor: null,
     debugRoles: [],
     debugDodgeCity: false,
+    debugHighNoon: false,
+    hnRevealing: false,   // běží cinematika odkrytí karty High Noon (stůl ji zatím nekreslí)
     chatMessages: [],
     chatOpen: false,
     chatUnread: 0,
     createGameName: null,
     createGameNameOwner: null,
     createPlayerCount: null,
-    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, expansions: { dodge_city: false } },
+    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, expansions: { dodge_city: false, high_noon: false } },
     botGameCount: 4,
     // ID karet, které právě letí do MOJÍ ruky (animace líznutí/krádeže). Dokud je
     // karta tady, board.js ji v ruce nevykreslí – slot je rezervovaný a karta se

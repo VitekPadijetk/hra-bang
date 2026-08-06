@@ -69,6 +69,10 @@ const DISCARD_X = GAME_CENTER_X + 90, DISCARD_Y = GAME_CENTER_Y;
 // Karta letící do/z hromádky musí mířit na tento vrch, ne na základnu – jinak u vysoké
 // hromádky dosedne viditelně „pod ni" a po překreslení poskočí. Hodnota i vzorec musí
 // sedět s board.js (stackTop / topY). App.storePileLiftY zvedá obě hromádky (Hokynářství).
+// Rozšíření High Noon: balíček událostí (rub) a platná karta (líc) napravo od odhozu.
+// Stejné měřítko jako balíček/odhoz; při hokynářství se zvedají spolu s nimi.
+const HN_PILE_X = 1170, HN_ACTIVE_X = 1280, HN_PILE_Y = GAME_CENTER_Y;
+
 const PILE_PX_PER_CARD = 0.25;
 // Velikost karty ležící v balíčku / odhozu. MUSÍ sedět s board.js (scaleDeck) – karta,
 // která do hromádky dolétá (nebo z ní startuje), se musí zmenšit přesně na ni, jinak
@@ -179,7 +183,11 @@ function _cancelFadeTimer() {
     _zoomFadeTimer = null;
 }
 
-function _zoomSuppressed() {
+// `key` = identita zvětšované karty (viz startCardZoom). Platná karta High Noon ('hn:…')
+// je čistá informace – nikdy se na ni neklikà a nemá cenu ji schovávat, když zrovna
+// líznu/se bráním; naopak právě tehdy se hráč potřebuje podívat, co platí.
+function _zoomSuppressed(key) {
+    if (typeof key === 'string' && key.startsWith('hn:')) return false;
     if (!state) return false;
     // Běžné letící animace zoom NEblokují (zobrazí se nad nimi, depth 900 > 800). Přeruší
     // ho jen míchání/snímání balíčku – to zabírá střed obrazovky, kde zoom vzniká.
@@ -232,7 +240,7 @@ function _pointerOverZoomKey(key) {
 }
 
 function startCardZoom(texKey, key = null) {
-    if (_zoomSuppressed()) return;
+    if (_zoomSuppressed(key)) return;
     // Dotyk: odpočet startuje jen se drženým prstem (tapnutí zoom nespustí).
     if (_touchInput && !_touchActive) return;
     _cancelFadeTimer();
@@ -245,7 +253,7 @@ function startCardZoom(texKey, key = null) {
     _zoomKey = key;
     _hoverTimer = setTimeout(() => {
         _hoverTimer = null;   // časovač doběhl – od teď „nečeká"
-        if (!gameScene || _zoomSuppressed()) return;
+        if (!gameScene || _zoomSuppressed(key)) return;
         if (_touchInput && !_touchActive) { _zoomKey = null; return; }   // prst mezitím pustil
         if (!_pointerOverZoomKey(key)) { _zoomKey = null; return; }   // karta mezitím zmizela
         stopCardZoom();
@@ -1439,6 +1447,7 @@ function preload() {
     // Data karet rozšíření (JSON je malý, art se dotahuje až se zapnutým rozšířením –
     // viz loadExpansionAssets). Bez dat by nešla postavit debug galerie ani zapéct textury.
     loadAsset(this, 'json', 'cards_dodge_city_data', 'cards.dodge_city.json');
+    loadAsset(this, 'json', 'cards_high_noon_data', 'cards.high_noon.json');
 
     loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
@@ -1509,6 +1518,20 @@ const EXPANSION_LOADERS = {
         return () => {
             normalizeCharTextures(scene, 16, 30);
             buildCardTextures(scene, data);
+        };
+    },
+
+    high_noon(scene) {
+        // Karty událostí nejsou hrací karty – nepečou se z artu + marek, kreslí se
+        // rovnou jako hotový obrázek (klíč hn_<art>). Rub balíčku má vlastní texturu.
+        const data = scene.cache.json.get('cards_high_noon_data') || [];
+        loadAsset(scene, 'image', 'hn_back', 'assets/other_cards/high_noon/high_noon_back.png');
+        data.forEach(c => loadAsset(scene, 'image', 'hn_' + c.art, `assets/high_noon_cards/${c.art}.png`));
+        return () => {
+            // Dodané ve 2× (650×1000) → srovnat na 325×500, ať platí stejná měřítka
+            // jako u ostatních karet na stole.
+            normalizeTexture(scene, 'hn_back');
+            data.forEach(c => normalizeTexture(scene, 'hn_' + c.art));
         };
     },
 };

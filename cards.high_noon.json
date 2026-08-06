@@ -1,0 +1,18 @@
+[
+  { "id": 300, "key": "KAZATEL", "name": "Kazatel", "art": "kazatel", "text": "Hráči nesmí během svého tahu používat karty BANG!." },
+  { "id": 301, "key": "POZEHNANI", "name": "Požehnání", "art": "pozehnani", "text": "Všechny karty jsou po celé kolo srdcové." },
+  { "id": 302, "key": "PROKLETI", "name": "Prokletí", "art": "prokleti", "text": "Všechny karty jsou po celé kolo pikové." },
+  { "id": 303, "key": "MESTO_DUCHU", "name": "Město duchů", "art": "mesto_duchu", "text": "Vyřazené postavy se na jeden tah vracejí do hry. Líznou si 3 karty místo 2. Během svého tahu nemohou umřít. Na konci svého tahu jsou opět vyřazeny." },
+  { "id": 304, "key": "KOCOVINA", "name": "Kocovina", "art": "kocovina", "text": "Všechny postavy ztrácejí po celé kolo své speciální vlastnosti." },
+  { "id": 305, "key": "ZLATA_HORECKA", "name": "Zlatá horečka", "art": "zlata_horecka", "text": "Hra probíhá proti směru hodinových ručiček, začínaje šerifem. Všechny efekty karet probíhají po směru hodinových ručiček." },
+  { "id": 306, "key": "PRIJEZD_VLAKU", "name": "Příjezd vlaku", "art": "prijezd_vlaku", "text": "Každý hráč si na konci fáze 1 svého tahu lízne jednu kartu navíc." },
+  { "id": 307, "key": "PRESTRELKA", "name": "Přestřelka", "art": "prestrelka", "text": "Každý hráč může ve svém kole zahrát dvě karty BANG!." },
+  { "id": 308, "key": "REVEREND", "name": "Reverend", "art": "reverend", "text": "Hráči nemohou po celé kolo zahrát kartu Pivo." },
+  { "id": 309, "key": "DALTONOVE", "name": "Daltonové", "art": "daltonove", "text": "Když přijdou Daltonové do hry, každý hráč, který má před sebou vyloženu alespoň jednu modrou kartu, musí jednu z nich vybrat a odhodit." },
+  { "id": 310, "key": "DOKTOR", "name": "Doktor", "art": "doktor", "text": "Když přijde Doktor do hry, hráč (hráči) s nejmenším aktuálním počtem životů si 1 život obnoví." },
+  { "id": 311, "key": "ZIZEN", "name": "Žízeň", "art": "zizen", "text": "Každý hráč si ve fázi 1 svého tahu lízne pouze 1 kartu." },
+  { "id": 312, "key": "PRAVE_POLEDNE", "name": "Pravé poledne", "art": "prave_poledne", "text": "Každý hráč ztrácí na začátku svého tahu 1 život." },
+
+  { "id": 313, "key": "NOVA_IDENTITA", "name": "Nová identita", "art": "nova_identita", "extra": true, "text": "Každý hráč dostane druhou kartu postavy lícem dolů. Na začátku svého tahu si ji smí vzít místo současné postavy a klesnout na 2 životy." },
+  { "id": 314, "key": "ZELIZKA", "name": "Želízka", "art": "zelizka", "extra": true, "text": "Po fázi lízání si hráč na tahu zvolí barvu; v tomto tahu smí hrát jen karty této barvy." }
+]

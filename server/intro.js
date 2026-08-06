@@ -200,6 +200,11 @@ module.exports = function installIntroService(ctx) {
         }, charShuffleDelay);
     }
 
+    // Intro beat rozšíření High Noon (viz view/intro.js): míchání 12 karet vedle
+    // odloženého Pravého poledne (~4,0 s pro N=12) a pak jeho zasunutí pod hromádku.
+    const HN_SHUFFLE_MS = 4300;
+    const HN_BOTTOM_MS = 1300;
+
     function introStartDeckPhase(room) {
         const gs = room.gameState;
         const n = room.players.length;
@@ -228,6 +233,16 @@ module.exports = function installIntroService(ctx) {
             // Rozdávat se začne AŽ PO zamíchání, ne během něj.
             const deckShuffleDelay = 5400;
             setTimeout(() => {
+                // Rozšíření High Noon: šerif zamíchá balíček událostí zvlášť a Pravé
+                // poledne dá vespod (odloží ho stranou, pak sjede pod hromádku).
+                // Bez rozšíření je hnCount 0 a beat se úplně přeskočí.
+                const hnCount = gs.eventDeck?.length || 0;
+                const hnDelay = hnCount ? (HN_SHUFFLE_MS + HN_BOTTOM_MS) : 0;
+                if (hnCount) {
+                    emitIntro(room, { sub: 'shuffle_highnoon', hnCount });
+                    setTimeout(() => emitIntro(room, { sub: 'highnoon_bottom' }), HN_SHUFFLE_MS);
+                }
+                setTimeout(() => {
                 emitIntro(room, { sub: 'deal_cards', order: cardOrder });
 
                 let t = 0;
@@ -257,6 +272,7 @@ module.exports = function installIntroService(ctx) {
                     emitIntro(room, { sub: 'done' });
                     broadcastRoom(room); // phase=DRAW
                 }, doneDelay);
+                }, hnDelay);
 
             }, deckShuffleDelay);
         }, slideInStart + slideInDur);

@@ -192,6 +192,9 @@ module.exports = function installBotService(ctx) {
         // bot nehraje. Klient do té doby drží stav ve frontě animací, takže by bot hrál
         // divákům „poslepu".
         const deathWait = Math.max(0, (room._deathBlockUntil || 0) - Date.now());
+        // Odkrytí karty High Noon: karta se všem ukazuje zvětšená uprostřed obrazovky
+        // (core/highNoonAnim.js, nastaví flushHighNoonReveal) – po tu dobu bot nehraje.
+        const hnWait = Math.max(0, (room._hnBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
         if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
@@ -234,7 +237,7 @@ module.exports = function installBotService(ctx) {
 
         // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
         // časováním – bot čeká, než doběhnou.
-        delay = Math.max(delay, reshuffleWait, deathWait);
+        delay = Math.max(delay, reshuffleWait, deathWait, hnWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();

@@ -56,6 +56,10 @@ module.exports = function installRoomService(ctx) {
     }
 
     function broadcastRoom(room) {
+        // Hook PŘED odesláním stavu: pravidla mohla nachystat animaci, která musí dojet
+        // dřív, než se stav aplikuje (odkrytí karty High Noon – server/anim.js). Fronta
+        // animací na klientu drží pořadí příjmu, takže stačí emitovat před stavem.
+        if (typeof ctx.beforeBroadcast === 'function') ctx.beforeBroadcast(room);
         room.players.forEach(p => {
             const s = io.sockets.sockets.get(p.socketId);
             if (s) {

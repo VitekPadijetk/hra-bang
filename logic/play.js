@@ -29,6 +29,8 @@ const PlayMixin = {
 
         const cardEffects = {
             [CardType.BEER]: () => {
+                // High Noon – Reverend: po celé kolo nejde zahrát Pivo (Salón ano, FAQ H1).
+                if (this._beerBlocked()) return false;
                 if (player.health < player.maxHealth) {
                     // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
                     const gain = effectiveCharacter(player) === "Tequila Joe" ? 2 : 1;
@@ -100,7 +102,12 @@ const PlayMixin = {
         const isWilly = effectiveCharacter(attacker) === "Willy the Kid";
         const hasVolcanic = attacker.weapon && attacker.weapon.name.includes("Volcanic");
 
-        if (!isEffect && !isWilly && !hasVolcanic && attacker.bangsPlayedThisTurn >= 1) {
+        // High Noon – Kazatel: ve svém tahu nesmí hráč zahrát kartu Bang! (ani Willy,
+        // ani s Volcanicem, ani Calamity Janet s kartou Vedle! – FAQ H5). Karty
+        // s bang-efektem (Úder, Nůž…) to neomezuje, nejsou to karty Bang!.
+        if (!isEffect && this._bangBlocked(attackerIdx)) return;
+
+        if (!isEffect && !isWilly && !hasVolcanic && attacker.bangsPlayedThisTurn >= this._bangLimit()) {
             return;
         }
 

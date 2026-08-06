@@ -170,3 +170,52 @@ test('emitIntroRole pošle roli soukromě jen danému hráči', () => {
     assert.equal(sent[0].payload.role, 'Outlaw');
     assert.equal(sent[0].payload.playerIdx, 1);
 });
+
+// ── Rozšíření High Noon: intro beat s balíčkem událostí ──────────────────────
+// Balíček se zamíchá po zamíchání hracích karet a Pravé poledne se pak zasune vespod.
+// Časovače se přeskočí přes fake setTimeout (voláme callbacky hned).
+function runWithInstantTimers(fn) {
+    const realSetTimeout = global.setTimeout;
+    let depth = 0;
+    global.setTimeout = (cb, ms) => { if (depth++ < 200) cb(); depth--; return 0; };
+    try { fn(); } finally { global.setTimeout = realSetTimeout; }
+}
+
+test('introStartDeckPhase se zapnutým High Noon zamíchá balíček událostí a zasune Pravé poledne', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0'); addSocket('s1');
+    const room = mkRoom();
+    room.gameState = {
+        players: [{ role: 'Sheriff', hand: [], _baseHealth: 4 }, { role: 'Outlaw', hand: [], _baseHealth: 4 }],
+        deck: { cards: [] },
+        eventDeck: new Array(13).fill(0).map((_, i) => ({ id: 300 + i })),
+    };
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    runWithInstantTimers(() => ctx.introStartDeckPhase(room));
+
+    const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase').map(e => e.payload.sub);
+    assert.ok(subs.includes('shuffle_highnoon'), 'chybí míchání balíčku událostí');
+    assert.ok(subs.includes('highnoon_bottom'), 'chybí zasunutí Pravého poledne');
+    assert.ok(subs.indexOf('shuffle_deck') < subs.indexOf('shuffle_highnoon'), 'nejdřív hrací balíček');
+    assert.ok(subs.indexOf('highnoon_bottom') < subs.indexOf('deal_cards'), 'rozdává se až potom');
+    const hn = emits.find(e => e.ev === 'intro_phase' && e.payload.sub === 'shuffle_highnoon');
+    assert.equal(hn.payload.hnCount, 13);
+});
+
+test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0'); addSocket('s1');
+    const room = mkRoom();
+    room.gameState = {
+        players: [{ role: 'Sheriff', hand: [], _baseHealth: 4 }, { role: 'Outlaw', hand: [], _baseHealth: 4 }],
+        deck: { cards: [] },
+        eventDeck: [],
+    };
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    runWithInstantTimers(() => ctx.introStartDeckPhase(room));
+    const subs = emits.filter(e => e.ev === 'intro_phase').map(e => e.payload.sub);
+    assert.ok(!subs.includes('shuffle_highnoon'));
+    assert.ok(subs.includes('deal_cards'));
+});

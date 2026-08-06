@@ -11,6 +11,7 @@ const ResponseMixin = {
         if (!card || card.type !== CardType.BEER) return false;
         const aliveCount = this.players.filter(pl => pl.health > 0).length;
         if (aliveCount <= 2) return false;
+        if (this._beerBlocked()) return false;   // High Noon – Reverend: Pivo se hrát nedá
 
         // Tequila Joe (Dodge City): Pivo mu dá 2 životy i při záchraně před vyřazením.
         // Jeden život vždy zaplatí zásah, který ho měl vyřadit; přebytek se použije dál
@@ -37,6 +38,21 @@ const ResponseMixin = {
                 this.pendingDynamiteDamage = null;
                 this.handleStartOfTurnChecks();
             }
+            return true;
+        }
+
+        // High Noon – Pravé poledne: Pivo zruší ztrátu života na začátku tahu. Hráč
+        // zůstává na 1 HP a tah pokračuje tam, kde ho start tahu přerušil.
+        if (this.phase === "NOON_DAMAGE") {
+            const pnd = this.pendingNoonDamage;
+            if (!pnd || pnd.playerIdx !== playerIdx) return false;
+
+            this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+            this.checkSuzyLafayette(p);
+            if (gain > 1) p.health = Math.min(p.health + gain - 1, p.maxHealth);
+
+            this.pendingNoonDamage = null;
+            this._resumeBeginTurn();
             return true;
         }
 
@@ -80,6 +96,15 @@ const ResponseMixin = {
                 this.pendingDynamiteDamage = null;
                 this.handleStartOfTurnChecks();
             }
+            return true;
+        }
+
+        // High Noon – Pravé poledne (viz beerLastLifeSave).
+        if (this.phase === "NOON_DAMAGE") {
+            const pnd = this.pendingNoonDamage;
+            if (!pnd || pnd.playerIdx !== playerIdx) return false;
+            this.pendingNoonDamage = null;
+            this._resumeBeginTurn();
             return true;
         }
 
@@ -207,6 +232,10 @@ const ResponseMixin = {
             } else if (this.pendingResponse.requiredCard === CardType.BANG) {
                 isValid = card.type === CardType.BANG ||
                         (effectiveCharacter(player) === "Calamity Janet" && card.type === CardType.MISSED);
+                // High Noon – Kazatel: kartu Bang! nesmí hráč zahrát ani jako reakci
+                // v duelu, když je zrovna ON na tahu (FAQ H2). Duel pak automaticky
+                // prohrává, protože nemá čím odpovědět.
+                if (isValid && this._bangBlocked(playerIdx)) isValid = false;
             }
 
             if (!isValid) return;

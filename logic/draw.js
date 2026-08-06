@@ -29,13 +29,23 @@ const DrawMixin = {
             return;
         }
 
-        // Dodge City: Pixie Pete líže 3, Bill Noface 1 + 1 za každé zranění.
-        let cardsNeeded = 2;
-        if (effectiveCharacter(player) === "Pixie Pete") cardsNeeded = 3;
-        else if (effectiveCharacter(player) === "Bill Noface") cardsNeeded = 1 + (player.maxHealth - player.health);
+        const cardsNeeded = this._drawCountFor(player);
 
         this.drawPhaseState = { active: true, playerIdx: this.currentPlayerIndex, cardsNeeded, cardsDrawn: 0, options: this._getDrawOptions(player), isStartOfTurn: true };
         this.phase = "DRAW";
+    },
+
+    // Kolik karet si hráč líže ve fázi 1. JEDINÉ místo, které o tom rozhoduje – čte ho
+    // i Kit Carlson (kolik odkryje a nechá si) a Black Jack (základ pro bonus za červenou).
+    //   Dodge City: Pixie Pete 3, Bill Noface 1 + 1 za každé zranění
+    //   High Noon:  Žízeň −1, Příjezd vlaku +1
+    _drawCountFor(player) {
+        let n = 2;
+        if (effectiveCharacter(player) === "Pixie Pete") n += 1;
+        else if (effectiveCharacter(player) === "Bill Noface") n = 1 + (player.maxHealth - player.health);
+        if (this.hasEvent('ZIZEN')) n -= 1;
+        if (this.hasEvent('PRIJEZD_VLAKU')) n += 1;
+        return Math.max(1, n);
     },
 
     _getDrawOptions(player) {
@@ -126,16 +136,20 @@ const DrawMixin = {
                 // Zachytíme reshuffle při c1 (už proběhl před tímto blokem)
                 // i případný reshuffle při c2/c3.
                 const reshuffledAtC1 = this.deck._reshuffleOccurred;
-                const c2 = this.deck.draw();
-                const c3 = this.deck.draw();
+                // Odkryje o JEDNU kartu víc, než si nechá (běžně 3 a nechá si 2; se Žízní
+                // odkryje 2 a nechá 1, s Příjezdem vlaku odkryje 4 a nechá 3 – FAQ H6).
+                const needed = ds.kitNeeded || 2;
+                const rest = [];
+                for (let i = 0; i < needed; i++) rest.push(this.deck.draw());
                 if (reshuffledAtC1 || this.deck._reshuffleOccurred) {
                     this.deck._reshuffleWasProactive = false; // vždy emergency pro Kit Carlson
                 }
-                const revealed = [card, c2, c3].filter(Boolean);
+                const revealed = [card, ...rest].filter(Boolean);
                 this.kitCarlsonState = {
                     revealed,
                     picked: [],
-                    pendingAdd: []
+                    pendingAdd: [],
+                    needed
                 };
                 this.drawPhaseState.active = false;
                 this.phase = "KIT_CARLSON";
@@ -153,11 +167,9 @@ const DrawMixin = {
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
 
-            if (ds.blackJackWaitingForThird) {
-                ds.blackJackWaitingForThird = false;
-                this._finishDraw();
-                return;
-            }
+            // Bonusová karta za červenou je doražená – dál rozhoduje běžné počítadlo
+            // (s Příjezdem vlaku je základ 3, takže po bonusu ještě jedna zbývá).
+            if (ds.blackJackWaitingForThird) ds.blackJackWaitingForThird = false;
         }
         else { return; }
 
@@ -191,7 +203,8 @@ const DrawMixin = {
             cardsNeeded: 1,
             cardsDrawn: 0,
             options: ['deck'],
-            isKitCarlson: true
+            isKitCarlson: true,
+            kitNeeded: this._drawCountFor(player)   // kolik karet si nakonec nechá
         };
         this.phase = "DRAW";
     },
@@ -212,11 +225,13 @@ const DrawMixin = {
         player.hand.push(card);
         this.logEvent('draw', { who: player.name, source: 'Kit Carlson', cards: [card.name] });
 
-        if (kc.pendingAdd.length >= 2) {
+        if (kc.pendingAdd.length >= (kc.needed || 2)) {
             const pickedSet = new Set(kc.pendingAdd);
-            kc.revealed.forEach((c, i) => {
-                if (!pickedSet.has(i)) this.deck.cards.push(c); // nevybraná → zpátky do balíčku
-            });
+            // Nevybrané zpátky na balíček ve STEJNÉM pořadí, v jakém ležely (FAQ H6):
+            // draw() bere z konce pole, takže se vrací odzadu (poslední odkrytá jde dolů).
+            for (let i = kc.revealed.length - 1; i >= 0; i--) {
+                if (!pickedSet.has(i)) this.deck.cards.push(kc.revealed[i]);
+            }
             this.kitCarlsonState = null;
             this.phase = "PLAY";
         }
@@ -235,7 +250,10 @@ const DrawMixin = {
         ds.blackJackCard = null;
 
         if (isRed) {
-            this.drawPhaseState.cardsNeeded = 3;
+            // Za červenou druhou kartu si líže JEDNU navíc nad svůj základ (běžně 2 → 3,
+            // s Příjezdem vlaku 3 → 4). Se Žízní se druhá karta vůbec nelíže, takže se
+            // sem nedostane.
+            this.drawPhaseState.cardsNeeded = ds.cardsNeeded + 1;
             this.drawPhaseState.blackJackWaitingForThird = true;
             this.phase = "DRAW";
             return;

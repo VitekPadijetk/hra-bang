@@ -17,6 +17,12 @@ if (typeof require === 'function') {
         globalThis.isResponseTurn = __ph.isResponseTurn;
         globalThis.isPlayTurn = __ph.isPlayTurn;
     }
+    if (typeof bangLimitFor === 'undefined') {
+        const __hn = require('./highNoon.js');
+        globalThis.bangLimitFor = __hn.bangLimitFor;
+        globalThis.bangBlockedFor = __hn.bangBlockedFor;
+        globalThis.beerBlockedFor = __hn.beerBlockedFor;
+    }
 }
 
 function cardPlayability(state, me, myIndex, card) {
@@ -26,12 +32,14 @@ function cardPlayability(state, me, myIndex, card) {
     if (isMyResponseTurn) {
         const req = state.pendingResponse.requiredCard;
         const _aliveForBeer = state.players.filter(p => p.health > 0).length;
-        // Pivo jako záchrana při posledním životě
-        if (card.type === "Pivo" && me.health === 1 && _aliveForBeer > 2) return true;
+        // Pivo jako záchrana při posledním životě (Reverend ho zakazuje – High Noon)
+        if (card.type === "Pivo" && me.health === 1 && _aliveForBeer > 2) return !beerBlockedFor(state);
         // Elena Fuente (Dodge City): libovolná karta z ruky funguje jako Vedle!.
         if (req === "Vedle!") return card.type === "Vedle!" || card.type === "Úhyb" ||
             (effectiveCharacter(me) === "Calamity Janet" && card.type === "Bang!") || effectiveCharacter(me) === "Elena Fuente";
-        if (req === "Bang!")  return card.type === "Bang!"  || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!");
+        // Kazatel (High Noon): Bang! nesmí hráč zahrát ani jako reakci ve svém tahu (FAQ H2).
+        if (req === "Bang!")  return (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!"))
+            && !bangBlockedFor(state, myIndex);
         return false;
     }
     if (isMyPlayTurn) {
@@ -42,9 +50,10 @@ function cardPlayability(state, me, myIndex, card) {
             return true;
         }
         if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
+            if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
             const isWilly = effectiveCharacter(me) === "Willy the Kid";
             const hasVolcanic = me.weapon?.name?.includes("Volcanic");
-            return isWilly || hasVolcanic || me.bangsPlayedThisTurn < 1;
+            return isWilly || hasVolcanic || me.bangsPlayedThisTurn < bangLimitFor(state);
         }
         if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
         // Zelené karty se vykládají na stůl; nelze mít 2 stejného jména (D7).
@@ -81,6 +90,7 @@ function cardPlayability(state, me, myIndex, card) {
         }
         if (card.type === "Duel") return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
         if (card.type === "Pivo") {
+            if (beerBlockedFor(state)) return false;   // Reverend (High Noon)
             const aliveCount = state.players.filter(p => p.health > 0).length;
             if (aliveCount <= 2) return false;
             if (me.health >= me.maxHealth) return false;

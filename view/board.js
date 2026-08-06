@@ -61,6 +61,7 @@ function renderGameBoard() {
 
     // --- 1. BALÍČKY ---
     const isMyDraw = drawDrawPiles({ getTex, scaleDeck, me });
+    drawHighNoonPile({ scaleDeck });
 
     const handlePanicCBClick = (targetIdx, area, boardIdx = null) => {
         // Zelená karta se steal/discard efektem ze stolu (Krytý vůz / Kankán): klik na
@@ -886,6 +887,9 @@ function drawMyArea(ctx) {
 
         const isMyDynamiteDamage = state.phase === "DYNAMITE_DAMAGE" &&
             state.pendingDynamiteDamage?.playerIdx === myIndex;
+        // High Noon – Pravé poledne: ztráta života na začátku tahu (klik na životy).
+        const isMyNoonDamage = state.phase === "NOON_DAMAGE" &&
+            state.pendingNoonDamage?.playerIdx === myIndex;
 
         if (state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex) {
             livesImg.setTint(0xff4444);
@@ -908,6 +912,15 @@ function drawMyArea(ctx) {
                 App.blockInput = true;
                 renderUI();
             });
+        } else if (isMyNoonDamage) {
+            livesImg.setTint(0xff4444);
+            livesImg.setInteractive({ useHandCursor: true });
+            livesImg.on('pointerdown', () => {
+                if (App.blockInput) return;
+                socket.emit('take_noon_hit');
+                App.blockInput = true;
+                renderUI();
+            });
         } else if (selectedState.chuck && state.phase === "PLAY" && state.currentPlayerIndex === myIndex) {
             // Chuck Wengam nabitý: klik na životy = ztrať 1 život → lízni 2 (ručně na balíček).
             livesImg.setTint(0xff8844);
@@ -921,6 +934,15 @@ function drawMyArea(ctx) {
             });
         }
         gameScene.cardsSprites.add(livesImg);
+
+        // Pravé poledne – výzva ke ztrátě života
+        if (isMyNoonDamage) {
+            const noonTxt = gameScene.add.text(livesX, myBaseY + 185,
+                '🌞 Pravé poledne – klikni na Životy',
+                { fontSize: '19px', color: '#ff8800', backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 8, y: 4 } })
+                .setOrigin(0.5);
+            gameScene.cardsSprites.add(noonTxt);
+        }
 
         // Dynamit – info o zbývajících hitech
         if (isMyDynamiteDamage) {
@@ -1301,7 +1323,8 @@ function drawMyArea(ctx) {
                 const _aliveNow = state.players.filter(p => p.health > 0).length;
                 const _isLastLifeBeer = card.type === "Pivo" && me.health === 1 && _aliveNow > 2 && !isMySidActive &&
                     ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex) ||
-                     (state.phase === "DYNAMITE_DAMAGE" && state.pendingDynamiteDamage?.playerIdx === myIndex));
+                     (state.phase === "DYNAMITE_DAMAGE" && state.pendingDynamiteDamage?.playerIdx === myIndex) ||
+                     (state.phase === "NOON_DAMAGE" && state.pendingNoonDamage?.playerIdx === myIndex));
                 if (_isLastLifeBeer) cSprite.setTint(0xffff44);
 
                 // Zvýraznění VŠECH hratelných karet v RESPOND (Vedle!, Bang!, pivo, ...)
@@ -1439,6 +1462,13 @@ function drawMyArea(ctx) {
                             App.blockInput = true;
                             renderUI();
                             return;
+                        case 'BEER_NOON_SAVE':
+                            socket.emit('beer_noon_save', { playerIdx: myIndex, cardIdx: intent.index });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
                         case 'UNPLAYABLE_FLASH':
                             cSprite.setTint(0xff2222);
                             gameScene.time.delayedCall(500, () => {
@@ -1568,7 +1598,7 @@ function drawMyArea(ctx) {
         }
 
         if (effectiveCharacter(me) === "Sid Ketchum" && me.hand.length >= 2 && me.health < me.maxHealth
-            && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE'].includes(state.phase)
+            && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE', 'NOON_DAMAGE'].includes(state.phase)
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
@@ -1594,7 +1624,8 @@ function drawMyArea(ctx) {
             const _sidLastLifeCtx = effectiveCharacter(me) === "Sid Ketchum" && me.health === 1 &&
                 me.hand.filter(c => !c._placeholder).length >= 2 && _aliveForSid > 2 &&
                 ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex) ||
-                 (state.phase === "DYNAMITE_DAMAGE" && state.pendingDynamiteDamage?.playerIdx === myIndex));
+                 (state.phase === "DYNAMITE_DAMAGE" && state.pendingDynamiteDamage?.playerIdx === myIndex) ||
+                 (state.phase === "NOON_DAMAGE" && state.pendingNoonDamage?.playerIdx === myIndex));
             if (_sidLastLifeCtx) {
                 const _sidSavePending = !!selectedState.sidKetchum;
                 const _sidSaveLabel = _sidSavePending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → PŘEŽÍT';
@@ -1924,6 +1955,45 @@ function drawPhaseOverlays(ctx) {
 
 
 // ── Balíčky: dobírací + odhazovací hromádka, zvýraznění lízání/check (vrací isMyDraw) ─
+// Rozšíření High Noon: balíček událostí rubem nahoru a vedle něj platná karta lícem.
+// Leží napravo od odhozu a zvedá se s ním při hokynářství (řada karet hokynářství sahá
+// při 7 hráčích až na x=1320, takže bez zvednutí by přes ně ležela).
+// Platná karta jde zvětšit najetím kurzoru – stejná cesta jako u vrchní karty odhozu.
+function drawHighNoonPile(ctx) {
+    const { scaleDeck } = ctx;
+    if (!state) return;
+    const left = state.eventDeck?.length || 0;
+    const active = state.activeEvent || null;
+    if (!left && !active) return;   // rozšíření se nehraje
+
+    const lift = App.storePileLiftY || 0;
+    const pxPerCard = 0.25;
+    const backX = HN_PILE_X, activeX = HN_ACTIVE_X, baseY = HN_PILE_Y - lift;
+
+    if (left > 0) {
+        const backTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
+        const topY = baseY - (left - 1) * pxPerCard / 2;
+        for (let k = left - 1; k >= 0; k--) {
+            const layer = gameScene.add.image(backX, topY + k * pxPerCard, backTex).setScale(scaleDeck);
+            gameScene.cardsSprites.add(layer);
+        }
+    }
+
+    // Platná karta se během své odkrývací cinematiky nekreslí – v tu chvíli letí
+    // doprostřed obrazovky jako samostatný sprite (viz net/handlers.js).
+    if (active && !App.hnRevealing) {
+        const tex = 'hn_' + active.art;
+        if (!gameScene.textures.exists(tex)) return;
+        const spr = gameScene.add.image(activeX, baseY, tex).setScale(scaleDeck);
+        gameScene.cardsSprites.add(spr);
+        const zoomKey = 'hn:' + active.id;
+        spr.setInteractive();
+        spr._zoomKey = zoomKey;
+        spr.on('pointerover', () => startCardZoom(tex, zoomKey));
+        spr.on('pointerout', scheduleZoomFade);
+    }
+}
+
 function drawDrawPiles(ctx) {
     const { getTex, scaleDeck, me } = ctx;
 

@@ -73,6 +73,12 @@ const CharactersMixin = {
             this._nextTurnAfterQueue = false;
             this.interruptedPhase = null;
             if (!this.winner) this.nextTurn();
+        } else if (this._resumeBeginTurnAfterQueue) {
+            // High Noon – ztráta života od Pravého poledne mohla do fronty přidat líznutí
+            // (Bart Cassidy). Až doběhne, dokonči start tahu (kontroly Dynamit/Vězení).
+            this._resumeBeginTurnAfterQueue = false;
+            this.interruptedPhase = null;
+            if (!this.winner) this._resumeBeginTurn();
         } else {
             this.phase = this.interruptedPhase || "PLAY";
             this.interruptedPhase = null;

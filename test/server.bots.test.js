@@ -12,6 +12,7 @@ const registerLobbyHandlers = require('../server/handlers.lobby.js');
 
 const cardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.json', 'utf8'));
 const dodgeCityCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.dodge_city.json', 'utf8'));
+const highNoonCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.high_noon.json', 'utf8'));
 
 before(() => { console.log = () => {}; console.warn = () => {}; });
 
@@ -282,6 +283,55 @@ test('20 her jen botů se zapnutým Dodge City vždy doběhne (zelené karty v b
         }
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s Dodge City');
+});
+
+test('20 her jen botů se zapnutým High Noon vždy doběhne (události v každém kole)', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 4 + (k % 4);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.highNoonCardData = highNoonCardData;
+            const opts = { expansions: { high_noon: true } };
+            const room = { id: 'hn' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `HN hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 6000, `HN hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s High Noon');
+});
+
+test('20 her jen botů s High Noon + Dodge City zároveň vždy doběhne', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 4 + (k % 4);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: true }, highNoonExtra: false };
+            const room = { id: 'both' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `HN+DC hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 6000, `HN+DC hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s oběma rozšířeními');
 });
 
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {

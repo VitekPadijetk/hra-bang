@@ -139,3 +139,28 @@ test('startGame v singleChar módu rozdá postavy a přeskočí intro', () => {
     assert.ok(room.gameState.players.every(p => p.character));
     assert.equal(room.phase, 'playing'); // všichni vybráni → hra běží, ne char_select
 });
+
+// ── Rozšíření High Noon: odkrytí karty události ──────────────────────────────
+test('beforeBroadcast pošle high_noon_reveal a podrží boty na dobu cinematiky', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0');
+    const ctx = { io, broadcastRoomDelayed() {} };
+    require('../server/anim.js')(ctx);
+    const room = {
+        id: 'g1',
+        players: [{ socketId: 's0', playerIdx: 0 }],
+        gameState: { _pendingHighNoonReveal: { id: 300, key: 'KAZATEL', name: 'Kazatel', art: 'kazatel', remaining: 12 } },
+    };
+    ctx.beforeBroadcast(room);
+    const anim = emits.find(e => e.ev === 'card_animation');
+    assert.equal(anim.payload.type, 'high_noon_reveal');
+    assert.equal(anim.payload.key, 'KAZATEL');
+    assert.equal(anim.payload.art, 'kazatel');
+    assert.equal(room.gameState._pendingHighNoonReveal, null, 'podklad se spotřebuje (neemituje se dvakrát)');
+    assert.ok(room._hnBlockUntil > Date.now(), 'boti čekají na dojezd cinematiky');
+
+    // Druhé volání už nic neposílá.
+    const before = emits.length;
+    ctx.beforeBroadcast(room);
+    assert.equal(emits.length, before);
+});

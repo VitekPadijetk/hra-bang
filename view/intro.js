@@ -60,6 +60,10 @@ function _drawPlacedCard(pc) {
 const INTRO_ROLE_DECK  = { x: 960 - 160, y: 540 };
 const INTRO_CHAR_DECK  = { x: 960,       y: 540 };
 const INTRO_PLAY_DECK  = { x: 960 + 160, y: 540 };
+// Balíček událostí High Noon se v intru míchá napravo od hracího balíčku (volné místo,
+// nekříží se s ním) a na konci intra sjede na svou herní pozici (HN_PILE_X).
+const INTRO_HN_DECK    = { x: 1420, y: 540 };
+const INTRO_HN_ASIDE   = { x: 1420, y: 320 };   // odložené Pravé poledne (lícem nahoru)
 
 // Vykreslí balíček n karet naskládaných (každá o 0.7px níž/vpravo)
 function _drawIntroStack(x, y, tex, n, scale, label) {
@@ -834,6 +838,13 @@ function renderIntroScene() {
         _drawIntroStack(INTRO_CHAR_DECK.x, INTRO_CHAR_DECK.y, 'lives', s.charCount, 0.30);
     if (s.deckCount > 0 && !shuffling('shuffle_deck') && !s.deckMoving)
         _drawIntroStack(INTRO_PLAY_DECK.x, INTRO_PLAY_DECK.y, 'card_back', s.deckCount, 0.30);
+    // Rozšíření High Noon: balíček událostí (rub). Během vlastního míchání ho zastupuje
+    // animace, během přesunu na herní pozici pohyblivý stack (hnMoving).
+    if (s.hnCount > 0 && !shuffling('shuffle_highnoon') && !s.hnMoving)
+        _drawIntroStack(INTRO_HN_DECK.x, INTRO_HN_DECK.y, 'hn_back', s.hnCount, 0.30);
+    // Odložené Pravé poledne lícem nahoru, než sjede pod hromádku.
+    if (s.hnAsideTex && gameScene.textures.exists(s.hnAsideTex))
+        _iAdd(gameScene.add.image(INTRO_HN_ASIDE.x, INTRO_HN_ASIDE.y, s.hnAsideTex).setScale(0.34).setDepth(40));
 
     // Umístěné karty (role, lives, char) + jmenovky - persistují přes všechny fáze
     if (s.placedCards) s.placedCards.forEach(_drawPlacedCard);

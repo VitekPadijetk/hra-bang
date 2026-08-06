@@ -25,6 +25,7 @@ const LogEvent = {
     DEATH:     'death',    // smrt hráče
     DYNAMITE:  'dynamite', // zásah dynamitem
     CHECK:     'check',    // kontrolní líznutí (Dynamit/Vězení/Barel/Jourdonnais…)
+    EVENT:     'event',    // High Noon: odkrytá karta události / její okamžitý efekt
     DRAW:      'draw',     // líznutí karty/karet
     RESHUFFLE: 'reshuffle',// promíchání balíčku
     WIN:       'win',      // konec hry
@@ -53,6 +54,9 @@ function snapshotState(gs) {
             weapon: (p.weapon && p.weapon.id !== -1) ? p.weapon.name : null,
         })),
         pending: pa ? { idx: pa.idx, kind: pa.kind } : null,
+        // High Noon: platná událost a zbytek balíčku (jen když se rozšíření hraje).
+        event: gs.activeEvent ? gs.activeEvent.name : null,
+        eventsLeft: gs.eventDeck?.length || 0,
     };
 }
 
@@ -87,6 +91,8 @@ function formatEvent(evt) {
             return `${t}💥 ${evt.who} dynamit HP → ${evt.hp}${evt.hitsLeft != null ? ' (zbývá ' + evt.hitsLeft + ')' : ''}`;
         case LogEvent.CHECK:
             return `${t}🔍 ${evt.who} ${evt.kind}: ${evt.card} → ${evt.result}`;
+        case LogEvent.EVENT:
+            return `${t}🌵 UDÁLOST ${evt.card}${evt.left != null ? ' (zbývá ' + evt.left + ')' : ''}${evt.heal ? ' – léčí: ' + evt.heal.join(', ') : ''}`;
         case LogEvent.DRAW:
             return `${t}🂠 ${evt.who} líže ${evt.source || 'deck'}: ${Array.isArray(evt.cards) ? evt.cards.join(', ') : evt.cards}`;
         case LogEvent.RESHUFFLE:

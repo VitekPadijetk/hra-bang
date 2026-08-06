@@ -26,6 +26,7 @@ const SetupMixin = {
     setupGame(playerCount, playerNames = [], options = {}) {
         this.deck.initializeStandardDeck(this._deckDataFor(options));
         this.options = options;
+        this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {
@@ -64,6 +65,7 @@ const SetupMixin = {
         this.isDebug = true;
         this.options = options;
         this.deck.initializeStandardDeck(this._deckDataFor(options));
+        this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
 
         let roles = [...debugRoles];
         const allRoles = ["Sheriff", "Deputy", "Outlaw", "Renegade"];
@@ -158,6 +160,8 @@ const SetupMixin = {
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this.currentPlayerIndex = this.players.findIndex(pl => pl.role === "Sheriff");
+            // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
+            if (this._beginTurn()) return;
             this.handleStartOfTurnChecks();
         }
     },
@@ -183,6 +187,7 @@ const SetupMixin = {
     setupNextGame(playerNames, prevSurvivorChars = {}, options = {}, nextSheriffName = null, prevSurvivorHealth = {}) {
         this.deck.initializeStandardDeck(this._deckDataFor(options));
         this.options = options;
+        this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {
@@ -290,6 +295,8 @@ const SetupMixin = {
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this.currentPlayerIndex = this.players.findIndex(pl => pl.role === "Sheriff");
+            // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
+            if (this._beginTurn()) return;
             this.handleStartOfTurnChecks();
         }
     }

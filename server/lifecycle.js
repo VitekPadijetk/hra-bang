@@ -3,12 +3,13 @@
 // Factory installLifecycle(ctx): bere { cardData, GameState, broadcastRoom,
 // broadcastLobbyList, emitIntro, runIntroSequence } z ctx. Bez listenu.
 module.exports = function installLifecycle(ctx) {
-    const { cardData, dodgeCityCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
+    const { cardData, dodgeCityCardData, highNoonCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
 
     function startGame(room) {
         const gs = room.gameState;
         gs.cardData = cardData;
         gs.dodgeCityCardData = dodgeCityCardData;
+        gs.highNoonCardData = highNoonCardData;
         // Log hry otevři a napoj sink JEŠTĚ PŘED setupem, ať se zachytí i výběr rolí/postav.
         ctx.glog.openGame(room);
         gs._onEvent = (evt) => ctx.glog.rule(room, evt);
@@ -93,6 +94,7 @@ module.exports = function installLifecycle(ctx) {
         room.gameState = new GameState();
         room.gameState.cardData = cardData;
         room.gameState.dodgeCityCardData = dodgeCityCardData;
+        room.gameState.highNoonCardData = highNoonCardData;
         // Nová hra ve stejné místnosti → nový log (openGame zavře předchozí) + sink před setupem.
         ctx.glog.openGame(room);
         room.gameState._onEvent = (evt) => ctx.glog.rule(room, evt);

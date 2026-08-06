@@ -27,6 +27,8 @@ function pendingActor(state) {
         case 'CHECKING':         return state.currentCheck ? { idx: state.currentCheck.playerIdx, kind: 'CHECKING' } : null;
         case 'LUCKY_DUKE':       return state.luckyDukeState ? { idx: state.luckyDukeState.checkContext.playerIdx, kind: 'LUCKY_DUKE' } : null;
         case 'DYNAMITE_DAMAGE':  return state.pendingDynamiteDamage ? { idx: state.pendingDynamiteDamage.playerIdx, kind: 'DYNAMITE_DAMAGE' } : null;
+        // High Noon – Pravé poledne: ztráta života na začátku tahu (klik na životy).
+        case 'NOON_DAMAGE':      return state.pendingNoonDamage ? { idx: state.pendingNoonDamage.playerIdx, kind: 'NOON_DAMAGE' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         case 'EL_GRINGO_STEAL':  return state.pendingElGringoSteal ? { idx: state.pendingElGringoSteal.playerIdx, kind: 'EL_GRINGO_STEAL' } : null;
@@ -57,6 +59,7 @@ const _WAIT_LABELS = {
     CHECKING:              'kontrola',
     LUCKY_DUKE:            'Lucky Duke – vybírá kartu',
     DYNAMITE_DAMAGE:       'výbuch dynamitu',
+    NOON_DAMAGE:           'Pravé poledne – ztrácí život',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     EL_GRINGO_STEAL:       'El Gringo – bere kartu',
