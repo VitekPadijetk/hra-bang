@@ -227,6 +227,22 @@ function chooseTargetCardArea(target, sourceType, friendly = false) {
     return { area: 'hand', cardIdx: null };
 }
 
+// Daltonové (High Noon): kterou ze SVÝCH modrých karet bot odhodí. Modrá = výzbroj +
+// karty na stole kromě zelených; jde ta s nejnižší hodnotou pro majitele, takže Dynamit
+// (−3) a Vězení (−2) odletí jako první – což je i takticky správně.
+function daltonsDiscard(p) {
+    let best = null, bestVal = Infinity;
+    (p.board || []).forEach((c, i) => {
+        if (c.green) return;
+        const v = boardCardValue(c);
+        if (v < bestVal) { bestVal = v; best = { area: 'board', cardIdx: i }; }
+    });
+    if (p.weapon && p.weapon.id !== -1 && weaponValue(p.weapon) < bestVal) {
+        best = { area: 'weapon', cardIdx: null };
+    }
+    return best || { area: 'board', cardIdx: 0 };
+}
+
 // ── Hlavní rozhodování pro fázi PLAY: vrať akci pro jednu nejlepší kartu, nebo end_turn ──
 function decidePlay(state, myIndex, beliefs) {
     const me = state.players[myIndex];
@@ -595,6 +611,11 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'SELECTING_TARGET_CARD': {
             const sel = state.pendingSelection;
             const target = state.players[sel.targetIdx];
+            // High Noon – Daltonové: nevybírám soupeřovu kartu, ale odhazuju svou modrou.
+            if (sel.isDaltons) {
+                const pick = daltonsDiscard(target);
+                return { event: 'select_target_card', payload: { attackerIdx: myIndex, targetIdx: sel.targetIdx, ...pick } };
+            }
             // Rvačka nutí odhodit kartu KAŽDÉMU, tedy i pravděpodobnému spojenci – tomu
             // vybíráme jinak (viz chooseTargetCardArea). Dělení karet po mrtvém (Vulture
             // Sam) je vždy „ber to nejlepší", tam se na nepřátelskost neohlížíme.

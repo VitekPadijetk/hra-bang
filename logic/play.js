@@ -326,6 +326,19 @@ const PlayMixin = {
 
         const attacker = this.players[sel.attackerIdx];
         const target = this.players[sel.targetIdx];
+
+        // High Noon – Daltonové: hráč odhazuje MODROU kartu ze SVÉHO stolu. Z ruky se
+        // nebere a zelené karty (Dodge City) modré nejsou. Neplatný klik radši ignoruj,
+        // ať se výběr neposune na dalšího hráče, aniž by tenhle něco odhodil.
+        if (sel.isDaltons) {
+            if (targetCardArea === 'weapon') {
+                if (!target.weapon || target.weapon.id === -1) return;
+            } else if (targetCardArea !== 'board' || !target.board[targetCardIdx] ||
+                       target.board[targetCardIdx].green) {
+                return;
+            }
+        }
+
         let cardToMove = null;
 
         if (targetCardArea === 'hand') {
@@ -353,6 +366,7 @@ const PlayMixin = {
 
         const wasBrawl = sel.isBrawl;
         const wasVultureSplit = sel.isVultureSplit;
+        const wasDaltons = sel.isDaltons;
         // Dělení karet mezi Samy: klik do oblasti, kde už nic neleží, nic nepřesune –
         // výběr proto nech běžet dál (jinak by se dělení zacyklilo na kartách, které
         // nikdo nemůže vzít, protože tam nejsou).
@@ -367,6 +381,10 @@ const PlayMixin = {
         } else if (wasBrawl) {
             // Rvačka: pokračuj dalším cílem ve frontě (každý ostatní odhodí 1 kartu).
             this._advanceBrawl();
+        } else if (wasDaltons) {
+            // High Noon – Daltonové: na řadu jde další hráč, po posledním se dokončí
+            // start tahu (viz logic/highNoon.js).
+            this._resumeDaltons();
         } else {
             this.phase = "PLAY";
             this._processSpecialQueue();

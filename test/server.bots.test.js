@@ -423,3 +423,42 @@ test('scheduleBotTick: potvrzení role během intra projde i při herní fázi',
     ctx.scheduleBotTick(room);
     assert.ok(!room._botTick, 'po potvrzení se herní akce zase odloží');
 });
+
+// Cílená zátěž na etapu 3: balíček událostí obsahuje JEN Daltonové / Kocovinu /
+// Zlatou horečku (vespod Pravé poledne), takže se všechny tři odehrají v každé hře.
+// Náhodný balíček je pustí jen občas – tady se hlídá, že ani jedna nezasekne bota
+// (Daltonové vybírají kartu za KAŽDÉHO hráče, Kocovina ruší schopnosti, Zlatá horečka
+// obrací směr hry, tedy i podmínku „tah se posouvá").
+test('20 her jen botů jede i s balíčkem samých Daltonů/Kocovin/Zlatých horeček', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const KEYS = ['DALTONOVE', 'KOCOVINA', 'ZLATA_HORECKA'];
+    const ev = (key) => {
+        const c = highNoonCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 4 + (k % 4);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: true } };
+            const room = { id: 'hn3_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Líže se pop() z konce → Pravé poledne musí zůstat na indexu 0.
+            const deck = [ev('PRAVE_POLEDNE')];
+            for (let i = 0; i < 12; i++) deck.push(ev(KEYS[(i + k) % 3]));
+            gs.eventDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `HN3 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `HN3 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Daltonů/Kocoviny/Zlaté horečky');
+});

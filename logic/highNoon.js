@@ -19,6 +19,9 @@ const HighNoonMixin = {
         this._sheriffTurns = 0;
         this._beginTurnStep = 0;
         this._eventEntering = null;
+        this.daltonsQueue = null;
+        // Navazující hra přebírá hráče z předchozí – Kocovina po nich nesmí zůstat.
+        (this.players || []).forEach(p => { p._noAbility = false; });
         const on = options.expansions && options.expansions.high_noon;
         if (!on || !Array.isArray(this.highNoonCardData)) return;
 
@@ -103,6 +106,15 @@ const HighNoonMixin = {
         this._eventEntering = null;
         if (!key) return false;
 
+        // Kocovina: po celé kolo neplatí žádné schopnosti postav. Příznak čte
+        // effectiveCharacter (core/distance.js), kterým prochází VŠECHNY kontroly
+        // schopností v pravidlech i v klientských zrcadlech. Přepisuje se při každé
+        // výměně události – jinak by kocovina zůstala viset i po jejím překrytí.
+        const hangover = key === 'KOCOVINA';
+        (this.players || []).forEach(p => { p._noAbility = hangover; });
+
+        if (key === 'DALTONOVE') return this._startDaltons();
+
         if (key === 'DOKTOR') {
             // Hráč (hráči) s nejmenším aktuálním počtem životů si 1 život obnoví.
             const alive = this.players.filter(p => p.health > 0);
@@ -113,6 +125,78 @@ const HighNoonMixin = {
             }
         }
         return false;
+    },
+
+    // ── Daltonové: každý odhodí jednu svou modrou kartu ───────────────────────
+    // Pořadí od šerifa po směru hodinových ručiček – i při Zlaté horečce, protože
+    // efekty karet jdou vždy po směru (FAQ H3). Vybírá se stejnou cestou jako u Rvačky
+    // (pendingSelection / SELECTING_TARGET_CARD), jen attacker === target: hráč sahá na
+    // SVŮJ stůl. Klik klienta, bot i guard tím fungují beze změny.
+    _startDaltons() {
+        const n = this.players.length;
+        const sheriff = this.players.findIndex(p => p.role === 'Sheriff');
+        const from = sheriff === -1 ? this.currentPlayerIndex : sheriff;
+        const order = [];
+        for (let k = 0; k < n; k++) {
+            const idx = (from + k) % n;
+            if (this.players[idx].health > 0) order.push(idx);
+        }
+        this.daltonsQueue = order;
+        this.logEvent('event', { card: 'Daltonové', order: order.map(i => this.players[i].name) });
+        return this._advanceDaltons();
+    },
+
+    // Kolik modrých karet má hráč vyloženo. Modrá = výzbroj + karty na stole kromě
+    // zelených (Dodge City). Vězení i Dynamit se počítají (FAQ H4).
+    _daltonsBlueCount(p) {
+        if (!p) return 0;
+        const w = (p.weapon && p.weapon.id !== -1) ? 1 : 0;
+        return w + (p.board || []).filter(c => !c.green).length;
+    },
+
+    // Postaví výběr pro dalšího hráče ve frontě (hráče bez modré karty přeskočí).
+    // Vrací true, když se čeká na jeho klik.
+    _advanceDaltons() {
+        while (this.daltonsQueue && this.daltonsQueue.length > 0) {
+            const idx = this.daltonsQueue.shift();
+            const p = this.players[idx];
+            if (p && p.health > 0 && this._daltonsBlueCount(p) > 0) {
+                this.pendingSelection = {
+                    attackerIdx: idx,
+                    targetIdx: idx,
+                    sourceCardType: CardType.CAT_BALOU,
+                    ignoreDistance: true,
+                    isDaltons: true,
+                };
+                this.phase = "SELECTING_TARGET_CARD";
+                return true;
+            }
+        }
+        this.daltonsQueue = null;
+        return false;
+    },
+
+    // Po odhození: na řadu jde další hráč, po posledním se dokončí start tahu.
+    _resumeDaltons() {
+        if (this._advanceDaltons()) return;
+        this.pendingSelection = null;
+        // Odhoz mohl do fronty přidat odloženou akci (Suzy Lafayette s prázdnou rukou).
+        // Ta musí doběhnout dřív, než se rozjede zbytek startu tahu (Pravé poledne,
+        // kontroly na Dynamit/Vězení) – stejně jako po zásahu od Pravého poledne.
+        if (this.specialActionQueue.length > 0) {
+            this.phase = "PLAY";
+            this._resumeBeginTurnAfterQueue = true;
+            this._processSpecialQueue();
+            return;
+        }
+        this._resumeBeginTurn();
+    },
+
+    // ── Zlatá horečka: hraje se proti směru hodinových ručiček ────────────────
+    // Krok pro nextTurn (logic.js). Jediné místo, kde se směr obrací – posun dynamitu,
+    // pořadí v hokynářství, hromadné útoky, Rvačka i Daltonové zůstávají po směru (FAQ H3).
+    _turnStep() {
+        return this.hasEvent('ZLATA_HORECKA') ? this.players.length - 1 : 1;
     },
 
     // ── Pravé poledne: ztráta 1 života na začátku tahu ────────────────────────

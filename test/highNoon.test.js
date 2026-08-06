@@ -561,3 +561,243 @@ test('Prokletí: Black Jack má druhou kartu vždy černou → líže jen 2', ()
     assert.equal(g.players[0].hand.length, 2);
     assert.equal(g.phase, 'PLAY');
 });
+
+// ── Daltonové ───────────────────────────────────────────────────────────────
+// Každý hráč s aspoň jednou MODROU kartou před sebou jednu z nich odhodí. Vybírá si ji
+// sám, po směru hodinových ručiček počínaje šerifem. Technicky se recykluje sekvenční
+// výběr Rvačky, jen attacker === target (hráč sahá na svůj stůl).
+
+// Odkrytí konkrétní události normální cestou (druhý šerifův tah). Vrací true,
+// když si start tahu vyžádal rozhodnutí hráče.
+function flipEvent(g, key) {
+    g.eventDeck = [evCard(key)];
+    g._sheriffTurns = 1;
+    g.currentPlayerIndex = g.players.findIndex(p => p.role === 'Sheriff');
+    return g._beginTurn();
+}
+
+test('Daltonové: každý s modrou kartou jednu odhodí, pořadí od šerifa po směru', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, {}, {}]);
+    [0, 1, 2, 3].forEach(i => board(g, i, CardType.BARREL));
+
+    assert.equal(flipEvent(g, 'DALTONOVE'), true, 'start tahu se pozastaví');
+    const seen = [];
+    for (let k = 0; k < 4; k++) {
+        assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+        const idx = g.pendingSelection.attackerIdx;
+        assert.equal(g.pendingSelection.targetIdx, idx, 'vybírá si na vlastním stole');
+        seen.push(idx);
+        g.resolveCardSelection(idx, 'board', 0);
+    }
+    assert.deepEqual(seen, [0, 1, 2, 3]);
+    assert.equal(g.players.every(p => p.board.length === 0), true);
+    assert.equal(g.deck.discardPile.length, 4);
+    assert.equal(g.phase, 'DRAW', 'po posledním odhozu doběhne start tahu');
+});
+
+test('Daltonové: pořadí začíná u šerifa, i když je uprostřed stolu', () => {
+    const g = mkHnGame([{}, {}, { role: 'Sheriff' }, {}]);
+    [0, 1, 2, 3].forEach(i => board(g, i, CardType.BARREL));
+    flipEvent(g, 'DALTONOVE');
+    const seen = [];
+    for (let k = 0; k < 4; k++) {
+        seen.push(g.pendingSelection.attackerIdx);
+        g.resolveCardSelection(g.pendingSelection.attackerIdx, 'board', 0);
+    }
+    assert.deepEqual(seen, [2, 3, 0, 1]);
+});
+
+test('Daltonové: hráč bez modré karty se přeskočí, mrtvý taky', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, { health: 0 }, {}]);
+    board(g, 0, CardType.BARREL);
+    board(g, 2, CardType.BARREL);   // mrtvý – nehraje
+    board(g, 3, CardType.BARREL);
+    // hráč 1 nemá nic
+
+    flipEvent(g, 'DALTONOVE');
+    assert.equal(g.pendingSelection.attackerIdx, 0);
+    g.resolveCardSelection(0, 'board', 0);
+    assert.equal(g.pendingSelection.attackerIdx, 3, 'hráč 1 (bez karty) i mrtvý 2 se přeskočí');
+    g.resolveCardSelection(3, 'board', 0);
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.players[2].board.length, 1, 'mrtvému karta zůstala');
+});
+
+test('Daltonové: nikdo nemá modrou kartu → start tahu pokračuje bez pauzy', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, {}]);
+    give(g, 1, CardType.BARREL);   // v RUCE se nepočítá
+    assert.equal(flipEvent(g, 'DALTONOVE'), false, 'nic se nepozastaví');
+    assert.notEqual(g.phase, 'SELECTING_TARGET_CARD');
+    g.handleStartOfTurnChecks();   // pokračování, které jinak dělá nextTurn
+    assert.equal(g.phase, 'DRAW');
+});
+
+test('Daltonové: výzbroj je modrá karta (vrátí se Colt .45)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}]);
+    g.players[0].weapon = mkCard(CardType.WEAPON, { name: 'Schofield', props: { range: 2 } });
+    flipEvent(g, 'DALTONOVE');
+    assert.equal(g.pendingSelection.attackerIdx, 0);
+    g.resolveCardSelection(0, 'weapon', null);
+    assert.equal(g.players[0].weapon.id, -1, 'zpátky na Colt .45');
+    assert.equal(g.deck.discardPile[0].name, 'Schofield');
+});
+
+test('Daltonové: Vězení i Dynamit se počítají jako modré karty (FAQ H4)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}]);
+    board(g, 1, CardType.JAIL);
+    board(g, 0, CardType.DYNAMITE);
+    flipEvent(g, 'DALTONOVE');
+    assert.equal(g.pendingSelection.attackerIdx, 0);
+    g.resolveCardSelection(0, 'board', 0);
+    assert.equal(g.pendingSelection.attackerIdx, 1);
+    g.resolveCardSelection(1, 'board', 0);
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.deck.discardPile.length, 2);
+});
+
+test('Daltonové: zelená karta (Dodge City) modrá není – hráč se přeskočí', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}]);
+    const greenCard = board(g, 1, CardType.EQUIPMENT);
+    greenCard.green = true;
+    board(g, 0, CardType.BARREL);
+    flipEvent(g, 'DALTONOVE');
+    assert.equal(g.pendingSelection.attackerIdx, 0);
+    g.resolveCardSelection(0, 'board', 0);
+    assert.equal(g.phase, 'DRAW', 'hráč 1 má jen zelenou → nic neodhazuje');
+    assert.equal(g.players[1].board.length, 1);
+});
+
+test('Daltonové: klik do ruky ani na zelenou kartu výběr neposune', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}]);
+    give(g, 0, CardType.BANG);
+    const greenCard = board(g, 0, CardType.EQUIPMENT);
+    greenCard.green = true;
+    board(g, 0, CardType.BARREL);
+    flipEvent(g, 'DALTONOVE');
+
+    g.resolveCardSelection(0, 'hand', null);
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD', 'z ruky se nebere');
+    assert.equal(g.players[0].hand.length, 1);
+    g.resolveCardSelection(0, 'board', 0);   // zelená karta
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD', 'zelená karta není modrá');
+    g.resolveCardSelection(0, 'board', 1);   // Barel
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.players[0].board.length, 1, 'zelená zůstala ležet');
+});
+
+test('Daltonové: Pravé poledne se vyhodnotí až po odhození (start tahu jde dál)', () => {
+    const g = mkHnGame([{ role: 'Sheriff', health: 4 }, {}]);
+    g.activeEvent = evCard('PRAVE_POLEDNE');   // právě platí, Daltonové ho překryjí
+    board(g, 0, CardType.BARREL);
+    flipEvent(g, 'DALTONOVE');
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    g.resolveCardSelection(0, 'board', 0);
+    assert.equal(g.phase, 'DRAW', 'Pravé poledne už neplatí, život se nebere');
+    assert.equal(g.players[0].health, 4);
+});
+
+// ── Kocovina ────────────────────────────────────────────────────────────────
+// Všechny postavy přijdou po celé kolo o schopnosti. Řeší to jediný příznak `_noAbility`,
+// který čte effectiveCharacter – tím projdou úplně všechny kontroly schopností.
+
+test('Kocovina: Willy the Kid ztratí neomezené Bangy (platí limit 1)', () => {
+    const g = mkHnGame([{ role: 'Sheriff', character: 'Willy the Kid' }, {}]);
+    flipEvent(g, 'KOCOVINA');
+    g.phase = 'PLAY';
+    const b1 = give(g, 0, CardType.BANG);
+    g.playBang(0, 1, b1);
+    assert.equal(g.players[0].bangsPlayedThisTurn, 1);
+    g.phase = 'PLAY';
+    const b2 = give(g, 0, CardType.BANG);
+    g.playBang(0, 1, b2);
+    assert.equal(g.players[0].hand.length, 1, 'druhý Bang! neprošel');
+});
+
+test('Kocovina: Jourdonnais nemá vrozený barel, Sean Mallory limit 10 karet', () => {
+    const g = mkHnGame([{ role: 'Sheriff', character: 'Sean Mallory', health: 3 },
+                        { character: 'Jourdonnais' }]);
+    flipEvent(g, 'KOCOVINA');
+    assert.equal(g._handLimit(g.players[0]), 3, 'limit = životy, ne 10');
+    g.phase = 'PLAY';
+    const b = give(g, 0, CardType.BANG);
+    g.playBang(0, 1, b);
+    assert.equal(g.phase, 'RESPOND', 'žádný kontrolní barel se nespustil');
+});
+
+test('Kocovina: maximum životů zůstává (schopnost mizí, postava ne)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Paul Regret', maxHealth: 3, health: 3 }]);
+    flipEvent(g, 'KOCOVINA');
+    assert.equal(g.players[1].maxHealth, 3);
+    assert.equal(g.players[1].character, 'Paul Regret', 'portrét se nemění');
+    assert.equal(g.getDistance(0, 1), 1, 'ale +1 ke vzdálenosti neplatí');
+});
+
+test('Kocovina: Vera Custer nekopíruje a stará kopie neplatí (FAQ X6)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Vera Custer' }, { character: 'Willy the Kid' }]);
+    g.players[1]._copiedCharacter = 'Willy the Kid';
+    flipEvent(g, 'KOCOVINA');
+    g.currentPlayerIndex = 1;
+    g.startDrawPhase();
+    assert.equal(g.phase, 'DRAW', 'nenabídne se výběr kopírované postavy');
+    assert.equal(g.players[1]._copiedCharacter, null);
+});
+
+test('Kocovina přestane platit, jakmile ji překryje další událost', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Willy the Kid' }]);
+    flipEvent(g, 'KOCOVINA');
+    assert.equal(g.players.every(p => p._noAbility), true);
+    flipEvent(g, 'DOKTOR');
+    assert.equal(g.players.some(p => p._noAbility), false);
+});
+
+// ── Zlatá horečka ───────────────────────────────────────────────────────────
+// Hraje se proti směru hodinových ručiček. Efekty karet zůstávají po směru (FAQ H3).
+
+test('Zlatá horečka: tah jde proti směru hodinových ručiček', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZLATA_HORECKA' });
+    g.eventDeck = [];
+    g.currentPlayerIndex = 0;
+    g.nextTurn();
+    assert.equal(g.currentPlayerIndex, 3);
+    g.nextTurn();
+    assert.equal(g.currentPlayerIndex, 2);
+});
+
+test('Zlatá horečka: mrtví se přeskakují taky pozpátku', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, { health: 0 }, { health: 0 }], { event: 'ZLATA_HORECKA' });
+    g.eventDeck = [];
+    g.currentPlayerIndex = 0;
+    g.nextTurn();
+    assert.equal(g.currentPlayerIndex, 1);
+});
+
+test('bez Zlaté horečky se hraje dál po směru', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, {}, {}]);
+    g.eventDeck = [];
+    g.currentPlayerIndex = 0;
+    g.nextTurn();
+    assert.equal(g.currentPlayerIndex, 1);
+});
+
+test('Zlatá horečka: dynamit putuje dál PO SMĚRU (FAQ H3)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZLATA_HORECKA' });
+    g.eventDeck = [];
+    board(g, 1, CardType.DYNAMITE);
+    g.currentPlayerIndex = 1;
+    topDeck(g, Suits.HEARTS);
+    g.handleStartOfTurnChecks();
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.players[1].board.length, 0);
+    assert.equal(g.players[2].board.some(c => c.type === CardType.DYNAMITE), true);
+});
+
+test('Zlatá horečka: v hokynářství se vybírá dál po směru (FAQ H3)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZLATA_HORECKA' });
+    for (let i = 0; i < 10; i++) topDeck(g, Suits.CLUBS);
+    g.currentPlayerIndex = 1;
+    g.openStore();
+    assert.equal(g.storePickerIndex, 1);
+    g.pickFromStore(0);
+    assert.equal(g.storePickerIndex, 2, 'na řadě je soused po směru');
+});

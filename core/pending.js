@@ -87,6 +87,10 @@ function waitingStatus(state) {
     if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isVultureSplit) {
         text = 'Vulture Sam – dělí karty vyřazeného';
     }
+    // High Noon – Daltonové: hráč vybírá kartu na VLASTNÍM stole, ne soupeřovu.
+    if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isDaltons) {
+        text = 'Daltonové – odhazuje modrou kartu';
+    }
     return { idx: pa.idx, kind: pa.kind, text };
 }
 

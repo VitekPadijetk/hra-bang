@@ -10,8 +10,13 @@
 // schopnost jiné žijící postavy (`_copiedCharacter`) až do svého příštího tahu; jinak
 // je to prostě `player.character`. Všechny kontroly „character === X" (schopnosti) čtou
 // přes tento helper, aby Vera kopii opravdu měla. Render (portrét) používá dál `character`.
+// High Noon – Kocovina (`_noAbility`): po celé kolo neplatí ŽÁDNÉ schopnosti postav,
+// včetně kopie, kterou má zrovna Vera Custer (FAQ X6). Příznak nastavuje/ruší při každé
+// výměně události _applyEventOnEnter (logic/highNoon.js). Max. životy (healthForCharacter)
+// i portrét čtou `player.character` napřímo, takže se nemění.
 function effectiveCharacter(player) {
     if (!player) return null;
+    if (player._noAbility) return null;
     return player._copiedCharacter || player.character;
 }
 

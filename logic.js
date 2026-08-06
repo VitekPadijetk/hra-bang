@@ -87,6 +87,7 @@ class GameState {
         this.eventPile = [];            // už odkryté události (nejstarší → nejnovější)
         this.activeEvent = null;
         this.pendingNoonDamage = null;   // Pravé poledne: čeká se na kliknutí na životy
+        this.daltonsQueue = null;        // Daltonové: fronta hráčů odhazujících modrou kartu
         this._sheriffTurns = 0;          // kolikátý tah šerifa běží (událost až od 2.)
         this._beginTurnStep = 0;         // krokovač startu tahu (viz logic/highNoon.js)
     }
@@ -153,10 +154,13 @@ class GameState {
 
     nextTurn() {
         this.turnId = (this.turnId || 0) + 1;   // monotonní ID tahu (zelené karty: „nelze aktivovat ve stejném tahu")
-        this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+        // High Noon – Zlatá horečka: hraje se proti směru hodinových ručiček. Krok musí
+        // použít i cyklus přeskakující mrtvé, jinak by se směr u mrtvého souseda obrátil.
+        const step = this._turnStep();
+        this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
         let p = this.players[this.currentPlayerIndex];
         while (p.health <= 0) {
-            this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+            this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
             p = this.players[this.currentPlayerIndex];
         }
         const cp = this.players[this.currentPlayerIndex];

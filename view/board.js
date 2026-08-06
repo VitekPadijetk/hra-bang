@@ -11,6 +11,7 @@
 function registerVeraPortrait(sprite, player, getCharTex) {
     if (!sprite || !player) return;
     if (player.character !== 'Vera Custer' || !player._copiedCharacter) return;
+    if (player._noAbility) return;   // Kocovina (High Noon): kopie neplatí → jen Vera
     if (player._copiedCharacter === 'Vera Custer') return;
     App.veraPortraits.push({
         sprite,
@@ -1058,10 +1059,16 @@ function drawMyArea(ctx) {
             && selectedState.greenCardId != null;
         const isRagtimeSelf = selectedState.action === 'DE_STEAL'
             && selectedState.greenCardId == null && selectedState.cardIndex !== null;
+        // High Noon – Daltonové: výběr řídí server (pendingSelection s attacker === target),
+        // hráč odhazuje MODROU kartu ze svého stolu. Klik jde přes handlePanicCBClick, kde
+        // ho vyzvedne server-driven větev. !App.blockInput ze stejného důvodu jako u Rvačky:
+        // stav se vymění až po dojezdu animace, do té doby by šlo kliknout znovu.
+        const isDaltonsMine = !App.blockInput && state.phase === 'SELECTING_TARGET_CARD' &&
+            state.pendingSelection?.isDaltons && state.pendingSelection?.targetIdx === myIndex;
         // Probíhá výběr karty na mém stole (Panika/Cat Balou/Krytý vůz/Kankán/Ragtime)?
         // Pak se zelená karta položená tento tah nešediví – je legitimní cíl a musí
         // vypadat normálně (a u Paniky/CB být vidět žluté zvýraznění).
-        const isPickingMyBoard = isPanicCBMyTurn || isGreenStealSelf || isRagtimeSelf;
+        const isPickingMyBoard = isPanicCBMyTurn || isGreenStealSelf || isRagtimeSelf || isDaltonsMine;
         // Reakce zelenou Vedle!-kartou ze stolu (Železný plát/Stetson/Sombrero/Bible).
         // Počítá se i pro kartu položenou TENTO tah (server ji jako reakci uznává, viz
         // handleResponse s boardCardId) → taková karta se nešediví, jde o ni.
@@ -1090,7 +1097,8 @@ function drawMyArea(ctx) {
             // nepřepsalo) → musí pokrýt VŠECHNY režimy míření na vlastní stůl, i Ragtime /
             // Krytý vůz / Kankán na sebe. Aktivovaná zelená karta sama cílem být nemůže.
             const canTarget = isPickingMyBoard && !card._isColt &&
-                !(selectedState.greenCardId != null && card.id === selectedState.greenCardId);
+                !(selectedState.greenCardId != null && card.id === selectedState.greenCardId) &&
+                !(isDaltonsMine && card.green);   // Daltonové: zelené karty modré nejsou
             let bSprite = gameScene.add.image(bx, by, tex).setScale(scaleMe);
             gameScene.cardsSprites.add(bSprite);
             myBoardSprites.push({ sprite: bSprite, card, i });
@@ -1122,6 +1130,22 @@ function drawMyArea(ctx) {
         if (isPanicCBMyTurn) {
             myBoardSprites.forEach(({ sprite, card, i }) => {
                 if (card._isColt) return;
+                sprite.setTint(0xffff44);
+                sprite.on('pointerdown', () => {
+                    const hasRealWeapon = me.weapon && me.weapon.id !== -1;
+                    const isWeapon = hasRealWeapon && i === 0;
+                    const area = isWeapon ? 'weapon' : 'board';
+                    const boardIdx = isWeapon ? null : (i - 1);
+                    handlePanicCBClick(myIndex, area, boardIdx);
+                });
+            });
+        }
+
+        // High Noon – Daltonové: zvýrazni MODRÉ karty (výzbroj + nezelené na stole) a
+        // pošli výběr serveru. Colt .45 není karta, zelené karty modré nejsou.
+        if (isDaltonsMine) {
+            myBoardSprites.forEach(({ sprite, card, i }) => {
+                if (card._isColt || card.green) return;
                 sprite.setTint(0xffff44);
                 sprite.on('pointerdown', () => {
                     const hasRealWeapon = me.weapon && me.weapon.id !== -1;

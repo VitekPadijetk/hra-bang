@@ -15,13 +15,15 @@ const DrawMixin = {
         // vrátíme s `_veraCopiedTurn === turnId` a lízání se rozjede s převzatou schopností.
         if (player.character === "Vera Custer" && player._veraCopiedTurn !== this.turnId) {
             player._copiedCharacter = null;
-            const choices = this._veraCopyChoices();
+            const choices = player._noAbility ? [] : this._veraCopyChoices();
             if (choices.length > 0) {
                 this.pendingVeraCopy = { playerIdx: this.currentPlayerIndex, choices };
                 this.phase = "VERA_COPY";
                 return;
             }
-            player._veraCopiedTurn = this.turnId;   // nikdo ke kopírování → bez kopie
+            // Nikdo ke kopírování → bez kopie. Totéž při Kocovině (High Noon): schopnosti
+            // neplatí, takže Vera novou postavu nekopíruje a stará kopie tady vypršela (FAQ X6).
+            player._veraCopiedTurn = this.turnId;
         }
 
         if (effectiveCharacter(player) === "Kit Carlson") {

@@ -287,7 +287,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // Rvačka (isBrawl): karta cíle letí do odhozu. U výzbroje/stolu čteme ID + vizuální
             // slot PŘED resolvem; z ruky (náhodná) až po resolvu (skončí navrchu odhozu).
             const sel = gs.pendingSelection;
-            const isBrawl = sel?.isBrawl;
+            // Daltonové (High Noon) letí do odhozu úplně stejně jako Rvačka – jen si kartu
+            // vybírá její vlastník sám (attacker === target) a nikdy to není karta z ruky.
+            const isBrawl = sel?.isBrawl || sel?.isDaltons;
             const victimIdx = sel?.targetIdx;
             const victim = gs.players[victimIdx];
             // Dělení karet mrtvého mezi víc Vulture Samů: vzatá karta letí od mrtvého do
