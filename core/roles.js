@@ -11,6 +11,18 @@ function rolesForPlayerCount(playerCount) {
     return [];
 }
 
+// Role se v kódu (i v síťovém stavu) jmenují anglicky – hráči je ale musí vidět česky.
+// Jediný zdroj pravdy pro překlad; UI se na název role nikde neptá napřímo.
+const ROLE_CZ = {
+    Sheriff: "Šerif",
+    Deputy: "Pomocník",
+    Outlaw: "Bandita",
+    Renegade: "Odpadlík",
+};
+function roleNameCz(role) {
+    return ROLE_CZ[role] || role || '';
+}
+
 const LOW_HEALTH_CHARS = ["Paul Regret", "El Gringo",
     // Dodge City – postavy se 3 životy (Apache Kid a Vera Custer přibudou ve fázi 7).
     "Elena Fuente", "Pixie Pete", "Sean Mallory", "Apache Kid", "Vera Custer"];
@@ -27,5 +39,6 @@ function healthForCharacter(charName, role) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { rolesForPlayerCount, baseHealthForCharacter, healthForCharacter, LOW_HEALTH_CHARS };
+    module.exports = { rolesForPlayerCount, baseHealthForCharacter, healthForCharacter,
+                       LOW_HEALTH_CHARS, ROLE_CZ, roleNameCz };
 }

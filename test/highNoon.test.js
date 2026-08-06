@@ -166,30 +166,38 @@ test('Žízeň: běžný hráč si ve fázi lízání vezme jednu kartu a fáze 
 
 // ── Kit Carlson (FAQ H6) ────────────────────────────────────────────────────
 
-test('Kit Carlson se Žízní: odkryje 2, nechá si 1, druhou vrátí na balíček', () => {
+// Kit odkrývá VŽDY 3 karty (to je jeho schopnost); události mění jen to, kolik si jich
+// nechá – a Příjezd vlaku ne ani to (kartu navíc si dolízne klasicky z balíčku).
+
+test('Kit Carlson se Žízní: odkryje 3, nechá si 1, zbylé dvě vrátí na balíček', () => {
     const g = mkHnGame([{ role: 'Sheriff', character: 'Kit Carlson' }, {}], { event: 'ZIZEN' });
     g.deck.cards = [];
     for (let i = 0; i < 8; i++) topDeck(g, Suits.CLUBS, String(i + 2));
     g.startDrawPhase();
     g.drawCard('deck');
     assert.equal(g.phase, 'KIT_CARLSON');
-    assert.equal(g.kitCarlsonState.revealed.length, 2, 'odkryje o jednu víc, než si nechá');
+    assert.equal(g.kitCarlsonState.revealed.length, 3, 'odkrytých je vždy 5-2 = 3');
     assert.equal(g.kitCarlsonState.needed, 1);
     const deckBefore = g.deck.cards.length;
     g.kitCarlsonPick(0);
     assert.equal(g.players[0].hand.length, 1);
     assert.equal(g.phase, 'PLAY');
-    assert.equal(g.deck.cards.length, deckBefore + 1, 'nevybraná karta se vrátila');
+    assert.equal(g.deck.cards.length, deckBefore + 2, 'obě nevybrané karty se vrátily');
 });
 
-test('Kit Carlson s Příjezdem vlaku: odkryje 4 a nechá si 3', () => {
+test('Kit Carlson s Příjezdem vlaku: odkryje 3, nechá si 2 a čtvrtou dolízne z balíčku', () => {
     const g = mkHnGame([{ role: 'Sheriff', character: 'Kit Carlson' }, {}], { event: 'PRIJEZD_VLAKU' });
     g.deck.cards = [];
     for (let i = 0; i < 8; i++) topDeck(g, Suits.CLUBS, String(i + 2));
     g.startDrawPhase();
     g.drawCard('deck');
-    assert.equal(g.kitCarlsonState.revealed.length, 4);
-    g.kitCarlsonPick(0); g.kitCarlsonPick(1); g.kitCarlsonPick(2);
+    assert.equal(g.kitCarlsonState.revealed.length, 3);
+    assert.equal(g.kitCarlsonState.needed, 2);
+    assert.equal(g.kitCarlsonState.extra, 1, 'karta za událost se líže až po výběru');
+    g.kitCarlsonPick(0); g.kitCarlsonPick(1);
+    assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.phase, 'DRAW', 'zbývá klasické líznutí z balíčku');
+    g.drawCard('deck');
     assert.equal(g.players[0].hand.length, 3);
     assert.equal(g.phase, 'PLAY');
 });
@@ -197,14 +205,14 @@ test('Kit Carlson s Příjezdem vlaku: odkryje 4 a nechá si 3', () => {
 test('Kit Carlson vrací nevybrané karty ve STEJNÉM pořadí (FAQ H6)', () => {
     const g = mkHnGame([{ role: 'Sheriff', character: 'Kit Carlson' }, {}], { event: 'ZIZEN' });
     g.deck.cards = [];
-    // draw() bere z konce → odkryjí se hodnoty '9' a '8'; zbytek balíčku zůstane pod nimi.
+    // draw() bere z konce → odkryjí se hodnoty '9', '8' a '3'; '2' zůstane pod nimi.
     for (const v of ['2', '3', '8', '9']) topDeck(g, Suits.CLUBS, v);
     g.startDrawPhase();
     g.drawCard('deck');
     const revealedValues = g.kitCarlsonState.revealed.map(c => c.value);
-    assert.deepEqual(revealedValues, ['9', '8']);
-    g.kitCarlsonPick(0);   // nechá si '9', vrací '8'
-    assert.deepEqual(g.deck.cards.map(c => c.value), ['2', '3', '8'], 'vrácená karta leží zase navrchu');
+    assert.deepEqual(revealedValues, ['9', '8', '3']);
+    g.kitCarlsonPick(0);   // nechá si '9', vrací '8' a '3'
+    assert.deepEqual(g.deck.cards.map(c => c.value), ['2', '3', '8'], 'vrácené karty leží zase navrchu ve stejném pořadí');
 });
 
 // ── Black Jack ──────────────────────────────────────────────────────────────
@@ -237,6 +245,21 @@ test('Black Jack s Příjezdem vlaku: základ 3, za červenou 4', () => {
     g.drawCard('deck');
     g.drawCard('deck');
     assert.equal(g.players[0].hand.length, 4);
+});
+
+test('Black Jack s Příjezdem vlaku: za ČERNOU se dolízne 3. karta (za událost, na konci)', () => {
+    const g = mkHnGame([{ role: 'Sheriff', character: 'Black Jack' }, {}], { event: 'PRIJEZD_VLAKU' });
+    g.deck.cards = [];
+    for (let i = 0; i < 8; i++) topDeck(g, Suits.SPADES);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    g.drawCard('deck');
+    g.resolveBlackJack(true);
+    assert.equal(g.drawPhaseState.cardsNeeded, 3, 'žádný bonus, ale karta za vlak zbývá');
+    assert.equal(g.phase, 'DRAW');
+    g.drawCard('deck');
+    assert.equal(g.players[0].hand.length, 3);
+    assert.equal(g.phase, 'PLAY');
 });
 
 test('Black Jack se Žízní: lízne 1 kartu, ukázka druhé se nespustí', () => {

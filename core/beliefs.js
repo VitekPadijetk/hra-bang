@@ -77,6 +77,18 @@ function expectedHostility(myRole, dist, opts = {}) {
     return sum;
 }
 
+// Jaká je šance, že je hráč s rozdělením `dist` pro mě NEPŘÍTEL (role, na kterou se
+// podle roleHostility útočí). Na rozdíl od expectedHostility se neváží silou – slouží
+// jen jako pojistka „tohle není JISTÝ spojenec" při nouzovém cílení (viz rankEnemies).
+function enemyProbability(myRole, dist, opts = {}) {
+    if (!dist) return 0;
+    let p = 0;
+    for (const r of ROLES) {
+        if ((dist[r] || 0) > 0 && roleHostility(myRole, r, opts) > 0) p += dist[r];
+    }
+    return p;
+}
+
 function countRoles(list) {
     const c = { Sheriff: 0, Deputy: 0, Outlaw: 0, Renegade: 0 };
     for (const r of list) if (c[r] !== undefined) c[r]++;
@@ -205,6 +217,6 @@ function estimateOutlawsAlive(state, beliefs) { return estimateRoleAlive(state, 
 function estimateDeputiesAlive(state, beliefs) { return estimateRoleAlive(state, beliefs, 'Deputy'); }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { roleHostility, expectedHostility, computeBeliefs,
+    module.exports = { roleHostility, expectedHostility, enemyProbability, computeBeliefs,
                        estimateOutlawsAlive, estimateDeputiesAlive, estimateRoleAlive, ROLES };
 }

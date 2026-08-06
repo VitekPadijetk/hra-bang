@@ -62,6 +62,10 @@ const App = {
     // ID karty, kterou právě animujeme do odhozu (dynamit bum / vězení). Dokud je
     // nastavené, board.js ji navrchu odhozu nevykreslí – objeví se až po animaci.
     discardAnimHideId: null,
+    // Colt .45 na mém stole: kreslí se právě teď? + kdy začal jeho fade-in (0 = nefaduje).
+    // Slouží k plynulému objevení Coltu na místě sebrané/zničené zbraně (view/board.js).
+    coltVisible: false,
+    coltFadeStart: 0,
     // Posun postavy po kartě životů při zásahu/vyléčení (playerIdx -> { fromHealth,
     // sprite }). board.js rozjede plovoucí postavu ze staré pozice na novou.
     healthAnims: {},
@@ -144,6 +148,7 @@ const App = {
     // mezi ním a středem; při výběru odlétají do ruky, nevybraná do balíčku.
     kitSpecParked: [],
     kitSpecPicksDone: 0,
+    kitSpecNeeded: 2,       // kolik si Kit nechá (Žízeň = 1) – snímek ze startu rozdávání
     createAdvanced: false,
     joinListFetched: false,
     joinRoomNamesFetched: false,

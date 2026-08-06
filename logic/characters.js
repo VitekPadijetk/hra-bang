@@ -228,8 +228,11 @@ const CharactersMixin = {
         const ld = this.luckyDukeState;
         const chosen = ld.cards[cardIdx];
         const other = ld.cards[1 - cardIdx];
-        this.deck.discardPile.push(chosen);
+        // Pořadí v odhozu kopíruje animaci: NEvybraná odletí hned, vybraná až po
+        // klasickém sejmutí uprostřed obrazovky – leží tedy navrchu (viz
+        // playLuckyDukeResult v game.js, kde se z vrchu odhozu i pozná).
         this.deck.discardPile.push(other);
+        this.deck.discardPile.push(chosen);
         this.currentCheck = { ...ld.checkContext, card: chosen, active: false };
         this.luckyDukeState = null;
         this.phase = "CHECKING";

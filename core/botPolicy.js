@@ -48,6 +48,7 @@ if (typeof require === 'function') {
         const __b = require('./beliefs.js');
         globalThis.computeBeliefs = __b.computeBeliefs;
         globalThis.expectedHostility = __b.expectedHostility;
+        globalThis.enemyProbability = __b.enemyProbability;
         globalThis.roleHostility = __b.roleHostility;
         globalThis.estimateOutlawsAlive = __b.estimateOutlawsAlive;
         globalThis.estimateDeputiesAlive = __b.estimateDeputiesAlive;
@@ -70,6 +71,14 @@ const SPADES = '♠️';
 // klidně útočí na prokázané/pravděpodobné nepřátele. rankEnemies řadí od nejjistějšího.
 const ENEMY_EPS = 0.1;
 
+// Nouzové cílení: když práh nepřekročí NIKDO, hra by se zasekla – nikdo by nikoho
+// nenapadl, boti by jen lízali a odhazovali. Typicky konec hry, kde straně šerifa zbývají
+// jen nerozlišitelní pomocníci a odpadlík (šerif+2 pomocníci+odpadlík → nepřítelem je
+// každý jen z 1/3, takže očekávaná nepřátelskost vyjde záporně u všech). Tehdy se útočí na
+// NEJPRAVDĚPODOBNĚJŠÍHO nepřítele – ale jen na toho, u kterého má „nepřítel" aspoň takovou
+// šanci. Jistý spojenec (šance 0) tak zůstává nedotknutelný vždycky.
+const DESPERATE_ENEMY_P = 0.25;
+
 // pendingActor je vytažen do core/pending.js (sdílí ho klient přes <script>). V prohlížeči
 // je globál z pending.js, v Node ho výše require-ujeme na globalThis. Re-export níže drží
 // kompatibilitu pro server/bots.js a testy (require('./botPolicy').pendingActor).
@@ -91,17 +100,22 @@ function hostilityOf(state, myIndex, targetIdx, beliefs) {
 }
 
 // Seřazení nepřátel podle beliefů: nejvíc nepřátelský → nejnižší HP → nejmíň karet v ruce.
+// Když práh nepřekročí nikdo, nastupuje nouzové cílení (viz DESPERATE_ENEMY_P): pořadí
+// zůstává stejné (od nejpravděpodobnějšího nepřítele), jen se propustí i záporná
+// nepřátelskost – kromě hráčů, kteří nepřítelem prakticky být nemůžou.
 function rankEnemies(state, myIndex, beliefs, requireReach) {
     const me = state.players[myIndex];
     const opts = hostOpts(state, beliefs);
-    const list = [];
+    const all = [];
     state.players.forEach((p, idx) => {
         if (idx === myIndex || p.health <= 0) return;
-        const h = expectedHostility(me.role, beliefs[idx], opts);
-        if (h <= ENEMY_EPS) return;          // pravděpodobný spojenec / nejasný → nestřílet
         if (requireReach && !computeCanHit(state, myIndex, idx)) return;
-        list.push({ idx, h, health: p.health, hand: p.hand.length });
+        all.push({ idx, h: expectedHostility(me.role, beliefs[idx], opts),
+                   ep: enemyProbability(me.role, beliefs[idx], opts),
+                   health: p.health, hand: p.hand.length });
     });
+    let list = all.filter(e => e.h > ENEMY_EPS);
+    if (list.length === 0) list = all.filter(e => e.ep >= DESPERATE_ENEMY_P);
     list.sort((a, b) => b.h - a.h || a.health - b.health || a.hand - b.hand);
     return list;
 }

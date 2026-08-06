@@ -1,6 +1,11 @@
 // logic/draw.js — mixin GameState: fáze lízání (běžná + Kit Carlson + Black Jack).
 // Připojuje se na GameState.prototype. Viz „Mixin pattern" v CLAUDE.md.
 (function () {
+
+// Kit Carlson odkrývá vždy tolik karet – nezávisle na tom, kolik si jich nechá
+// (Žízeň 1, jinak 2). Zrcadlí to i klient (panel + pohled ostatních).
+const KIT_REVEAL = 3;
+
 const DrawMixin = {
     startDrawPhase() {
         const player = this.getCurrentPlayer();
@@ -138,11 +143,12 @@ const DrawMixin = {
                 // Zachytíme reshuffle při c1 (už proběhl před tímto blokem)
                 // i případný reshuffle při c2/c3.
                 const reshuffledAtC1 = this.deck._reshuffleOccurred;
-                // Odkryje o JEDNU kartu víc, než si nechá (běžně 3 a nechá si 2; se Žízní
-                // odkryje 2 a nechá 1, s Příjezdem vlaku odkryje 4 a nechá 3 – FAQ H6).
-                const needed = ds.kitNeeded || 2;
+                // Odkrývá VŽDY 3 karty (to je jeho schopnost) – mění se jen kolik si z nich
+                // nechá: běžně 2, se Žízní 1. Příjezd vlaku počet odkrytých nezvyšuje: nechá
+                // si 2 a kartu navíc si pak lízne klasicky z balíčku (ds.kitExtra, viz
+                // kitCarlsonPick).
                 const rest = [];
-                for (let i = 0; i < needed; i++) rest.push(this.deck.draw());
+                for (let i = 0; i < KIT_REVEAL - 1; i++) rest.push(this.deck.draw());
                 if (reshuffledAtC1 || this.deck._reshuffleOccurred) {
                     this.deck._reshuffleWasProactive = false; // vždy emergency pro Kit Carlson
                 }
@@ -151,7 +157,10 @@ const DrawMixin = {
                     revealed,
                     picked: [],
                     pendingAdd: [],
-                    needed
+                    // Nikdy si nesmí nechat víc, než kolik karet se povedlo odkrýt
+                    // (došlý balíček) – jinak by výběr nešel dokončit.
+                    needed: Math.min(ds.kitNeeded || 2, revealed.length),
+                    extra: ds.kitExtra || 0
                 };
                 this.drawPhaseState.active = false;
                 this.phase = "KIT_CARLSON";
@@ -199,6 +208,11 @@ const DrawMixin = {
     startKitCarlsonDraw() {
         const player = this.getCurrentPlayer();
         player.bangsPlayedThisTurn = 0;
+        // Odkryté karty jsou vždy 3 (schopnost); mění se jen kolik si jich nechá.
+        // Žízeň (líže 1) → nechá si 1; Příjezd vlaku (líže 3) → nechá si 2 z odkrytých
+        // a zbylou kartu si po výběru lízne klasicky z balíčku (kitExtra).
+        const total = this._drawCountFor(player);
+        const keep = Math.min(total, KIT_REVEAL - 1);
         this.drawPhaseState = {
             active: true,
             playerIdx: this.currentPlayerIndex,
@@ -206,7 +220,8 @@ const DrawMixin = {
             cardsDrawn: 0,
             options: ['deck'],
             isKitCarlson: true,
-            kitNeeded: this._drawCountFor(player)   // kolik karet si nakonec nechá
+            kitNeeded: keep,            // kolik si nechá z odkrytých
+            kitExtra: total - keep      // kolik si po výběru dolízne z balíčku
         };
         this.phase = "DRAW";
     },
@@ -234,7 +249,22 @@ const DrawMixin = {
             for (let i = kc.revealed.length - 1; i >= 0; i--) {
                 if (!pickedSet.has(i)) this.deck.cards.push(kc.revealed[i]);
             }
+            const extra = kc.extra || 0;
             this.kitCarlsonState = null;
+            if (extra > 0) {
+                // Příjezd vlaku (High Noon): karta nad rámec schopnosti se líže úplně
+                // klasicky z balíčku, až po výběru (klik na balíček jako u kohokoli jiného).
+                this.drawPhaseState = {
+                    active: true,
+                    playerIdx: this.currentPlayerIndex,
+                    cardsNeeded: extra,
+                    cardsDrawn: 0,
+                    options: ['deck'],
+                    isStartOfTurn: false
+                };
+                this.phase = "DRAW";
+                return;
+            }
             this.phase = "PLAY";
         }
     },
@@ -259,6 +289,12 @@ const DrawMixin = {
             // sem nedostane.
             this.drawPhaseState.cardsNeeded = ds.cardsNeeded + 1;
             this.drawPhaseState.blackJackWaitingForThird = true;
+            this.phase = "DRAW";
+            return;
+        }
+        // Černá druhá karta = žádný bonus, ale fáze lízání tím nutně nekončí: s Příjezdem
+        // vlaku (High Noon) zbývá ještě karta za událost a líže se až teď, na konci.
+        if (ds.cardsDrawn < ds.cardsNeeded) {
             this.phase = "DRAW";
             return;
         }

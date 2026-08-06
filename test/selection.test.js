@@ -135,3 +135,36 @@ test('výběr modré karty → SELECT s akcí PLAY_BLUE', () => {
     const c = ctx({ card: { id: 65, type: 'Zbraň' }, index: 1 });
     assert.deepEqual(decideCardClick(c), { type: 'SELECT', index: 1, action: 'PLAY_BLUE' });
 });
+
+// ── Reverend (High Noon): Pivo nejde zahrát ani jako záchrana před vyřazením ──
+// Server ho odmítne (beerLastLifeSave), takže ho UI nesmí ani nabízet – jinak hráč klikne
+// a nestane se nic.
+const lastLifeBeer = (phase, pending, event) => ctx({
+    state: {
+        phase, currentPlayerIndex: 1,
+        players: [{ health: 4 }, { health: 1 }, { health: 4 }],
+        ...pending,
+        ...(event ? { activeEvent: { key: event } } : {}),
+    },
+    me: { health: 1, character: null, hand: [] },
+    myIndex: 1,
+    card: { id: 9, type: 'Pivo' },
+    index: 2,
+    playable: null,
+});
+
+test('DYNAMITE_DAMAGE na posledním životě: Pivo zachrání, s Reverendem ne', () => {
+    const pending = { pendingDynamiteDamage: { playerIdx: 1 } };
+    assert.deepEqual(decideCardClick(lastLifeBeer('DYNAMITE_DAMAGE', pending)),
+        { type: 'BEER_DYNAMITE_SAVE', index: 2 });
+    assert.deepEqual(decideCardClick(lastLifeBeer('DYNAMITE_DAMAGE', pending, 'REVEREND')),
+        { type: 'NONE' });
+});
+
+test('NOON_DAMAGE na posledním životě: Pivo zachrání, s Reverendem ne', () => {
+    const pending = { pendingNoonDamage: { playerIdx: 1 } };
+    assert.deepEqual(decideCardClick(lastLifeBeer('NOON_DAMAGE', pending)),
+        { type: 'BEER_NOON_SAVE', index: 2 });
+    assert.deepEqual(decideCardClick(lastLifeBeer('NOON_DAMAGE', pending, 'REVEREND')),
+        { type: 'NONE' });
+});

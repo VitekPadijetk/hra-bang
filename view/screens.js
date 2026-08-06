@@ -229,7 +229,7 @@ function renderCharacterSelectScreen() {
 
             const roleMap = { 'Sheriff': 'role_000', 'Outlaw': 'role_001', 'Renegade': 'role_002', 'Deputy': 'role_003' };
             const roleTex = roleMap[selPlayer.role];
-            let title = gameScene.add.text(960, 55, `Vybíráš pro: ${selPlayer.name} (${selPlayer.role})`,
+            let title = gameScene.add.text(960, 55, `Vybíráš pro: ${selPlayer.name} (${roleNameCz(selPlayer.role)})`,
                 { fontSize: '26px', color: '#8cf' }).setOrigin(0.5);
             gameScene.cardsSprites.add(title);
             if (roleTex) {

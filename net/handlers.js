@@ -634,8 +634,11 @@ function _deathFlyToDiscard(it, o) {
     if (isMine || it.kind !== 'hand') {
         // Znám líc (moje karty / veřejné modré+zbraň) → jen letí do odhozu,
         // z orientace hráče do 0° a z velikosti na stole (0.36/0.27) na 0.3.
+        // exactAngle: karta letí LÍCEM nahoru, takže 0° ≠ 180° – u protějšího hráče by ji
+        // nearestCardAngle „srovnal" na 180° (rotace by se vůbec nespustila) a modré karty
+        // (typicky Vězení) by dosedly do odhozu vzhůru nohama.
         animateCard(it.from.x, it.from.y, discard.x, discard.y, getCardTex(it.id), 380, reveal,
-            { startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, holdUntil: hold });
+            { startAngle: ang, endAngle: 0, exactAngle: true, startScale: sc, endScale: 0.3, holdUntil: hold });
     } else {
         // Cizí karta z ruky se za letu odhalí (rub→líc) – stejně jako běžný odhoz z ruky.
         animateCardFlip(it.from.x, it.from.y, discard.x, discard.y, 'card_back', getCardTex(it.id),
@@ -1558,10 +1561,13 @@ function _playCardAnim(data) {
             const from = getBoardPos(data.playerIdx, data.boardIdx ?? 1);
             App.discardAnimHideId = data.cardId;   // v odhozu skryj, dokud nedoletí
             renderUI();
-            // Z boardu hráče (klidně otočeného o 90°) do odhozu, kde leží rovně (0°), se zmenšením.
+            // Z boardu hráče (klidně otočeného o 90°) do odhozu, kde leží rovně (0°), se
+            // zmenšením. exactAngle jako u board_to_discard: karta leží LÍCEM nahoru, takže
+            // u protějšího hráče (180°) se musí opravdu otočit – bez toho by nearestCardAngle
+            // rotaci zrušil a dynamit by dosedl vzhůru nohama.
             animateCard(from.x, from.y, discard.x, discard.y, getCardTex(data.cardId), 350, () => {
                 if (App.discardAnimHideId === data.cardId) { App.discardAnimHideId = null; renderUI(); }
-            }, { startAngle: sideAngle(data.playerIdx), endAngle: 0, startScale: 0.42, endScale: 0.3 });
+            }, { startAngle: sideAngle(data.playerIdx), endAngle: 0, exactAngle: true, startScale: 0.42, endScale: 0.3 });
             break;
         }
         case 'board_to_discard': {
@@ -1653,7 +1659,9 @@ const ANIM_MS = {
     store_pick:        420,
     panic_sequence:    640,   // 320 k cíli + 320 s ukradenou kartou zpět
     catbalou_sequence: 640,   // 320 k cíli + 320 se zničenou kartou do odhozu
-    lucky_duke_result: 740,   // vybraná hned (400) + nevybraná se zpožděním 300
+    // Nevybraná odletí hned (400), vybraná mezitím jede klasické sejmutí uprostřed
+    // obrazovky: 450 nálet + 3000 výdrž s pulzem + 400 sestup do odhozu (= CHECK_REVEAL_MS).
+    lucky_duke_result: 3850,
 };
 
 function _animDurationMs(data) {

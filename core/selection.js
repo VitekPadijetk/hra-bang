@@ -29,6 +29,9 @@ if (typeof require === 'function') {
     if (typeof effectiveCharacter === 'undefined') {
         globalThis.effectiveCharacter = require('./distance.js').effectiveCharacter;
     }
+    if (typeof beerBlockedFor === 'undefined') {
+        globalThis.beerBlockedFor = require('./highNoon.js').beerBlockedFor;
+    }
 }
 
 function decideCardClick(ctx) {
@@ -52,10 +55,12 @@ function decideCardClick(ctx) {
         return { type: 'SID_DISCARD_BOTH', cardIdx1: firstIdx, cardIdx2: index };
     }
 
-    // Pivo ve fázi DYNAMITE_DAMAGE při posledním životě (před guardem na tah)
+    // Pivo ve fázi DYNAMITE_DAMAGE při posledním životě (před guardem na tah).
+    // Reverend (High Noon) zakazuje Pivo i jako záchranu před vyřazením – server ho
+    // odmítne (beerLastLifeSave), takže tady se ani nesmí nabízet.
     if (state.phase === "DYNAMITE_DAMAGE" &&
         state.pendingDynamiteDamage?.playerIdx === myIndex &&
-        me.health === 1 && card.type === "Pivo" &&
+        me.health === 1 && card.type === "Pivo" && !beerBlockedFor(state) &&
         state.players.filter(p => p.health > 0).length > 2) {
         return { type: 'BEER_DYNAMITE_SAVE', index };
     }
@@ -63,7 +68,7 @@ function decideCardClick(ctx) {
     // Totéž pro ztrátu života od Pravého poledne (High Noon).
     if (state.phase === "NOON_DAMAGE" &&
         state.pendingNoonDamage?.playerIdx === myIndex &&
-        me.health === 1 && card.type === "Pivo" &&
+        me.health === 1 && card.type === "Pivo" && !beerBlockedFor(state) &&
         state.players.filter(p => p.health > 0).length > 2) {
         return { type: 'BEER_NOON_SAVE', index };
     }

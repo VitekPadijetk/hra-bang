@@ -601,7 +601,14 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const chosenId = ld?.cards?.[index]?.id ?? null;
             const otherId = ld?.cards?.[1 - index]?.id ?? null;
             gs.luckyDukePick(index);
-            if (chosenId !== null) emitAnim(room, { type: 'lucky_duke_result', chosenId, otherId });
+            if (chosenId !== null) {
+                emitAnim(room, { type: 'lucky_duke_result', chosenId, otherId });
+                // Vybraná karta se ještě „sejme" uprostřed obrazovky – stejná cinematika
+                // (a stejně dlouhá) jako u běžného checku. Boti po tu dobu nehrají, jinak
+                // by hráli přes ni: klient do jejího konce drží stav ve frontě.
+                room._revealBlockUntil = Math.max(room._revealBlockUntil || 0,
+                    Date.now() + (typeof ctx.checkRevealMs === 'number' ? ctx.checkRevealMs : 3850));
+            }
             if (gs.lastAnimEvent) {
                 emitAnim(room, gs.lastAnimEvent);
                 gs.lastAnimEvent = null;

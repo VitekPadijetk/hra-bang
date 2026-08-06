@@ -217,6 +217,8 @@ function runHealthSlide(playerIdx, curHealth, tx, ty, bulletH, dirX, dirY, angle
 // identita karty napříč rendery (u ruky card.id, u rubů soupeřů per-slot). Voláme těsně
 // po vytvoření statického spritu na jeho cílové (x,y).
 const REFLOW_MS = 240;
+// Jak dlouho se Colt .45 nafaduje, když nahradí sebranou/zničenou zbraň (drawMyArea).
+const COLT_FADE_MS = 320;
 function reflowCard(key, staticSprite, x, y, tex, scale, angle, depth = 0) {
     App._cardSeen.add(key);
     // Statická karta je po dobu klouzání skrytá, takže obarvení musí převzít ta plovoucí –
@@ -1048,6 +1050,14 @@ function drawMyArea(ctx) {
             if (me.board) myBoardCards.push(...me.board);
         }
 
+        // Colt .45 se objeví přesně tam, kde do teď ležela zbraň (někdo mi ji zničil/ukradl,
+        // nebo jsem ji vyměnil) – bez fade-inu na tom místě jen problikne. Fázi fade-inu
+        // počítáme z času, protože renderUI kreslí sprite znovu při každém snímku (tween od
+        // nuly by se tak pořád restartoval a Colt by blikal dál).
+        const _coltNow = myBoardCards.some(c => c._isColt);
+        if (_coltNow && !App.coltVisible) App.coltFadeStart = Date.now();
+        App.coltVisible = _coltNow;
+
         const boardCardW = 325 * scaleMe + 10;
         const boardCardH = 500 * scaleMe;
         const boardMaxPerRow = 6;   // MUSÍ zrcadlit getBoardCardPos v positions.js
@@ -1116,6 +1126,17 @@ function drawMyArea(ctx) {
             if (card.green && card._playedTurn === state.turnId && _greyPhase && !isPickingMyBoard) {
                 if (bSprite.preFX) bSprite.preFX.addColorMatrix().grayscale(1);
                 else bSprite.setTint(0x777777);   // fallback (Canvas renderer bez preFX)
+            }
+
+            // Colt .45 právě naskočil na místo sebrané zbraně → dofadeuj ho do plna.
+            if (card._isColt && App.coltFadeStart) {
+                const el = Date.now() - App.coltFadeStart;
+                if (el < COLT_FADE_MS) {
+                    bSprite.setAlpha(Math.max(0, el / COLT_FADE_MS));
+                    gameScene.tweens.add({ targets: bSprite, alpha: 1, duration: COLT_FADE_MS - el, ease: 'Power2' });
+                } else {
+                    App.coltFadeStart = 0;
+                }
             }
 
             // Reflow slide: modré/výzbroj se při přibytí/ubrání přeskládají plynule.
@@ -1349,9 +1370,12 @@ function drawMyArea(ctx) {
                 if (isDocStaged) cSprite.setTint(0xbbbbbb);
                 if (isJoseBlue) cSprite.setTint(0xffff44);
 
-                // Pivo jako záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE)
+                // Pivo jako záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE).
+                // Reverend (High Noon) Pivo zakazuje i tady → nezvýrazňovat (klik ho také
+                // nepustí, viz decideCardClick v core/selection.js).
                 const _aliveNow = state.players.filter(p => p.health > 0).length;
                 const _isLastLifeBeer = card.type === "Pivo" && me.health === 1 && _aliveNow > 2 && !isMySidActive &&
+                    !beerBlockedFor(state) &&
                     ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex) ||
                      (state.phase === "DYNAMITE_DAMAGE" && state.pendingDynamiteDamage?.playerIdx === myIndex) ||
                      (state.phase === "NOON_DAMAGE" && state.pendingNoonDamage?.playerIdx === myIndex));
@@ -1908,21 +1932,13 @@ function drawPhaseOverlays(ctx) {
             let cSprite = gameScene.add.image(cx, 480, getTex(card.id)).setScale(0.65);
             mAdd(cSprite);
 
-            // Záplata pod pulzující markou (game.js) musí mít stejný odstín jako karta,
-            // jinak by v rohu svítil obdélník původní barvy. Při hoveru karta navíc roste,
-            // takže se pulz i záplata přeskládají na novou velikost (jinak zapečená marka
-            // vykoukne zpod záplaty).
-            const _pulseTint = (t) => { if (typeof setLuckyPulseTint === 'function') setLuckyPulseTint(i, t); };
-            const _pulseResize = (sc, t) => {
-                if (typeof retuneLuckyPulse === 'function') retuneLuckyPulse(i, card, cx, 480, sc, t);
-            };
-            _pulseTint(isMyCheck ? 0xddffdd : null);
-
+            // Marky se při výběru ZÁMĚRNĚ nezvýrazňují (blikání na obou kartách mate) –
+            // pulz proběhne až na vybrané kartě uprostřed obrazovky, viz playLuckyDukeResult.
             if (isMyCheck) {
                 cSprite.setInteractive({ useHandCursor: true });
                 cSprite.setTint(0xddffdd);
-                cSprite.on('pointerover', () => { cSprite.setScale(0.72); cSprite.setTint(0xffff44); _pulseResize(0.72, 0xffff44); });
-                cSprite.on('pointerout', () => { cSprite.setScale(0.65); cSprite.setTint(0xddffdd); _pulseResize(0.65, 0xddffdd); });
+                cSprite.on('pointerover', () => { cSprite.setScale(0.72); cSprite.setTint(0xffff44); });
+                cSprite.on('pointerout', () => { cSprite.setScale(0.65); cSprite.setTint(0xddffdd); });
                 cSprite.on('pointerdown', () => socket.emit('lucky_duke_pick', i));
             }
         });

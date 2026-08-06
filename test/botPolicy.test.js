@@ -298,3 +298,42 @@ test('keep_character: bot si postavu nenechává vždy (šance dle kvality posta
     assert.equal(a.event, 'keep_character');
     assert.equal(typeof a.payload, 'boolean');
 });
+
+// ── Koncovka: zákon vs. odpadlík, nikdo není prokázaný nepřítel ────────────────
+// Zbývá šerif + pomocníci + odpadlík (banditi mrtví = role veřejné). Pro stranu šerifa
+// je každý živý jen z 1/3 nepřítel, takže očekávaná nepřátelskost vyjde u všech záporně –
+// bez nouzového cílení by šerif ani pomocníci nikdy nezaútočili a hra by uvázla.
+const endgame = (current) => {
+    const g = mkGame([
+        { role: 'Sheriff' }, { role: 'Deputy' }, { role: 'Renegade' }, { role: 'Deputy' },
+        { role: 'Outlaw', health: 0 }, { role: 'Outlaw', health: 0 }, { role: 'Outlaw', health: 0 },
+    ], { current });
+    give(g, current, CardType.BANG);
+    return g;
+};
+
+test('PLAY: šerif v koncovce (jen pomocníci a odpadlík) přesto útočí, neuvázne', () => {
+    const a = decideBotAction(endgame(0), 0);
+    assert.equal(a.event, 'play_bang');
+    assert.ok([1, 2, 3].includes(a.payload.targetIdx));
+});
+
+test('PLAY: pomocník v koncovce přesto útočí, neuvázne', () => {
+    const a = decideBotAction(endgame(1), 1);
+    assert.equal(a.event, 'play_bang');
+    assert.ok([0, 2, 3].includes(a.payload.targetIdx), 'nesmí to být on sám');
+    assert.notEqual(a.payload.targetIdx, 0, 'na veřejného šerifa pomocník nikdy nestřílí');
+});
+
+test('PLAY: nouzové cílení nikdy nesáhne na JISTÉHO spojence (šerif ↔ pomocník)', () => {
+    // 5 hráčů (Sheriff, 2× Outlaw, Renegade, Deputy). Všichni krom šerifa a pomocníka jsou
+    // mrtví → v poolu zbývá jediná role (Deputy), takže jediný živý soupeř je pro šerifa
+    // jistý spojenec. Nouzové cílení se na něj nesmí svézt.
+    const g = mkGame([
+        { role: 'Sheriff' }, { role: 'Outlaw', health: 0 }, { role: 'Outlaw', health: 0 },
+        { role: 'Renegade', health: 0 }, { role: 'Deputy' },
+    ], { current: 0 });
+    give(g, 0, CardType.BANG);
+    const a = decideBotAction(g, 0);
+    assert.notEqual(a.event, 'play_bang', 'na jistého pomocníka šerif nestřílí ani v nouzi');
+});

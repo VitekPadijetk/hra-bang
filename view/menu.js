@@ -656,13 +656,14 @@ function renderMenuScreen(screen) {
 
         themePanel(gameScene, 960, 282, 980, 344);
 
+        // Klíč role zůstává anglicky (posílá se serveru), hráči se ukazuje česky.
         const roleLbl = gameScene.add.text(960, 140,
-            `Role: ${App.debugRoles.join(', ') || '(náhodné)'}`,
+            `Role: ${App.debugRoles.map(roleNameCz).join(', ') || '(náhodné)'}`,
             { fontFamily: THEME.fontUI, fontSize: '20px', color: THEME.color.textMuted }).setOrigin(0.5);
         gameScene.cardsSprites.add(roleLbl);
 
         roleList.forEach((role, ri) => {
-            themeButton(gameScene, 690 + ri * 150, 195, 132, 48, `+ ${role}`, {
+            themeButton(gameScene, 690 + ri * 150, 195, 132, 48, `+ ${roleNameCz(role)}`, {
                 fill: roleColors[role], fillHover: roleColors[role],
                 stroke: THEME.color.goldNum, textColor: '#ffffff', fontSize: '16px',
                 onClick: () => { App.debugRoles.push(role); renderUI(); },
@@ -889,7 +890,7 @@ function showStats(players) {
         return `
         <tr style="border-bottom:1px solid #333">
             <td style="padding:6px 12px;color:#ffcc00">${p.name}</td>
-            <td style="padding:6px;color:#aaa">${p.role}</td>
+            <td style="padding:6px;color:#aaa">${roleNameCz(p.role)}</td>
             <td style="padding:6px;color:#f88">${p.character || '–'}</td>
             <td style="padding:6px;text-align:center">${s.bangsFired}</td>
             <td style="padding:6px;text-align:center">${s.bangsHit} (${accuracy}%)</td>

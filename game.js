@@ -1017,33 +1017,6 @@ function pulseCheckMark(x, y, scale, card, opts = {}) {
     return { marks, tween };
 }
 
-// Pulzy obou karet Lucky Duke (drží po dobu výběru, uklidí se při odletu do odhozu).
-let _luckyPulses = [];
-function stopLuckyPulses() {
-    _luckyPulses.forEach(p => { if (!p) return; if (p.tween) p.tween.remove(); p.marks.forEach(m => m.destroy()); });
-    _luckyPulses = [];
-}
-
-// Karty Lucky Duka board.js podbarvuje (výběr, hover) a překresluje je při každém renderu.
-// Záplata pod pulzem ale renderem neprochází, takže by na obarvené kartě svítila původní
-// barvou – tint jí proto board.js přehlásí sem (i při hoveru).
-function setLuckyPulseTint(i, tint) {
-    const cover = (_luckyPulses[i]?.marks || [])[0];
-    if (!cover?.active || !cover._isMarkCover) return;
-    if (tint) cover.setTint(tint); else cover.clearTint();
-}
-
-// Hover kartu Lucky Duka zvětší → pulz i záplata pod ním se musí přeskládat na novou
-// velikost. Voláno jen z hover handlerů (ne z každého renderu), takže pulz nerestartuje
-// pořád dokola.
-function retuneLuckyPulse(i, card, x, y, scale, tint) {
-    const p = _luckyPulses[i];
-    if (!p) return;                       // pulz zatím nevznikl (karta ještě letí)
-    if (p.tween) p.tween.remove();
-    p.marks.forEach(m => m.destroy());
-    _luckyPulses[i] = pulseCheckMark(x, y, scale, card, { tint });
-}
-
 // Sejmutí (Dynamit/Vězení/Barel/Jourdonnais): kontrolní karta vyletí z balíčku do
 // středu, otočí se rub→líc a zvětší, 3 s drží, pak se zmenší a odletí do odhozu.
 function startCheckReveal(check) {
@@ -1222,6 +1195,9 @@ function startKitCarlsonDealSpectator() {
     const angle = _kitSpecAngleFor(kitIdx);
     App.kitSpecKitIdx = kitIdx;
     App.kitSpecPicksDone = 0;
+    // Kolik si Kit nechá – běžně 2, se Žízní (High Noon) jen 1. Zapamatovat se to musí
+    // TEĎ: při závěrečném letu už je kitCarlsonState ve stavu null.
+    App.kitSpecNeeded = state.kitCarlsonState?.needed ?? 2;
     App.kitSpecParked = [];
     for (let i = 0; i < n; i++) {
         const off = (i - (n - 1) / 2) * spread;
@@ -1252,9 +1228,10 @@ function advanceKitCarlsonSpectator() {
 // ruky Kita (vybrané), poslední zpět do balíčku (nevybraná).
 function finishKitCarlsonSpectator() {
     const parked = App.kitSpecParked || [];
-    // Kit si nechává 2 karty: kolik jich ještě nedoletělo do ruky (zbytek = nevybrané
-    // do balíčku). Robustní i pro málo karet v balíčku (revealed < 3).
-    const toHand = Math.max(0, 2 - (App.kitSpecPicksDone || 0));
+    // Kolik jich ještě nedoletělo do ruky (zbytek = nevybrané do balíčku). Počet, který
+    // si Kit nechává, je běžně 2, se Žízní 1 (App.kitSpecNeeded ze startu rozdávání).
+    // Robustní i pro málo karet v balíčku (revealed < 3).
+    const toHand = Math.max(0, (App.kitSpecNeeded ?? 2) - (App.kitSpecPicksDone || 0));
     parked.forEach((slot, i) => {
         if (i < toHand) _kitSpecFlyToHand(slot, i * 120, i);
         else _kitSpecFlyToDeck(slot, i * 120);
@@ -1308,55 +1285,93 @@ function startLuckyDukeDeal() {
     const xOf = i => i === 0 ? 660 : 1260;
     App.luckyDealIds = new Set(cards.map(c => c.id));
     App.luckyRevealCards = cards.map((c, i) => ({ id: c.id, x: xOf(i), y: slotY }));
-    stopLuckyPulses();
     renderUI();
     // Karty odcházejí z VRCHU balíčku a v jeho velikosti (PILE_SCALE) – ne ze středu
     // hromádky a o kus menší, jinak to vypadá, že se v balíčku „objevují" zevnitř.
     // Vrch se bere hned teď: stav už obě karty z balíčku odebral.
     const _from = deckTopPos();
-    // Kdo vybírá, tomu board.js karty podbarvuje – záplata pod pulzem musí ladit.
-    const _tint = state.luckyDukeState.checkContext?.playerIdx === myIndex ? 0xddffdd : null;
+    // Během výběru se marky ZÁMĚRNĚ nezvýrazňují – karty jsou dvě a blikání na obou
+    // rozptyluje. Pulz přijde až na vybrané kartě uprostřed obrazovky, přesně jako
+    // u běžného sejmutí (viz playLuckyDukeResult).
     cards.forEach((card, i) => {
         setTimeout(() => {
             if (!gameScene) return;
             animateCardFlip(_from.x, _from.y, xOf(i), slotY, 'card_back', getCardTex(card.id),
                 { flip: true, startScale: PILE_SCALE, endScale: slotScale, duration: 420,
-                  onComplete: () => { App.luckyDealIds.delete(card.id); renderUI();
-                      // zvýrazni zkoumanou hodnotu/barvu po dobu výběru
-                      _luckyPulses[i] = pulseCheckMark(xOf(i), slotY, slotScale, card, { tint: _tint }); } });
+                  onComplete: () => { App.luckyDealIds.delete(card.id); renderUI(); } });
         }, i * 160);
     });
 }
 
-// Lucky výsledek: obě karty letí do odhozu (v odhozu skryté do doletu). Vybraná
-// (logika ji do odhozu vloží PRVNÍ → leží níž) letí hned, NEvybraná o chvilku
-// později. Pořadí přichází ze serveru (`lucky_duke_result` nese chosenId) – stav
-// s oběma kartami v odhozu dorazí až po celé sekvenci, takže by se z něj v tuhle
-// chvíli vyčíst nedalo. Bez chosenId (fallback z room_update) se pořadí odvodí
-// z odhozu. Výsledek checku (vězení/dynamit) jde ve frontě AŽ za touhle animací.
+// Lucky výsledek: NEvybraná karta odletí ze svého slotu rovnou do odhozu, vybraná se
+// přesune doprostřed obrazovky a odtud je to ÚPLNĚ KLASICKÉ sejmutí – zvětší se, zabliká
+// jí zkoumaná hodnota+barva (pulseCheckMark) a po výdrži sjede do odhozu. Teprve pak jde
+// ve frontě výsledek checku (vězení/dynamit), takže karty leží na hromádce ve stejném
+// pořadí, v jakém dosedly (logika je tak i vkládá – viz luckyDukePick).
+// Kterou si vybral, říká server (`lucky_duke_result` nese chosenId); bez něj (fallback
+// z room_update) je to ta na vrcholu odhozu.
+const LD_DROP_MS = 400;        // nevybraná ze slotu do odhozu
+const LD_TO_CENTER_MS = 450;   // vybraná ze slotu doprostřed (+ zvětšení)
+const LD_HOLD_MS = 3000;       // výdrž uprostřed s pulzující markou (jako startCheckReveal)
+const LD_TO_DISCARD_MS = 400;  // sestup do odhozu
 function playLuckyDukeResult(chosenId) {
-    stopLuckyPulses();
     const reveal = App.luckyRevealCards || [];
-    const dp = state?.deck?.discardPile || [];
-    const posOf = id => {
-        if (chosenId !== undefined && chosenId !== null) return id === chosenId ? 0 : 1;
-        const k = dp.findIndex(c => c.id === id); return k === -1 ? 1e9 : k;
-    };
-    const ordered = [...reveal].sort((a, b) => posOf(a.id) - posOf(b.id));
-    reveal.forEach(rc => App.discardFlyHideIds.add(rc.id));
-    if (reveal.length) renderUI();
-    // Sprite se vytvoří hned (sedí na svém slotu), NEvybraná (i=1) se rozletí později
-    // přes opts.delay – takže tam vydrží, dokud nezačne její vlastní animace.
-    // holdUntil: po doletu sprite drž na hromádce, dokud karta reálně není v odhozu ve
-    // stavu – ten dorazí až na konci fronty, jinak by karta na okamžik zmizela.
-    const _luckyDiscard = discardTopPos();   // vrch odhozu, ať karty dosednou na hromádku
-    ordered.forEach((rc, i) => {
-        animateCard(rc.x, rc.y, _luckyDiscard.x, _luckyDiscard.y, getCardTex(rc.id), 400, () => {
-            App.discardFlyHideIds.delete(rc.id); renderUI();
-        }, { startScale: 0.65, endScale: 0.3, delay: i * 300,
-             holdUntil: () => (state?.deck?.discardPile || []).some(c => c.id === rc.id) });
-    });
     App.luckyRevealCards = null;
+    if (!gameScene || !reveal.length) return;
+    const dp = state?.deck?.discardPile || [];
+    const chosenIdResolved = (chosenId !== undefined && chosenId !== null)
+        ? chosenId : dp[dp.length - 1]?.id;
+    const picked = reveal.find(rc => rc.id === chosenIdResolved) || reveal[0];
+    // Karta (hodnota + barva) pro pulz: dokud animace běží, je stav ještě ve fázi
+    // LUCKY_DUKE (fronta ho pustí až za ní); po fallbacku už leží v odhozu.
+    const cardOf = (id) => (state?.luckyDukeState?.cards || []).find(c => c.id === id)
+                        || dp.find(c => c.id === id) || null;
+
+    // Panel je po dobu animace prázdný: stav (a s ním konec fáze LUCKY_DUKE) dorazí až
+    // za celou cinematikou, takže by board.js jinak kreslil obě karty dál na slotech,
+    // zatímco letí. `luckyDealIds` je přesně ten filtr, kterým je při rozdávání skrývá.
+    reveal.forEach(rc => { App.luckyDealIds.add(rc.id); App.discardFlyHideIds.add(rc.id); });
+    renderUI();
+    const _luckyDiscard = discardTopPos();   // vrch odhozu, ať karty dosednou na hromádku
+    const inDiscardNow = (id) => (state?.deck?.discardPile || []).some(c => c.id === id);
+
+    // 1) NEvybraná(é) rovnou do odhozu – panel se uvolní a střed patří jen té zkoumané.
+    reveal.forEach(rc => {
+        if (rc === picked) return;
+        animateCard(rc.x, rc.y, _luckyDiscard.x, _luckyDiscard.y, getCardTex(rc.id), LD_DROP_MS, () => {
+            App.discardFlyHideIds.delete(rc.id); renderUI();
+        }, { startScale: 0.65, endScale: PILE_SCALE, holdUntil: () => inDiscardNow(rc.id) });
+    });
+
+    // 2) Vybraná doprostřed → pulz → do odhozu (klasické sejmutí, viz startCheckReveal).
+    const card = cardOf(picked.id);
+    const sprite = gameScene.add.image(picked.x, picked.y, getCardTex(picked.id))
+        .setScale(0.65).setDepth(820).setAlpha(0.98);
+    let pulse = null;
+    const stopPulse = () => {
+        if (!pulse) return;
+        if (pulse.tween) pulse.tween.remove();
+        pulse.marks.forEach(m => m.destroy());
+        pulse = null;
+    };
+    gameScene.tweens.add({
+        targets: sprite, x: REVEAL_CX, y: REVEAL_CY, scaleX: REVEAL_BIG, scaleY: REVEAL_BIG,
+        duration: LD_TO_CENTER_MS, ease: 'Cubic.easeOut',
+        onComplete: () => { if (sprite.active && card) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card); }
+    });
+    gameScene.tweens.add({
+        targets: sprite, x: _luckyDiscard.x, y: _luckyDiscard.y, scaleX: PILE_SCALE, scaleY: PILE_SCALE,
+        delay: LD_TO_CENTER_MS + LD_HOLD_MS, duration: LD_TO_DISCARD_MS, ease: 'Cubic.easeIn',
+        // Se začátkem sestupu jde karta z „reveal" vrstvy do vrstvy hromádky – výsledek
+        // sejmutí (vězení/dynamit) letí za ní a musí dosednout NAD ni.
+        onStart: () => { stopPulse(); sprite.setDepth(REVEAL_PILE_DEPTH); },
+        onComplete: () => holdThenFinish(sprite, () => inDiscardNow(picked.id), () => {
+            stopPulse();
+            if (sprite.active) sprite.destroy();
+            App.discardFlyHideIds.delete(picked.id);
+            renderUI();
+        })
+    });
 }
 
 

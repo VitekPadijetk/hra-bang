@@ -153,6 +153,24 @@ test('Lucky Duke lízne u dynamitu 2 karty a vybere si příznivou (nevybuchne)'
     assert.equal(g.phase, 'DRAW');
 });
 
+test('Lucky Duke: vybraná karta leží v odhozu NAD nevybranou (pořadí animace)', () => {
+    // Klient obě karty odhazuje ve stejném pořadí: nevybraná odletí hned, vybraná se
+    // ještě „sejme" uprostřed obrazovky a dosedne až po ní (viz playLuckyDukeResult).
+    const g = mkGame([{ role: 'Sheriff', character: 'Lucky Duke' }, { role: 'Outlaw' }]);
+    board(g, 0, CardType.DYNAMITE, { name: 'Dynamit' });
+    g.deck.cards = [];
+    topDeck(g, Suits.SPADES, '5');
+    topDeck(g, Suits.HEARTS, '5');
+    g.handleStartOfTurnChecks();
+    g.triggerCheckDraw();
+    const chosen = g.luckyDukeState.cards[0], other = g.luckyDukeState.cards[1];
+
+    g.luckyDukePick(0);
+    const dp = g.deck.discardPile;
+    assert.equal(dp[dp.length - 1].id, chosen.id, 'vybraná je navrchu');
+    assert.equal(dp[dp.length - 2].id, other.id, 'nevybraná leží pod ní');
+});
+
 // ── Konec tahu / odhazování ──────────────────────────────────────────────────
 test('tryEndTurn: přebytek karet → fáze DISCARD, jinak další tah', () => {
     const g = mkGame([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }]);
