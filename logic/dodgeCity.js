@@ -16,6 +16,7 @@ const DodgeCityMixin = {
         const player = this.getCurrentPlayer();
         const card = player.hand[cardIndex];
         if (!card || !card.discardExtra) return;
+        if (this._suitBlocked(this.currentPlayerIndex, card)) return;   // High Noon – Želízka
         if (player.hand.length < 2) return; // není čím zaplatit „další kartu"
         const effect = card.discardExtra;
         const pIdx = this.currentPlayerIndex;
@@ -187,6 +188,7 @@ const DodgeCityMixin = {
         if (!card.green) return;
         if (card._playedTurn === this.turnId) return;   // nelze ve stejném tahu, kdy byla položena
         if (card.activate === 'miss') return;            // Vedle!-zelené jen jako reakce
+        if (this._suitBlocked(playerIdx, card)) return;  // High Noon – Želízka
 
         const discardAndTrack = () => {
             player.board.splice(idx, 1);

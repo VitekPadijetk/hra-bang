@@ -29,13 +29,18 @@ const App = {
     debugRoles: [],
     debugDodgeCity: false,
     debugHighNoon: false,
+    debugHighNoonExtra: false,
+    // High Noon (přibalené) – Nová identita: stav cinematiky nabídky (net/handlers.js).
+    // { ready, decided } – ready = karta doletěla doprostřed a je překlopená lícem nahoru.
+    niReveal: null,
+    niHideSecond: false,   // odložená karta zrovna letí → nekreslit ji u životů
     chatMessages: [],
     chatOpen: false,
     chatUnread: 0,
     createGameName: null,
     createGameNameOwner: null,
     createPlayerCount: null,
-    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, expansions: { dodge_city: false, high_noon: false } },
+    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false } },
     botGameCount: 4,
     // ID karet, které právě letí do MOJÍ ruky (animace líznutí/krádeže). Dokud je
     // karta tady, board.js ji v ruce nevykreslí – slot je rezervovaný a karta se

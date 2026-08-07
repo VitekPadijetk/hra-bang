@@ -969,6 +969,100 @@ function playSheriffPenaltyDiscard(data) {
     }, penaltyDiscardMs(seq.length) + 150);
 }
 
+// ── High Noon (přibalené) – Nová identita ────────────────────────────────────
+// Odložená postava leží lícem dolů pod kartou životů (rub karty postavy = karta
+// životů). Na začátku tahu vyletí doprostřed, překlopí se a hráč se rozhodne
+// (tlačítka kreslí view/screens.js). Časování drží core/highNoonAnim.js, aby server
+// věděl, jak dlouho držet boty.
+const NI_MY_X = 1050, NI_MY_Y = 970, NI_MY_SCALE = 0.36, NI_BIG = 0.80;
+const NI_CX = 960, NI_CY = 420;
+
+function _niCharTex(charName) {
+    const charData = gameScene && gameScene.cache.json.get('characters_data');
+    const info = charData && charData.find(c => c.name === charName);
+    return (info && gameScene.textures.exists('char_' + info.id)) ? 'char_' + info.id : 'placeholder';
+}
+
+// Kde leží karta postavy u mě: posunutá po nábojnicích podle počtu životů (drawMyArea).
+function _niMyCharY(health) {
+    const bulletH = (500 * NI_MY_SCALE * 0.93) / 5;
+    return NI_MY_Y - bulletH * Math.max(0, health);
+}
+
+function startNewIdentityReveal(charName) {
+    if (!gameScene) return;
+    App.niReveal = { ready: false, decided: false };
+    App.niHideSecond = true;   // karta zrovna letí → u životů se nekreslí
+    renderUI();
+    const D = NI_ANIM;
+    const spr = gameScene.add.image(NI_MY_X + 14, NI_MY_Y + 14, 'lives')
+        .setScale(NI_MY_SCALE).setDepth(900);
+    gameScene.tweens.add({ targets: spr, x: NI_CX, y: NI_CY, duration: D.moveMs, ease: 'Power2' });
+    gameScene.tweens.add({
+        targets: spr, scaleX: NI_BIG, scaleY: NI_BIG, duration: D.moveMs, ease: 'Power2',
+        onComplete: () => {
+            if (!spr.active) return;
+            // Překlopení rub → líc (scaleX na nulu, výměna textury, zpět).
+            gameScene.tweens.add({
+                targets: spr, scaleX: 0, duration: D.flipMs / 2, ease: 'Sine.easeIn',
+                onComplete: () => {
+                    if (!spr.active) return;
+                    spr.setTexture(_niCharTex(charName));
+                    gameScene.tweens.add({
+                        targets: spr, scaleX: NI_BIG, duration: D.flipMs / 2, ease: 'Sine.easeOut',
+                        onComplete: () => {
+                            if (spr.active) spr.destroy();
+                            if (App.niReveal) { App.niReveal.ready = true; renderUI(); }
+                        }
+                    });
+                }
+            });
+        }
+    });
+}
+
+// Dojezd rozhodnutí. Vidí ho jen ten, kdo se rozhodoval – ostatním se změna projeví
+// novým stavem (portrét + posun karty životů řeší runHealthSlide ve view/board.js).
+function playNewIdentityResult(data) {
+    if (!gameScene || data.playerIdx !== myIndex || myIndex === null) return;
+    const D = NI_ANIM;
+    const done = () => { App.niHideSecond = false; App.niReveal = null; if (gameScene) renderUI(); };
+
+    if (!data.take) {
+        // NE: karta se překlopí zpátky na rub a sjede pod kartu životů.
+        const spr = gameScene.add.image(NI_CX, NI_CY, _niCharTex(data.to)).setScale(NI_BIG).setDepth(900);
+        gameScene.tweens.add({
+            targets: spr, scaleX: 0, duration: D.flipMs / 2, ease: 'Sine.easeIn',
+            onComplete: () => {
+                if (!spr.active) return;
+                spr.setTexture('lives');
+                gameScene.tweens.add({
+                    targets: spr, scaleX: NI_BIG, duration: D.flipMs / 2, ease: 'Sine.easeOut',
+                    onComplete: () => {
+                        gameScene.tweens.add({
+                            targets: spr, x: NI_MY_X + 14, y: NI_MY_Y + 14,
+                            scaleX: NI_MY_SCALE, scaleY: NI_MY_SCALE,
+                            duration: D.moveMs, ease: 'Power2',
+                            onComplete: () => { if (spr.active) spr.destroy(); done(); }
+                        });
+                    }
+                });
+            }
+        });
+        return;
+    }
+
+    // ANO: nová postava sjede na místo postavy (hráč tam bude mít 2 životy); stará se
+    // stane tou odloženou – tu už vykreslí nový stav, jakmile animace dojede.
+    const spr = gameScene.add.image(NI_CX, NI_CY, _niCharTex(data.to)).setScale(NI_BIG).setDepth(900);
+    gameScene.tweens.add({
+        targets: spr, x: NI_MY_X, y: _niMyCharY(2),
+        scaleX: NI_MY_SCALE, scaleY: NI_MY_SCALE,
+        duration: D.moveMs + D.flipMs, ease: 'Power2',
+        onComplete: () => { if (spr.active) spr.destroy(); done(); }
+    });
+}
+
 // Odkud má vyletět karta, kterou hraju/odhazuju JÁ: z konkrétního slotu v mé ruce
 // (ID karty je v ruce ještě před doletem room_update, který ji odebere), ne z obecné
 // kotvy ruky. U soupeřů je ruka skrytý vějíř → necháváme obecnou kotvu (getPlayerHandPos).
@@ -1470,6 +1564,9 @@ function _playCardAnim(data) {
         case 'sheriff_penalty_discard':
             playSheriffPenaltyDiscard(data);
             break;
+        case 'new_identity_result':
+            playNewIdentityResult(data);
+            break;
         case 'vulture_split_death':
             playVultureSplitDeath(data);
             break;
@@ -1679,6 +1776,8 @@ function _animDurationMs(data) {
     }
     // High Noon: odkrytí karty události (let doprostřed → překlopení → výdrž → na stůl).
     if (data.type === 'high_noon_reveal') return hnRevealMs();
+    // High Noon (přibalené): dojezd Nové identity (výměna postavy / návrat karty).
+    if (data.type === 'new_identity_result') return niResultMs(data.take);
     // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
     if (data.type === 'vulture_split_death') return deathFallMs();
     if (data.type === 'player_death_reveal') {
@@ -1698,7 +1797,7 @@ socket.on('card_animation', (data) => {
     const essential = data.type === 'player_death_discard' || data.type === 'vulture_sam_steal' ||
                       data.type === 'sheriff_penalty_discard' ||
                       data.type === 'vulture_split_death' || data.type === 'player_death_reveal' ||
-                      data.type === 'high_noon_reveal';
+                      data.type === 'high_noon_reveal' || data.type === 'new_identity_result';
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 
@@ -1950,6 +2049,17 @@ function _applyRoomUpdate(payload) {
         if (typeof startLuckyDukeDeal === 'function') startLuckyDukeDeal();
     } else if (_prevPhase === 'LUCKY_DUKE' && state?.phase !== 'LUCKY_DUKE') {
         if (typeof playLuckyDukeResult === 'function') playLuckyDukeResult();
+    }
+
+    // High Noon (přibalené) – Nová identita: vstup do fáze spustí nálet odložené karty
+    // doprostřed (jen u toho, kdo se rozhoduje); odchod uklidí stav cinematiky.
+    if (state?.phase === 'NEW_IDENTITY' && _prevPhase !== 'NEW_IDENTITY') {
+        if (state.pendingNewIdentity?.playerIdx === myIndex && myIndex !== null) {
+            startNewIdentityReveal(state.pendingNewIdentity.character);
+        }
+    } else if (_prevPhase === 'NEW_IDENTITY' && state?.phase !== 'NEW_IDENTITY') {
+        App.niReveal = null;
+        App.niHideSecond = false;
     }
 
     if (state?._cardData && !App.allCardsData) App.allCardsData = state._cardData;

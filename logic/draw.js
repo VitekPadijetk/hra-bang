@@ -192,6 +192,7 @@ const DrawMixin = {
 
     _finishDraw() {
         const isKillReward = this.drawPhaseState.isKillReward;
+        const wasStartOfTurn = this.drawPhaseState.isStartOfTurn;
         this.drawPhaseState.active = false;
         if (isKillReward) {
             // Obnov fázi PŘED resume: jinak by další odložený special ve frontě
@@ -203,6 +204,10 @@ const DrawMixin = {
         } else {
             this.phase = "PLAY";
             this._processSpecialQueue();
+            // High Noon – Želízka: po fázi lízání si hráč na tahu volí barvu. Ptáme se až
+            // po frontě odložených akcí (na konci lízání bývá prázdná); kdyby si ji fronta
+            // vzala, zůstane hráč pro tenhle tah bez omezení – nikdy ne zaseknutý.
+            if (wasStartOfTurn && this.phase === "PLAY") this._startHandcuffs();
         }
     },
 

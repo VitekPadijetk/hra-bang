@@ -26,7 +26,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `logic/response.js` | **Mixin GameState.** Fáze RESPOND: `handleResponse` (Vedle!/Bang!, duel, hromadné útoky), záchrana posledního života `beerLastLifeSave`/`sidLastLifeSave`, `_advanceAfterLastLifeSave`. |
 | `logic/characters.js` | **Mixin GameState.** Schopnosti postav + fronta odložených akcí: `_processSpecialQueue`/`_resumeAfterSpecial`, `checkSuzyLafayette`/`suzyLafayetteDraw`, `bartCassidyDraw`, `elGringoSteal`, `sidKetchumDiscardOne`/`useSidKetchum`, `startLuckyDukeCheck`/`luckyDukePick` + **dělení karet mezi víc Vulture Samů** (`_nextVultureSplitPick`/`_advanceVultureSplit`/`_finishVultureSplit`, viz níže). |
 | `logic/checks.js` | **Mixin GameState.** Kontrolní líznutí na začátku tahu (Dynamit/Vězení) a vyhodnocení checků: `handleStartOfTurnChecks`, `triggerCheckDraw`, `_applyCheckResult` (Dynamit/Vězení/Barel/Jourdonnais), `resolveCheck`. |
-| `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (odkrytí události → její okamžitý efekt → Pravé poledne), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit`, **Daltonové** (`_startDaltons`/`_advanceDaltons`/`_resumeDaltons`/`_daltonsBlueCount`, viz níže) a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/`_turnStep`/**`_effSuit`**. `_turnStep()` = krok pro `nextTurn` (Zlatá horečka jede proti směru, tj. `players.length - 1`); **jediné místo, kde se směr obrací** – posun dynamitu, hokynářství, hromadné útoky, Rvačka i samotní Daltonové zůstávají po směru (FAQ H3). **Kocovina** nemá vlastní metodu: `_applyEventOnEnter` při KAŽDÉ výměně události přepíše všem hráčům `p._noAbility`, což čte `effectiveCharacter` (core/distance.js). `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí. **Město duchů**: `_teardownGhost()` (konec tahu ducha – volá ho `nextTurn` jako první krok, viz níže). |
+| `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (odkrytí události → její okamžitý efekt → Pravé poledne), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit`, **Daltonové** (`_startDaltons`/`_advanceDaltons`/`_resumeDaltons`/`_daltonsBlueCount`, viz níže) a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/`_turnStep`/**`_effSuit`**. `_turnStep()` = krok pro `nextTurn` (Zlatá horečka jede proti směru, tj. `players.length - 1`); **jediné místo, kde se směr obrací** – posun dynamitu, hokynářství, hromadné útoky, Rvačka i samotní Daltonové zůstávají po směru (FAQ H3). **Kocovina** nemá vlastní metodu: `_applyEventOnEnter` při KAŽDÉ výměně události přepíše všem hráčům `p._noAbility`, což čte `effectiveCharacter` (core/distance.js). `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí. **Město duchů**: `_teardownGhost()` (konec tahu ducha – volá ho `nextTurn` jako první krok, viz níže). **Přibalené karty** (`options.highNoonExtra`): `_dealSecondIdentities`/`_newIdentityOffer`/`resolveNewIdentity` (Nová identita) a `_startHandcuffs`/`chooseHandcuffsSuit`/`_suitBlocked` (Želízka). |
 | `server.js` | **Socket.IO bootstrap (~76 ř.).** Express/io setup → poskládá sdílený `ctx` (`require('./server/*')(ctx)` v pořadí rooms→gamelog→ledger→guard→intro→anim→lifecycle→bots) → `io.on('connection')` jen definuje per-connection `withRoom` a zavolá `register*Handlers(socket, ctx, withRoom)` → `server.listen`. Veškerá logika je v `server/*`. |
 | `server/rooms.js` | Factory `installRoomService(ctx)` – vlastní `rooms` Map + roomCounter, vystaví na `ctx`: `makeRoom`, `roomPayload`, `broadcastRoom(+Delayed)`, `broadcastLobbyList`, `getLobbyList`, `getGameList`, `findRoomBySocket`, `leaveRoom`, `leaveSpectate`, `disbandRoom`. Bez listenu → testovatelné s fake io (`test/server.rooms.test.js`). **Divák je jen v socket.io kanálu `<roomId>_spectators`, ne v `room.players`** – `findRoomBySocket`/`leaveRoom` ho tedy nevidí a odhlásit ho umí jen `leaveSpectate(socket)` (volá se z `leave_spectate`, `go_to_menu`, `spectate`, `create_room`/`join_room`/`rejoin`/`create_bot_game`). Bez odhlášení mu chodí dál `room_update`/`card_animation`/`intro_phase` a klient ho z menu překlopí zpátky do hry. |
 | `server/intro.js` | Factory `installIntroService(ctx)` (bere `io`, `broadcastRoom`) – serverová intro sekvence přes timeouty: `emitIntro`/`emitIntroRole`/`emitIntroChars`, `runIntroSequence`, `introAfterRoles`, `introStartCharPhase`, `introStartDeckPhase`. **Navazující hra** má vlastní vstup `runNextGameIntro` + `introKeepResult` (viz „Intro navazující hry“ níže). **High Noon** má v deck fázi tři beaty v řadě: `highnoon_top` (z kompletního balíčku vyletí vrchní karta a ukáže se – Pravé poledne, ve velikosti balíčků) → `shuffle_highnoon` (zamíchá se zbytek) → `highnoon_bottom` (odložená karta sjede pod hromádku). Test: `test/server.intro.test.js`. |
@@ -54,7 +54,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 |---|---|
 | `view/board.js` | **Herní deska.** `renderGameBoard()` orchestrátor → `drawOpponents` / `drawMyArea` / `drawSpectatorPlayer` / `drawPhaseOverlays` / `drawDrawPiles`. |
 | `view/intro.js` | **Intro cinematika.** Míchání/rozdávání (`_animateIntroShuffle`, `renderIntroScene`, `_renderRoleReveal`, `_renderIntroCharSelect`), pozice bloku soupeře `_introOppSlots` (sdílí i slide-in v `net/handlers.js`) a **navazující hra**: `_introPlaceSurvivors`, `_startKeepReveal`/`_renderKeepChoice`/`_confirmKeepChoice`, `_introKeepAnimateOther`, `_introSheriffReveal`. |
-| `view/screens.js` | `renderWinnerScreen()` + `renderCharacterSelectScreen()`. |
+| `view/screens.js` | `renderWinnerScreen()` + `renderCharacterSelectScreen()` + překryvná okna přes desku: `renderVeraCopyOverlay()` (Vera Custer), `renderHandcuffsOverlay()` (Želízka – volba barvy) a `renderNewIdentityOverlay()` (Nová identita – ANO/NE). Volá je `renderUI()` v game.js podle fáze. |
 
 ### Čisté helpery (`core/`) — BEZ Phaseru/DOM, izomorfní, testované
 | Soubor | Export | Co rozhoduje |
@@ -74,8 +74,8 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `core/deathAnim.js` | `DEATH_ANIM`, `deathAnimTimeline`, `deathSequenceMs`, `deathFallMs`, `deathRevealMs`, `penaltyDiscardMs` | **časování cinematiky vyřazení hráče** (pokles na 0 životů → pauza → karty odlétají po jedné → postava se posune vedle místa role → rubová karta role letí doprostřed, překlopí se, vydrží a odletí na místo). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `playDeathSequence`, fáze drží `App.deathSeq`/`App.deathHandHide`, board.js podle nich kreslí), server o stejnou dobu drží boty (`room._deathBlockUntil` v `server/anim.js`, respektuje `scheduleBotTick`). Stav se do konce sekvence nepustí – animace jde frontou jako `essential` (nezahoditelná). **Varianty:** `skipReveal` (šerif roli neodhaluje – zná ji celý stůl, sekvence končí odhozením karet); `deathFallMs`+`deathRevealMs` = sekvence rozpůlená dělením karet mezi víc Vulture Samů; `penaltyDiscardMs` = šerifova ztráta karet za zabití pomocníka (stejné odhazování, ale bez poklesu životů, bez role a Colt .45 zůstává). |
 | `core/drawCounter.js` | `nextDrawCounters` | **počítadlo naklikaných, ještě nepotvrzených líznutí** (`App.pendingDrawCount`/`lastConfirmedDrawn`/`lastDrawOwner`). Drží dva rychlé kliky na balíček a zároveň brání kliku navíc. Klíčové je, že počítadlo patří JEDNÉ fázi lízání: při změně vlastníka (řetěz kill-rewardů, DRAW → DRAW jiného hráče) se nuluje – jinak vyjde „zbývá ≤ 0", balíček nejde rozkliknout a hra uvázne. |
 | `core/gameLog.js` | `snapshotState`, `formatEvent`, `LogEvent` | čistý formát strukturovaného herního logu: `snapshotState(gs)` = kompaktní stav (role/ruce/board/HP/phase/pendingActor), `formatEvent(evt)` = jednořádkový český popis pro konzoli. Persistenci do souboru řeší `server/gamelog.js`; není v index.html (server-only). |
-| `core/highNoon.js` | `eventActive`, `bangLimitFor`, `bangBlockedFor`, `beerBlockedFor`, `effSuit` | **zrcadlo dotazů na aktivní událost High Noon nad prostým JSON stavem** – server se ptá přes `GameState.hasEvent`/`_effSuit`, klient (`core/playability.js`, `view/*`) a bot (`core/botPolicy.js`) přes tenhle helper. `effSuit(state, card)` = barva, která PLATÍ (Požehnání srdce / Prokletí piky). |
-| `core/highNoonAnim.js` | `HN_ANIM`, `hnRevealMs` | **časování odkrytí karty události High Noon** (pauza `preMs` → let z balíčku doprostřed → výdrž na rubu → překlopení → výdrž lícem → zmenšení na místo platné karty). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `high_noon_reveal`), server o stejnou dobu drží boty (`room._hnBlockUntil`) a fronta si podle `hnRevealMs()` spočítá zdržení stavu. Animace nese i `playerIdx` (šerif je na tahu už během odkrývání – stav dorazí až po ní) a `remaining` (balíček ubývá se startem letu → `App.hnDeckLeft`, ne až se stavem; jinak by u poslední karty zůstal ležet prázdný rub). |
+| `core/highNoon.js` | `eventActive`, `bangLimitFor`, `bangBlockedFor`, `beerBlockedFor`, `effSuit`, `suitBlockedFor` | **zrcadlo dotazů na aktivní událost High Noon nad prostým JSON stavem** – server se ptá přes `GameState.hasEvent`/`_effSuit`, klient (`core/playability.js`, `view/*`) a bot (`core/botPolicy.js`) přes tenhle helper. `effSuit(state, card)` = barva, která PLATÍ (Požehnání srdce / Prokletí piky). `suitBlockedFor(state, i, card)` zrcadlí Želízka (`GameState._suitBlocked`). |
+| `core/highNoonAnim.js` | `HN_ANIM`, `hnRevealMs`, `NI_ANIM`, `niResultMs` | **časování odkrytí karty události High Noon** + dojezdu Nové identity (`niResultMs(take)`; drží ho `room._niBlockUntil` a fronta animací) (pauza `preMs` → let z balíčku doprostřed → výdrž na rubu → překlopení → výdrž lícem → zmenšení na místo platné karty). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `high_noon_reveal`), server o stejnou dobu drží boty (`room._hnBlockUntil`) a fronta si podle `hnRevealMs()` spočítá zdržení stavu. Animace nese i `playerIdx` (šerif je na tahu už během odkrývání – stav dorazí až po ní) a `remaining` (balíček ubývá se startem letu → `App.hnDeckLeft`, ne až se stavem; jinak by u poslední karty zůstal ležet prázdný rub). |
 
 **`core/` je vzor, kam patří nová čistá logika** — jde testovat v Node bez prohlížeče.
 
@@ -184,6 +184,49 @@ vzdálenost (`computeDistance` – bez toho by duch neměl na koho střílet), h
    Zrcadla „duch se neléčí" jsou v `core/playability.js` (Pivo, Whisky), `view/board.js`
    (Čutora, Sid) a `core/botPolicy.js` – **bez nich by bot vybíral akci, kterou server
    odmítne, a hra by se zasekla** (stav se nezmění → stejná akce znovu).
+
+## Nová identita a Želízka (přibalené karty z A Fistful of Cards)
+
+Dvě karty, které se do balíčku High Noon přibalují. Zapínají se zvlášť
+(`options.highNoonExtra`, zaškrtávátko v „Pokročilé možnosti“ viditelné jen se zapnutým
+High Noon; `_setupEventDeck` pak vezme i karty s `extra: true` a balíček má 15 karet).
+
+**Želízka** — po fázi lízání si hráč na tahu zvolí barvu a v tomhle tahu smí hrát jen
+karty té barvy.
+
+- Ptá se `_finishDraw` (logic/draw.js) přes `_startHandcuffs()` → fáze `HANDCUFFS_SUIT`
+  + `pendingHandcuffs`. Ptá se **až po frontě odložených akcí** a jen když je fáze pořád
+  `PLAY` – kdyby si ji fronta vzala, zůstane hráč pro tenhle tah bez omezení (nikdy ne
+  zaseknutý).
+- Jediný dotaz pravidel je **`_suitBlocked(playerIdx, card)`**; barvu bere přes `_effSuit`,
+  a omezuje **jen hráče na tahu** – včetně karet zahraných jako reakce v jeho VLASTNÍM
+  tahu (duel, záchrana Pivem), stejný výklad jako u Kazatele (FAQ H2). Gate je v
+  `playCard`, `playBang`, `playSpecialCard`, `startDiscardExtra`, `activateGreenCard`,
+  `handleResponse` a `beerLastLifeSave`.
+- `_handcuffsSuit` se nuluje **na začátku tahu v `_beginTurn`**, ne až ve fázi lízání:
+  kontroly na Dynamit/Vězení (a s nimi záchrana Pivem) běží dřív a jely by ještě podle
+  barvy z minulého tahu téhož hráče.
+- Zrcadla: `core/highNoon.js` `suitBlockedFor` → `core/playability.js` (jeden gate hned
+  na začátku `cardPlayability`) a `core/botPolicy.js` (zelené karty ze stolu + větev
+  RESPOND, kterou playability neřeší). **Bez zrcadel by bot vybíral akci, kterou server
+  odmítne, a hra by se zasekla.**
+
+**Nová identita** — každý hráč má druhou postavu lícem dolů; na začátku svého tahu si ji
+smí vzít místo současné a klesnout na 2 životy (odložená se vymění, příště se smí vrátit).
+
+- Karty rozdá `_dealSecondIdentities()` **až po výběru postav** (volá se z obou míst, kde
+  se dohraje výběr: `selectCharacter` a `_checkNextGameAllChosen`). Dřív to nejde –
+  nevybrané postavy se vracejí do balíčku, takže při 7 hráčích bez Dodge City by jich
+  nezbylo dost.
+- Nabídka je **4. krok `_beginTurn`** (`_newIdentityOffer` → fáze `NEW_IDENTITY`),
+  rozhodnutí `resolveNewIdentity(idx, take)` dotočí start tahu přes `_resumeBeginTurn`.
+  Výměna ruší i kopii Very Custer.
+- Klient: kartu kreslí `drawMyArea` lícem dolů pod kartou životů (rub karty postavy JE
+  karta životů). Nálet doprostřed + překlopení spouští `startNewIdentityReveal`
+  (net/handlers.js) při vstupu do fáze, statickou část s ANO/NE kreslí
+  `renderNewIdentityOverlay` (view/screens.js) až je `App.niReveal.ready`.
+  Dojezd rozhodnutí jde všem jako `new_identity_result` (časování `niResultMs`,
+  boti čekají přes `room._niBlockUntil`).
 
 ## Lucky Duke: výběr a pak KLASICKÉ sejmutí
 

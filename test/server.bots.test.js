@@ -503,3 +503,60 @@ test('20 her jen botů jede i s balíčkem samých Měst duchů', () => {
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Města duchů');
 });
+
+// Cílená zátěž na etapu 5: balíček obsahuje JEN přibalené karty (Želízka / Nová
+// identita), takže se obě odehrají v každé hře. Želízka omezují, co smí bot zahrát
+// (musí mu vždy zbýt legální akce = ukončit tah), Nová identita přidává rozhodovací
+// fázi na začátku tahu – obojí je typický kandidát na zaseknutí hry jen botů.
+test('20 her jen botů jede i s balíčkem samých Želízek/Nových identit', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const KEYS = ['ZELIZKA', 'NOVA_IDENTITA'];
+    const ev = (key) => {
+        const c = highNoonCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 4 + (k % 4);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            const opts = { expansions: { dodge_city: k % 2 === 0, high_noon: true }, highNoonExtra: true };
+            const room = { id: 'hn5_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Líže se pop() z konce → Pravé poledne musí zůstat na indexu 0.
+            const deck = [ev('PRAVE_POLEDNE')];
+            for (let i = 0; i < 12; i++) deck.push(ev(KEYS[(i + k) % 2]));
+            gs.eventDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `HN5 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `HN5 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Želízek/Nové identity');
+});
+
+test('přibalené karty: každý hráč dostane druhou postavu, a jinou než hraje', () => {
+    const ctx = buildCtx();
+    const gs = new GameState();
+    gs.cardData = cardData;
+    gs.highNoonCardData = highNoonCardData;
+    const opts = { expansions: { high_noon: true }, highNoonExtra: true };
+    const room = { id: 'ni1', players: [], gameState: gs, maxPlayers: 4, options: opts };
+    ctx.rooms.set(room.id, room);
+    gs.setupGame(4, ['B0', 'B1', 'B2', 'B3'], opts);
+    gs.players.forEach(p => ctx.createBot(room, p.name));
+    // Postavy si boti vyberou v prvních ticích; pak už musí být druhé identity rozdané.
+    for (let i = 0; i < 40 && gs.players.some(p => !p.character); i++) ctx.runBotTickOnce(room);
+    assert.ok(gs.players.every(p => p.character), 'všichni mají postavu');
+    const second = gs.players.map(p => p._secondChar);
+    assert.ok(second.every(Boolean), 'všichni mají odloženou druhou postavu');
+    assert.equal(new Set(second).size, 4, 'druhé postavy se neopakují');
+    gs.players.forEach(p => assert.notEqual(p._secondChar, p.character));
+});

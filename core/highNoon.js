@@ -34,6 +34,17 @@ function effSuit(state, card) {
     return card.suit;
 }
 
+// Želízka (přibalená karta): hráč na tahu si po lízání zvolil barvu a v tomhle tahu
+// smí hrát jen karty té barvy – včetně karet zahraných jako reakce ve vlastním tahu.
+// Zrcadlí GameState._suitBlocked (logic/highNoon.js).
+function suitBlockedFor(state, playerIdx, card) {
+    if (!eventActive(state, 'ZELIZKA') || !card) return false;
+    if (playerIdx !== state.currentPlayerIndex) return false;
+    const p = state.players && state.players[playerIdx];
+    if (!p || !p._handcuffsSuit) return false;
+    return effSuit(state, card) !== p._handcuffsSuit;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { eventActive, bangLimitFor, bangBlockedFor, beerBlockedFor, effSuit };
+    module.exports = { eventActive, bangLimitFor, bangBlockedFor, beerBlockedFor, effSuit, suitBlockedFor };
 }

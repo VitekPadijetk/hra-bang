@@ -383,6 +383,18 @@ function renderMenuScreen(screen) {
             gameScene.cardsSprites.add(bg); gameScene.cardsSprites.add(numTxt);
         });
 
+        // Pokročilé volby. „Přibalené karty" dávají smysl jen se zapnutým High Noon –
+        // jinak řádek vůbec nekresli (a tlačítko VYTVOŘIT se o něj neposune).
+        const advChecks = [
+            { key: 'noAdvancedCards', label: 'Zakázat pokročilé karty', hint: '(bez Duelu, Hokynářství, Indiánů, Vězení, Dynamitu)' },
+            { key: 'singleChar',      label: 'Přiřadit postavu náhodně', hint: '(hráči si nevybírají ze dvou postav)' },
+            { key: 'rotatingSheriff', label: 'Rotující šerif', hint: '(šerif se po každé hře posouvá doleva)' },
+        ];
+        if (App.createOptions.expansions && App.createOptions.expansions.high_noon) {
+            advChecks.push({ key: 'highNoonExtra', label: 'High Noon: přibalené karty',
+                hint: '(+ Nová identita a Želízka z A Fistful of Cards)' });
+        }
+
         const advY = 678;
         const chevron = App.createAdvanced ? '▲' : '▼';
         const advBtn = gameScene.add.text(960, advY, `${chevron}  Pokročilé možnosti  ${chevron}`,
@@ -393,11 +405,7 @@ function renderMenuScreen(screen) {
 
         if (App.createAdvanced) {
             const opts = App.createOptions;
-            const checkboxes = [
-                { key: 'noAdvancedCards', label: 'Zakázat pokročilé karty', hint: '(bez Duelu, Hokynářství, Indiánů, Vězení, Dynamitu)' },
-                { key: 'singleChar',      label: 'Přiřadit postavu náhodně', hint: '(hráči si nevybírají ze dvou postav)' },
-                { key: 'rotatingSheriff', label: 'Rotující šerif', hint: '(šerif se po každé hře posouvá doleva)' },
-            ];
+            const checkboxes = advChecks;
             checkboxes.forEach((opt, i) => {
                 const cy = 728 + i * 70;
                 const checked = opts[opt.key];
@@ -424,7 +432,8 @@ function renderMenuScreen(screen) {
             });
         }
 
-        const createBtnY = App.createAdvanced ? 958 : 768;
+        // Poslední zaškrtávátko leží na 728 + (n-1)*70, tlačítko 90 px pod ním.
+        const createBtnY = App.createAdvanced ? 728 + (advChecks.length - 1) * 70 + 90 : 768;
         const canCreate = !!App.createPlayerCount && nameValid;
         themeButton(gameScene, 960, createBtnY, 420, 72, 'VYTVOŘIT HRU', {
             fill: canCreate ? THEME.color.successDarkNum : 0x2a2730,
@@ -439,7 +448,7 @@ function renderMenuScreen(screen) {
                 App.createPlayerCount = null;
                 App.createGameName = null;
                 App.createGameNameOwner = null;
-                App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, expansions: { dodge_city: false, high_noon: false } };
+                App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false } };
             } : undefined,
         });
 
@@ -493,15 +502,30 @@ function renderMenuScreen(screen) {
                 () => loadExpansionAssets(gameScene, 'high_noon'));
         }
 
-        themeButton(gameScene, 960, 664, 420, 72, '▶  SPUSTIT A SLEDOVAT', {
+        // Přibalené karty (Nová identita, Želízka) – jen když je High Noon zapnuté.
+        const bHnExtraOn = !!(App.botGameExpansions && App.botGameExpansions.high_noon);
+        if (bHnExtraOn) {
+            const on = !!App.botGameHighNoonExtra;
+            themeButton(gameScene, 960, 620, 560, 44,
+                (on ? '☑' : '☐') + '  + přibalené karty (Nová identita, Želízka)', {
+                ...themeToggleStyle(on), fontSize: '17px',
+                onClick: () => { App.botGameHighNoonExtra = !App.botGameHighNoonExtra; renderUI(); },
+            });
+        }
+
+        themeButton(gameScene, 960, bHnExtraOn ? 700 : 664, 420, 72, '▶  SPUSTIT A SLEDOVAT', {
             fill: 0x2a1a33, fillHover: 0x3d2749, fontSize: '26px',
             onClick: () => {
+                const hn = !!(App.botGameExpansions && App.botGameExpansions.high_noon);
                 socket.emit('create_bot_game', {
                     count: App.botGameCount || 4,
-                    options: { expansions: {
-                        dodge_city: !!(App.botGameExpansions && App.botGameExpansions.dodge_city),
-                        high_noon: !!(App.botGameExpansions && App.botGameExpansions.high_noon),
-                    } },
+                    options: {
+                        expansions: {
+                            dodge_city: !!(App.botGameExpansions && App.botGameExpansions.dodge_city),
+                            high_noon: hn,
+                        },
+                        highNoonExtra: hn && !!App.botGameHighNoonExtra,
+                    },
                 });
             },
         });
@@ -698,14 +722,24 @@ function renderMenuScreen(screen) {
                     renderUI();
                 },
             });
+            if (hnOn) {
+                const exOn = !!App.debugHighNoonExtra;
+                themeButton(gameScene, 960, 356, 480, 46,
+                    (exOn ? '☑' : '☐') + '  + přibalené (Nová identita, Želízka)', {
+                    ...themeToggleStyle(exOn), fontSize: '18px',
+                    onClick: () => { App.debugHighNoonExtra = !App.debugHighNoonExtra; renderUI(); },
+                });
+            }
         }
 
+        const dbgStartY = App.debugHighNoon ? 424 : 372;
         [2, 3, 4, 5].forEach((n, i) => {
-            themeButton(gameScene, 720 + i * 160, 372, 132, 58, `▶  ${n}P`, {
+            themeButton(gameScene, 720 + i * 160, dbgStartY, 132, 58, `▶  ${n}P`, {
                 fill: THEME.color.goldDarkNum, fillHover: 0xa8842a,
                 stroke: THEME.color.goldNum, textColor: '#ffffff', fontSize: '24px',
                 onClick: () => socket.emit('debug_start', { playerCount: n, roles: App.debugRoles || [],
-                    dodgeCity: !!App.debugDodgeCity, highNoon: !!App.debugHighNoon }),
+                    dodgeCity: !!App.debugDodgeCity, highNoon: !!App.debugHighNoon,
+                    highNoonExtra: !!App.debugHighNoonExtra }),
             });
         });
     }

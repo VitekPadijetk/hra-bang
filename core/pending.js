@@ -29,6 +29,9 @@ function pendingActor(state) {
         case 'DYNAMITE_DAMAGE':  return state.pendingDynamiteDamage ? { idx: state.pendingDynamiteDamage.playerIdx, kind: 'DYNAMITE_DAMAGE' } : null;
         // High Noon – Pravé poledne: ztráta života na začátku tahu (klik na životy).
         case 'NOON_DAMAGE':      return state.pendingNoonDamage ? { idx: state.pendingNoonDamage.playerIdx, kind: 'NOON_DAMAGE' } : null;
+        // High Noon (přibalené) – Želízka: volba barvy po lízání; Nová identita: výměna postavy.
+        case 'HANDCUFFS_SUIT':   return state.pendingHandcuffs ? { idx: state.pendingHandcuffs.playerIdx, kind: 'HANDCUFFS_SUIT' } : null;
+        case 'NEW_IDENTITY':     return state.pendingNewIdentity ? { idx: state.pendingNewIdentity.playerIdx, kind: 'NEW_IDENTITY' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         case 'EL_GRINGO_STEAL':  return state.pendingElGringoSteal ? { idx: state.pendingElGringoSteal.playerIdx, kind: 'EL_GRINGO_STEAL' } : null;
@@ -60,6 +63,8 @@ const _WAIT_LABELS = {
     LUCKY_DUKE:            'Lucky Duke – vybírá kartu',
     DYNAMITE_DAMAGE:       'výbuch dynamitu',
     NOON_DAMAGE:           'Pravé poledne – ztrácí život',
+    HANDCUFFS_SUIT:        'Želízka – volí barvu',
+    NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     EL_GRINGO_STEAL:       'El Gringo – bere kartu',

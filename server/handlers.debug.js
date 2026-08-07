@@ -14,7 +14,8 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         const debugRoles = typeof data === 'object' ? (data.roles || []) : [];
         const dodgeCity = typeof data === 'object' ? !!data.dodgeCity : false;
         const highNoon = typeof data === 'object' ? !!data.highNoon : false;
-        const options = { expansions: { dodge_city: dodgeCity, high_noon: highNoon } };
+        const hnExtra = typeof data === 'object' ? !!data.highNoonExtra : false;
+        const options = { expansions: { dodge_city: dodgeCity, high_noon: highNoon }, highNoonExtra: highNoon && hnExtra };
         const names = Array.from({ length: playerCount }, (_, i) => `Debug${i + 1}`);
         const room = makeRoom('DEBUG', playerCount, socket.id, 'Debug1', options);
         room.players = names.map((name, idx) => ({ socketId: socket.id, playerIdx: idx, name, ready: false, wantsNext: null }));

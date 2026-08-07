@@ -1,6 +1,8 @@
 // server/handlers.game.js — socket handlery herních akcí (lízání, hraní karet,
 // reakce, odhoz, Kit Carlson/Lucky Duke/Barel výběry, Sid/dynamit/pivo záchrany,
 // hokynářství). registerGameHandlers(socket, ctx, withRoom) – těla byte-identická.
+const { niResultMs } = require('../core/highNoonAnim.js');
+
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, handleAutoEndTurn,
             handleReshuffleAndBroadcast, broadcastRoom, broadcastRoomDelayed } = ctx;
@@ -702,6 +704,35 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 gs._deathAnimPlayerIdx = null;
             }
             handleAutoEndTurn(room, gs);
+            broadcastRoom(room);
+        });
+    });
+
+    // High Noon (přibalené) – Želízka: hráč po lízání zvolil barvu pro tenhle tah.
+    on('handcuffs_suit', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingHandcuffs?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            gs.chooseHandcuffsSuit(idx, d && d.suit);
+            broadcastRoom(room);
+        });
+    });
+
+    // High Noon (přibalené) – Nová identita: hráč se na začátku tahu rozhodl, jestli si
+    // vezme druhou (odloženou) postavu. Výsledek jde všem jako animace (výměna karet
+    // postavy, u odmítnutí návrat rubem dolů) a boti o tu dobu nehrají.
+    on('new_identity_choose', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingNewIdentity?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const take = !!(d && d.take);
+            const from = gs.players[idx]?.character;
+            const to = gs.pendingNewIdentity?.character;
+            if (!gs.resolveNewIdentity(idx, take)) return;
+            emitAnim(room, { type: 'new_identity_result', playerIdx: idx, take, from, to });
+            // Stav jde ven hned – zdržení si vezme fronta animací na klientu
+            // (core/animQueue.js); server o stejnou dobu drží jen boty.
+            room._niBlockUntil = Math.max(room._niBlockUntil || 0, Date.now() + niResultMs(take));
             broadcastRoom(room);
         });
     });

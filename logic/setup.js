@@ -159,6 +159,7 @@ const SetupMixin = {
                 const startCards = pl._baseHealth ?? (pl.health > 0 ? pl.health - (pl.role === "Sheriff" ? 1 : 0) : pl.health);
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
+            this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
             this.currentPlayerIndex = this.players.findIndex(pl => pl.role === "Sheriff");
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;
@@ -294,6 +295,7 @@ const SetupMixin = {
                 const startCards = pl._baseHealth ?? (pl.role === "Sheriff" ? pl.health - 1 : pl.health);
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
+            this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
             this.currentPlayerIndex = this.players.findIndex(pl => pl.role === "Sheriff");
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;

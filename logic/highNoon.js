@@ -20,8 +20,11 @@ const HighNoonMixin = {
         this._beginTurnStep = 0;
         this._eventEntering = null;
         this.daltonsQueue = null;
-        // Navazující hra přebírá hráče z předchozí – Kocovina ani duch po nich nesmí zůstat.
-        (this.players || []).forEach(p => { p._noAbility = false; p._ghost = false; });
+        this.pendingHandcuffs = null;
+        this.pendingNewIdentity = null;
+        // Navazující hra přebírá hráče z předchozí – Kocovina, duch ani Želízka po nich
+        // nesmí zůstat (druhou postavu rozdá až _dealSecondIdentities po výběru postav).
+        (this.players || []).forEach(p => { p._noAbility = false; p._ghost = false; p._handcuffsSuit = null; });
         const on = options.expansions && options.expansions.high_noon;
         if (!on || !Array.isArray(this.highNoonCardData)) return;
 
@@ -63,6 +66,11 @@ const HighNoonMixin = {
     // se přesně sem: 0 = odkrytí události, 1 = její okamžitý efekt, 2 = Pravé poledne.
     _beginTurn() {
         this._beginTurnStep = 0;
+        // Želízka (High Noon) platí přesně jeden tah. Barvu je nutné zahodit hned na
+        // začátku – ne až ve fázi lízání: kontroly na Dynamit/Vězení (a s nimi záchrana
+        // Pivem) běží dřív a jely by ještě podle barvy z MINULÉHO tahu tohohle hráče.
+        const cp = this.getCurrentPlayer();
+        if (cp) cp._handcuffsSuit = null;
         return this._runBeginTurn();
     },
 
@@ -72,7 +80,7 @@ const HighNoonMixin = {
     },
 
     _runBeginTurn() {
-        const steps = [this._flipEvent, this._applyEventOnEnter, this._noonDamage];
+        const steps = [this._flipEvent, this._applyEventOnEnter, this._noonDamage, this._newIdentityOffer];
         while (this._beginTurnStep < steps.length) {
             const step = steps[this._beginTurnStep++];
             if (step.call(this)) return true;
@@ -305,6 +313,91 @@ const HighNoonMixin = {
             return;
         }
         this._resumeBeginTurn();
+    },
+
+    // ── Nová identita (přibalená karta z A Fistful of Cards) ──────────────────
+    // Každý hráč má od začátku hry druhou postavu lícem dolů. Na začátku svého tahu
+    // si ji smí vzít místo současné a klesnout na 2 životy; odložená postava se vymění
+    // (příště se smí vrátit zpátky). Karty se rozdají až PO výběru postav – nevybrané
+    // se totiž vracejí do balíčku, jinak by jich pro 7 hráčů bez Dodge City nezbylo dost.
+    _dealSecondIdentities() {
+        const o = this.options || {};
+        if (!o.highNoonExtra || !(o.expansions && o.expansions.high_noon)) return;
+        const used = this.players.map(p => p.character).filter(Boolean);
+        const pool = this._characterPool(o).filter(c => !used.includes(c));
+        this.deck.shuffleArray(pool);
+        this.players.forEach(p => { p._secondChar = pool.pop() || null; });
+        this.logEvent('system', { msg: `Nová identita: rozdány druhé postavy (${this.players.map(p => p._secondChar).join(', ')})` });
+    },
+
+    // Krok startu tahu: nabídka výměny. Vrací true → čeká se na rozhodnutí hráče.
+    _newIdentityOffer() {
+        if (!this.hasEvent('NOVA_IDENTITA')) return false;
+        const p = this.getCurrentPlayer();
+        if (!p || !isInPlay(p) || !p._secondChar) return false;
+        this.pendingNewIdentity = { playerIdx: this.currentPlayerIndex, character: p._secondChar };
+        this.phase = "NEW_IDENTITY";
+        return true;
+    },
+
+    resolveNewIdentity(playerIdx, take) {
+        if (this.phase !== "NEW_IDENTITY" || !this.pendingNewIdentity) return false;
+        if (this.pendingNewIdentity.playerIdx !== playerIdx) return false;
+        const p = this.players[playerIdx];
+        this.pendingNewIdentity = null;
+        if (take && p && p._secondChar) {
+            const from = p.character;
+            const to = p._secondChar;
+            p.character = to;
+            p._secondChar = from;          // stará postava se stane tou odloženou
+            p._copiedCharacter = null;     // s postavou padá i kopie Very Custer
+            const { base, max } = healthForCharacter(to, p.role);
+            p.maxHealth = max;
+            p._baseHealth = base;
+            p.health = Math.min(2, max);   // „a klesne na 2 životy"
+            this.logEvent('event', { card: 'Nová identita', who: p.name, from, to });
+        }
+        this.phase = "PLAY";
+        this._resumeBeginTurn();
+        return true;
+    },
+
+    // ── Želízka (přibalená karta z A Fistful of Cards) ────────────────────────
+    // Po fázi lízání si hráč na tahu zvolí barvu a v tomto tahu smí hrát jen karty
+    // té barvy. Volá se z _finishDraw (logic/draw.js); vrací true → čeká se na volbu.
+    _startHandcuffs() {
+        if (!this.hasEvent('ZELIZKA')) return false;
+        const p = this.getCurrentPlayer();
+        if (!p || !isInPlay(p)) return false;
+        this.pendingHandcuffs = { playerIdx: this.currentPlayerIndex };
+        this.phase = "HANDCUFFS_SUIT";
+        return true;
+    },
+
+    chooseHandcuffsSuit(playerIdx, suit) {
+        if (this.phase !== "HANDCUFFS_SUIT" || !this.pendingHandcuffs) return false;
+        if (this.pendingHandcuffs.playerIdx !== playerIdx) return false;
+        const all = [Suits.HEARTS, Suits.DIAMONDS, Suits.CLUBS, Suits.SPADES];
+        if (!all.includes(suit)) return false;
+        const p = this.players[playerIdx];
+        p._handcuffsSuit = suit;
+        this.pendingHandcuffs = null;
+        this.phase = "PLAY";
+        this.logEvent('event', { card: 'Želízka', who: p.name, suit });
+        this._processSpecialQueue();
+        return true;
+    },
+
+    // Smí hráč TUHLE kartu teď zahrát? Želízka omezují jen hráče na tahu – včetně karet
+    // zahraných jako reakce v jeho VLASTNÍM tahu (stejný výklad jako u Kazatele, FAQ H2).
+    // Barvu bere přes _effSuit, takže se to skládá s Požehnáním/Prokletím (i když se ty
+    // s Želízky nikdy nepotkají – platná událost je vždy jen jedna).
+    _suitBlocked(playerIdx, card) {
+        if (!this.hasEvent('ZELIZKA') || !card) return false;
+        if (playerIdx !== this.currentPlayerIndex) return false;
+        const p = this.players[playerIdx];
+        if (!p || !p._handcuffsSuit) return false;
+        return this._effSuit(card) !== p._handcuffsSuit;
     },
 
     // ── Sdílené dotazy pravidel ───────────────────────────────────────────────

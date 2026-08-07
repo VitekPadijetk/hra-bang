@@ -39,7 +39,7 @@ const GROUPS = {
         'respond_to_card', 'end_turn', 'discard_card', 'kit_carlson_pick', 'kit_carlson_select',
         'lucky_duke_pick', 'lucky_duke_choose', 'trigger_barrel_draw', 'draw_from_barrel',
         'sid_ketchum_discard_both', 'take_dynamite_hit', 'respond_with_beer', 'beer_dynamite_save',
-        'take_noon_hit', 'beer_noon_save',
+        'take_noon_hit', 'beer_noon_save', 'handcuffs_suit', 'new_identity_choose',
         'sid_ketchum_cancel', 'sid_save_discard', 'store_pick',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another', 'activate_green_card',
     ] },
@@ -61,13 +61,13 @@ for (const [name, { reg, events }] of Object.entries(GROUPS)) {
     });
 }
 
-test('všechny moduly dohromady pokrývají 68 unikátních eventů', () => {
+test('všechny moduly dohromady pokrývají 70 unikátních eventů', () => {
     const all = [];
     for (const { reg } of Object.values(GROUPS)) {
         const socket = mkSocket();
         reg(socket, mkCtx(), () => {});
         all.push(...socket._events);
     }
-    assert.equal(all.length, 68);
-    assert.equal(new Set(all).size, 68, 'žádný event se nesmí registrovat dvakrát');
+    assert.equal(all.length, 70);
+    assert.equal(new Set(all).size, 70, 'žádný event se nesmí registrovat dvakrát');
 });

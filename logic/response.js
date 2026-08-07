@@ -12,6 +12,7 @@ const ResponseMixin = {
         const aliveCount = this.players.filter(pl => pl.health > 0).length;
         if (aliveCount <= 2) return false;
         if (this._beerBlocked()) return false;   // High Noon – Reverend: Pivo se hrát nedá
+        if (this._suitBlocked(playerIdx, card)) return false;   // High Noon – Želízka
 
         // Tequila Joe (Dodge City): Pivo mu dá 2 životy i při záchraně před vyřazením.
         // Jeden život vždy zaplatí zásah, který ho měl vyřadit; přebytek se použije dál
@@ -237,6 +238,10 @@ const ResponseMixin = {
                 // prohrává, protože nemá čím odpovědět.
                 if (isValid && this._bangBlocked(playerIdx)) isValid = false;
             }
+
+            // High Noon – Želízka: hráč na tahu smí i jako reakci zahrát jen kartu
+            // zvolené barvy (stejný výklad jako u Kazatele, FAQ H2).
+            if (isValid && this._suitBlocked(playerIdx, card)) isValid = false;
 
             if (!isValid) return;
 

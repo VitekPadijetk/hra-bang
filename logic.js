@@ -93,6 +93,8 @@ class GameState {
         this.activeEvent = null;
         this.pendingNoonDamage = null;   // Pravé poledne: čeká se na kliknutí na životy
         this.daltonsQueue = null;        // Daltonové: fronta hráčů odhazujících modrou kartu
+        this.pendingHandcuffs = null;    // Želízka: čeká se na volbu barvy (po fázi lízání)
+        this.pendingNewIdentity = null;  // Nová identita: nabídka výměny postavy na začátku tahu
         this._sheriffTurns = 0;          // kolikátý tah šerifa běží (událost až od 2.)
         this._beginTurnStep = 0;         // krokovač startu tahu (viz logic/highNoon.js)
     }

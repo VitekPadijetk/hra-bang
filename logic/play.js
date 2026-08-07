@@ -14,6 +14,9 @@ const PlayMixin = {
         // proto sem discardExtra karta nechodí; případný omyl je bezpečný no-op.
         if (card.discardExtra) return;
 
+        // High Noon – Želízka: v tomhle tahu jen karty zvolené barvy.
+        if (this._suitBlocked(this.currentPlayerIndex, card)) return;
+
         this.logEvent('play', { who: player.name, card: card.name });
 
         // Zelené karty (Dodge City) se vykládají na stůl jako modré – aktivují se až
@@ -97,6 +100,7 @@ const PlayMixin = {
         const card = attacker?.hand[cardIdx];
         if (!attacker || !target || !card) return;
         if (target.health <= 0) return;
+        if (this._suitBlocked(attackerIdx, card)) return;   // High Noon – Želízka
 
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
@@ -192,6 +196,8 @@ const PlayMixin = {
         if (this.currentPlayerIndex !== attIdx) return;
         const attacker = this.players[attIdx];
         if (!attacker || !attacker.hand[cardIdx]) return;
+
+        if (this._suitBlocked(attIdx, attacker.hand[cardIdx])) return;   // High Noon – Želízka
 
         const cardType = attacker.hand[cardIdx].type;
 

@@ -406,3 +406,101 @@ function renderVeraCopyOverlay() {
         }
     });
 }
+
+// ── High Noon (přibalené) – Želízka: volba barvy pro tenhle tah ──────────────
+// Vykresluje se přes herní desku (renderGameBoard už proběhl). Vidí ho jen hráč,
+// který volí; ostatním stačí čekací štítek (core/pending.js).
+function renderHandcuffsOverlay() {
+    const ph = state.pendingHandcuffs;
+    if (!ph || ph.playerIdx !== myIndex) return;
+
+    const backdrop = gameScene.add.rectangle(960, 540, 1920, 1080, 0x000000, 0.78)
+        .setInteractive();   // spolkne kliknutí mimo tlačítka
+    gameScene.cardsSprites.add(backdrop);
+
+    themeTitle(gameScene, 960, 250, '🔗 Želízka – vyber barvu', { fontSize: '42px' });
+
+    const hint = gameScene.add.text(960, 330,
+        'V tomhle tahu smíš zahrát jen karty zvolené barvy.',
+        { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.textMuted }).setOrigin(0.5);
+    gameScene.cardsSprites.add(hint);
+
+    // Pořadí i symboly odpovídají Suits v logic/entities.js (server porovnává přesně je).
+    const SUITS = [
+        { s: '♥️', label: 'Srdce',  red: true },
+        { s: '♦️', label: 'Káry',   red: true },
+        { s: '♣️', label: 'Kříže',  red: false },
+        { s: '♠️', label: 'Piky',   red: false },
+    ];
+    const spacing = 300;
+    const startX = 960 - (SUITS.length - 1) * spacing / 2;
+
+    SUITS.forEach((it, i) => {
+        const cx = startX + i * spacing;
+        // Kolik karet té barvy zrovna držím – ať se hráč rozhoduje podle ruky.
+        const mine = (state.players[myIndex]?.hand || [])
+            .filter(c => (typeof effSuit === 'function' ? effSuit(state, c) : c.suit) === it.s).length;
+
+        const { bg } = themeButton(gameScene, cx, 560, 230, 230, `${it.s}\n${it.label}`, {
+            fill: it.red ? 0x4a1414 : 0x1c1c26, fillHover: it.red ? 0x6b1d1d : 0x2c2c3a,
+            stroke: it.red ? 0xd05050 : 0x8888aa,
+            textColor: it.red ? '#ff9a9a' : '#dfe0f0', fontSize: '40px',
+            onClick: () => {
+                if (App.blockInput) return;
+                App.blockInput = true;
+                socket.emit('handcuffs_suit', { suit: it.s });
+                renderUI();
+            },
+        });
+        bg.setDepth(1001);
+
+        const cnt = gameScene.add.text(cx, 700, `${mine}× v ruce`,
+            { fontFamily: THEME.fontUI, fontSize: '20px', color: THEME.color.textMuted }).setOrigin(0.5);
+        cnt.setDepth(1002);
+        gameScene.cardsSprites.add(cnt);
+    });
+}
+
+// ── High Noon (přibalené) – Nová identita: výměna postavy na začátku tahu ────
+// Odložená postava vyletí zpod karty životů doprostřed a překlopí se (animaci spouští
+// net/handlers.js `startNewIdentityReveal`). Tohle je STATICKÁ část, která se kreslí,
+// až karta doletí (App.niReveal.ready) – zvětšená karta + tlačítka ANO/NE.
+function renderNewIdentityOverlay() {
+    const pni = state.pendingNewIdentity;
+    if (!pni || pni.playerIdx !== myIndex) return;
+    if (!App.niReveal || !App.niReveal.ready || App.niReveal.decided) return;
+
+    const charData = gameScene.cache.json.get('characters_data');
+    const info = charData?.find(c => c.name === pni.character);
+    const texKey = info && gameScene.textures.exists('char_' + info.id)
+        ? 'char_' + info.id : 'placeholder';
+
+    const card = gameScene.add.image(960, 420, texKey).setScale(0.80).setDepth(1000);
+    gameScene.cardsSprites.add(card);
+
+    const q = gameScene.add.text(960, 760, `Vezmeš si novou identitu (${pni.character}) a klesneš na 2 životy?`,
+        { fontFamily: THEME.fontUI, fontSize: '30px', color: THEME.color.text,
+          backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 18, y: 8 } })
+        .setOrigin(0.5).setDepth(1001);
+    gameScene.cardsSprites.add(q);
+
+    const { bg: yesBg } = themeButton(gameScene, 700, 880, 380, 64, '✓ ANO, VYMĚNIT', {
+        fill: THEME.color.successDarkNum, fillHover: 0x3f7a3f, stroke: THEME.color.successNum,
+        fontSize: '26px', onClick: () => confirmNewIdentity(true),
+    });
+    yesBg.setDepth(1001);
+
+    const { bg: noBg } = themeButton(gameScene, 1220, 880, 340, 64, '✗ ZŮSTÁVÁM', {
+        fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+        fontSize: '26px', onClick: () => confirmNewIdentity(false),
+    });
+    noBg.setDepth(1001);
+}
+
+function confirmNewIdentity(take) {
+    if (!App.niReveal || App.niReveal.decided) return;
+    App.niReveal.decided = true;
+    App.blockInput = true;
+    socket.emit('new_identity_choose', { take: !!take });
+    renderUI();   // tlačítka i zvětšená karta zmizí; dojezd dohraje new_identity_result
+}

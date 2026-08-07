@@ -23,12 +23,19 @@ if (typeof require === 'function') {
         globalThis.bangBlockedFor = __hn.bangBlockedFor;
         globalThis.beerBlockedFor = __hn.beerBlockedFor;
     }
+    // Samostatný guard: kdo načte highNoon.js dřív (botPolicy), doplní si jen část
+    // globálů – bez tohohle by tady suitBlockedFor chyběl.
+    if (typeof suitBlockedFor === 'undefined') {
+        globalThis.suitBlockedFor = require('./highNoon.js').suitBlockedFor;
+    }
 }
 
 function cardPlayability(state, me, myIndex, card) {
     if (card?._placeholder) return null;
     const isMyResponseTurn = isResponseTurn(state, myIndex);
     const isMyPlayTurn = isPlayTurn(state, myIndex);
+    // High Noon – Želízka: ve svém tahu jen karty zvolené barvy (i jako reakce).
+    if ((isMyResponseTurn || isMyPlayTurn) && suitBlockedFor(state, myIndex, card)) return false;
     if (isMyResponseTurn) {
         const req = state.pendingResponse.requiredCard;
         const _aliveForBeer = state.players.filter(p => p.health > 0).length;

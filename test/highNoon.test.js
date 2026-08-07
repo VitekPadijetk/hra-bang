@@ -1018,3 +1018,204 @@ test('Město duchů: odchodem ducha se výhra přepočítá', () => {
     assert.equal(g.winner, 'Zákon vyhrál!');
     assert.equal(g.currentPlayerIndex, 1, 'po vyhlášení výhry se tah neposouvá');
 });
+
+// ── Přibalené karty z A Fistful of Cards (options.highNoonExtra) ─────────────
+const { pendingActor } = require('../core/pending.js');
+const { cardPlayability } = require('../core/playability.js');
+
+const EXTRA_OPTS = { expansions: { high_noon: true }, highNoonExtra: true };
+
+// Hra se zapnutými přibalenými kartami. `event` = platná událost (bez odkrývání).
+function mkExtraGame(specs, opts = {}) {
+    const g = mkGame(specs, opts);
+    g.highNoonCardData = hnData;
+    g.options = EXTRA_OPTS;
+    g._setupEventDeck(EXTRA_OPTS);
+    g.eventDeck = [];
+    if (opts.event) g.activeEvent = evCard(opts.event);
+    return g;
+}
+
+// ── Želízka ─────────────────────────────────────────────────────────────────
+
+test('Želízka: po fázi lízání se čeká na volbu barvy', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    for (let i = 0; i < 6; i++) topDeck(g, Suits.CLUBS);
+    g.currentPlayerIndex = 0;
+    g.startDrawPhase();
+    g.drawCard('deck');
+    g.drawCard('deck');
+    assert.equal(g.phase, 'HANDCUFFS_SUIT');
+    assert.deepEqual(pendingActor(g), { idx: 0, kind: 'HANDCUFFS_SUIT' });
+    assert.equal(g.chooseHandcuffsSuit(0, Suits.HEARTS), true);
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[0]._handcuffsSuit, Suits.HEARTS);
+});
+
+test('bez Želízek se na barvu nikdo neptá', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}]);
+    for (let i = 0; i < 6; i++) topDeck(g, Suits.CLUBS);
+    g.currentPlayerIndex = 0;
+    g.startDrawPhase();
+    g.drawCard('deck');
+    g.drawCard('deck');
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Želízka: karta jiné barvy se nezahraje, karta zvolené ano', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.currentPlayerIndex = 0;
+    g.phase = 'PLAY';
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    const bad = give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+    g.playBang(0, 1, bad);
+    assert.equal(g.players[0].hand.length, 1, 'pikový Bang! zůstal v ruce');
+    assert.equal(g.phase, 'PLAY');
+    const ok = give(g, 0, CardType.BANG, { suit: Suits.HEARTS });
+    g.playBang(0, 1, ok);
+    assert.equal(g.phase, 'RESPOND', 'srdcový Bang! projde');
+});
+
+test('Želízka: Vězení jiné barvy nejde zahrát (playSpecialCard)', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.currentPlayerIndex = 0;
+    g.phase = 'PLAY';
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    const i = give(g, 0, CardType.JAIL, { suit: Suits.CLUBS });
+    g.playSpecialCard(0, 1, i);
+    assert.equal(g.players[1].board.length, 0);
+    assert.equal(g.players[0].hand.length, 1);
+});
+
+test('Želízka: modrá karta jiné barvy se nevyloží (playCard)', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.currentPlayerIndex = 0;
+    g.phase = 'PLAY';
+    g.players[0]._handcuffsSuit = Suits.DIAMONDS;
+    const i = give(g, 0, CardType.BARREL, { suit: Suits.CLUBS });
+    g.playCard(i);
+    assert.equal(g.players[0].board.length, 0);
+    assert.equal(g.players[0].hand.length, 1);
+});
+
+test('Želízka: platí i na reakci ve VLASTNÍM tahu (duel)', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.currentPlayerIndex = 0;
+    g.phase = 'PLAY';
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    const duel = give(g, 0, CardType.DUEL, { suit: Suits.HEARTS });
+    g.playSpecialCard(0, 1, duel);
+    assert.equal(g.phase, 'RESPOND');
+    // Cíl (mimo svůj tah) odpoví klidně pikovým Bangem – jeho se Želízka netýkají.
+    const b1 = give(g, 1, CardType.BANG, { suit: Suits.SPADES });
+    g.handleResponse(1, b1);
+    assert.equal(g.players[1].hand.length, 0, 'soupeře barva neomezuje');
+    assert.equal(g.pendingResponse.targetIdx, 0);
+    // Útočník na tahu ale pikový Bang! zahrát nesmí.
+    const b2 = give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+    g.handleResponse(0, b2);
+    assert.equal(g.players[0].hand.length, 1, 'pikový Bang! v duelu neprošel');
+    assert.equal(g.players[0].health, 4, 'a zásah zatím nepadl');
+});
+
+test('Želízka: barva platí jen jeden tah', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    g.currentPlayerIndex = 3;
+    g.nextTurn();   // → hráč 0, start tahu barvu zahodí ještě před kontrolami
+    assert.equal(g.currentPlayerIndex, 0);
+    assert.equal(g.players[0]._handcuffsSuit, null);
+});
+
+test('Želízka: cardPlayability zrcadlí pravidlo (klient i bot)', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.currentPlayerIndex = 0;
+    g.phase = 'PLAY';
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    const bad = mkCard(CardType.BANG, { suit: Suits.SPADES });
+    const ok = mkCard(CardType.BANG, { suit: Suits.HEARTS });
+    assert.equal(cardPlayability(g, g.players[0], 0, bad), false);
+    assert.equal(cardPlayability(g, g.players[0], 0, ok), true);
+    // Mimo svůj tah (hráč 1) se pravidlo neuplatní.
+    assert.equal(cardPlayability(g, g.players[1], 1, bad), null);
+});
+
+// ── Nová identita ───────────────────────────────────────────────────────────
+
+test('Nová identita: druhá postava se rozdá jen se zapnutými přibalenými kartami', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Willy the Kid' },
+                           { character: 'Slab the Killer' }, { character: 'Paul Regret' }]);
+    g._dealSecondIdentities();
+    g.players.forEach(p => {
+        assert.ok(p._secondChar, 'každý má druhou postavu');
+        assert.notEqual(p._secondChar, p.character);
+    });
+    assert.equal(new Set(g.players.map(p => p._secondChar)).size, 3, 'každá je jiná');
+
+    const g2 = mkGame([{ role: 'Sheriff', character: 'Willy the Kid' }, { character: 'Paul Regret' }]);
+    g2.highNoonCardData = hnData;
+    g2.options = { expansions: { high_noon: true } };
+    g2._dealSecondIdentities();
+    assert.ok(!g2.players[0]._secondChar, 'bez highNoonExtra se nerozdává');
+});
+
+test('Nová identita: na začátku tahu se nabídne výměna', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Willy the Kid' }, {}, {}],
+                          { event: 'NOVA_IDENTITA' });
+    g.players[0]._secondChar = 'Slab the Killer';
+    g.currentPlayerIndex = 0;
+    assert.equal(g._beginTurn(), true, 'start tahu se pozastaví');
+    assert.equal(g.phase, 'NEW_IDENTITY');
+    assert.deepEqual(pendingActor(g), { idx: 0, kind: 'NEW_IDENTITY' });
+    assert.equal(g.pendingNewIdentity.character, 'Slab the Killer');
+});
+
+test('Nová identita: ANO vymění postavu a hráč klesne na 2 životy', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Willy the Kid' }, {}, {}],
+                          { event: 'NOVA_IDENTITA' });
+    g.players[0]._secondChar = 'Slab the Killer';
+    g.currentPlayerIndex = 0;
+    g._beginTurn();
+    assert.equal(g.resolveNewIdentity(0, true), true);
+    assert.equal(g.players[0].character, 'Slab the Killer');
+    assert.equal(g.players[0]._secondChar, 'Willy the Kid', 'stará postava se odloží');
+    assert.equal(g.players[0].health, 2);
+    assert.equal(g.phase, 'DRAW', 'start tahu pokračuje fází lízání');
+});
+
+test('Nová identita: NE nechá všechno být', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Willy the Kid' }, {}, {}],
+                          { event: 'NOVA_IDENTITA' });
+    g.players[0]._secondChar = 'Slab the Killer';
+    g.currentPlayerIndex = 0;
+    g._beginTurn();
+    assert.equal(g.resolveNewIdentity(0, false), true);
+    assert.equal(g.players[0].character, 'Willy the Kid');
+    assert.equal(g.players[0]._secondChar, 'Slab the Killer');
+    assert.equal(g.players[0].health, 4, 'životy zůstávají beze změny');
+    assert.equal(g.phase, 'DRAW');
+});
+
+test('Nová identita: bez odložené postavy se nenabízí', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Willy the Kid' }, {}, {}],
+                          { event: 'NOVA_IDENTITA' });
+    g.currentPlayerIndex = 0;
+    assert.equal(g._beginTurn(), false);
+    assert.notEqual(g.phase, 'NEW_IDENTITY');
+});
+
+test('Nová identita: výměna ruší kopii Very Custer a jde vrátit zpátky', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Vera Custer' }, {}, {}],
+                          { event: 'NOVA_IDENTITA' });
+    g.players[0]._secondChar = 'Slab the Killer';
+    g.players[0]._copiedCharacter = 'Willy the Kid';
+    g.currentPlayerIndex = 0;
+    g._beginTurn();
+    g.resolveNewIdentity(0, true);
+    assert.equal(g.players[0]._copiedCharacter, null);
+    // Příští tah si smí vzít zpátky tu původní.
+    g._beginTurn();
+    assert.equal(g.pendingNewIdentity.character, 'Vera Custer');
+    g.resolveNewIdentity(0, true);
+    assert.equal(g.players[0].character, 'Vera Custer');
+});

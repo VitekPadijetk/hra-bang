@@ -198,6 +198,8 @@ module.exports = function installBotService(ctx) {
         // Lucky Duke: vybraná karta se po výběru ještě „sejme" uprostřed obrazovky
         // (handleLuckyDuke nastaví _revealBlockUntil) – po tu dobu bot nehraje.
         const revealWait = Math.max(0, (room._revealBlockUntil || 0) - Date.now());
+        // Nová identita (High Noon): dojezd výměny postavy (nastaví handlers.game.js).
+        const niWait = Math.max(0, (room._niBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
         if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
@@ -240,7 +242,7 @@ module.exports = function installBotService(ctx) {
 
         // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
         // časováním – bot čeká, než doběhnou.
-        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait);
+        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();

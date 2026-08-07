@@ -894,6 +894,15 @@ function drawMyArea(ctx) {
             }
         }
 
+        // High Noon (přibalené) – Nová identita: odložená druhá postava leží lícem dolů
+        // POD kartou životů (kouká zpod ní roh). Rub karty postavy je karta životů.
+        // Během cinematiky výměny (App.niHideSecond) se nekreslí – zrovna letí.
+        if (me._secondChar && !App.niHideSecond) {
+            const secImg = gameScene.add.image(livesX + 14, myBaseY + 14, 'lives').setScale(scaleMe);
+            secImg.setTint(0x99999b);   // ať je poznat, že je to ta odložená (ne živá karta)
+            gameScene.cardsSprites.add(secImg);
+        }
+
         let livesImg = gameScene.add.image(livesX, myBaseY, 'lives').setScale(scaleMe);
 
         const isMyDynamiteDamage = state.phase === "DYNAMITE_DAMAGE" &&
@@ -1838,6 +1847,20 @@ function drawSpectatorPlayer(ctx) {
 // ── Fázové overlaye (kontrola, Black Jack, Kit Carlson, Lucky Duke, store, Sid) ─
 function drawPhaseOverlays(ctx) {
     const { getTex, me } = ctx;
+
+    // ── High Noon (přibalené) – Želízka: zvolená barva platí celý tah, ať ji vidí
+    // celý stůl (jinak by hráči nechápali, proč soupeř polovinu karet nehraje).
+    if (state.activeEvent?.key === 'ZELIZKA') {
+        const cp = state.players[state.currentPlayerIndex];
+        if (cp && cp._handcuffsSuit) {
+            const red = cp._handcuffsSuit === '♥️' || cp._handcuffsSuit === '♦️';
+            const txt = gameScene.add.text(1280, 650, `🔗 ${cp._handcuffsSuit}`,
+                { fontSize: '26px', color: red ? '#ff8888' : '#ddddee', fontStyle: 'bold',
+                  backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 10, y: 4 } })
+                .setOrigin(0.5).setDepth(60);
+            gameScene.cardsSprites.add(txt);
+        }
+    }
 
     // ── RESPOND: nemodální banner nahoře – co tě ohrožuje / na koho se čeká ──
     if (state.phase === "RESPOND" && state.pendingResponse?.active && typeof describePendingResponse === 'function') {
