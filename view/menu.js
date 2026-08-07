@@ -14,9 +14,12 @@ function showNameInput(onConfirm) {
     if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'name-overlay';
+        // max-height + scroll: na telefonu na šířku (390 px) zabere vysunutá klávesnice
+        // půlku obrazovky a tlačítko OK by zůstalo mimo dosah.
         overlay.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
             background:rgba(30,26,36,0.98);padding:36px 48px;border-radius:16px;
-            z-index:999;text-align:center;border:2px solid #8a6d1f;
+            z-index:999;text-align:center;border:2px solid #8a6d1f;max-width:92vw;
+            max-height:92dvh;overflow:auto;box-sizing:border-box;
             box-shadow:0 8px 40px rgba(0,0,0,0.6);font-family:'Oswald',sans-serif;`;
         overlay.innerHTML = `
             <p style="color:#e0b23c;font-size:26px;font-weight:600;margin:0 0 18px">Zadej své jméno</p>
@@ -79,7 +82,7 @@ function showCreativeMode(playerIdx) {
         font-family:sans-serif;color:#eee;box-sizing:border-box;`;
 
     div.innerHTML = `
-      <div style="display:flex;align-items:center;padding:10px 16px;background:#111;gap:12px;flex-shrink:0">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#111;gap:12px;flex-shrink:0">
         <span style="font-size:22px;font-weight:bold;color:#8f8">🃏 Creative Mode – ${pl.name}</span>
         <span style="color:#aaa;font-size:14px">Hráč:</span>
         ${state.players.map((p,i) => `<button onclick="document.getElementById('creative-overlay').remove();showCreativeMode(${i})"
@@ -102,7 +105,7 @@ function showCreativeMode(playerIdx) {
           <div id="cm-give-list" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start">
           </div>
         </div>
-        <div style="flex:0 0 320px;display:flex;flex-direction:column">
+        <div style="flex:0 0 min(320px, 40%);display:flex;flex-direction:column">
           <div style="padding:8px 12px;background:#200a0a;font-size:14px;color:#f88;font-weight:bold;flex-shrink:0">
             ➖ Odebrat kartu
           </div>
@@ -793,10 +796,18 @@ function showTextInput(id, x, y, w, h, defaultVal, onChange) {
     const canvas = document.querySelector('canvas');
     const rect = canvas?.getBoundingClientRect() || { left: 0, top: 0, width: 1920, height: 1080 };
     const scaleX = rect.width / 1920, scaleY = rect.height / 1080;
+    // Políčko se škáluje podle plátna, ale písmo bylo napevno 20px → na mobilu (měřítko
+    // 0,36) byl box vysoký ~18 CSS px a text se do něj nevešel. Písmo tedy jede s plátnem
+    // s dolní hranicí 16px (pod ní iOS Safari při zaměření zoomuje stránku) a políčko se
+    // dorovná na výšku, do které se písmo vejde. Přerůstek se rozdělí nad a pod, aby
+    // políčko zůstalo na svém místě; ve výchozím měřítku 1 vyjde přesně dnešní geometrie.
+    const fontPx = Math.max(16, Math.round(20 * scaleY));
+    const boxH = Math.max(h * scaleY, fontPx + 4);
+    el.style.fontSize = fontPx + 'px';
     el.style.left   = (rect.left + x * scaleX) + 'px';
-    el.style.top    = (rect.top  + y * scaleY) + 'px';
+    el.style.top    = (rect.top  + y * scaleY - (boxH - h * scaleY) / 2) + 'px';
     el.style.width  = (w * scaleX) + 'px';
-    el.style.height = (h * scaleY) + 'px';
+    el.style.height = boxH + 'px';
     // Bez auto-focusu: na mobilu by se jinak při otevření obrazovky sama vyskočila
     // klávesnice do názvu hry. Hráč input klepnutím zaměří sám, až bude chtít psát.
 }
@@ -979,7 +990,10 @@ function showStats(players) {
     const div = document.createElement('div');
     div.id = 'stats-overlay';
     div.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;
-        background:rgba(0,0,0,0.92);z-index:1000;overflow-y:auto;padding:20px;box-sizing:border-box;`;
+        background:rgba(0,0,0,0.92);z-index:1000;overflow-y:auto;padding:20px;box-sizing:border-box;
+        padding-bottom:calc(20px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch;`;
+    // Tabulka má 12 sloupců – na mobilu se nezmenšuje (byla by nečitelná), ale posouvá
+    // se vodorovně ve vlastním kontejneru, aby stránka sama neujížděla do stran.
     div.innerHTML = `
         <div style="max-width:1200px;margin:0 auto">
         <h2 style="color:#ffcc00;text-align:center;margin-bottom:8px">📊 STATISTIKY HRY</h2>
@@ -987,7 +1001,8 @@ function showStats(players) {
             Celkem: Bang!×${allStats.bangsFired}, Zásahy×${allStats.bangsHit} (${totalAcc}%),
             Damage×${allStats.damageDealt}, Líznuto×${allStats.cardsDrawn}, Odhoz×${allStats.cardsDiscarded}
         </p>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;color:#eee">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px;color:#eee">
             <thead><tr style="background:#2a2a2a;color:#aaa;font-size:12px">
                 <th style="padding:8px;text-align:left">Hráč</th>
                 <th>Role</th><th>Postava</th>
@@ -1000,9 +1015,10 @@ function showStats(players) {
                 ${Object.entries(groups).map(([t, p]) => renderGroup(t, p)).join('')}
             </tbody>
         </table>
+        </div>
         <div style="text-align:center;margin-top:20px">
             <button onclick="document.getElementById('stats-overlay').remove()"
-                style="padding:10px 30px;background:#800;color:#fff;border:none;
+                style="padding:14px 36px;background:#800;color:#fff;border:none;
                 border-radius:6px;font-size:18px;cursor:pointer">✕ Zavřít</button>
         </div></div>`;
     document.body.appendChild(div);

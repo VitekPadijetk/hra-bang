@@ -2,18 +2,70 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <!-- viewport-fit=cover: na telefonech s výřezem se plátno roztáhne i pod něj, jinak
+         zůstanou po stranách černé pruhy a hra je ještě menší (odsazení řeší safe-area). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Bang! Online Prototyp</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* 100dvh = výška BEZ lišty prohlížeče, která se na mobilu vysouvá; se 100vh
+           plátno přetékalo a spodní pás (moje ruka) končil pod lištou. Řádek se 100vh
+           zůstává jako fallback pro starší prohlížeče. */
         body { margin: 0; background-color: #100d14; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        body { height: 100dvh; overscroll-behavior: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
         canvas { border: 3px solid #8a6d1f; border-radius: 12px; box-shadow: 0 0 32px rgba(0,0,0,0.6); }
+        /* Malý / dotykový displej: rám ukusuje z výšky plátna (3 px rámu = 8 design px)
+           a ve fullscreenu působí divně. */
+        @media (max-width: 900px), (pointer: coarse) {
+            canvas { border: 0; border-radius: 0; box-shadow: none; }
+        }
+        /* Výzva k otočení telefonu – hra je navržená jen na šířku (na výšku je měřítko
+           0,20 místo 0,36). Čistý DOM, ať funguje i během načítání Phaseru. */
+        #rotate-overlay { position: fixed; inset: 0; z-index: 6000; display: none;
+            flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+            background: #100d14; color: #f2ede4; text-align: center; padding: 24px;
+            font-family: 'Oswald', 'Trebuchet MS', sans-serif; box-sizing: border-box; }
+        #rotate-overlay .ico { font-size: 64px; animation: rotate-hint 2.2s ease-in-out infinite; }
+        #rotate-overlay .title { font-size: 26px; font-weight: 600; color: #e0b23c; margin: 0; }
+        #rotate-overlay .sub { font-size: 16px; color: #9a9088; margin: 0; max-width: 420px; line-height: 1.4; }
+        #rotate-anyway { font-size: 16px; color: #9a9088; border: 1px solid #3a3242; border-radius: 8px;
+            padding: 10px 22px; cursor: pointer; background: #1a1620; }
+        @keyframes rotate-hint { 0%,45% { transform: rotate(0deg); } 60%,100% { transform: rotate(-90deg); } }
     </style>
 </head>
 <body>
+    <div id="rotate-overlay">
+        <div class="ico">📱</div>
+        <p class="title">Otoč telefon na šířku</p>
+        <p class="sub">Bang! se hraje na šířku – na výšku je všechno malé a karty se nevejdou.</p>
+        <span id="rotate-anyway">Hrát i tak</span>
+    </div>
+    <script>
+    // Výzva k otočení: jen na dotykových zařízeních a jen v portrétu. „Hrát i tak"
+    // platí do konce relace (sessionStorage), aby se výzva nevracela při každém otočení.
+    (function () {
+        var ov = document.getElementById('rotate-overlay');
+        var dismissed = false;
+        try { dismissed = sessionStorage.getItem('bangRotateDismiss') === '1'; } catch (e) {}
+        function portraitPhone() {
+            var coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+            return !!coarse && window.innerHeight > window.innerWidth;
+        }
+        function sync() { ov.style.display = (!dismissed && portraitPhone()) ? 'flex' : 'none'; }
+        document.getElementById('rotate-anyway').addEventListener('click', function () {
+            dismissed = true;
+            try { sessionStorage.setItem('bangRotateDismiss', '1'); } catch (e) {}
+            sync();
+        });
+        window.addEventListener('resize', sync);
+        // orientationchange přijde dřív, než prohlížeč přepočítá innerWidth/Height.
+        window.addEventListener('orientationchange', function () { setTimeout(sync, 200); });
+        sync();
+    })();
+    </script>
     <script src="core/distance.js"></script>
     <script src="core/cardRules.js"></script>
     <script src="core/phaseInfo.js"></script>

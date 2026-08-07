@@ -51,6 +51,28 @@ function initChat() {
     #chat-badge { position:absolute; top:-4px; right:-4px; background:#d64545; color:#fff;
         border-radius:50%; width:20px; height:20px; font-size:11px; font-weight:bold;
         display:none; align-items:center; justify-content:center; pointer-events:none; }
+
+    /* Mobil / malý displej: postranní panel 420px překryje víc než polovinu obrazovky.
+       Přepíná se na spodní panel přes celou šířku (vyjíždí zdola, tedy translateY –
+       přepsat se musí OBĚ polohy, zavřená i .open). Vstupní pole musí mít aspoň 16px,
+       jinak iOS Safari při zaměření zoomuje celou stránku a hra se rozjede. */
+    @media (max-width:900px), (pointer:coarse) {
+        #chat-root { width:100%; left:0; right:0; height:60vh; height:60dvh;
+            border-left:none; border-top:2px solid #8a6d1f;
+            transform:translateY(100%); }
+        #chat-root.open { transform:translateY(0); }
+        #chat-header { font-size:20px; padding:14px 16px; }
+        #chat-close { font-size:26px; padding:0 10px; }
+        .chat-text { font-size:16px; }
+        .chat-name { font-size:13px; }
+        #chat-input-row { padding-bottom:calc(10px + env(safe-area-inset-bottom)); }
+        #chat-input { font-size:16px; height:46px; }
+        #chat-send { font-size:16px; padding:0 20px; }
+        #chat-toggle-btn { width:64px; height:64px; font-size:30px;
+            bottom:calc(16px + env(safe-area-inset-bottom));
+            right:calc(16px + env(safe-area-inset-right)); }
+        #chat-badge { width:24px; height:24px; font-size:13px; }
+    }
     `;
     document.head.appendChild(style);
 

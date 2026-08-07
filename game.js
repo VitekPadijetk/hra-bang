@@ -174,9 +174,66 @@ if (typeof window !== 'undefined') {
         if (e.touches && e.touches.length > 0) return;   // jiný prst ještě drží
         _touchActive = false;
         _onTouchRelease();
+        maybeOfferFullscreen();
     };
     window.addEventListener('touchend', endTouch, opts);
     window.addEventListener('touchcancel', endTouch, opts);
+}
+
+// --- MOBILNÍ RÁM ---
+// Hrubá detekce malého dotykového displeje pro DOM/rámovou vrstvu (chat, inputy,
+// fullscreen). Rozložení herní desky se podle ní zatím NEMĚNÍ – to řeší až profil
+// rozložení. Čte se za běhu, takže sedí i po otočení telefonu.
+function isSmallTouchUi() {
+    if (typeof window === 'undefined') return false;
+    const w = window.innerWidth || 1920;
+    const coarse = !!window.matchMedia?.('(pointer: coarse)')?.matches;
+    return w < 820 || (coarse && w < 1100);
+}
+
+// Lišta prohlížeče na mobilu ukusuje ~15 % výšky plátna. Fullscreen musí vyjít
+// z uživatelského gesta, takže se o něj hlásíme z dotyku. Zámek orientace umí
+// Android, iOS ne – proto try/catch a tiché selhání.
+function requestGameFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return Promise.resolve(false);
+    return Promise.resolve()
+        .then(() => req.call(el))
+        .then(() => {
+            try { screen.orientation?.lock?.('landscape')?.catch?.(() => {}); } catch (_) {}
+            return true;
+        })
+        .catch(() => false);
+}
+
+// Změna velikosti okna / otočení telefonu / vstup do fullscreenu mění plochu plátna.
+// Phaser si plátno přeškáluje sám, ale DOM prvky polohované nad ním (input názvu hry)
+// a rozhodnutí odvozená od velikosti displeje (tlačítko ⛶ FS) drží starý stav, dokud
+// nepřijde překreslení – jinde v klientu žádný resize handler není.
+if (typeof window !== 'undefined') {
+    let _resizeTimer = null;
+    const onViewportChange = () => {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(() => { if (gameScene) renderUI(); }, 120);
+    };
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('orientationchange', onViewportChange);
+    document.addEventListener('fullscreenchange', onViewportChange);
+}
+
+// Nabídka fullscreenu při prvním tapnutí ve hře – jednou za relaci. Když hráč
+// fullscreen opustí, znovu se nevnucuje (má tlačítko ⛶ FS v rohu).
+let _fsOffered = false;
+try { _fsOffered = sessionStorage.getItem('bangFsOffered') === '1'; } catch (e) {}
+function maybeOfferFullscreen() {
+    if (_fsOffered || document.fullscreenElement) return;
+    if (!isSmallTouchUi()) return;
+    if (window.innerHeight > window.innerWidth) return;   // v portrétu běží výzva k otočení
+    if (!roomState || !state || state.phase === 'MENU') return;
+    _fsOffered = true;
+    try { sessionStorage.setItem('bangFsOffered', '1'); } catch (e) {}
+    requestGameFullscreen();
 }
 
 // Zvednutí prstu = konec long pressu: naplánovaný odpočet zruš, zobrazený zoom zhasni.
@@ -2044,12 +2101,14 @@ function renderUI() {
     {
         const isFs = !!document.fullscreenElement;
         if (!isFs) {
+            // Na dotykovém displeji je 22px písmo ~8 CSS px – tlačítko nešlo trefit prstem.
+            const small = isSmallTouchUi();
             let fsBtn = gameScene.add.text(1900, 20, '⛶ FS',
-                { fontFamily: THEME.fontUI, fontSize: '22px', color: '#9a9088', backgroundColor: 'rgba(0,0,0,0.55)', padding: { x: 10, y: 6 } })
+                { fontFamily: THEME.fontUI, fontSize: small ? '40px' : '22px', color: '#9a9088', backgroundColor: 'rgba(0,0,0,0.55)', padding: small ? { x: 18, y: 12 } : { x: 10, y: 6 } })
                 .setOrigin(1, 0).setDepth(1000).setInteractive({ useHandCursor: true });
             fsBtn.on('pointerover', () => fsBtn.setColor('#e0b23c'));
             fsBtn.on('pointerout', () => fsBtn.setColor('#9a9088'));
-            fsBtn.on('pointerdown', () => document.documentElement.requestFullscreen().catch(() => {}));
+            fsBtn.on('pointerdown', () => requestGameFullscreen());
             gameScene.cardsSprites.add(fsBtn);
         }
     }
