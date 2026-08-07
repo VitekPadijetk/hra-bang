@@ -2015,7 +2015,7 @@ function drawPhaseOverlays(ctx) {
     }
 
     if (state.phase === "SID_SAVE" && state.pendingSidSave?.playerIdx === myIndex) {
-        let overlay = gameScene.add.rectangle(960, 540, 1920, 1080, 0x000000, 0.6).setDepth(200);
+        let overlay = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.6).setDepth(200);
         gameScene.cardsSprites.add(overlay);
         const needed = state.pendingSidSave.firstDiscarded ? 1 : 2;
         let label = gameScene.add.text(960, 300,

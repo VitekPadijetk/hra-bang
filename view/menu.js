@@ -794,8 +794,11 @@ function showTextInput(id, x, y, w, h, defaultVal, onChange) {
         document.addEventListener('pointerdown', dismiss);
     }
     const canvas = document.querySelector('canvas');
-    const rect = canvas?.getBoundingClientRect() || { left: 0, top: 0, width: 1920, height: 1080 };
-    const scaleX = rect.width / 1920, scaleY = rect.height / 1080;
+    // Plátno není nutně 1920×1080 – jeviště se roztahuje do skutečného poměru stran
+    // (core/layout.js) a herní souřadnice leží uprostřed, posunuté o stage.dx/dy.
+    const stage = currentStage();
+    const rect = canvas?.getBoundingClientRect() || { left: 0, top: 0, width: stage.w, height: stage.h };
+    const scaleX = rect.width / stage.w, scaleY = rect.height / stage.h;
     // Políčko se škáluje podle plátna, ale písmo bylo napevno 20px → na mobilu (měřítko
     // 0,36) byl box vysoký ~18 CSS px a text se do něj nevešel. Písmo tedy jede s plátnem
     // s dolní hranicí 16px (pod ní iOS Safari při zaměření zoomuje stránku) a políčko se
@@ -804,8 +807,8 @@ function showTextInput(id, x, y, w, h, defaultVal, onChange) {
     const fontPx = Math.max(16, Math.round(20 * scaleY));
     const boxH = Math.max(h * scaleY, fontPx + 4);
     el.style.fontSize = fontPx + 'px';
-    el.style.left   = (rect.left + x * scaleX) + 'px';
-    el.style.top    = (rect.top  + y * scaleY - (boxH - h * scaleY) / 2) + 'px';
+    el.style.left   = (rect.left + (x + stage.dx) * scaleX) + 'px';
+    el.style.top    = (rect.top  + (y + stage.dy) * scaleY - (boxH - h * scaleY) / 2) + 'px';
     el.style.width  = (w * scaleX) + 'px';
     el.style.height = boxH + 'px';
     // Bez auto-focusu: na mobilu by se jinak při otevření obrazovky sama vyskočila

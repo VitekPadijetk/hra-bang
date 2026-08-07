@@ -322,12 +322,14 @@ function _introOppSlots(idx, health) {
         charEndX  = ax; charEndY  = ay;
     }
 
-    // Start mimo obrazovku - obe karty se posunou o stejny vektor
+    // Start mimo obrazovku - obe karty se posunou o stejny vektor. Okraj se bere
+    // z jeviště, ne z 1920×1080: při širším poměru stran jsou pruhy po stranách taky
+    // vidět a karta by v nich čekala na svůj let.
     let dx = 0, dy = 0;
-    if (side === 'left')   dx = -(ax + oppCardH + 50);
-    else if (side === 'top')    dy = -(ay + oppCardH + 50);
-    else if (side === 'right')  dx = 1920 - ax + oppCardH + 50;
-    else                       dy = 1080 - ay + oppCardH + 50;
+    if (side === 'left')   dx = stageLeft() - (oppCardH + 50) - ax;
+    else if (side === 'top')    dy = stageTop() - (oppCardH + 50) - ay;
+    else if (side === 'right')  dx = stageRight() - ax + oppCardH + 50;
+    else                       dy = stageBottom() - ay + oppCardH + 50;
 
     // Šerifova hvězda se usadí nad kartou postavy – offsety dle strany zrcadlí board.js.
     const starScale = 0.3;
@@ -825,9 +827,11 @@ function renderIntroScene() {
         return;
     }
 
-    // Pozadí – stejná velikost jako herní pozadí (create: setDisplaySize 1920×1080),
+    // Pozadí – stejná velikost jako herní pozadí (create: setDisplaySize přes jeviště),
     // aby při přechodu z intra do hry pozadí neměnilo velikost.
-    _iAdd(gameScene.add.image(960, 540, 'background').setDisplaySize(1920, 1080).setDepth(0));
+    const introCover = stageCoverSize();
+    _iAdd(gameScene.add.image(960, 540, 'background')
+        .setDisplaySize(introCover.w, introCover.h).setDepth(0));
 
     // Tři balíčky (bez popisků pod kartami). Balíček, který se PRÁVĚ míchá,
     // nekreslíme staticky – reprezentuje ho míchací animace. Jakmile animace
@@ -951,8 +955,10 @@ function _renderIntroCharSelect() {
     const s = _introState;
     const charData = gameScene.cache.json.get('characters_data');
 
-    // Pozadí – stejná velikost jako herní pozadí (1920×1080)
-    _iAdd(gameScene.add.image(960, 540, 'background').setDisplaySize(1920, 1080).setDepth(0));
+    // Pozadí – stejná velikost jako herní pozadí (přes celé jeviště)
+    const charCover = stageCoverSize();
+    _iAdd(gameScene.add.image(960, 540, 'background')
+        .setDisplaySize(charCover.w, charCover.h).setDepth(0));
 
     // Balíček hracích karet za UI (role deck je pryč, char deck taky)
     if (s.deckCount > 0)

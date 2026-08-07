@@ -727,16 +727,16 @@ function _vultureStageIncoming(pid, flyCtx, seq) {
 // a odletí na své místo vedle mrtvého. Sprite žije MIMO cardsSprites (přežije
 // překreslení desky) a nad všemi kartami. Textury rolí bere z RoleImages (game.js).
 
-// Odkud karta vyletí: zpoza okraje stolu u mrtvého hráče (mimo plátno 1920×1080),
-// ať je vidět, že přichází od NĚJ.
+// Odkud karta vyletí: zpoza okraje jeviště u mrtvého hráče (tedy mimo viditelnou
+// plochu i při širším poměru stran), ať je vidět, že přichází od NĚJ.
 function _deathRoleStartPos(pid) {
     const view = myIndex === null ? 0 : myIndex;
     const total = state?.players?.length || 0;
     const anchor = pid === view ? null : getOpponentAnchors(total)[((pid - view + total) % total) - 1];
-    if (!anchor) return { x: 960, y: 1400 };            // spodní hráč (já / divákova nula)
-    if (anchor.side === 'left')  return { x: -280, y: anchor.y };
-    if (anchor.side === 'right') return { x: 2200, y: anchor.y };
-    return { x: anchor.x, y: -320 };                    // 'top'
+    if (!anchor) return { x: 960, y: stageBottom() + 320 };   // spodní hráč (já / divákova nula)
+    if (anchor.side === 'left')  return { x: stageLeft() - 280, y: anchor.y };
+    if (anchor.side === 'right') return { x: stageRight() + 280, y: anchor.y };
+    return { x: anchor.x, y: stageTop() - 320 };               // 'top'
 }
 
 // Velikost, ve které karta role u hráče leží. Pozor: divák kreslí i spodního hráče

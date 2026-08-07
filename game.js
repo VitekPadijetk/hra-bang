@@ -20,13 +20,20 @@ function _reportCrash(what, err) {
 window.addEventListener('error', (e) => _reportCrash('window.onerror', e.error || e));
 window.addEventListener('unhandledrejection', (e) => _reportCrash('promise', e.reason));
 
+// Jeviště se přizpůsobí skutečnému poměru stran displeje (core/layout.js). Základ
+// zůstává 1920×1080 – jen se dopočítá, kolik design px navíc se vejde do pruhů, které
+// při FITu na 16:9 zůstávaly prázdné (telefon na šířku ~19,5:9, okno prohlížeče taky).
+// Souřadnice 0…1920 / 0…1080 drží kamera přesně uprostřed (applyStage), takže se
+// stávajícím rozložením nehne – přibude jen viditelná plocha po stranách.
+App.stage = computeStage(window.innerWidth, window.innerHeight);
+
 const config = {
     type: Phaser.AUTO,
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: 1920,
-        height: 1080
+        width: App.stage.w,
+        height: App.stage.h
     },
     backgroundColor: '#4a3018',
     parent: 'game-container',
@@ -207,15 +214,42 @@ function requestGameFullscreen() {
         .catch(() => false);
 }
 
+// Přepočítá jeviště podle aktuální plochy okna a srovná podle něj plátno, kameru
+// a pozadí. Kamera se posune o půlku přírůstku, takže původní souřadnice (0…1920 /
+// 0…1080) zůstávají uprostřed a rozložení desky se nehne – přírůstek se objeví jako
+// souřadnice pod nulou vlevo/nahoře a nad 1920/1080 vpravo/dole.
+// Vrací true, když se rozměr jeviště opravdu změnil.
+function applyStage() {
+    const stage = computeStage(window.innerWidth, window.innerHeight);
+    const changed = !App.stage || App.stage.w !== stage.w || App.stage.h !== stage.h;
+    App.stage = stage;
+    // setGameSize je metoda určená přesně pro škálovací režimy typu FIT (na rozdíl od
+    // resize, které patří k NONE/RESIZE). Voláme ji jen při skutečné změně.
+    if (changed && game?.scale?.setGameSize) game.scale.setGameSize(stage.w, stage.h);
+    if (gameScene) {
+        gameScene.cameras?.main?.setScroll(-stage.dx, -stage.dy);
+        // Pozadí a závoj vznikají jednou v createScene (renderUI je nemaže), takže se
+        // musí přeměřit tady – jinak by po otočení telefonu zůstal po straně holý pruh.
+        if (gameScene.bgImage) {
+            const cover = stageCoverSize(stage);
+            gameScene.bgImage.setDisplaySize(cover.w, cover.h);
+        }
+        if (gameScene.bgFill) gameScene.bgFill.setSize(stage.w, stage.h);
+        if (gameScene.bgScrim) gameScene.bgScrim.setSize(stage.w, stage.h);
+    }
+    return changed;
+}
+
 // Změna velikosti okna / otočení telefonu / vstup do fullscreenu mění plochu plátna.
-// Phaser si plátno přeškáluje sám, ale DOM prvky polohované nad ním (input názvu hry)
-// a rozhodnutí odvozená od velikosti displeje (tlačítko ⛶ FS) drží starý stav, dokud
-// nepřijde překreslení – jinde v klientu žádný resize handler není.
+// Phaser si plátno přeškáluje sám, ale poměr stran (a tím i jeviště), DOM prvky
+// polohované nad plátnem (input názvu hry) a rozhodnutí odvozená od velikosti displeje
+// (tlačítko ⛶ FS) drží starý stav, dokud nepřijde překreslení – jinde v klientu žádný
+// resize handler není.
 if (typeof window !== 'undefined') {
     let _resizeTimer = null;
     const onViewportChange = () => {
         clearTimeout(_resizeTimer);
-        _resizeTimer = setTimeout(() => { if (gameScene) renderUI(); }, 120);
+        _resizeTimer = setTimeout(() => { applyStage(); if (gameScene) renderUI(); }, 120);
     };
     window.addEventListener('resize', onViewportChange);
     window.addEventListener('orientationchange', onViewportChange);
@@ -1453,7 +1487,7 @@ function showCardGallery() {
     const _dodge = gameScene.cache.json.get('cards_dodge_city_data') || [];
     const data = (_base.length || _dodge.length) ? _base.concat(_dodge) : (App.allCardsData || []);
 
-    const bg = gameScene.add.rectangle(960, 540, 1920, 1080, 0x000000, 0.92)
+    const bg = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.92)
         .setDepth(3000).setInteractive();
     bg.on('pointerdown', closeCardGallery);   // klik mimo kartu = zavřít
     g.add(bg);
@@ -1560,6 +1594,10 @@ function preload() {
     // s placeholdery. Assetů je i tak přes stovku, takže při 8 paralelních to načítání
     // znatelně nezpomalí, ale výrazně sníží počet chyb, které musí opravovat retry.
     this.load.maxParallelDownloads = 8;
+
+    // Kamera na jeviště hned v preloadu – bez toho by cedule „Načítám…" (souřadnice
+    // 960,540) seděla vlevo od skutečného středu, dokud scénu nesestaví createScene.
+    this.cameras?.main?.setScroll(-(App.stage?.dx || 0), -(App.stage?.dy || 0));
 
     // Cedule s průběhem – jinak je do konce načítání jen prázdné plátno.
     const loadTxt = this.add.text(960, 540, 'Načítám…', {
@@ -1937,22 +1975,30 @@ function createScene() {
 
     gameScene = this;
 
+    // Kamera musí sedět na jevišti dřív, než se cokoli nakreslí.
+    applyStage();
+
     normalizeCharTextures(this);
     buildCardTextures(this);
 
+    // Pozadí i závoj se roztahují přes CELÉ jeviště (tedy i přes pruhy po stranách,
+    // které při širším poměru stran přibyly) – jinak by z nich prosvítala holá výplň
+    // plátna. Obrázek se škáluje jako CSS „cover", ať se nedeformuje.
     // Kdyby se pozadí ani po retry nenačetlo, nevkládej „rozbitou" texturu (zelený
     // placeholder) – radši nech tmavou výplň, přes kterou stejně leží bgScrim.
     if (this.textures.exists('background')) {
         let bg = this.add.image(960, 540, 'background');
-        bg.setDisplaySize(1920, 1080);
+        const cover = stageCoverSize();
+        bg.setDisplaySize(cover.w, cover.h);
+        gameScene.bgImage = bg;
     } else {
-        this.add.rectangle(960, 540, 1920, 1080, 0x2a1c10);
+        gameScene.bgFill = this.add.rectangle(960, 540, stageW(), stageH(), 0x2a1c10);
     }
 
     // Ztmavovací závoj přes pozadí kvůli čitelnosti (obrázek pozadí je místy světlý/rušný
     // a text nad ním nešel přečíst). Persistentní – NENÍ v cardsSprites, takže ho renderUI
     // nemaže; jen mu tam měníme průhlednost (menu/výsledky tmavší, herní stůl jemnější).
-    gameScene.bgScrim = this.add.rectangle(960, 540, 1920, 1080, 0x0e0b14).setAlpha(0.55);
+    gameScene.bgScrim = this.add.rectangle(960, 540, stageW(), stageH(), 0x0e0b14).setAlpha(0.55);
 
     gameScene.cardsSprites = this.add.group();
     // Separatni skupina pro intro animace - necisti se pri renderUI
@@ -2103,7 +2149,7 @@ function renderUI() {
         if (!isFs) {
             // Na dotykovém displeji je 22px písmo ~8 CSS px – tlačítko nešlo trefit prstem.
             const small = isSmallTouchUi();
-            let fsBtn = gameScene.add.text(1900, 20, '⛶ FS',
+            let fsBtn = gameScene.add.text(stageRight() - 20, stageTop() + 20, '⛶ FS',
                 { fontFamily: THEME.fontUI, fontSize: small ? '40px' : '22px', color: '#9a9088', backgroundColor: 'rgba(0,0,0,0.55)', padding: small ? { x: 18, y: 12 } : { x: 10, y: 6 } })
                 .setOrigin(1, 0).setDepth(1000).setInteractive({ useHandCursor: true });
             fsBtn.on('pointerover', () => fsBtn.setColor('#e0b23c'));
@@ -2116,7 +2162,7 @@ function renderUI() {
     if (state?.isDebug && state.phase !== "MENU" && state.phase !== "CHARACTER_SELECT" && state.players) {
         // Přepínač hráčů – sjednocený vzhled s herními tlačítky (themeButton + toggle styl).
         // Řada začíná až za rohovým „Ukončit hru" (30..240), ať se nepřekrývají.
-        const btnY = 30, btnH = 48, btnW = 104, gap = 8, startX = 260;
+        const btnY = stageTop() + 30, btnH = 48, btnW = 104, gap = 8, startX = stageLeft() + 260;
         state.players.forEach((p, i) => {
             const isActive = i === myIndex;
             const bx = startX + i * (btnW + gap);
@@ -2150,9 +2196,10 @@ function renderUI() {
             renderIntroScene();
         } else {
             // Intro brzy dorazi (50ms delay na serveru) - zobraz prazdnou obrazovku
+            const cover = stageCoverSize();
             const bg2 = gameScene.textures.exists('background')
-                ? gameScene.add.image(960, 540, 'background').setDepth(0)
-                : gameScene.add.rectangle(960, 540, 1920, 1080, 0x2a1c10).setDepth(0);
+                ? gameScene.add.image(960, 540, 'background').setDisplaySize(cover.w, cover.h).setDepth(0)
+                : gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x2a1c10).setDepth(0);
             gameScene.cardsSprites.add(bg2);
         }
         return;
@@ -2161,7 +2208,7 @@ function renderUI() {
     if (App.spectating) {
         // Hra jen botů (jsem její zakladatel = leader): řekni serveru, ať ji
         // rozpustí. Navigaci pak provede echo 'go_to_menu' (→ hlavní menu).
-        const { bg: specBack } = themeButton(gameScene, 30, 30, 260, 52, '◀  Opustit sledování', {
+        const { bg: specBack } = themeButton(gameScene, stageLeft() + 30, stageTop() + 30, 260, 52, '◀  Opustit sledování', {
             origin: [0, 0], fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030,
             stroke: THEME.color.dangerNum, fontSize: '20px',
             onClick: () => {
@@ -2182,7 +2229,7 @@ function renderUI() {
     // Lídrovské „Ukončit hru" jen pro hrajícího lídra – ne pro diváka (ten už má
     // „Opustit sledování"; navíc cancel_game divákovi botí hry stejně nefunguje).
     if (roomState && roomState.leaderSocketId === socket.id && !state?.winner && !App.spectating) {
-        const { bg: cancelBtn } = themeButton(gameScene, 30, 30, 210, 48, '✕  Ukončit hru', {
+        const { bg: cancelBtn } = themeButton(gameScene, stageLeft() + 30, stageTop() + 30, 210, 48, '✕  Ukončit hru', {
             origin: [0, 0], fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030,
             stroke: THEME.color.dangerNum, fontSize: '18px',
             onClick: () => {

@@ -3,6 +3,10 @@ const App = {
     lobbyList: [],
     gameList: [],
     blockInput: false,
+    // Rozměr herního jeviště v design px (core/layout.js computeStage) – dopočítá ho
+    // game.js applyStage podle skutečného poměru stran displeje, aby se využily i pruhy
+    // po stranách. Dokud není spočítané, čte se základní 16:9 (currentStage()).
+    stage: null,
     reshuffleAnimating: false,
     reshuffleIsProactive: false,
     pendingDrawCount: 0,

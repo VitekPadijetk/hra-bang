@@ -369,7 +369,7 @@ function renderVeraCopyOverlay() {
     const charData = gameScene.cache.json.get('characters_data');
 
     // Ztmavené pozadí přes celou desku.
-    const backdrop = gameScene.add.rectangle(960, 540, 1920, 1080, 0x000000, 0.78)
+    const backdrop = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.78)
         .setInteractive();   // spolkne kliknutí mimo portréty
     gameScene.cardsSprites.add(backdrop);
 
@@ -414,7 +414,7 @@ function renderHandcuffsOverlay() {
     const ph = state.pendingHandcuffs;
     if (!ph || ph.playerIdx !== myIndex) return;
 
-    const backdrop = gameScene.add.rectangle(960, 540, 1920, 1080, 0x000000, 0.78)
+    const backdrop = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.78)
         .setInteractive();   // spolkne kliknutí mimo tlačítka
     gameScene.cardsSprites.add(backdrop);
 
