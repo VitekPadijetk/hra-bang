@@ -1794,7 +1794,6 @@ function drawSpectatorPlayer(ctx) {
         const charY2 = livesCY - bH * Math.max(0, player.health);
         const charImg2 = gameScene.add.image(livesX_adj, charY2, getCharTex(player.character)).setScale(sOpp);
         if (isCurrent) charImg2.setTint(0x88ff88);
-        else if (isDead) charImg2.setTint(0x777777);
         gameScene.cardsSprites.add(charImg2);
         registerVeraPortrait(charImg2, player, getCharTex);
         if (player.role === 'Sheriff') {
@@ -1804,7 +1803,7 @@ function drawSpectatorPlayer(ctx) {
         }
         gameScene.cardsSprites.add(
             gameScene.add.text(livesX_adj, charY2 - cH * 0.52 - 4, player.name,
-                { fontSize: '17px', color: isCurrent ? '#ffff88' : (isDead ? '#888' : '#ccc'),
+                { fontSize: '17px', color: isCurrent ? '#ffff88' : '#ccc',
                   backgroundColor: 'rgba(0,0,0,0.65)', padding: { x: 5, y: 3 } }).setOrigin(0.5, 1)
         );
 
@@ -2138,15 +2137,6 @@ function drawDrawPiles(ctx) {
 
     if (_hideDeck) {
         deckSprite.setAlpha(0);
-    }
-
-    // Počet karet v balíčku
-    {
-        const cnt = _hideDeck ? '🔀' : String(_deckCount);
-        const cntTxt = gameScene.add.text(deckX, deckY - 105, cnt,
-            { fontSize: '22px', color: '#ffcc00', backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 8, y: 4 } })
-            .setOrigin(0.5).setDepth(60);
-        gameScene.cardsSprites.add(cntTxt);
     }
 
     let discardSprite = null;
