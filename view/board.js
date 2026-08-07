@@ -13,6 +13,9 @@ function registerVeraPortrait(sprite, player, getCharTex) {
     if (player.character !== 'Vera Custer' || !player._copiedCharacter) return;
     if (player._noAbility) return;   // Kocovina (High Noon): kopie neplatí → jen Vera
     if (player._copiedCharacter === 'Vera Custer') return;
+    // Vyřazená Vera už žádnou schopnost nekopíruje – na jejím místě zůstane Vera.
+    // (Duch z Města duchů má 0 životů, ale ve hře je → tomu problikávání zůstává.)
+    if (!isInPlay(player)) return;
     App.veraPortraits.push({
         sprite,
         selfTex: getCharTex('Vera Custer'),
@@ -974,6 +977,9 @@ function drawMyArea(ctx) {
         const bulletH = bulletsAreaH / 5;
 
         let charImg = gameScene.add.image(livesX, myBaseY - (bulletH * me.health), getCharTex(me.character)).setScale(scaleMe);
+        // Nová identita (High Noon, přibalené): stará postava se během cinematiky výměny
+        // překlápí na rub a sjíždí na slot odložené karty → na svém místě zatím není.
+        if (App.niHideChar) charImg.setVisible(false);
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character))) charImg.setVisible(false);
         registerVeraPortrait(charImg, me, getCharTex);

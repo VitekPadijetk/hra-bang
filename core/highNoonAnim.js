@@ -22,17 +22,18 @@ function hnRevealMs() {
 // Nabídka sama na časování nečeká – hra stojí ve fázi NEW_IDENTITY, dokud se hráč
 // nerozhodne. Tohle je jen DOJEZD rozhodnutí, který vidí celý stůl:
 //   NE  → odložená karta se přetočí zpátky na rub a sjede pod kartu postavy,
-//   ANO → současná postava se odloží a nová sjede na její místo, životy dojedou na 2.
+//   ANO → stará postava se překlopí na rub (= karta životů) a sjede na slot odložené
+//         identity, TEPRVE PAK nová postava sjede ze středu na místo postavy (rovnou
+//         na výšku dvou životů) – dva přesuny za sebou, ne jeden.
 const NI_ANIM = {
     flipMs: 400,     // překlopení karty (líc↔rub)
     moveMs: 520,     // přesun mezi místem postavy a odloženým slotem
-    livesMs: 280,    // dorovnání životů (stejné tempo jako běžný posun karty životů)
     bufMs: 150,      // rezerva, ať stav nedorazí přesně na hranu
 };
 
 function niResultMs(take) {
     const D = NI_ANIM;
-    return take ? (D.flipMs + D.moveMs + D.livesMs + D.bufMs)
+    return take ? (D.flipMs + D.moveMs + D.moveMs + D.bufMs)
                 : (D.flipMs + D.moveMs + D.bufMs);
 }
 

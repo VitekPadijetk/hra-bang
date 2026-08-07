@@ -59,7 +59,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 ### Čisté helpery (`core/`) — BEZ Phaseru/DOM, izomorfní, testované
 | Soubor | Export | Co rozhoduje |
 |---|---|---|
-| `core/distance.js` | `computeDistance`, `computeCanHit`, **`effectiveCharacter`**, **`isInPlay`** | vzdálenost a dostřel + **která schopnost hráči právě platí** a **kdo je vůbec ve hře**. `effectiveCharacter(p)` je jediný trychtýř všech ~45 kontrol „character === X" (v `logic/*` i v klientských zrcadlech): vrací `null` při Kocovině (`p._noAbility`), jinak `p._copiedCharacter || p.character`. Max. životy (`healthForCharacter`) a portrét čtou `p.character` napřímo, takže se Kocovinou nemění. `isInPlay(p)` = `health > 0 || p._ghost` – duch (Město duchů) má 0 životů, ale na svůj tah sedí zase v kole (vzdálenost, hokynářství, hromadné útoky, Vulture Sam). Prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger, poslední život). |
+| `core/distance.js` | `computeDistance`, `computeCanHit`, **`effectiveCharacter`**, **`isInPlay`** | vzdálenost a dostřel + **která schopnost hráči právě platí** a **kdo je vůbec ve hře**. `effectiveCharacter(p)` je jediný trychtýř všech ~45 kontrol „character === X" (v `logic/*` i v klientských zrcadlech): vrací `null` při Kocovině (`p._noAbility`), jinak `p._copiedCharacter || p.character`. Max. životy (`healthForCharacter`) a portrét čtou `p.character` napřímo, takže se Kocovinou nemění. `isInPlay(p)` = `health > 0 || p._ghost` – duch (Město duchů) má 0 životů, ale na svůj tah sedí zase v kole (vzdálenost, hokynářství, hromadné útoky, Vulture Sam). Prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger, poslední život). Ptá se jím i klient, komu ještě probliká portrét (`registerVeraPortrait` – vyřazená Vera Custer už nekopíruje, zůstane Vera; duch probliká dál). Problikávající portrét si přitom drží obarvení, které měl (`baseTint` v `_tickVeraPortraits`) – hráč na tahu je zelený i ve chvíli, kdy je na jeho místě vidět kopírovaná postava. |
 | `core/cardRules.js` | `getActionForCard` | jakou akci spustit po výběru karty |
 | `core/phaseInfo.js` | `isResponseTurn`, `isPlayTurn`, `canActOnHand` | čí je tah / co smí hráč |
 | `core/pending.js` | `pendingActor`, `waitingStatus`, `describePendingResponse` | **na koho a na jaké rozhodnutí hra čeká** (jedna větev na fázi). Jediný zdroj pravdy pro UI štítek, bota (`botPolicy`), log i serverový guard (`server/guard.js`). Vrátí `null` u přechodných fází – kdo to používá jako autoritu, musí `null` ošetřit. |
@@ -178,7 +178,11 @@ vzdálenost (`computeDistance` – bez toho by duch neměl na koho střílet), h
 5. **Animace** – odhoz karet při odchodu emituje `server/anim.js` v háku `beforeBroadcast`
    jako `sheriff_penalty_discard` (karty po jedné do odhozu, bez poklesu životů a bez role –
    tu má duch odkrytou od svého vyřazení). Sebral-li karty Vulture Sam, přesun se ukáže
-   až v novém stavu.
+   až v novém stavu. **Pojistný úklid v `playSheriffPenaltyDiscard` (net/handlers.js) čeká
+   na `!animQueueBusy()`, ne jen na konec vlastní animace**: karty ze stolu/ruky odebere
+   teprve STAV, a ten stojí ve frontě až za odkrytím karty High Noon (~7 s), protože duch
+   bývá poslední před šerifem. Bez čekání se odložené karty na tu dobu vrátily na stůl
+   a zmizely až během odkrývání události.
 6. **Klient** – duch se kreslí jako hráč na tahu s nulou životů: `drawMyArea` mu vykreslí
    vlastní stůl (`me._ghost`) a `addCharInteraction` ho nepřeskočí jako mrtvého.
    Zrcadla „duch se neléčí" jsou v `core/playability.js` (Pivo, Whisky), `view/board.js`
@@ -198,6 +202,12 @@ karty té barvy.
   + `pendingHandcuffs`. Ptá se **až po frontě odložených akcí** a jen když je fáze pořád
   `PLAY` – kdyby si ji fronta vzala, zůstane hráč pro tenhle tah bez omezení (nikdy ne
   zaseknutý).
+- **Každé lízání na začátku tahu proto MUSÍ končit v `_finishDraw` a nést
+  `isStartOfTurn: true`** – to je jediné, podle čeho se volba barvy spouští. Postavy
+  s vlastním lízáním (Jesse Jones, Pedro Ramirez, Pat Brennan, Black Jack) tudy chodí;
+  Kit Carlson kdysi nechodil (`kitCarlsonPick` si nastavoval `phase = "PLAY"` sám) a jako
+  jediný hrál bez omezení. Platí i pro ocásek s kartou navíc za Příjezd vlaku (`kitExtra`):
+  barva se řeší až za ním.
 - Jediný dotaz pravidel je **`_suitBlocked(playerIdx, card)`**; barvu bere přes `_effSuit`,
   a omezuje **jen hráče na tahu** – včetně karet zahraných jako reakce v jeho VLASTNÍM
   tahu (duel, záchrana Pivem), stejný výklad jako u Kazatele (FAQ H2). Gate je v
@@ -217,7 +227,9 @@ smí vzít místo současné a klesnout na 2 životy (odložená se vymění, p�
 - Karty rozdá `_dealSecondIdentities()` **až po výběru postav** (volá se z obou míst, kde
   se dohraje výběr: `selectCharacter` a `_checkNextGameAllChosen`). Dřív to nejde –
   nevybrané postavy se vracejí do balíčku, takže při 7 hráčích bez Dodge City by jich
-  nezbylo dost.
+  nezbylo dost. Odložená identita je **ta z dvojice `charChoices`, kterou si hráč
+  NEvybral**; do zbytku balíčku se sáhne jen tam, kde žádná volba nebyla (`singleChar`,
+  debug hra s celým poolem, přeživší z minulé hry).
 - Nabídka je **4. krok `_beginTurn`** (`_newIdentityOffer` → fáze `NEW_IDENTITY`),
   rozhodnutí `resolveNewIdentity(idx, take)` dotočí start tahu přes `_resumeBeginTurn`.
   Výměna ruší i kopii Very Custer.
@@ -228,6 +240,11 @@ smí vzít místo současné a klesnout na 2 životy (odložená se vymění, p�
   `renderNewIdentityOverlay` (view/screens.js) až je `App.niReveal.ready`.
   Dojezd rozhodnutí jde všem jako `new_identity_result` (časování `niResultMs`,
   boti čekají přes `room._niBlockUntil`).
+- Dojezd **ANO** je dvoufázový, ať je vidět výměna rolí karet: stará postava se na svém
+  místě překlopí na rub (rub = karta životů) a sjede na slot odložené identity
+  (`App.niHideChar` ji po tu dobu v `drawMyArea` nekreslí), **teprve pak** nová postava
+  sjede ze středu na místo postavy, rovnou na výšku dvou životů. Nová postava proto čeká
+  celou 1. fázi zvětšená uprostřed – overlay s tlačítky zmizí hned po kliknutí.
 
 ## Lucky Duke: výběr a pak KLASICKÉ sejmutí
 
@@ -235,7 +252,10 @@ Lucky Duke si u každého snímání líže 2 karty a jednu si vybere. Během v�
 (hodnota/barva) **nezvýrazňují** – blikání na obou kartách mate. Po kliknutí
 (`playLuckyDukeResult` v game.js):
 
-1. NEvybraná odletí ze svého slotu rovnou do odhozu (`LD_DROP_MS`).
+1. NEvybraná odletí ze svého slotu rovnou do odhozu (`LD_DROP_MS`) – v depth **pod**
+   hromádkovou vrstvou vybrané karty (`REVEAL_PILE_DEPTH - 1`). Na odhozu totiž leží
+   (`holdUntil`) po celou cinematiku, dokud nedorazí stav; s výchozím depth `animateCard`
+   (800) překrývala jak zvětšenou kartu uprostřed, tak její sestup do odhozu.
 2. Vybraná se přesune doprostřed obrazovky a odtud jede přesně to, co vidí každý jiný
    hráč u sejmutí (`startCheckReveal`): zvětšení → `pulseCheckMark` → výdrž → sestup do
    odhozu. Součet `LD_TO_CENTER_MS + LD_HOLD_MS + LD_TO_DISCARD_MS` = `CHECK_REVEAL_MS`

@@ -34,6 +34,7 @@ const App = {
     // { ready, decided } – ready = karta doletěla doprostřed a je překlopená lícem nahoru.
     niReveal: null,
     niHideSecond: false,   // odložená karta zrovna letí → nekreslit ji u životů
+    niHideChar: false,     // stará postava se zrovna překlápí na rub → nekreslit ji na jejím místě
     chatMessages: [],
     chatOpen: false,
     chatUnread: 0,

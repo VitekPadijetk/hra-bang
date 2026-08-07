@@ -1336,11 +1336,15 @@ function playLuckyDukeResult(chosenId) {
     const inDiscardNow = (id) => (state?.deck?.discardPile || []).some(c => c.id === id);
 
     // 1) NEvybraná(é) rovnou do odhozu – panel se uvolní a střed patří jen té zkoumané.
+    // Depth POD hromádkovou vrstvou vybrané karty: nevybraná dosedne na odhoz jako první
+    // a leží tam (holdUntil) po celou cinematiku, dokud nedorazí stav. S výchozím depth
+    // (800) by přebila jak zvětšenou kartu uprostřed, tak její sestup do odhozu.
     reveal.forEach(rc => {
         if (rc === picked) return;
         animateCard(rc.x, rc.y, _luckyDiscard.x, _luckyDiscard.y, getCardTex(rc.id), LD_DROP_MS, () => {
             App.discardFlyHideIds.delete(rc.id); renderUI();
-        }, { startScale: 0.65, endScale: PILE_SCALE, holdUntil: () => inDiscardNow(rc.id) });
+        }, { startScale: 0.65, endScale: PILE_SCALE, depth: REVEAL_PILE_DEPTH - 1,
+             holdUntil: () => inDiscardNow(rc.id) });
     });
 
     // 2) Vybraná doprostřed → pulz → do odhozu (klasické sejmutí, viz startCheckReveal).
@@ -1938,11 +1942,20 @@ function _tickVeraPortraits() {
     const CYCLE = 10000, COPY_MS = 8000, TR = 480, H = TR / 2;   // TR = délka překlopení
     const t = Date.now() % CYCLE;
 
-    // Velmi jemný pulzující zelený nádech: bílá ↔ sotva znatelná zelená (červený a
-    // modrý kanál klesnou jen málo, zelený drží 0xff).
+    // Velmi jemný pulzující zelený nádech. Vychází ze SOUČASNÉHO obarvení portrétu
+    // (baseTint), ne z bílé: hráč na tahu má postavu zvýrazněnou zeleně (0x88ff88) a to
+    // musí platit i ve chvíli, kdy je na jejím místě vidět kopírovaná postava – jinak by
+    // Vera během „cizí" fáze vypadala, že na tahu není. Pulz jen sráží červený a modrý
+    // kanál (zelený drží), takže barva zůstane a jen lehce probliká.
     const s = Math.abs(Math.sin(t / 300));
-    const rb = Math.round(0xff - s * (0xff - 0xdd));   // 255 → 221 (slabý nádech)
-    const greenTint = (rb << 16) | (0xff << 8) | rb;
+    const f = 1 - s * (1 - 0xdd / 0xff);               // 100 % → 86,7 % (slabý nádech)
+    const greenTintFrom = (base) => {
+        const b = (base == null) ? 0xffffff : base;
+        const r = Math.round(((b >> 16) & 0xff) * f);
+        const g = (b >> 8) & 0xff;
+        const bl = Math.round((b & 0xff) * f);
+        return (r << 16) | (g << 8) | bl;
+    };
 
     // Urči zobrazený stav + faktor překlopení (flip). Přechody jsou na hranicích
     // t=8000 (kopie→Vera) a t=0≡10000 (Vera→kopie), okno ±H.
@@ -1966,7 +1979,7 @@ function _tickVeraPortraits() {
         if (!sp || !sp.active) continue;
         const tex = showCopy ? v.copyTex : v.selfTex;
         if (tex && sp.texture.key !== tex) sp.setTexture(tex);
-        if (showCopy) sp.setTint(greenTint);
+        if (showCopy) sp.setTint(greenTintFrom(v.baseTint));
         else if (v.baseTint != null) sp.setTint(v.baseTint);
         else sp.clearTint();
         sp.scaleX = v.baseScaleX * flip;

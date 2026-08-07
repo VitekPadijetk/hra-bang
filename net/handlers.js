@@ -957,8 +957,12 @@ function playSheriffPenaltyDiscard(data) {
         }, DEATH_ANIM.pauseMs + k * _DEATH_STAGGER);
     });
 
-    // Pojistka po dojezdu: nic skrytého, nic rozanimovaného (stav dorazí z fronty hned poté).
-    setTimeout(() => {
+    // Pojistka po dojezdu: nic skrytého, nic rozanimovaného. Uklidit se ale smí až
+    // s PŘÍCHODEM STAVU – ten kartu teprve odebere ze stolu/ruky. U šerifovy pokuty
+    // dorazí hned za animací, u ducha (Město duchů) za ní stojí ve frontě ještě odkrytí
+    // karty High Noon (~7 s): kdyby se pojistka spustila natvrdo po animaci, odložené
+    // karty by se na tu dobu vrátily na stůl a zmizely by až během odkrývání události.
+    const cleanup = () => {
         delete App.deathHandHide[pid];
         seq.forEach(it => {
             if (it.id == null) return;
@@ -966,7 +970,13 @@ function playSheriffPenaltyDiscard(data) {
             App.stealHideIds.delete(it.id);
         });
         if (gameScene) renderUI();
-    }, penaltyDiscardMs(seq.length) + 150);
+    };
+    let waits = 0;
+    const armCleanup = (ms) => setTimeout(() => {
+        if (animQueueBusy() && ++waits < 80) { armCleanup(200); return; }
+        cleanup();
+    }, ms);
+    armCleanup(penaltyDiscardMs(seq.length) + 150);
 }
 
 // ── High Noon (přibalené) – Nová identita ────────────────────────────────────
@@ -1027,7 +1037,10 @@ function startNewIdentityReveal(charName) {
 function playNewIdentityResult(data) {
     if (!gameScene || data.playerIdx !== myIndex || myIndex === null) return;
     const D = NI_ANIM;
-    const done = () => { App.niHideSecond = false; App.niReveal = null; if (gameScene) renderUI(); };
+    const done = () => {
+        App.niHideSecond = false; App.niHideChar = false; App.niReveal = null;
+        if (gameScene) renderUI();
+    };
 
     if (!data.take) {
         // NE: karta se překlopí zpátky na rub a sjede pod kartu životů.
@@ -1053,14 +1066,45 @@ function playNewIdentityResult(data) {
         return;
     }
 
-    // ANO: nová postava sjede na místo postavy (hráč tam bude mít 2 životy); stará se
-    // stane tou odloženou – tu už vykreslí nový stav, jakmile animace dojede.
-    const spr = gameScene.add.image(NI_CX, NI_CY, _niCharTex(data.to)).setScale(NI_BIG).setDepth(900);
+    // ANO – dvě fáze za sebou, ať je vidět, že si karty vyměnily role:
+    //   1) STARÁ postava se na svém místě překlopí na rub (rub karty postavy = karta
+    //      životů) a sjede na slot odložené identity,
+    //   2) teprve pak NOVÁ postava sjede ze středu na místo postavy, rovnou na výšku
+    //      dvou životů (na kolik hráč výměnou klesl).
+    // Nová postava čeká celou 1. fázi zvětšená uprostřed – overlay s tlačítky zmizel
+    // hned po kliknutí, takže by tam jinak nebylo nic.
+    const bigSpr = gameScene.add.image(NI_CX, NI_CY, _niCharTex(data.to)).setScale(NI_BIG).setDepth(900);
+    const flyNewIn = () => {
+        if (!gameScene || !bigSpr.active) { done(); return; }
+        gameScene.tweens.add({
+            targets: bigSpr, x: NI_MY_X, y: _niMyCharY(2),
+            scaleX: NI_MY_SCALE, scaleY: NI_MY_SCALE,
+            duration: D.moveMs, ease: 'Power2',
+            onComplete: () => { if (bigSpr.active) bigSpr.destroy(); done(); }
+        });
+    };
+
+    const oldY = _niMyCharY(state?.players?.[myIndex]?.health ?? 0);
+    App.niHideChar = true;   // starou postavu od teď kreslí jen tenhle sprite
+    renderUI();
+    const oldSpr = gameScene.add.image(NI_MY_X, oldY, _niCharTex(data.from))
+        .setScale(NI_MY_SCALE).setDepth(880);
     gameScene.tweens.add({
-        targets: spr, x: NI_MY_X, y: _niMyCharY(2),
-        scaleX: NI_MY_SCALE, scaleY: NI_MY_SCALE,
-        duration: D.moveMs + D.flipMs, ease: 'Power2',
-        onComplete: () => { if (spr.active) spr.destroy(); done(); }
+        targets: oldSpr, scaleX: 0, duration: D.flipMs / 2, ease: 'Sine.easeIn',
+        onComplete: () => {
+            if (!oldSpr.active) { flyNewIn(); return; }
+            oldSpr.setTexture('lives');
+            gameScene.tweens.add({
+                targets: oldSpr, scaleX: NI_MY_SCALE, duration: D.flipMs / 2, ease: 'Sine.easeOut',
+                onComplete: () => {
+                    if (!oldSpr.active) { flyNewIn(); return; }
+                    gameScene.tweens.add({
+                        targets: oldSpr, y: NI_MY_Y, duration: D.moveMs, ease: 'Power2',
+                        onComplete: () => { if (oldSpr.active) oldSpr.destroy(); flyNewIn(); }
+                    });
+                }
+            });
+        }
     });
 }
 
@@ -2061,6 +2105,7 @@ function _applyRoomUpdate(payload) {
     } else if (_prevPhase === 'NEW_IDENTITY' && state?.phase !== 'NEW_IDENTITY') {
         App.niReveal = null;
         App.niHideSecond = false;
+        App.niHideChar = false;
     }
 
     if (state?._cardData && !App.allCardsData) App.allCardsData = state._cardData;

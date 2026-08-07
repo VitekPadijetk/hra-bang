@@ -226,6 +226,10 @@ const DrawMixin = {
             cardsDrawn: 0,
             options: ['deck'],
             isKitCarlson: true,
+            // I Kitovo odkrývání JE fáze lízání na začátku tahu – bez tohoto příznaku by
+            // _finishDraw přeskočil volbu barvy pro Želízka (High Noon) a Kit by jako
+            // jediná postava hrál bez omezení.
+            isStartOfTurn: true,
             kitNeeded: keep,            // kolik si nechá z odkrytých
             kitExtra: total - keep      // kolik si po výběru dolízne z balíčku
         };
@@ -266,12 +270,16 @@ const DrawMixin = {
                     cardsNeeded: extra,
                     cardsDrawn: 0,
                     options: ['deck'],
-                    isStartOfTurn: false
+                    // Pořád je to lízání na začátku tahu (jen jeho ocásek) – Želízka se
+                    // ptají až za ním, viz _finishDraw.
+                    isStartOfTurn: true
                 };
                 this.phase = "DRAW";
                 return;
             }
-            this.phase = "PLAY";
+            // Konec lízání jde JEDNÍM místem (_finishDraw) – tam se dobere fronta
+            // odložených akcí a zeptají se Želízka.
+            this._finishDraw();
         }
     },
 

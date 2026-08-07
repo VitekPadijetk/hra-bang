@@ -323,10 +323,19 @@ const HighNoonMixin = {
     _dealSecondIdentities() {
         const o = this.options || {};
         if (!o.highNoonExtra || !(o.expansions && o.expansions.high_noon)) return;
-        const used = this.players.map(p => p.character).filter(Boolean);
-        const pool = this._characterPool(o).filter(c => !used.includes(c));
+        // Odložená identita = ta z dvojice, kterou si hráč na začátku hry NEvybral.
+        // Kde žádná volba nebyla – náhodné přiřazení (singleChar), debug hra (nabídka
+        // je celý pool) nebo přeživší z minulé hry – se sáhne do zbytku balíčku postav.
+        const taken = new Set(this.players.map(p => p.character).filter(Boolean));
+        this.players.forEach(p => {
+            const ch = Array.isArray(p.charChoices) ? p.charChoices : [];
+            const rejected = ch.length === 2 ? ch.find(c => c && c !== p.character) : null;
+            p._secondChar = (rejected && !taken.has(rejected)) ? rejected : null;
+            if (p._secondChar) taken.add(p._secondChar);
+        });
+        const pool = this._characterPool(o).filter(c => !taken.has(c));
         this.deck.shuffleArray(pool);
-        this.players.forEach(p => { p._secondChar = pool.pop() || null; });
+        this.players.forEach(p => { if (!p._secondChar) p._secondChar = pool.pop() || null; });
         this.logEvent('system', { msg: `Nová identita: rozdány druhé postavy (${this.players.map(p => p._secondChar).join(', ')})` });
     },
 

@@ -1052,6 +1052,35 @@ test('Želízka: po fázi lízání se čeká na volbu barvy', () => {
     assert.equal(g.players[0]._handcuffsSuit, Suits.HEARTS);
 });
 
+test('Želízka platí i postavám s vlastním lízáním (Kit Carlson)', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Kit Carlson' }, {}, {}, {}], { event: 'ZELIZKA' });
+    for (let i = 0; i < 6; i++) topDeck(g, Suits.CLUBS);
+    g.currentPlayerIndex = 0;
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.equal(g.phase, 'KIT_CARLSON');
+    g.kitCarlsonPick(0);
+    g.kitCarlsonPick(1);
+    assert.equal(g.phase, 'HANDCUFFS_SUIT', 'i Kit si po lízání volí barvu');
+    assert.deepEqual(pendingActor(g), { idx: 0, kind: 'HANDCUFFS_SUIT' });
+});
+
+test('Želízka: Kit Carlson s Příjezdem vlaku – barva se řeší až po kartě navíc', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Kit Carlson' }, {}, {}, {}], { event: 'ZELIZKA' });
+    // Dvě události najednou platit nemohou → kartu navíc (Příjezd vlaku) nasimulujeme
+    // přímo přes kitExtra, o který jde: musí doběhnout PŘED volbou barvy.
+    for (let i = 0; i < 8; i++) topDeck(g, Suits.CLUBS);
+    g.currentPlayerIndex = 0;
+    g.startDrawPhase();
+    g.drawPhaseState.kitExtra = 1;
+    g.drawCard('deck');
+    g.kitCarlsonPick(0);
+    g.kitCarlsonPick(1);
+    assert.equal(g.phase, 'DRAW', 'kartu navíc si líže klasicky');
+    g.drawCard('deck');
+    assert.equal(g.phase, 'HANDCUFFS_SUIT');
+});
+
 test('bez Želízek se na barvu nikdo neptá', () => {
     const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}]);
     for (let i = 0; i < 6; i++) topDeck(g, Suits.CLUBS);
@@ -1157,6 +1186,21 @@ test('Nová identita: druhá postava se rozdá jen se zapnutými přibalenými k
     g2.options = { expansions: { high_noon: true } };
     g2._dealSecondIdentities();
     assert.ok(!g2.players[0]._secondChar, 'bez highNoonExtra se nerozdává');
+});
+
+test('Nová identita: odloží se ta postava, kterou si hráč NEvybral', () => {
+    const g = mkExtraGame([{ role: 'Sheriff', character: 'Willy the Kid' },
+                           { character: 'Slab the Killer' }, { character: 'Paul Regret' }]);
+    g.players[0].charChoices = ['Willy the Kid', 'Rose Doolan'];
+    g.players[1].charChoices = ['Slab the Killer', 'Jourdonnais'];
+    // Hráč bez dvojice (náhodné přiřazení / přeživší) → sáhne se do zbytku balíčku.
+    g.players[2].charChoices = ['Paul Regret'];
+    g._dealSecondIdentities();
+    assert.equal(g.players[0]._secondChar, 'Rose Doolan');
+    assert.equal(g.players[1]._secondChar, 'Jourdonnais');
+    assert.ok(g.players[2]._secondChar, 'i bez dvojice dostane odloženou postavu');
+    assert.ok(!['Rose Doolan', 'Jourdonnais', 'Willy the Kid', 'Slab the Killer', 'Paul Regret']
+        .includes(g.players[2]._secondChar), 'a nikomu ji nesebere');
 });
 
 test('Nová identita: na začátku tahu se nabídne výměna', () => {
