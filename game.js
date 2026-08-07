@@ -26,6 +26,8 @@ window.addEventListener('unhandledrejection', (e) => _reportCrash('promise', e.r
 // Souřadnice 0…1920 / 0…1080 drží kamera přesně uprostřed (applyStage), takže se
 // stávajícím rozložením nehne – přibude jen viditelná plocha po stranách.
 App.stage = computeStage(window.innerWidth, window.innerHeight);
+App.uiProfile = detectLayoutProfile();
+App.layout = getLayout(App.uiProfile);
 
 const config = {
     type: Phaser.AUTO,
@@ -79,10 +81,16 @@ function loadBangSession() {
     try { return JSON.parse(localStorage.getItem('bangSession') || 'null'); } catch (e) { return null; }
 }
 
+// Souřadnicová soustava hry (jeviště kolem ní jen přidává plochu, viz core/layout.js).
 const GAME_W = 1920, GAME_H = 1080;
 const GAME_CENTER_X = GAME_W / 2, GAME_CENTER_Y = GAME_H / 2;
-const DECK_X = GAME_CENTER_X - 90, DECK_Y = GAME_CENTER_Y;
-const DISCARD_X = GAME_CENTER_X + 90, DISCARD_Y = GAME_CENTER_Y;
+
+// Poloha hromádek uprostřed stolu. Bere se z profilu rozložení (core/layout.js) –
+// stejného, ze kterého kreslí view/board.js. Snímek při startu: profil se v půlce
+// hry nepřepíná (dopadlo by to na už letící animace).
+const _L0 = currentLayout();
+const DECK_X = GAME_CENTER_X - _L0.deckOffX, DECK_Y = _L0.pileY;
+const DISCARD_X = GAME_CENTER_X + _L0.deckOffX, DISCARD_Y = _L0.pileY;
 
 // Balíček/odhoz se v board.js (drawDrawPiles) kreslí jako hromádka: každá vrstva je
 // o PILE_PX_PER_CARD výš, takže VRCH hromádky leží nad základní pozicí (DECK_Y/DISCARD_Y).
@@ -91,14 +99,14 @@ const DISCARD_X = GAME_CENTER_X + 90, DISCARD_Y = GAME_CENTER_Y;
 // sedět s board.js (stackTop / topY). App.storePileLiftY zvedá obě hromádky (Hokynářství).
 // Rozšíření High Noon: balíček událostí (rub) a platná karta (líc) napravo od odhozu.
 // Stejné měřítko jako balíček/odhoz; při hokynářství se zvedají spolu s nimi.
-const HN_PILE_X = 1170, HN_ACTIVE_X = 1280, HN_PILE_Y = GAME_CENTER_Y;
+const HN_PILE_X = _L0.hnPileX, HN_ACTIVE_X = _L0.hnActiveX, HN_PILE_Y = _L0.pileY;
 
 const PILE_PX_PER_CARD = 0.25;
 // Velikost karty ležící v balíčku / odhozu. MUSÍ sedět s board.js (scaleDeck) – karta,
 // která do hromádky dolétá (nebo z ní startuje), se musí zmenšit přesně na ni, jinak
 // „dosedne" menší než hromádka a než ji překreslení srovná, je to vidět (o to víc,
 // když sprite na cíli chvíli počká na opožděný broadcast – holdThenFinish).
-const PILE_SCALE = 0.3;
+const PILE_SCALE = _L0.scaleDeck;
 function _pileTopY(baseY, count) {
     const lift = App.storePileLiftY || 0;
     return (baseY - lift) - Math.max(0, count - 1) * PILE_PX_PER_CARD / 2;
@@ -214,18 +222,38 @@ function requestGameFullscreen() {
         .catch(() => false);
 }
 
+// Který profil rozložení zapnout (core/layout.js pickLayoutProfile drží pravidla).
+//   ?ui=mobile / ?ui=desktop – testování mobilního režimu na PC
+//   localStorage.bangUiMode  – ruční přepínač hráče ('big' | 'normal')
+//   jinak podle šířky plátna a toho, jestli se ovládá dotykem
+function detectLayoutProfile() {
+    let query = null, stored = null;
+    try { query = new URLSearchParams(location.search).get('ui'); } catch (_) {}
+    try { stored = localStorage.getItem('bangUiMode'); } catch (_) {}
+    // Šířka okna, ne plátna: s adaptivním jevištěm plátno šířku okna vyplňuje, a hlavně
+    // se tahle funkce volá i při startu, kdy `game` ještě neexistuje.
+    const width = window.innerWidth;
+    const coarse = !!window.matchMedia?.('(pointer: coarse)')?.matches;
+    return pickLayoutProfile({ query, stored, width, coarse });
+}
+
 // Přepočítá jeviště podle aktuální plochy okna a srovná podle něj plátno, kameru
 // a pozadí. Kamera se posune o půlku přírůstku, takže původní souřadnice (0…1920 /
 // 0…1080) zůstávají uprostřed a rozložení desky se nehne – přírůstek se objeví jako
 // souřadnice pod nulou vlevo/nahoře a nad 1920/1080 vpravo/dole.
-// Vrací true, když se rozměr jeviště opravdu změnil.
+// Zároveň přepne profil rozložení, když se displej dostal do jiné kategorie.
+// Vrací true, když se rozměr jeviště nebo profil opravdu změnil.
 function applyStage() {
     const stage = computeStage(window.innerWidth, window.innerHeight);
-    const changed = !App.stage || App.stage.w !== stage.w || App.stage.h !== stage.h;
+    const profile = detectLayoutProfile();
+    const sizeChanged = !App.stage || App.stage.w !== stage.w || App.stage.h !== stage.h;
+    const profileChanged = App.uiProfile !== profile;
     App.stage = stage;
+    App.uiProfile = profile;
+    App.layout = getLayout(profile);
     // setGameSize je metoda určená přesně pro škálovací režimy typu FIT (na rozdíl od
     // resize, které patří k NONE/RESIZE). Voláme ji jen při skutečné změně.
-    if (changed && game?.scale?.setGameSize) game.scale.setGameSize(stage.w, stage.h);
+    if (sizeChanged && game?.scale?.setGameSize) game.scale.setGameSize(stage.w, stage.h);
     if (gameScene) {
         gameScene.cameras?.main?.setScroll(-stage.dx, -stage.dy);
         // Pozadí a závoj vznikají jednou v createScene (renderUI je nemaže), takže se
@@ -237,7 +265,7 @@ function applyStage() {
         if (gameScene.bgFill) gameScene.bgFill.setSize(stage.w, stage.h);
         if (gameScene.bgScrim) gameScene.bgScrim.setSize(stage.w, stage.h);
     }
-    return changed;
+    return sizeChanged || profileChanged;
 }
 
 // Změna velikosti okna / otočení telefonu / vstup do fullscreenu mění plochu plátna.

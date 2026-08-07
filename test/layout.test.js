@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const {
     STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H,
     computeStage, stageCoverSize,
+    LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
 } = require('../core/layout.js');
 
 before(() => { console.log = () => {}; });
@@ -112,6 +113,83 @@ describe('computeStage – invarianty', () => {
             assert.strictEqual(st.w, STAGE_BASE_W);
             assert.strictEqual(st.h, STAGE_BASE_H);
         }
+    });
+});
+
+describe('profil rozložení – desktop je pixelově dnešní stav', () => {
+    // Pojistka „PC beze změny": tahle čísla byla do fáze B rozsypaná jako literály
+    // ve view/board.js, positions.js a game.js. Když je někdo změní, musí to být vidět.
+    test('desktopové hodnoty odpovídají dosavadním literálům', () => {
+        const L = LAYOUT_PROFILES.desktop;
+        assert.strictEqual(L.scaleMe, 0.36);
+        assert.strictEqual(L.scaleOpp, 0.27);
+        assert.strictEqual(L.scaleDeck, 0.3);
+        assert.strictEqual(L.livesX, 1050);
+        assert.strictEqual(L.myBaseY, 970);
+        assert.strictEqual(L.livesX + L.roleOffX, 850);          // roleX
+        assert.strictEqual(L.livesX + L.handOffX, 1210);         // handAreaStart
+        assert.strictEqual(L.handEndX, 1860);
+        assert.strictEqual(L.handMaxSpacing, 117);
+        assert.strictEqual(L.boardGap, 10);
+        assert.strictEqual(L.boardMaxPerRow, 6);
+        assert.strictEqual(L.myHandAnchorX, 1450);
+        assert.strictEqual(L.myBaseY + L.btnRowOffY, 800);       // řada tlačítek
+        assert.strictEqual(L.btnH, 62);
+        assert.strictEqual(L.specScale, 0.27);
+        assert.strictEqual(L.specLivesY, 900);
+        assert.strictEqual(L.specHandY, 1065);
+        assert.strictEqual(L.oppGap, 10);
+        assert.strictEqual(L.oppHandOff, 1.1);
+        assert.strictEqual(L.oppFanFrac, 0.35);
+        assert.strictEqual(L.oppFanMax, 36);
+        assert.strictEqual(L.oppFanSpan, 3.5);
+        assert.strictEqual(L.centerX - L.deckOffX, 870);         // DECK_X
+        assert.strictEqual(L.centerX + L.deckOffX, 1050);        // DISCARD_X
+        assert.strictEqual(L.pileY, 540);
+        assert.strictEqual(L.hnPileX, 1170);
+        assert.strictEqual(L.hnActiveX, 1280);
+        assert.strictEqual(L.storeRowOffY, 188);
+        assert.strictEqual(L.storeSpacing, 120);
+        assert.strictEqual(L.anchors, null);                     // = základní OPPONENT_ANCHORS
+    });
+
+    test('mimo prohlížeč (testy, server) platí desktopový profil', () => {
+        assert.strictEqual(currentLayout(), LAYOUT_PROFILES.desktop);
+        assert.strictEqual(getLayout('desktop'), LAYOUT_PROFILES.desktop);
+        assert.strictEqual(getLayout('mobile'), LAYOUT_PROFILES.mobile);
+        assert.strictEqual(getLayout('nesmysl'), LAYOUT_PROFILES.desktop);
+        assert.strictEqual(getLayout(undefined), LAYOUT_PROFILES.desktop);
+    });
+
+    test('PILE_SCALE v game.js musí sedět se scaleDeck, kterým kreslí board.js', () => {
+        assert.strictEqual(LAYOUT_PROFILES.desktop.scaleDeck, LAYOUT_PROFILES.mobile.scaleDeck);
+    });
+});
+
+describe('pickLayoutProfile', () => {
+    test('?ui= přebije všechno ostatní', () => {
+        assert.strictEqual(pickLayoutProfile({ query: 'mobile', stored: 'normal', width: 1920 }), 'mobile');
+        assert.strictEqual(pickLayoutProfile({ query: 'desktop', stored: 'big', width: 400 }), 'desktop');
+        assert.strictEqual(pickLayoutProfile({ query: 'blbost', width: 1920 }), 'desktop');
+    });
+
+    test('ruční přepínač přebije automatiku', () => {
+        assert.strictEqual(pickLayoutProfile({ stored: 'big', width: 1920 }), 'mobile');
+        assert.strictEqual(pickLayoutProfile({ stored: 'normal', width: 400, coarse: true }), 'desktop');
+    });
+
+    test('automatika podle šířky a dotyku', () => {
+        assert.strictEqual(pickLayoutProfile({ width: 1920 }), 'desktop');
+        assert.strictEqual(pickLayoutProfile({ width: 844 }), 'desktop');        // úzké okno myší
+        assert.strictEqual(pickLayoutProfile({ width: 844, coarse: true }), 'mobile');
+        assert.strictEqual(pickLayoutProfile({ width: 700 }), 'mobile');         // hodně malé okno
+        assert.strictEqual(pickLayoutProfile({ width: 1280, coarse: true }), 'desktop');  // tablet naležato
+    });
+
+    test('bez rozměru raději desktop', () => {
+        assert.strictEqual(pickLayoutProfile({}), 'desktop');
+        assert.strictEqual(pickLayoutProfile(), 'desktop');
+        assert.strictEqual(pickLayoutProfile({ width: 0 }), 'desktop');
     });
 });
 

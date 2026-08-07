@@ -66,9 +66,74 @@ function stageCoverSize(stage) {
     return { w: STAGE_BASE_W * k, h: STAGE_BASE_H * k };
 }
 
+// ── Profil rozložení ─────────────────────────────────────────────────────────
+// Všechna „magická čísla" rozložení desky na jednom místě. Dosud byla rozsypaná
+// jako literály po view/board.js, positions.js a game.js, přičemž se musela shodovat
+// (positions.js zrcadlí board.js kvůli zacílení animací). Profil je udělá společnými.
+//
+// Desktopové hodnoty jsou PŘESNĚ ty dnešní – PC se tím pádem nemění (pojistkou je
+// test/layout.test.js). Mobilní profil je zatím jejich kopie: liší se teprve
+// kompaktním rozložením (soupeři v jedné řadě nahoře), které přijde v další fázi.
+const LAYOUT_DESKTOP = {
+    name: 'desktop',
+    // 'ring' = dnešní okruh soupeřů kolem stolu (left/top/right)
+    oppMode: 'ring',
+    centerX: 960,
+
+    // měřítka karet
+    scaleMe: 0.36, scaleOpp: 0.27, scaleDeck: 0.3,
+
+    // moje zóna (drawMyArea + getHandSlotPos/getBoardCardPos)
+    livesX: 1050, myBaseY: 970, roleOffX: -200,
+    handOffX: 160, handEndX: 1860, handMaxSpacing: 117,
+    boardGap: 10, boardMaxPerRow: 6,
+    myHandAnchorX: 1450,
+    btnRowOffY: -170, btnH: 62,
+
+    // divák: spodní hráč se kreslí vystředěně a v měřítku soupeře
+    specScale: 0.27, specLivesY: 900, specHandY: 1065,
+
+    // soupeři – kotvy (null = základní tabulka OPPONENT_ANCHORS v positions.js),
+    // odsazení ruky od portrétu a rozteč vějíře rubů
+    anchors: null,
+    oppGap: 10, oppHandOff: 1.1, oppFanFrac: 0.35, oppFanMax: 36, oppFanSpan: 3.5,
+
+    // balíčky uprostřed stolu + řada hokynářství
+    deckOffX: 90, pileY: 540, hnPileX: 1170, hnActiveX: 1280,
+    storeRowOffY: 188, storeSpacing: 120,
+};
+const LAYOUT_MOBILE = { ...LAYOUT_DESKTOP, name: 'mobile' };
+
+const LAYOUT_PROFILES = { desktop: LAYOUT_DESKTOP, mobile: LAYOUT_MOBILE };
+
+function getLayout(name) {
+    return LAYOUT_PROFILES[name] || LAYOUT_DESKTOP;
+}
+// Profil, který právě platí. Mimo prohlížeč (testy, server) vždy desktopový.
+function currentLayout() {
+    return (typeof App !== 'undefined' && App && App.layout) || LAYOUT_DESKTOP;
+}
+
+// Který profil zapnout. Čistá funkce, ať jde otestovat bez prohlížeče.
+//   query  – ?ui=mobile / ?ui=desktop (testování mobilního režimu na PC)
+//   stored – localStorage.bangUiMode: 'big' | 'normal' (ruční přepínač hráče)
+//   width  – šířka plátna v CSS px, coarse – dotykové ovládání
+function pickLayoutProfile(opts) {
+    const o = opts || {};
+    if (o.query === 'mobile' || o.query === 'desktop') return o.query;
+    if (o.stored === 'big') return 'mobile';
+    if (o.stored === 'normal') return 'desktop';
+    const w = Number(o.width);
+    if (!(w > 0)) return 'desktop';
+    if (w < 820) return 'mobile';
+    if (o.coarse && w < 1100) return 'mobile';
+    return 'desktop';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H,
         computeStage, stageCoverSize,
+        LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
     };
 }

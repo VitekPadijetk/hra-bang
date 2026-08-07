@@ -1,5 +1,12 @@
+// Profil rozložení (core/layout.js). V prohlížeči je globál (načítá se dřív),
+// v Node/testech se dotáhne přes require. Vlastní název modulové proměnné, ať se
+// nekříží s lexikálními globály z core/layout.js.
+var _layoutMod = (typeof module !== 'undefined' && module.exports) ? require('./core/layout.js') : null;
+function _L() { return _layoutMod ? _layoutMod.currentLayout() : currentLayout(); }
+
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
-// (= počet hráčů − 1). Konzumuje positions.js i view/board.js.
+// (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
+// si přináší vlastní tabulku (L.anchors), tahle je základní/desktopová.
 const OPPONENT_ANCHORS = {
     1: [{x:960,y:150,side:'top'}],
     2: [{x:180,y:540,side:'left'},{x:1740,y:540,side:'right'}],
@@ -9,7 +16,8 @@ const OPPONENT_ANCHORS = {
     6: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},{x:715,y:150,side:'top'},{x:1205,y:150,side:'top'},{x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
 };
 function getOpponentAnchors(totalPlayers) {
-    return OPPONENT_ANCHORS[totalPlayers - 1] || [];
+    const table = _L().anchors || OPPONENT_ANCHORS;
+    return table[totalPlayers - 1] || [];
 }
 
 function getPlayerPosition(myIdx, targetIdx, totalPlayers) {
@@ -26,17 +34,18 @@ function getPlayerHandPos(playerIdx) {
     // Divák (myIndex === null) sleduje z pohledu hráče 0 dole (viz renderMyIndex v board.js).
     const view = myIndex === null ? 0 : myIndex;
     const total = state.players.length;
-    const cardH = 500 * 0.27;
+    const L = _L();
+    const cardH = 500 * L.scaleOpp;
     if (playerIdx === view) {
         // Spodní hráč: u diváka vykreslen vystředěně dole (drawSpectatorPlayer), u hráče vpravo dole.
-        return myIndex === null ? { x: 960, y: 1065 } : { x: 1450, y: 970 };
+        return myIndex === null ? { x: L.centerX, y: L.specHandY } : { x: L.myHandAnchorX, y: L.myBaseY };
     }
     const diff = (playerIdx - view + total) % total;
     const anchor = getOpponentAnchors(total)[diff - 1];
     if (!anchor) return { x: 960, y: 540 };
-    if (anchor.side === 'left') return { x: anchor.x - cardH * 1.1, y: anchor.y };
-    if (anchor.side === 'top') return { x: anchor.x, y: anchor.y - cardH * 1.1 };
-    if (anchor.side === 'right') return { x: anchor.x + cardH * 1.1, y: anchor.y };
+    if (anchor.side === 'left') return { x: anchor.x - cardH * L.oppHandOff, y: anchor.y };
+    if (anchor.side === 'top') return { x: anchor.x, y: anchor.y - cardH * L.oppHandOff };
+    if (anchor.side === 'right') return { x: anchor.x + cardH * L.oppHandOff, y: anchor.y };
     return { x: anchor.x, y: anchor.y };
 }
 
@@ -49,31 +58,31 @@ function getHandSlotPos(playerIdx, slotIndex, totalCards) {
     const view = myIndex === null ? 0 : myIndex;
     const total = state.players.length;
     const len = Math.max(1, totalCards);
+    const L = _L();
 
     if (playerIdx === view) {
         // Divák (myIndex === null) má spodního hráče vystředěného jinak → přibližně.
         if (myIndex === null) return getPlayerHandPos(playerIdx);
-        // Zrcadlí drawMyArea: vodorovný pás dole od livesX+160 do 1860, Y = myBaseY.
-        const livesX = 1050, myBaseY = 970;
-        const handAreaStart = livesX + 160;
-        const handAreaWidth = 1860 - handAreaStart;
-        const spacing = Math.min(117, handAreaWidth / len);
-        return { x: handAreaStart + slotIndex * spacing, y: myBaseY };
+        // Zrcadlí drawMyArea: vodorovný pás dole od livesX+handOffX do handEndX, Y = myBaseY.
+        const handAreaStart = L.livesX + L.handOffX;
+        const handAreaWidth = L.handEndX - handAreaStart;
+        const spacing = Math.min(L.handMaxSpacing, handAreaWidth / len);
+        return { x: handAreaStart + slotIndex * spacing, y: L.myBaseY };
     }
 
     const diff = (playerIdx - view + total) % total;
     const anchor = getOpponentAnchors(total)[diff - 1];
     if (!anchor) return getPlayerHandPos(playerIdx);
     // Zrcadlí fan ruky soupeřů v drawOpponents (left/right svisle, top vodorovně).
-    const scaleOpp = 0.27;
+    const scaleOpp = L.scaleOpp;
     const cardW = 325 * scaleOpp, cardH = 500 * scaleOpp;
-    const maxHand = cardH * 3.5;
-    const rawSpacing = len > 1 ? Math.min(cardW * 0.35, 36) : 0;
+    const maxHand = cardH * L.oppFanSpan;
+    const rawSpacing = len > 1 ? Math.min(cardW * L.oppFanFrac, L.oppFanMax) : 0;
     const handSpacing = len > 1 ? Math.min(rawSpacing, maxHand / (len - 1)) : 0;
     const span = (len - 1) * handSpacing;
-    if (anchor.side === 'left')  return { x: anchor.x - cardH * 1.1, y: anchor.y - span / 2 + slotIndex * handSpacing };
-    if (anchor.side === 'right') return { x: anchor.x + cardH * 1.1, y: anchor.y - span / 2 + slotIndex * handSpacing };
-    if (anchor.side === 'top')   return { x: anchor.x - span / 2 + slotIndex * handSpacing, y: anchor.y - cardH * 1.1 };
+    if (anchor.side === 'left')  return { x: anchor.x - cardH * L.oppHandOff, y: anchor.y - span / 2 + slotIndex * handSpacing };
+    if (anchor.side === 'right') return { x: anchor.x + cardH * L.oppHandOff, y: anchor.y - span / 2 + slotIndex * handSpacing };
+    if (anchor.side === 'top')   return { x: anchor.x - span / 2 + slotIndex * handSpacing, y: anchor.y - cardH * L.oppHandOff };
     return getPlayerHandPos(playerIdx);
 }
 
@@ -81,27 +90,28 @@ function getBoardCardPos(playerIdx, boardIdx) {
     if (!state) return { x: 960, y: 540 };
     const player = state.players[playerIdx];
     const view = myIndex === null ? 0 : myIndex;
-    const scaleOpp = 0.27;
-    const scaleMe = 0.36;
+    const L = _L();
+    const scaleOpp = L.scaleOpp;
+    const scaleMe = L.scaleMe;
 
     if (playerIdx === view) {
         // Divák: spodní hráč (seat 0) má desku vystředěnou dole (drawSpectatorPlayer) – přibližně.
-        if (myIndex === null) return { x: 960, y: 900 };
-        const livesX = 1050, myBaseY = 970, roleX = livesX - 200;
-        const boardCardW = 325 * scaleMe + 10;
+        if (myIndex === null) return { x: L.centerX, y: L.specLivesY };
+        const myBaseY = L.myBaseY, roleX = L.livesX + L.roleOffX;
+        const boardCardW = 325 * scaleMe + L.boardGap;
         const boardCardH = 500 * scaleMe;
-        const boardMaxPerRow = 6;   // MUSÍ zrcadlit drawMyArea v view/board.js
+        const boardMaxPerRow = L.boardMaxPerRow;   // MUSÍ zrcadlit drawMyArea v view/board.js
         const bRow = Math.floor(boardIdx / boardMaxPerRow);
         const bCol = boardIdx % boardMaxPerRow;
         const bx = roleX - boardCardW - (bCol * boardCardW);
-        const by = myBaseY - bRow * (boardCardH + 10);
+        const by = myBaseY - bRow * (boardCardH + L.boardGap);
         return { x: bx, y: by };
     }
 
     const total = state.players.length;
     const cardW = 325 * scaleOpp;
     const cardH = 500 * scaleOpp;
-    const gap = 10;
+    const gap = L.oppGap;
     const diff = (playerIdx - view + total) % total;
     const anchor = getOpponentAnchors(total)[diff - 1];
     if (!anchor) return { x: 960, y: 540 };
@@ -147,10 +157,11 @@ function getDeadRoleCardPos(playerIdx) {
 // balíčky). lift = aktuální vyzvednutí balíčků (App.storePileLiftY). MUSÍ zrcadlit
 // rozložení v board.js (drawPhaseOverlays STORE + drawDrawPiles).
 function getStoreSlotPos(i, count, lift) {
-    const pileY = 540 - (lift || 0);
-    const rowY = pileY + 188;   // řada kousek pod zvednutými balíčky (o trochu větší mezera)
-    const spacing = 120;
-    const startX = 960 - (count - 1) * spacing / 2;
+    const L = _L();
+    const pileY = L.pileY - (lift || 0);
+    const rowY = pileY + L.storeRowOffY;   // řada kousek pod zvednutými balíčky (o trochu větší mezera)
+    const spacing = L.storeSpacing;
+    const startX = L.centerX - (count - 1) * spacing / 2;
     return { x: startX + i * spacing, y: rowY };
 }
 

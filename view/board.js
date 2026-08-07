@@ -55,17 +55,20 @@ function renderGameBoard() {
         return gameScene.textures.exists('char_' + charInfo.id) ? 'char_' + charInfo.id : 'placeholder';
     };
 
-    const scaleMe = 0.36;
-    const scaleOpp = 0.27;
-    const scaleDeck = 0.3;
+    // Profil rozložení (core/layout.js) – jediný zdroj geometrie desky. positions.js
+    // čte tentýž profil, takže zacílení animací a vykreslení nemůžou utéct od sebe.
+    const L = currentLayout();
+    const scaleMe = L.scaleMe;
+    const scaleOpp = L.scaleOpp;
+    const scaleDeck = L.scaleDeck;
 
     const anchors = getOpponentAnchors(state.players.length);
 
     const me = state.players[isSpectator ? 0 : myIndex];
 
     // --- 1. BALÍČKY ---
-    const isMyDraw = drawDrawPiles({ getTex, scaleDeck, me });
-    drawHighNoonPile({ scaleDeck });
+    const isMyDraw = drawDrawPiles({ getTex, scaleDeck, me, L });
+    drawHighNoonPile({ scaleDeck, L });
 
     const handlePanicCBClick = (targetIdx, area, boardIdx = null) => {
         // Zelená karta se steal/discard efektem ze stolu (Krytý vůz / Kankán): klik na
@@ -137,14 +140,14 @@ function renderGameBoard() {
     };
 
     // --- 2. SOUPEŘI ---
-    drawOpponents({ anchors, scaleOpp, getTex, getCharTex, isMyDraw, handlePanicCBClick });
+    drawOpponents({ anchors, scaleOpp, getTex, getCharTex, isMyDraw, handlePanicCBClick, L });
 
-    if (me && !isSpectator) drawMyArea({ me, scaleMe, getTex, getCharTex, handlePanicCBClick });
+    if (me && !isSpectator) drawMyArea({ me, scaleMe, getTex, getCharTex, handlePanicCBClick, L });
 
     // --- SPECTATOR: hráč 0 dole ---
-    if (isSpectator && me) drawSpectatorPlayer({ me, getTex, getCharTex });
+    if (isSpectator && me) drawSpectatorPlayer({ me, getTex, getCharTex, L });
 
-    drawPhaseOverlays({ getTex, me });
+    drawPhaseOverlays({ getTex, me, L });
 
     // Reflow slide: karty jsou dokresleny → ukliď klíče karet, které v tomto renderu nebyly.
     pruneCardSlides();
@@ -339,7 +342,7 @@ function reflowStatic(key, sprite, tex, scale, angle, sliding, depth = 0) {
 
 // ── Soupeři kolem stolu (vykresleno relativně k mému indexu) ──────────────────
 function drawOpponents(ctx) {
-    const { anchors, scaleOpp, getTex, getCharTex, isMyDraw, handlePanicCBClick } = ctx;
+    const { anchors, scaleOpp, getTex, getCharTex, isMyDraw, handlePanicCBClick, L } = ctx;
 
     // Hráč, na kterého hra čeká mimo normální tah (Suzy líže, kontrola, reakce…) → jantarové zvýraznění.
     const _waiting = (typeof waitingStatus === 'function') ? waitingStatus(state) : null;
@@ -383,7 +386,7 @@ function drawOpponents(ctx) {
         const isWaiting = !!_waiting && _waiting.idx === actualIdx && actualIdx !== state.currentPlayerIndex;
         const cardW = 325 * scaleOpp;
         const cardH = 500 * scaleOpp;
-        const gap = 10;
+        const gap = L.oppGap;
 
         const bulletsH = cardH * 0.93;
         const bulletH = bulletsH / 5;
@@ -689,9 +692,9 @@ function drawOpponents(ctx) {
                 drawBoardCard(bX, bY, card, angle, bIdx);
             });
 
-            const handStartX = charX - cardH * 1.1;
-            const maxHandH = cardH * 3.5;
-            const rawSpacingL = (handFan > 1) ? Math.min(cardW * 0.35, 36) : 0;
+            const handStartX = charX - cardH * L.oppHandOff;
+            const maxHandH = cardH * L.oppFanSpan;
+            const rawSpacingL = (handFan > 1) ? Math.min(cardW * L.oppFanFrac, L.oppFanMax) : 0;
             const handSpacing = handFan > 1
                 ? Math.min(rawSpacingL, maxHandH / (handFan - 1))
                 : 0;
@@ -761,9 +764,9 @@ function drawOpponents(ctx) {
                 drawBoardCard(bX, bY, card, angle, bIdx);
             });
 
-            const handStartY = charY - cardH * 1.1;
-            const maxHandW = cardH * 3.5;
-            const rawSpacingT = handFan > 1 ? Math.min(cardW * 0.35, 36) : 0;
+            const handStartY = charY - cardH * L.oppHandOff;
+            const maxHandW = cardH * L.oppFanSpan;
+            const rawSpacingT = handFan > 1 ? Math.min(cardW * L.oppFanFrac, L.oppFanMax) : 0;
             const handSpacing = handFan > 1
                 ? Math.min(rawSpacingT, maxHandW / (handFan - 1))
                 : 0;
@@ -832,9 +835,9 @@ function drawOpponents(ctx) {
                 drawBoardCard(bX, bY, card, angle, bIdx);
             });
 
-            const handStartX = charX + cardH * 1.1;
-            const maxHandHR = cardH * 3.5;
-            const rawSpacingR = handFan > 1 ? Math.min(cardW * 0.35, 36) : 0;
+            const handStartX = charX + cardH * L.oppHandOff;
+            const maxHandHR = cardH * L.oppFanSpan;
+            const rawSpacingR = handFan > 1 ? Math.min(cardW * L.oppFanFrac, L.oppFanMax) : 0;
             const handSpacing = handFan > 1
                 ? Math.min(rawSpacingR, maxHandHR / (handFan - 1))
                 : 0;
@@ -868,11 +871,11 @@ function drawOpponents(ctx) {
 
 // ── Vlastní oblast dole (role, životy, postava, stůl, ruka, akční tlačítka) ──
 function drawMyArea(ctx) {
-    const { me, scaleMe, getTex, getCharTex, handlePanicCBClick } = ctx;
+    const { me, scaleMe, getTex, getCharTex, handlePanicCBClick, L } = ctx;
 
-        const livesX = 1050;
-        const myBaseY = 970;
-        const roleX = livesX - 200;
+        const livesX = L.livesX;
+        const myBaseY = L.myBaseY;
+        const roleX = livesX + L.roleOffX;
 
         const roleMap = { 'Sheriff': '000', 'Outlaw': '001', 'Renegade': '002', 'Deputy': '003' };
         let roleImg = gameScene.add.image(roleX, myBaseY, 'role_' + (roleMap[me.role] || '001')).setScale(scaleMe);
@@ -1071,9 +1074,9 @@ function drawMyArea(ctx) {
         if (_coltNow && !App.coltVisible) App.coltFadeStart = Date.now();
         App.coltVisible = _coltNow;
 
-        const boardCardW = 325 * scaleMe + 10;
+        const boardCardW = 325 * scaleMe + L.boardGap;
         const boardCardH = 500 * scaleMe;
-        const boardMaxPerRow = 6;   // MUSÍ zrcadlit getBoardCardPos v positions.js
+        const boardMaxPerRow = L.boardMaxPerRow;   // MUSÍ zrcadlit getBoardCardPos v positions.js
         const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action);
         // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
         // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
@@ -1114,7 +1117,7 @@ function drawMyArea(ctx) {
             const bRow = Math.floor(i / boardMaxPerRow);
             const bCol = i % boardMaxPerRow;
             const bx = roleX - boardCardW - (bCol * boardCardW);
-            const by = myBaseY - bRow * (boardCardH + 10);
+            const by = myBaseY - bRow * (boardCardH + L.boardGap);
             let tex = card._isColt ? 'colt_.45' : getTex(card.id);
             // Ručička kurzoru: jediné setInteractive na sprite (opakované volání by ji už
             // nepřepsalo) → musí pokrýt VŠECHNY režimy míření na vlastní stůl, i Ragtime /
@@ -1323,10 +1326,10 @@ function drawMyArea(ctx) {
         const getCardPlayability = (card) => cardPlayability(state, me, myIndex, card);
 
         if (me.hand.length > 0) {
-            const handAreaStart = livesX + 160;
-            const handAreaEnd = 1860;
+            const handAreaStart = livesX + L.handOffX;
+            const handAreaEnd = L.handEndX;
             const handAreaWidth = handAreaEnd - handAreaStart;
-            const maxSpacing = 117;   // = šířka karty při scaleMe (325*0.36) → karty na sebe těsně navazují
+            const maxSpacing = L.handMaxSpacing;   // = šířka karty při scaleMe (325*0.36) → karty na sebe těsně navazují
             const spacing = Math.min(maxSpacing, handAreaWidth / me.hand.length);
 
             App.gatedSlotPos = {};   // přepočítáme rezervované sloty letících líznutí
@@ -1631,7 +1634,7 @@ function drawMyArea(ctx) {
                 return p !== false;
             });
 
-            const { bg: endBtn } = themeButton(gameScene, 820, myBaseY - 170, 260, 62, 'UKONČIT TAH', {
+            const { bg: endBtn } = themeButton(gameScene, 820, myBaseY + L.btnRowOffY, 260, L.btnH, 'UKONČIT TAH', {
                 fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
                 fontSize: '24px',
                 onClick: () => {
@@ -1669,7 +1672,7 @@ function drawMyArea(ctx) {
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
-            themeButton(gameScene, 1320, myBaseY - 170, 320, 62, btnLabel, {
+            themeButton(gameScene, 1320, myBaseY + L.btnRowOffY, 320, L.btnH, btnLabel, {
                 ...themeToggleStyle(sidPending), fontSize: '23px',
                 onClick: () => {
                     if (sidPending) {
@@ -1696,7 +1699,7 @@ function drawMyArea(ctx) {
             if (_sidLastLifeCtx) {
                 const _sidSavePending = !!selectedState.sidKetchum;
                 const _sidSaveLabel = _sidSavePending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → PŘEŽÍT';
-                themeButton(gameScene, 1320, myBaseY - 170, 340, 62, _sidSaveLabel, {
+                themeButton(gameScene, 1320, myBaseY + L.btnRowOffY, 340, L.btnH, _sidSaveLabel, {
                     ...themeToggleStyle(_sidSavePending), fontSize: '23px',
                     onClick: () => {
                         if (_sidSavePending) {
@@ -1715,7 +1718,7 @@ function drawMyArea(ctx) {
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────
         {
             const myPlayTurn = state.phase === "PLAY" && state.currentPlayerIndex === myIndex && !App.blockInput;
-            const BTN_Y = myBaseY - 170;   // stejná výška jako [ SID: … ]
+            const BTN_Y = myBaseY + L.btnRowOffY;   // stejná výška jako [ SID: … ]
             // Chuck Wengam: klik → nabít (zvýrazní se životy); klik na životy = −1 ❤ → 2 karty.
             if (myPlayTurn && effectiveCharacter(me) === "Chuck Wengam" && me.health > 1) {
                 const armed = !!selectedState.chuck;
@@ -1759,17 +1762,17 @@ function drawMyArea(ctx) {
 
 // ── Divácký pohled na hráče 0 (dolní pozice) ─────────────────────────────────
 function drawSpectatorPlayer(ctx) {
-    const { me, getTex, getCharTex } = ctx;
+    const { me, getTex, getCharTex, L } = ctx;
 
         const player = me;
         const isCurrent = state.currentPlayerIndex === 0;
         const isDead = player.health <= 0;
-        const sOpp = 0.27;
+        const sOpp = L.specScale;
         const cW = 325 * sOpp;
         const cH = 500 * sOpp;
         const bH = cH * 0.93 / 5;   // pozice na životech: 5 nábojnic jako drawMyArea/drawOpponents
         const g  = 8;
-        const livesCX = 960, livesCY = 900;
+        const livesCX = L.centerX, livesCY = L.specLivesY;
 
         // Mrtvý hráč dole (divák): zobraz postavu + ODHALENOU roli + zbylé karty jako
         // u soupeřů (drawOpponents), ne lebku.

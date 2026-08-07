@@ -7,6 +7,10 @@ const App = {
     // game.js applyStage podle skutečného poměru stran displeje, aby se využily i pruhy
     // po stranách. Dokud není spočítané, čte se základní 16:9 (currentStage()).
     stage: null,
+    // Profil rozložení desky: 'desktop' | 'mobile' (core/layout.js). Jméno + samotný
+    // profil; čte je currentLayout(), ze kterého kreslí view/board.js i positions.js.
+    uiProfile: null,
+    layout: null,
     reshuffleAnimating: false,
     reshuffleIsProactive: false,
     pendingDrawCount: 0,
