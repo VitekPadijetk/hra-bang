@@ -218,6 +218,11 @@ function menuRow(x, y, w, h, onClick) {
     return g;
 }
 
+// HN_EXTRA_AUTO — DOČASNÉ (testování, na požádání zase pryč): zapnutí High Noon rovnou
+// zaškrtne i „přibalené karty" (Nová identita + Želízka). Nastavuje se JEN v okamžiku
+// zapnutí High Noon, takže v pokročilých možnostech je vidět jako zapnuté a jde ručně
+// vypnout. Tři místa (založení hry, hra botů, debug) hledej podle „HN_EXTRA_AUTO".
+
 // Jeden řádek zaškrtávátka rozšíření (zakládání hry i hra botů kreslí totéž).
 // `exps` je objekt s příznaky rozšíření, který se rovnou přepíná; `onToggle` slouží
 // k doprovodné akci (dotažení artu rozšíření, který se v preloadu nestahuje).
@@ -361,7 +366,10 @@ function renderMenuScreen(screen) {
                 () => loadExpansionAssets(gameScene, 'dodge_city'));
             expansionRow(440, exps, 'high_noon', 'High Noon',
                 '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
-                () => loadExpansionAssets(gameScene, 'high_noon'));
+                () => {
+                    loadExpansionAssets(gameScene, 'high_noon');
+                    App.createOptions.highNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
+                });
         }
 
         const playerCountLabel = gameScene.add.text(960, 508, 'Počet hráčů',
@@ -499,7 +507,10 @@ function renderMenuScreen(screen) {
                 () => loadExpansionAssets(gameScene, 'dodge_city'));
             expansionRow(566, bexps, 'high_noon', 'High Noon',
                 '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
-                () => loadExpansionAssets(gameScene, 'high_noon'));
+                () => {
+                    loadExpansionAssets(gameScene, 'high_noon');
+                    App.botGameHighNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
+                });
         }
 
         // Přibalené karty (Nová identita, Želízka) – jen když je High Noon zapnuté.
@@ -718,7 +729,10 @@ function renderMenuScreen(screen) {
                 ...themeToggleStyle(hnOn), fontSize: '18px',
                 onClick: () => {
                     App.debugHighNoon = !App.debugHighNoon;
-                    if (App.debugHighNoon) loadExpansionAssets(gameScene, 'high_noon');
+                    if (App.debugHighNoon) {
+                        loadExpansionAssets(gameScene, 'high_noon');
+                        App.debugHighNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
+                    }
                     renderUI();
                 },
             });

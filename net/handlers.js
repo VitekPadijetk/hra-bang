@@ -970,8 +970,9 @@ function playSheriffPenaltyDiscard(data) {
 }
 
 // ── High Noon (přibalené) – Nová identita ────────────────────────────────────
-// Odložená postava leží lícem dolů pod kartou životů (rub karty postavy = karta
-// životů). Na začátku tahu vyletí doprostřed, překlopí se a hráč se rozhodne
+// Odložená postava leží lícem dolů PŘÍMO jako karta životů (rub karty postavy =
+// počítadlo životů) – žádná druhá karta se nekreslí. Na začátku tahu tahle karta
+// vyletí doprostřed, překlopí se a hráč se rozhodne
 // (tlačítka kreslí view/screens.js). Časování drží core/highNoonAnim.js, aby server
 // věděl, jak dlouho držet boty.
 const NI_MY_X = 1050, NI_MY_Y = 970, NI_MY_SCALE = 0.36, NI_BIG = 0.80;
@@ -992,10 +993,10 @@ function _niMyCharY(health) {
 function startNewIdentityReveal(charName) {
     if (!gameScene) return;
     App.niReveal = { ready: false, decided: false };
-    App.niHideSecond = true;   // karta zrovna letí → u životů se nekreslí
+    App.niHideSecond = true;   // karta životů zrovna letí → na svém místě se nekreslí
     renderUI();
     const D = NI_ANIM;
-    const spr = gameScene.add.image(NI_MY_X + 14, NI_MY_Y + 14, 'lives')
+    const spr = gameScene.add.image(NI_MY_X, NI_MY_Y, 'lives')
         .setScale(NI_MY_SCALE).setDepth(900);
     gameScene.tweens.add({ targets: spr, x: NI_CX, y: NI_CY, duration: D.moveMs, ease: 'Power2' });
     gameScene.tweens.add({
@@ -1040,7 +1041,7 @@ function playNewIdentityResult(data) {
                     targets: spr, scaleX: NI_BIG, duration: D.flipMs / 2, ease: 'Sine.easeOut',
                     onComplete: () => {
                         gameScene.tweens.add({
-                            targets: spr, x: NI_MY_X + 14, y: NI_MY_Y + 14,
+                            targets: spr, x: NI_MY_X, y: NI_MY_Y,
                             scaleX: NI_MY_SCALE, scaleY: NI_MY_SCALE,
                             duration: D.moveMs, ease: 'Power2',
                             onComplete: () => { if (spr.active) spr.destroy(); done(); }

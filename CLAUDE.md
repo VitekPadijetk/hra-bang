@@ -221,8 +221,9 @@ smí vzít místo současné a klesnout na 2 životy (odložená se vymění, p�
 - Nabídka je **4. krok `_beginTurn`** (`_newIdentityOffer` → fáze `NEW_IDENTITY`),
   rozhodnutí `resolveNewIdentity(idx, take)` dotočí start tahu přes `_resumeBeginTurn`.
   Výměna ruší i kopii Very Custer.
-- Klient: kartu kreslí `drawMyArea` lícem dolů pod kartou životů (rub karty postavy JE
-  karta životů). Nálet doprostřed + překlopení spouští `startNewIdentityReveal`
+- Klient: odloženou postavou **JE karta životů** (rub karty postavy = počítadlo životů),
+  žádná druhá karta se u životů nekreslí – během cinematiky se ta jediná jen schová
+  (`App.niHideSecond` v `drawMyArea`). Nálet doprostřed + překlopení spouští `startNewIdentityReveal`
   (net/handlers.js) při vstupu do fáze, statickou část s ANO/NE kreslí
   `renderNewIdentityOverlay` (view/screens.js) až je `App.niReveal.ready`.
   Dojezd rozhodnutí jde všem jako `new_identity_result` (časování `niResultMs`,

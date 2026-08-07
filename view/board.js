@@ -894,16 +894,11 @@ function drawMyArea(ctx) {
             }
         }
 
-        // High Noon (přibalené) – Nová identita: odložená druhá postava leží lícem dolů
-        // POD kartou životů (kouká zpod ní roh). Rub karty postavy je karta životů.
-        // Během cinematiky výměny (App.niHideSecond) se nekreslí – zrovna letí.
-        if (me._secondChar && !App.niHideSecond) {
-            const secImg = gameScene.add.image(livesX + 14, myBaseY + 14, 'lives').setScale(scaleMe);
-            secImg.setTint(0x99999b);   // ať je poznat, že je to ta odložená (ne živá karta)
-            gameScene.cardsSprites.add(secImg);
-        }
-
         let livesImg = gameScene.add.image(livesX, myBaseY, 'lives').setScale(scaleMe);
+        // High Noon (přibalené) – Nová identita: odložená druhá postava JE tahle karta
+        // (rub karty postavy = počítadlo životů), žádná další se nepřidává. Během
+        // cinematiky výměny (App.niHideSecond) letí doprostřed → na svém místě není.
+        if (App.niHideSecond) livesImg.setVisible(false);
 
         const isMyDynamiteDamage = state.phase === "DYNAMITE_DAMAGE" &&
             state.pendingDynamiteDamage?.playerIdx === myIndex;
