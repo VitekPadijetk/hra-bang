@@ -1417,11 +1417,12 @@ function drawMyArea(ctx) {
             // desktopu je handY = myBaseY a scaleHand = scaleMe, tedy dnešní stav).
             const handY = L.handY;
             const scaleHand = L.scaleHand;
-            const handAreaStart = L.handStartX;
-            const handAreaEnd = L.handEndX;
-            const handAreaWidth = handAreaEnd - handAreaStart;
-            const maxSpacing = L.handMaxSpacing;   // = šířka karty při scaleHand → karty na sebe těsně navazují
-            const spacing = Math.min(maxSpacing, handAreaWidth / me.hand.length);
+            // Rozteč i začátek řady počítá core/layout.js (myHandRow) – stejnou funkci
+            // volá positions.js, takže se zacílení animací nemůže rozejít s renderem.
+            // Na mobilu je pás přes celou šířku a ruka se v něm vystředí (handAlign).
+            const handRow = myHandRow(L, me.hand.length);
+            const handAreaStart = handRow.startX;
+            const spacing = handRow.spacing;
 
             App.gatedSlotPos = {};   // přepočítáme rezervované sloty letících líznutí
             me.hand.forEach((card, index) => {

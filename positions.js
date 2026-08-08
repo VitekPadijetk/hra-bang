@@ -10,6 +10,7 @@ function _compactMetrics(n, L)  { return (_layoutMod ? _layoutMod.compactMetrics
 function _compactAnchors(n, L)  { return (_layoutMod ? _layoutMod.compactAnchors : compactAnchors)(n, L); }
 function _compactBoardPos(a, i, k, m) { return (_layoutMod ? _layoutMod.compactBoardPos : compactBoardPos)(a, i, k, m); }
 function _compactHandPos(a, i, k, m)  { return (_layoutMod ? _layoutMod.compactHandPos : compactHandPos)(a, i, k, m); }
+function _myHandSlotX(L, i, k)  { return (_layoutMod ? _layoutMod.myHandSlotX : myHandSlotX)(L, i, k); }
 
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
 // (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
@@ -84,10 +85,7 @@ function getHandSlotPos(playerIdx, slotIndex, totalCards) {
         if (myIndex === null) return getPlayerHandPos(playerIdx);
         // Zrcadlí drawMyArea: vodorovný pás dole od handStartX do handEndX, Y = handY
         // (na desktopu je handY = myBaseY, na mobilu má ruka vlastní řadu pod stolem).
-        const handAreaStart = L.handStartX;
-        const handAreaWidth = L.handEndX - handAreaStart;
-        const spacing = Math.min(L.handMaxSpacing, handAreaWidth / len);
-        return { x: handAreaStart + slotIndex * spacing, y: L.handY };
+        return { x: _myHandSlotX(L, slotIndex, len), y: L.handY };
     }
 
     const diff = (playerIdx - view + total) % total;

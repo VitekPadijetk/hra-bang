@@ -8,7 +8,7 @@ const {
     resolveLayout, stretchAnchors, boardRowLimit,
     COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
     compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
-    oppScale, handCardScale,
+    oppScale, handCardScale, myHandRow, myHandSlotX,
 } = require('../core/layout.js');
 
 before(() => { console.log = () => {}; });
@@ -165,6 +165,17 @@ describe('profil rozložení – desktop je pixelově dnešní stav', () => {
         assert.strictEqual(L.storeSpacing, 120);
         assert.strictEqual(L.storeLift, 120);
         assert.strictEqual(L.anchors, null);                     // = základní OPPONENT_ANCHORS
+        assert.strictEqual(L.handAlign, 'left');                 // ruka roste od handStartX
+    });
+
+    test('myHandRow na desktopu dává přesně dnešní rozteč zleva', () => {
+        const L = LAYOUT_PROFILES.desktop;
+        for (const k of [1, 2, 5, 6, 10]) {
+            const r = myHandRow(L, k);
+            assert.strictEqual(r.startX, L.handStartX, `${k} karet: začátek ruky`);
+            assert.strictEqual(r.spacing, Math.min(L.handMaxSpacing, (L.handEndX - L.handStartX) / k));
+            assert.strictEqual(myHandSlotX(L, 0, k), L.handStartX);
+        }
     });
 
     test('mimo prohlížeč (testy, server) platí desktopový profil', () => {
@@ -463,6 +474,26 @@ describe('kompaktní sloupec se vejde do pásma nad balíčky', () => {
         assert.ok(Math.abs(compactColCenter(a, m) - (compactColLeft(a, m) + m.colW / 2)) < 1e-9);
     });
 
+    // Sloupce uprostřed stojí přímo nad balíčkem/odhozem. Řada vyložených karet se
+    // s jejich počtem nikam neposouvá (od 4. karty se jen zmenšuje rozestup), takže
+    // stačí ověřit spodek řady proti NEJVYŠŠÍMU balíčku – 80 vrstev po 0,125 px.
+    test('řada vyložených karet nedosáhne ani na plný balíček', () => {
+        const fullPileTop = MOB.pileY - 79 * 0.125 - CARD_ART_H * MOB.scaleDeck / 2;
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            for (let n = 1; n <= 6; n++) {
+                const m = compactMetrics(n, MOB, st);
+                for (const a of compactAnchors(n, MOB, st)) {
+                    for (const k of [1, 3, 4, 8, 12]) {
+                        const bottom = compactBoardPos(a, k - 1, k, m).y + m.cardH / 2;
+                        assert.ok(bottom + 10 <= fullPileTop,
+                            `${vw}×${vh}, ${n} soupeřů, ${k} karet: řada sahá na balíček (${bottom.toFixed(1)})`);
+                    }
+                }
+            }
+        }
+    });
+
     test('vějíř ruky je menší než vyložené karty (jinak by se sloupec nevešel)', () => {
         const st = computeStage(844, 390);
         const m = compactMetrics(3, MOB, st);
@@ -522,6 +553,24 @@ describe('mobilní moje zóna – pásma se nekříží', () => {
             assert.ok(Math.abs(spacing - L.handMaxSpacing) < 1e-9, `${vw}×${vh}: 5 karet se překrývá`);
             assert.ok(L.handStartX - cardW / 2 >= st.left + 1e-9, `${vw}×${vh}: ruka vlevo přetéká`);
             assert.ok(L.handStartX + 4 * spacing + cardW / 2 <= st.right + 1e-9, `${vw}×${vh}: ruka vpravo přetéká`);
+        }
+    });
+
+    test('ruka je v pásu vystředěná a nepřeteče přes jeho okraje', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(MOB, st);
+            const mid = (L.handStartX + L.handEndX) / 2;
+            assert.ok(Math.abs(mid - (st.left + st.right) / 2) < 1e-9, `${vw}×${vh}: pás není uprostřed`);
+            for (const k of [1, 3, 5, 9, 15, 22]) {
+                const r = myHandRow(L, k);
+                const last = myHandSlotX(L, k - 1, k);
+                assert.ok(Math.abs((r.startX + last) / 2 - mid) < 1e-9, `${vw}×${vh}, ${k} karet: není vystředěná`);
+                assert.ok(r.startX >= L.handStartX - 1e-9, `${vw}×${vh}, ${k} karet: přetéká vlevo`);
+                assert.ok(last <= L.handEndX + 1e-9, `${vw}×${vh}, ${k} karet: přetéká vpravo`);
+            }
+            // Jedna karta leží přesně uprostřed = tam, kam míří kotva ruky (myHandAnchorX).
+            assert.ok(Math.abs(myHandSlotX(L, 0, 1) - L.myHandAnchorX) < 1e-9, `${vw}×${vh}: kotva ruky`);
         }
     });
 

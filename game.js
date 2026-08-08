@@ -753,12 +753,17 @@ function animateDrawToMyHand(playerIdx, cardId, fromX, fromY, opts = {}) {
     // rovnou naskočí. Delší strop (holdTries) pokryje i tři líznutí rychle za sebou.
     const holdUntil = opts.holdUntil ||
         (() => (state?.players?.[myIndex]?.hand || []).some(c => c.id === cardId));
-    // endScale = velikost karty v MOJÍ ruce (scaleMe v board.js). Default animateCardFlip
+    // endScale = velikost karty v MOJÍ ruce (scaleHand v board.js). Default animateCardFlip
     // je 0.4, takže karta dosedala o kus větší než ostatní v ruce – dokud sprite hned
     // zanikal, nebylo to poznat, s držením do příchodu stavu je to vidět jako „karta se
-    // po chvíli zmenší". Musí sedět se scaleMe v board.js.
+    // po chvíli zmenší". Na mobilu je ruka větší než stůl (0.46), proto z profilu.
+    // startScale default = velikost balíčku: líznutí z balíčku/odhozu tak vzlétne přesně
+    // v jeho velikosti a k mojí ruce naroste. Krádež z cizí ruky/stolu si startScale
+    // předává sama (velikost karty u okradeného, na mobilu výrazně menší).
+    const L = currentLayout();
     const sprite = animateCardFlip(fromX, fromY, target.x, target.y, 'card_back', getCardTex(cardId),
-        { flip: !opts.faceUp, duration: opts.duration, startScale: opts.startScale, endScale: 0.36,
+        { flip: !opts.faceUp, duration: opts.duration,
+          startScale: opts.startScale ?? L.scaleDeck, endScale: handCardScale(L, 1, true),
           onComplete: onDone, holdUntil, holdTries: 90, startAngle: opts.startAngle ?? 0, endAngle: 0 });
     if (sprite) App.drawAnims.push({ cardId, slotIndex, sprite });
     retargetDrawAnims();   // sjednotí rozteč všech letících karet (vč. už letících)

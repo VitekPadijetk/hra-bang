@@ -93,6 +93,9 @@ const LAYOUT_DESKTOP = {
     myNameOffY: 145, myStatusOffY: 178, myHintOffY: 185,
     handStartX: 1210, handStartMargin: null,
     handEndX: 1860, handEndMargin: 60, handMaxSpacing: 117,
+    // 'left' = ruka roste zleva od handStartX (dnešní stav; pás je úzký, takže se
+    // stejně skoro vždy vyplní). Mobilní pás je přes celou šířku → 'center'.
+    handAlign: 'left',
     // Ruka má na mobilu vlastní řadu pod stolem a větší karty; na desktopu leží
     // v jedné řadě se stolem (handY = myBaseY, scaleHand = scaleMe) jako dosud.
     handY: 970, scaleHand: 0.36,
@@ -115,9 +118,11 @@ const LAYOUT_DESKTOP = {
 };
 const LAYOUT_MOBILE = {
     ...LAYOUT_DESKTOP, name: 'mobile',
-    // 'compact' = soupeři v jedné řadě nahoře (viz compactMetrics níže). Pásmo končí
-    // těsně nad balíčky (pileY 540 − půlka karty 75 = 465), proto výška 435.
-    oppMode: 'compact', oppTop: 16, oppBandH: 435,
+    // 'compact' = soupeři v jedné řadě nahoře (viz compactMetrics níže). Spodek sloupce
+    // vychází na oppTop + oppBandH, a pod ním leží balíčky: prázdný odhoz má vrch na
+    // 465, plný balíček (80 karet se odsazuje o 0,125 px) až na 455. Sloupec proto končí
+    // na 440 – 15 px pod ním je vidět mezera i tehdy, když je balíček nejvyšší.
+    oppMode: 'compact', oppTop: 12, oppBandH: 428,
 
     // Moje zóna je rozdělená na DVĚ řady: stůl (myBaseY) a pod ním ruka (handY) přes
     // celou šířku. Stůl si nechává desktopové měřítko – zvětšuje se hlavně ruka, do
@@ -130,6 +135,9 @@ const LAYOUT_MOBILE = {
     handStartX: 85, handStartMargin: 85,
     handEndX: 1835, handEndMargin: 85,
     handY: 962, scaleHand: 0.46, handMaxSpacing: 149.5,
+    // Pás ruky jde přes celou šířku jeviště, takže pár karet by se krčilo v levém
+    // rohu – ruka se v něm proto vystředí (a s ní i myHandAnchorX).
+    handAlign: 'center',
     boardMaxPerRow: 10, myHandAnchorX: 960,
     // Akční tlačítka ve dvou řadách u pravého okraje, vedle karty životů.
     btnEndX: 1740, btnEndY: 690, btnAbilX: 1740, btnAbilY: 786, btnMargin: 180, btnH: 76,
@@ -156,6 +164,25 @@ function boardRowLimit(L, stage) {
     const step = cardW + L.boardGap;
     const roleX = L.livesX + L.roleOffX;
     return Math.max(1, Math.floor((roleX - cardW / 2 - st.left) / step));
+}
+
+// Rozložení MOJÍ ruky ve vodorovném pásu handStartX…handEndX (to jsou STŘEDY krajních
+// slotů). Jediný zdroj pravdy pro renderer (drawMyArea), zacílení animací (positions.js)
+// i intro – ty se dřív musely shodovat ručně. Vrací začátek a rozteč, ne pole pozic,
+// protože board.js si jede vlastní forEach přes ruku.
+function myHandRow(L, count) {
+    const P = L || LAYOUT_DESKTOP;
+    const k = Math.max(1, count);
+    const width = P.handEndX - P.handStartX;
+    const spacing = Math.min(P.handMaxSpacing, width / k);
+    if (P.handAlign !== 'center') return { startX: P.handStartX, spacing, width };
+    // Rozpětí je vždy < width (spacing ≤ width/k), takže vystředěná ruka z pásu nevyleze
+    // ani při plném počtu karet – jen se v něm symetricky posadí.
+    return { startX: P.handStartX + (width - (k - 1) * spacing) / 2, spacing, width };
+}
+function myHandSlotX(L, slotIndex, count) {
+    const r = myHandRow(L, count);
+    return r.startX + slotIndex * r.spacing;
 }
 
 // Krajní soupeři se „přilepí" na okraj jeviště: kotvy se vodorovně roztáhnou tak, aby
@@ -341,7 +368,7 @@ if (typeof module !== 'undefined' && module.exports) {
         CARD_ART_W, CARD_ART_H,
         computeStage, stageCoverSize,
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
-        resolveLayout, stretchAnchors, boardRowLimit,
+        resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
         compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
         oppScale, handCardScale,

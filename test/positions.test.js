@@ -270,9 +270,15 @@ test('mobil: moje ruka má vlastní řadu POD stolem (soupeři to nemění)', ()
         assert.equal(getPlayerHandPos(0).y, L.handY);
         assert.equal(getHandSlotPos(0, 0, 5).y, L.handY);
         assert.ok(L.handY > L.myBaseY, 'ruka je pod stolem');
-        // 5 karet vedle sebe bez překryvu, začátek u levého okraje jeviště
-        assert.equal(getHandSlotPos(0, 0, 5).x, st.left + 85);
+        // 5 karet vedle sebe bez překryvu a VYSTŘEDĚNÝCH v pásu (handAlign 'center') –
+        // pár karet by se jinak krčilo v levém rohu, pás jde přes celou šířku jeviště.
         assert.equal(getHandSlotPos(0, 1, 5).x - getHandSlotPos(0, 0, 5).x, L.handMaxSpacing);
+        const mid = (getHandSlotPos(0, 0, 5).x + getHandSlotPos(0, 4, 5).x) / 2;
+        assert.equal(mid, (L.handStartX + L.handEndX) / 2);
+        assert.equal(mid, (st.left + st.right) / 2, 'střed ruky = střed jeviště');
+        // ani plná ruka z pásu nevyleze (vystředění nesmí přetéct přes okraje)
+        assert.ok(getHandSlotPos(0, 0, 20).x >= L.handStartX);
+        assert.ok(getHandSlotPos(0, 19, 20).x <= L.handEndX);
         // můj stůl zůstává v horní řadě mé zóny
         assert.equal(getBoardCardPos(0, 0).y, L.myBaseY);
     });

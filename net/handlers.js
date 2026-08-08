@@ -449,15 +449,20 @@ socket.on('intro_phase', (data) => {
                     );
                     renderUI();
                 };
+                // Karta vzlétá ve velikosti balíčku a za letu doroste/zmenší se na
+                // velikost ruky příjemce (na mobilu je moje ruka větší a vějíř soupeře
+                // menší než balíček – bez toho karta „poskočila" hned na startu).
+                const dealFrom = currentLayout().scaleDeck;
                 if (toIdx === myIdx) {
                     const cid = _introState.myHandCards?.[i];
                     const faceTex = (cid !== undefined && gameScene.textures.exists('card_' + cid))
                         ? 'card_' + cid : 'card_back';
                     _introAnimCardFlip(INTRO_PLAY_DECK.x, INTRO_PLAY_DECK.y, rest.x, rest.y,
-                        'card_back', faceTex, 320, place(faceTex), rest.angle, rest.scale);
+                        'card_back', faceTex, 320, place(faceTex), rest.angle, rest.scale,
+                        { startScale: dealFrom, endScale: rest.scale });
                 } else {
                     _introAnimCard(INTRO_PLAY_DECK.x, INTRO_PLAY_DECK.y, rest.x, rest.y,
-                        'card_back', 320, place('card_back'), rest.angle, rest.scale);
+                        'card_back', 320, place('card_back'), rest.angle, rest.scale, dealFrom);
                 }
                 _introState.deckCount = Math.max(0, (_introState?.deckCount ?? 0) - 1);
                 renderUI();
@@ -1237,6 +1242,8 @@ function _playCardAnim(data) {
     // area 'hand' = karta leží ve vějíři ruky (u kompaktní řady menší než na stole).
     const sideScale = (playerIdx, area) => (area === 'hand')
         ? _renderHandScale(playerIdx) : _renderSideScale(playerIdx);
+    // Velikost karty ležící na balíčku / v odhozu – odtud karty vzlétají a sem dosedají.
+    const pileScale = () => currentLayout().scaleDeck;
 
     // holdUntil predikáty pro letové animace: karta je už ve stavu odhozu / na boardu daného
     // hráče. Letící sprite se drží na cíli, dokud to neplatí (jinak po doletu problikne stará
@@ -1345,9 +1352,13 @@ function _playCardAnim(data) {
                 // srovnala na 0° (symetrie rubu) → karta letí „placatě" a dosedne v MOJÍ
                 // orientaci místo jeho vějíře (pak by po room_update přeskočila na 180°).
                 // Se 180° se viditelně dotočí do jeho orientace, jako rozdání přes stůl.
+                // startScale/endScale: karta vzlétne ve velikosti balíčku a za letu se
+                // zmenší na velikost vějíře v soupeřově ruce (na mobilu je jeho vějíř
+                // výrazně menší než balíček – bez toho karta dosedla a teprve pak skočila).
                 animateCard(deck.x, deck.y, target.x, target.y, 'card_back', 380,
                     () => { App.oppDrawPending[pIdx] = Math.max(0, (App.oppDrawPending[pIdx] || 1) - 1); },
-                    { startAngle: 0, endAngle: sideAngle(pIdx), exactAngle: true, depth: 800 + pending });
+                    { startAngle: 0, endAngle: sideAngle(pIdx), exactAngle: true, depth: 800 + pending,
+                      startScale: pileScale(), endScale: sideScale(pIdx, 'hand') });
             }
             break;
         }
@@ -1444,7 +1455,8 @@ function _playCardAnim(data) {
                 // KONCOVÝ slot ruky útočníka (ne střed vějíře). Dotočí se z orientace cíle
                 // (bok ±90°, protější 180°) do mojí orientace ruky (0°).
                 if (!animateDrawToMyHand(data.attackerIdx, data.stolenCardId, from.x, from.y,
-                        { duration: 320, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle })) {
+                        { duration: 320, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle,
+                          startScale: sideScale(data.targetIdx, isBoard ? 'board' : 'hand') })) {
                     const dLen = state?.players?.[data.attackerIdx]?.hand?.length ?? 0;
                     const toAtk = getHandSlotPos(data.attackerIdx, dLen, dLen + 1);
                     if (isBoard && data.stolenCardId) {
@@ -1542,7 +1554,8 @@ function _playCardAnim(data) {
             // Majitel (Jesse) vidí ukradenou kartu (reveal flip) + staging do svého slotu.
             // Karta se navíc dotočí z orientace okradeného (bok ±90°, protější 180°) do mojí
             // orientace ruky (0°) – dřív jen překlápěla, ale netočila (ležela „na boku").
-            if (!animateDrawToMyHand(data.playerIdx, data.cardId, from.x, from.y, { duration: 380, startAngle: fromAngle })) {
+            if (!animateDrawToMyHand(data.playerIdx, data.cardId, from.x, from.y,
+                    { duration: 380, startAngle: fromAngle, startScale: sideScale(data.fromPlayerIdx, 'hand') })) {
                 const dLen = state?.players?.[data.playerIdx]?.hand?.length ?? 0;
                 const to = getHandSlotPos(data.playerIdx, dLen, dLen + 1);   // koncový slot ruky Jesseho
                 if (data.fromPlayerIdx === myIndex && stolenCard) {
@@ -1590,7 +1603,8 @@ function _playCardAnim(data) {
                 break;
             }
             const handPos = getPlayerHandPos(data.toPlayerIdx);
-            animateCard(discard.x, discard.y, handPos.x, handPos.y, 'card_back', 400);
+            animateCard(discard.x, discard.y, handPos.x, handPos.y, 'card_back', 400, null,
+                { startScale: pileScale(), endScale: sideScale(data.toPlayerIdx, 'hand') });
             break;
         }
         case 'ragtime_steal': {
@@ -1610,7 +1624,8 @@ function _playCardAnim(data) {
             if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
             else _removeStolenFromHand(data.targetIdx, handSrc.slot);
             if (!animateDrawToMyHand(data.attackerIdx, data.stolenCardId, from.x, from.y,
-                    { duration: 360, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle })) {
+                    { duration: 360, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle,
+                      startScale: sideScale(data.targetIdx, isBoard ? 'board' : 'hand') })) {
                 const dLen = state?.players?.[data.attackerIdx]?.hand?.length ?? 0;
                 const toAtk = getHandSlotPos(data.attackerIdx, dLen, dLen + 1);
                 if (isBoard && data.stolenCardId) {
@@ -1656,7 +1671,8 @@ function _playCardAnim(data) {
                 if (bi !== -1) state.players[myIndex].hand.splice(bi, 1);
                 renderUI();
             }
-            animateCard(fromX, fromY, discard.x, discard.y, getCardTex(data.cardId), 380);
+            animateCard(fromX, fromY, discard.x, discard.y, getCardTex(data.cardId), 380, null,
+                { startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: pileScale() });
             break;
         }
         case 'beer_blocked': {
@@ -1764,7 +1780,8 @@ function _playCardAnim(data) {
         }
         case 'duel_exchange':
             animateCard(getPlayerHandPos(data.fromPlayerIdx).x, getPlayerHandPos(data.fromPlayerIdx).y,
-                        discard.x, discard.y, 'card_back', 280);
+                        discard.x, discard.y, 'card_back', 280, null,
+                        { startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: pileScale() });
             break;
         case 'store_pick': {
             // Karta letí ze slotu hokynářství do ruky hráče. Já: lícem do mého slotu
@@ -1783,7 +1800,7 @@ function _playCardAnim(data) {
                         { faceUp: true, duration: 420, onComplete: cleanup, holdUntil: gone })) {
                     const to = getPlayerHandPos(data.pickerIdx);
                     animateCard(slot.x, slot.y, to.x, to.y, getCardTex(data.cardId), 420, cleanup,
-                        { holdUntil: gone });
+                        { holdUntil: gone, startScale: pileScale(), endScale: sideScale(data.pickerIdx, 'hand') });
                 }
             } else {
                 // Cíl = KONCOVÝ slot ruky bereného hráče (ne střed vějíře). Karta se cestou

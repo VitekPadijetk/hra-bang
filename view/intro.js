@@ -385,13 +385,18 @@ function _getIntroPlayerPos(targetPlayerIdx, myIdx, total) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // Animuje kartu z introSprites skupiny (nečistí se při renderUI)
-function _introAnimCard(fromX, fromY, toX, toY, tex, dur, onComplete, angle, scale) {
+// startScale (nepovinné) = velikost, ve které karta vzlétá; bez něj letí celou dobu
+// v cílové velikosti. Rozdávání z balíčku ho posílá, aby se karta za letu zmenšila
+// z velikosti balíčku na velikost ruky příjemce (na mobilu je vějíř soupeře o dost menší).
+function _introAnimCard(fromX, fromY, toX, toY, tex, dur, onComplete, angle, scale, startScale) {
     const safeTex = gameScene.textures.exists(tex) ? tex : 'card_back';
     const targetAngle = angle || 0;
+    const endScale = scale || 0.28;
+    const fromScale = startScale ?? endScale;
     // Karta vzlétá z balíčku (0°) a za letu se PLYNULE dotočí do orientace cíle (hráč
     // na boku = ±90°, protější = 180°) – ať „dosedne" ve správném natočení, ne skokem.
     const sp = gameScene.add.image(fromX, fromY, safeTex)
-        .setScale(scale || 0.28).setAngle(0).setDepth(800).setAlpha(0.95);
+        .setScale(fromScale).setAngle(0).setDepth(800).setAlpha(0.95);
     if (gameScene.introSprites) gameScene.introSprites.add(sp);
     else if (gameScene.cardsSprites) gameScene.cardsSprites.add(sp);
     const d = dur || 380;
@@ -404,6 +409,9 @@ function _introAnimCard(fromX, fromY, toX, toY, tex, dur, onComplete, angle, sca
     });
     if (targetAngle !== 0) {
         gameScene.tweens.add({ targets: sp, angle: targetAngle, duration: d, ease: 'Power2' });
+    }
+    if (fromScale !== endScale) {
+        gameScene.tweens.add({ targets: sp, scaleX: endScale, scaleY: endScale, duration: d, ease: 'Power2' });
     }
 }
 
@@ -503,10 +511,7 @@ function _introDealRestPos(idx, myIdx, total, i, count) {
     // mimo 16:9 lepí na pravý okraj jeviště), jinak by karty po intru poskočily.
     if (idx === myIdx) {
         const L = currentLayout();
-        const handAreaStart = L.handStartX;
-        const handAreaWidth = L.handEndX - handAreaStart;
-        const spacing = Math.min(L.handMaxSpacing, handAreaWidth / count);
-        return { x: handAreaStart + i * spacing, y: L.handY, angle: 0, scale: L.scaleHand };
+        return { x: myHandSlotX(L, i, count), y: L.handY, angle: 0, scale: L.scaleHand };
     }
     // Protihráči – stejné rozložení jako herní render (drawHandCard)
     const L = currentLayout();
