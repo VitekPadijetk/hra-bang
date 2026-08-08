@@ -972,14 +972,14 @@ function drawMyArea(ctx) {
             const isCurrentMe = state.currentPlayerIndex === myIndex;
             const _myWaiting = (typeof waitingStatus === 'function') ? waitingStatus(state) : null;
             const isWaitingMe = !!_myWaiting && _myWaiting.idx === myIndex && myIndex !== state.currentPlayerIndex;
-            let myNameTxt = gameScene.add.text(roleX, myBaseY + 145,
+            let myNameTxt = gameScene.add.text(roleX, myBaseY + L.myNameOffY,
                 me.name,
                 { fontSize: '20px', color: isCurrentMe ? '#ffff88' : (isWaitingMe ? '#ffcc44' : '#cccccc'),
                   backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 7, y: 4 } })
                 .setOrigin(0.5, 0);
             gameScene.cardsSprites.add(myNameTxt);
             if (isWaitingMe && _myWaiting.text) {
-                let myStTxt = gameScene.add.text(roleX, myBaseY + 178, '⏳ ' + _myWaiting.text,
+                let myStTxt = gameScene.add.text(roleX, myBaseY + L.myStatusOffY, '⏳ ' + _myWaiting.text,
                     { fontSize: '16px', color: '#ffcc44',
                       backgroundColor: 'rgba(60,30,0,0.88)', padding: { x: 6, y: 2 } })
                     .setOrigin(0.5, 0).setDepth(51);
@@ -1045,7 +1045,7 @@ function drawMyArea(ctx) {
 
         // Pravé poledne – výzva ke ztrátě života
         if (isMyNoonDamage) {
-            const noonTxt = gameScene.add.text(livesX, myBaseY + 185,
+            const noonTxt = gameScene.add.text(livesX, myBaseY + L.myHintOffY,
                 '🌞 Pravé poledne – klikni na Životy',
                 { fontSize: '19px', color: '#ff8800', backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 8, y: 4 } })
                 .setOrigin(0.5);
@@ -1055,7 +1055,7 @@ function drawMyArea(ctx) {
         // Dynamit – info o zbývajících hitech
         if (isMyDynamiteDamage) {
             const pdd = state.pendingDynamiteDamage;
-            const ddTxt = gameScene.add.text(livesX, myBaseY + 185,
+            const ddTxt = gameScene.add.text(livesX, myBaseY + L.myHintOffY,
                 `💥 ${pdd.hitsLeft}× klikni na Životy`,
                 { fontSize: '19px', color: '#ff8800', backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 8, y: 4 } })
                 .setOrigin(0.5);
@@ -1413,10 +1413,14 @@ function drawMyArea(ctx) {
         const getCardPlayability = (card) => cardPlayability(state, me, myIndex, card);
 
         if (me.hand.length > 0) {
-            const handAreaStart = livesX + L.handOffX;
+            // Ruka má vlastní řadu i měřítko (na mobilu je pod stolem a větší, na
+            // desktopu je handY = myBaseY a scaleHand = scaleMe, tedy dnešní stav).
+            const handY = L.handY;
+            const scaleHand = L.scaleHand;
+            const handAreaStart = L.handStartX;
             const handAreaEnd = L.handEndX;
             const handAreaWidth = handAreaEnd - handAreaStart;
-            const maxSpacing = L.handMaxSpacing;   // = šířka karty při scaleMe (325*0.36) → karty na sebe těsně navazují
+            const maxSpacing = L.handMaxSpacing;   // = šířka karty při scaleHand → karty na sebe těsně navazují
             const spacing = Math.min(maxSpacing, handAreaWidth / me.hand.length);
 
             App.gatedSlotPos = {};   // přepočítáme rezervované sloty letících líznutí
@@ -1426,7 +1430,7 @@ function drawMyArea(ctx) {
                 // až po dosednutí své animace. Přesnou pozici slotu si zapamatuje
                 // retargetDrawAnims, aby karta dosedla přesně sem.
                 if (App.pendingDrawIds.has(card.id)) {
-                    App.gatedSlotPos[card.id] = { x: posX, y: myBaseY };
+                    App.gatedSlotPos[card.id] = { x: posX, y: handY };
                     return;
                 }
                 // Smrt: karta z tohoto slotu už odletěla do odhozu. Slot zůstává
@@ -1443,8 +1447,8 @@ function drawMyArea(ctx) {
                 const isDocActive = !!selectedState.doc;
                 const isDocStaged = isDocActive && selectedState.doc.staged.includes(index);
                 const isJoseBlue = !!selectedState.jose && ["Zbraň", "Barel", "Vybavení", "Dynamit"].includes(card.type);
-                const cScale = (isStagedCard || isDAmain || isDocStaged) ? scaleMe * 0.88 : scaleMe;
-                let cSprite = gameScene.add.image(posX, myBaseY, getTex(card.id))
+                const cScale = (isStagedCard || isDAmain || isDocStaged) ? scaleHand * 0.88 : scaleHand;
+                let cSprite = gameScene.add.image(posX, handY, getTex(card.id))
                     .setScale(cScale)
                     .setAngle(0);
                 if (isDAmain) {
@@ -1459,7 +1463,7 @@ function drawMyArea(ctx) {
 
                 // playable musí být definováno PŘED prvním použitím (viz _isResponsePlayable)
                 const playable = isStagedCard ? null : getCardPlayability(card, index);
-                const baseScale = scaleMe;
+                const baseScale = scaleHand;
 
                 if (state.phase === "DISCARD" && state.currentPlayerIndex === myIndex) cSprite.setTint(0xff6666);
                 if (isMySidActive) cSprite.setTint(0xff6666);
@@ -1502,7 +1506,7 @@ function drawMyArea(ctx) {
                 // AŽ ZA obarvením – reflowCard si tint ze statické karty přebírá, aby ho
                 // klouzající karta neztratila.
                 if (!isStagedCard && !isDAmain && !isDocStaged) {
-                    reflowCard('h' + card.id, cSprite, posX, myBaseY, getTex(card.id), scaleMe, 0);
+                    reflowCard('h' + card.id, cSprite, posX, handY, getTex(card.id), scaleHand, 0);
                 }
 
                 let isHovered = false;
@@ -1721,7 +1725,7 @@ function drawMyArea(ctx) {
                 return p !== false;
             });
 
-            const { bg: endBtn } = themeButton(gameScene, 820, myBaseY + L.btnRowOffY, 260, L.btnH, 'UKONČIT TAH', {
+            const { bg: endBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH, 'UKONČIT TAH', {
                 fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
                 fontSize: '24px',
                 onClick: () => {
@@ -1759,7 +1763,7 @@ function drawMyArea(ctx) {
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
-            themeButton(gameScene, 1320, myBaseY + L.btnRowOffY, 320, L.btnH, btnLabel, {
+            themeButton(gameScene, L.btnAbilX, L.btnAbilY, 320, L.btnH, btnLabel, {
                 ...themeToggleStyle(sidPending), fontSize: '23px',
                 onClick: () => {
                     if (sidPending) {
@@ -1786,7 +1790,7 @@ function drawMyArea(ctx) {
             if (_sidLastLifeCtx) {
                 const _sidSavePending = !!selectedState.sidKetchum;
                 const _sidSaveLabel = _sidSavePending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → PŘEŽÍT';
-                themeButton(gameScene, 1320, myBaseY + L.btnRowOffY, 340, L.btnH, _sidSaveLabel, {
+                themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH, _sidSaveLabel, {
                     ...themeToggleStyle(_sidSavePending), fontSize: '23px',
                     onClick: () => {
                         if (_sidSavePending) {
@@ -1805,11 +1809,11 @@ function drawMyArea(ctx) {
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────
         {
             const myPlayTurn = state.phase === "PLAY" && state.currentPlayerIndex === myIndex && !App.blockInput;
-            const BTN_Y = myBaseY + L.btnRowOffY;   // stejná výška jako [ SID: … ]
+            const BTN_Y = L.btnAbilY;   // stejné místo jako [ SID: … ]
             // Chuck Wengam: klik → nabít (zvýrazní se životy); klik na životy = −1 ❤ → 2 karty.
             if (myPlayTurn && effectiveCharacter(me) === "Chuck Wengam" && me.health > 1) {
                 const armed = !!selectedState.chuck;
-                themeButton(gameScene, 1320, BTN_Y, 320, 58, armed ? 'CHUCK: zrušit ↩' : 'CHUCK: −1 ❤ → 2 🂠', {
+                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, armed ? 'CHUCK: zrušit ↩' : 'CHUCK: −1 ❤ → 2 🂠', {
                     ...themeToggleStyle(armed), fontSize: '21px',
                     onClick: () => { selectedState = armed ? { cardIndex: null, action: null } : { cardIndex: null, action: null, chuck: true }; renderUI(); },
                 });
@@ -1819,7 +1823,7 @@ function drawMyArea(ctx) {
             if (effectiveCharacter(me) === "José Delgado" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
                 (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(c => joseBlue.includes(c.type))) && !App.blockInput) {
                 const active = !!selectedState.jose;
-                themeButton(gameScene, 1320, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
+                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, jose: true }; renderUI(); },
                 });
@@ -1828,7 +1832,7 @@ function drawMyArea(ctx) {
             if (effectiveCharacter(me) === "Doc Holyday" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
                 !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput) {
                 const active = !!selectedState.doc;
-                themeButton(gameScene, 1320, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
+                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, doc: { staged: [] } }; renderUI(); },
                 });

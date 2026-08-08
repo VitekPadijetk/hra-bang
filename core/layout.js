@@ -87,13 +87,18 @@ const LAYOUT_DESKTOP = {
     scaleMe: 0.36, scaleOpp: 0.27, scaleDeck: 0.3,
 
     // moje zóna (drawMyArea + getHandSlotPos/getBoardCardPos)
-    // handEndX/boardMaxPerRow jsou hodnoty pro jeviště 16:9; na širším je přepočítá
-    // resolveLayout podle handEndMargin (odsazení konce ruky od PRAVÉHO okraje).
+    // handStartX/handEndX/boardMaxPerRow/btnEndX jsou hodnoty pro jeviště 16:9; na širším
+    // je přepočítá resolveLayout podle *Margin (odsazení od okraje jeviště).
     livesX: 1050, myBaseY: 970, roleOffX: -200,
-    handOffX: 160, handEndX: 1860, handEndMargin: 60, handMaxSpacing: 117,
+    myNameOffY: 145, myStatusOffY: 178, myHintOffY: 185,
+    handStartX: 1210, handStartMargin: null,
+    handEndX: 1860, handEndMargin: 60, handMaxSpacing: 117,
+    // Ruka má na mobilu vlastní řadu pod stolem a větší karty; na desktopu leží
+    // v jedné řadě se stolem (handY = myBaseY, scaleHand = scaleMe) jako dosud.
+    handY: 970, scaleHand: 0.36,
     boardGap: 10, boardMaxPerRow: 6,
     myHandAnchorX: 1450,
-    btnRowOffY: -170, btnH: 62,
+    btnEndX: 820, btnEndY: 800, btnAbilX: 1320, btnAbilY: 800, btnMargin: null, btnH: 62,
 
     // divák: spodní hráč se kreslí vystředěně a v měřítku soupeře
     specScale: 0.27, specLivesY: 900, specHandY: 1065,
@@ -106,13 +111,30 @@ const LAYOUT_DESKTOP = {
 
     // balíčky uprostřed stolu + řada hokynářství
     deckOffX: 90, pileY: 540, hnPileX: 1170, hnActiveX: 1280,
-    storeRowOffY: 188, storeSpacing: 120,
+    storeRowOffY: 188, storeSpacing: 120, storeLift: 120,
 };
 const LAYOUT_MOBILE = {
     ...LAYOUT_DESKTOP, name: 'mobile',
     // 'compact' = soupeři v jedné řadě nahoře (viz compactMetrics níže). Pásmo končí
     // těsně nad balíčky (pileY 540 − půlka karty 75 = 465), proto výška 435.
     oppMode: 'compact', oppTop: 16, oppBandH: 435,
+
+    // Moje zóna je rozdělená na DVĚ řady: stůl (myBaseY) a pod ním ruka (handY) přes
+    // celou šířku. Stůl si nechává desktopové měřítko – zvětšuje se hlavně ruka, do
+    // které se klika. Karta životů je vpravo (x 1500), aby portrét při 5 životech
+    // (sahá 195 px vzhůru) minul jak balíčky uprostřed, tak pásmo soupeřů nahoře.
+    livesX: 1500, myBaseY: 750, roleOffX: -160,
+    myNameOffY: -135, myStatusOffY: -102, myHintOffY: -170,
+    // Odsazení = půlka karty (325×0.46/2 = 74,75) s rezervou, ať krajní karta v ruce
+    // nevyčuhuje z jeviště – handStartX/handEndX jsou STŘEDY krajních slotů.
+    handStartX: 85, handStartMargin: 85,
+    handEndX: 1835, handEndMargin: 85,
+    handY: 962, scaleHand: 0.46, handMaxSpacing: 149.5,
+    boardMaxPerRow: 10, myHandAnchorX: 960,
+    // Akční tlačítka ve dvou řadách u pravého okraje, vedle karty životů.
+    btnEndX: 1740, btnEndY: 690, btnAbilX: 1740, btnAbilY: 786, btnMargin: 180, btnH: 76,
+    // Řada hokynářství o kus výš, ať nesahá na můj stůl (ten je na mobilu vejš).
+    storeRowOffY: 150,
 };
 
 const LAYOUT_PROFILES = { desktop: LAYOUT_DESKTOP, mobile: LAYOUT_MOBILE };
@@ -281,11 +303,16 @@ function resolveLayout(profile, stage) {
     const L = profile || LAYOUT_DESKTOP;
     const st = stage || currentStage();
     if (st.w === STAGE_BASE_W) return L;
-    return {
+    const out = {
         ...L,
         handEndX: st.right - L.handEndMargin,
         boardMaxPerRow: boardRowLimit(L, st),
     };
+    // Co se na mobilu lepí na okraj: začátek ruky (jde přes celou šířku) a sloupec
+    // akčních tlačítek. Na desktopu jsou *Margin null → zůstávají pevné hodnoty.
+    if (L.handStartMargin != null) out.handStartX = st.left + L.handStartMargin;
+    if (L.btnMargin != null) { out.btnEndX = st.right - L.btnMargin; out.btnAbilX = st.right - L.btnMargin; }
+    return out;
 }
 // Profil, který právě platí. Mimo prohlížeč (testy, server) vždy desktopový.
 function currentLayout() {

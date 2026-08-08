@@ -416,7 +416,11 @@ socket.on('intro_phase', (data) => {
         if (toIdx === myIdx && _introState && !_introState.coltShown
             && gameScene && gameScene.textures.exists('colt_.45')) {
             _introState.coltShown = true;
-            const coltX = 723, coltY = 970, coltScale = 0.36; // shodné s herním renderem (roleX - boardCardW)
+            // Shodné s herním renderem (drawMyArea): první slot stolu = roleX − boardCardW.
+            const _cl = currentLayout();
+            const coltScale = _cl.scaleMe;
+            const coltX = _cl.livesX + _cl.roleOffX - (325 * coltScale + _cl.boardGap);   // 723
+            const coltY = _cl.myBaseY;                                                    // 970
             const colt = gameScene.add.image(coltX, coltY, 'colt_.45')
                 .setScale(coltScale).setAlpha(0).setDepth(24);
             if (gameScene.introSprites) gameScene.introSprites.add(colt);
@@ -1001,7 +1005,12 @@ function playSheriffPenaltyDiscard(data) {
 // vyletí doprostřed, překlopí se a hráč se rozhodne
 // (tlačítka kreslí view/screens.js). Časování drží core/highNoonAnim.js, aby server
 // věděl, jak dlouho držet boty.
-const NI_MY_X = 1050, NI_MY_Y = 970, NI_MY_SCALE = 0.36, NI_BIG = 0.80;
+// Místo mé karty životů čte profil rozložení (na mobilu je jinde než na desktopu);
+// funkce, ne konstanty – profil se ustaví až v applyStage.
+function NI_MY_X()     { return currentLayout().livesX; }    // 1050
+function NI_MY_Y()     { return currentLayout().myBaseY; }   // 970
+function NI_MY_SCALE() { return currentLayout().scaleMe; }   // 0.36
+const NI_BIG = 0.80;
 const NI_CX = 960, NI_CY = 420;
 
 function _niCharTex(charName) {
@@ -1012,8 +1021,8 @@ function _niCharTex(charName) {
 
 // Kde leží karta postavy u mě: posunutá po nábojnicích podle počtu životů (drawMyArea).
 function _niMyCharY(health) {
-    const bulletH = (500 * NI_MY_SCALE * 0.93) / 5;
-    return NI_MY_Y - bulletH * Math.max(0, health);
+    const bulletH = (500 * NI_MY_SCALE() * 0.93) / 5;
+    return NI_MY_Y() - bulletH * Math.max(0, health);
 }
 
 function startNewIdentityReveal(charName) {
@@ -1022,8 +1031,8 @@ function startNewIdentityReveal(charName) {
     App.niHideSecond = true;   // karta životů zrovna letí → na svém místě se nekreslí
     renderUI();
     const D = NI_ANIM;
-    const spr = gameScene.add.image(NI_MY_X, NI_MY_Y, 'lives')
-        .setScale(NI_MY_SCALE).setDepth(900);
+    const spr = gameScene.add.image(NI_MY_X(), NI_MY_Y(), 'lives')
+        .setScale(NI_MY_SCALE()).setDepth(900);
     gameScene.tweens.add({ targets: spr, x: NI_CX, y: NI_CY, duration: D.moveMs, ease: 'Power2' });
     gameScene.tweens.add({
         targets: spr, scaleX: NI_BIG, scaleY: NI_BIG, duration: D.moveMs, ease: 'Power2',
@@ -1070,8 +1079,8 @@ function playNewIdentityResult(data) {
                     targets: spr, scaleX: NI_BIG, duration: D.flipMs / 2, ease: 'Sine.easeOut',
                     onComplete: () => {
                         gameScene.tweens.add({
-                            targets: spr, x: NI_MY_X, y: NI_MY_Y,
-                            scaleX: NI_MY_SCALE, scaleY: NI_MY_SCALE,
+                            targets: spr, x: NI_MY_X(), y: NI_MY_Y(),
+                            scaleX: NI_MY_SCALE(), scaleY: NI_MY_SCALE(),
                             duration: D.moveMs, ease: 'Power2',
                             onComplete: () => { if (spr.active) spr.destroy(); done(); }
                         });
@@ -1093,8 +1102,8 @@ function playNewIdentityResult(data) {
     const flyNewIn = () => {
         if (!gameScene || !bigSpr.active) { done(); return; }
         gameScene.tweens.add({
-            targets: bigSpr, x: NI_MY_X, y: _niMyCharY(2),
-            scaleX: NI_MY_SCALE, scaleY: NI_MY_SCALE,
+            targets: bigSpr, x: NI_MY_X(), y: _niMyCharY(2),
+            scaleX: NI_MY_SCALE(), scaleY: NI_MY_SCALE(),
             duration: D.moveMs, ease: 'Power2',
             onComplete: () => { if (bigSpr.active) bigSpr.destroy(); done(); }
         });
@@ -1103,19 +1112,19 @@ function playNewIdentityResult(data) {
     const oldY = _niMyCharY(state?.players?.[myIndex]?.health ?? 0);
     App.niHideChar = true;   // starou postavu od teď kreslí jen tenhle sprite
     renderUI();
-    const oldSpr = gameScene.add.image(NI_MY_X, oldY, _niCharTex(data.from))
-        .setScale(NI_MY_SCALE).setDepth(880);
+    const oldSpr = gameScene.add.image(NI_MY_X(), oldY, _niCharTex(data.from))
+        .setScale(NI_MY_SCALE()).setDepth(880);
     gameScene.tweens.add({
         targets: oldSpr, scaleX: 0, duration: D.flipMs / 2, ease: 'Sine.easeIn',
         onComplete: () => {
             if (!oldSpr.active) { flyNewIn(); return; }
             oldSpr.setTexture('lives');
             gameScene.tweens.add({
-                targets: oldSpr, scaleX: NI_MY_SCALE, duration: D.flipMs / 2, ease: 'Sine.easeOut',
+                targets: oldSpr, scaleX: NI_MY_SCALE(), duration: D.flipMs / 2, ease: 'Sine.easeOut',
                 onComplete: () => {
                     if (!oldSpr.active) { flyNewIn(); return; }
                     gameScene.tweens.add({
-                        targets: oldSpr, y: NI_MY_Y, duration: D.moveMs, ease: 'Power2',
+                        targets: oldSpr, y: NI_MY_Y(), duration: D.moveMs, ease: 'Power2',
                         onComplete: () => { if (oldSpr.active) oldSpr.destroy(); flyNewIn(); }
                     });
                 }

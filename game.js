@@ -929,11 +929,13 @@ function playReshuffleCinematic(cardCount, opts = {}) {
 }
 
 // ── HOKYNÁŘSTVÍ: cinematika na stole ──────────────────────────────────────────
-// Balíčky vyjedou nahoru (STORE_LIFT), pod ně se rozdají karty (flip rub→líc),
+// Balíčky vyjedou nahoru (storeLift), pod ně se rozdají karty (flip rub→líc),
 // případně se v horní poloze zamíchá. Pozice slotů řeší getStoreSlotPos (positions.js),
 // časování musí sedět s bot settle (server/bots.js storeOpenDelayMs, server/anim.js
 // storeCinematicMs).
-const STORE_LIFT = 120;   // celý blok (balíčky + řada) výš, do volného místa nad středem
+// O kolik celý blok (balíčky + řada) povyskočí, do volného místa nad středem. Z profilu:
+// na mobilu je můj stůl vejš, takže se řada hokynářství musí vejít do menší mezery.
+function storeLift() { return currentLayout().storeLift; }   // 120
 const STORE_DEAL_STAGGER = 190;
 const STORE_DEAL_MS = 440;
 
@@ -1016,7 +1018,7 @@ function startStoreCinematic() {
     App.storeDeckCount = origCount;
     renderUI();
     const shufN = sa.shuffleCount || 20;
-    animatePileLift(STORE_LIFT, () => {
+    animatePileLift(storeLift(), () => {
         if (sa.mode === 'blocking') {
             // Nedostatek karet: rozdej zbylé (zamčené) → zamíchej → dorozdej → odemkni.
             dealStoreCards(cards, 0, k, () => {

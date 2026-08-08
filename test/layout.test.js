@@ -131,13 +131,22 @@ describe('profil rozložení – desktop je pixelově dnešní stav', () => {
         assert.strictEqual(L.livesX, 1050);
         assert.strictEqual(L.myBaseY, 970);
         assert.strictEqual(L.livesX + L.roleOffX, 850);          // roleX
-        assert.strictEqual(L.livesX + L.handOffX, 1210);         // handAreaStart
+        assert.strictEqual(L.handStartX, 1210);                  // handAreaStart
         assert.strictEqual(L.handEndX, 1860);
         assert.strictEqual(L.handMaxSpacing, 117);
         assert.strictEqual(L.boardGap, 10);
         assert.strictEqual(L.boardMaxPerRow, 6);
         assert.strictEqual(L.myHandAnchorX, 1450);
-        assert.strictEqual(L.myBaseY + L.btnRowOffY, 800);       // řada tlačítek
+        // ruka leží v jedné řadě se stolem a ve stejné velikosti jako dnes
+        assert.strictEqual(L.handY, L.myBaseY);
+        assert.strictEqual(L.scaleHand, L.scaleMe);
+        assert.strictEqual(L.myBaseY + L.myNameOffY, 1115);      // moje jmenovka
+        assert.strictEqual(L.myBaseY + L.myStatusOffY, 1148);
+        assert.strictEqual(L.myBaseY + L.myHintOffY, 1155);
+        assert.strictEqual(L.btnEndX, 820);                      // UKONČIT TAH
+        assert.strictEqual(L.btnAbilX, 1320);                    // SID/CHUCK/JOSÉ/DOC
+        assert.strictEqual(L.btnEndY, 800);
+        assert.strictEqual(L.btnAbilY, 800);
         assert.strictEqual(L.btnH, 62);
         assert.strictEqual(L.specScale, 0.27);
         assert.strictEqual(L.specLivesY, 900);
@@ -154,6 +163,7 @@ describe('profil rozložení – desktop je pixelově dnešní stav', () => {
         assert.strictEqual(L.hnActiveX, 1280);
         assert.strictEqual(L.storeRowOffY, 188);
         assert.strictEqual(L.storeSpacing, 120);
+        assert.strictEqual(L.storeLift, 120);
         assert.strictEqual(L.anchors, null);                     // = základní OPPONENT_ANCHORS
     });
 
@@ -459,5 +469,78 @@ describe('kompaktní sloupec se vejde do pásma nad balíčky', () => {
         assert.ok(m.fanScale < m.scale);
         assert.strictEqual(handCardScale(MOB, 3, false, st), m.fanScale);
         assert.strictEqual(oppScale(MOB, 3, st), m.scale);
+    });
+});
+
+// ── Mobilní moje zóna: stůl a pod ním ruka přes celou šířku ─────────────────
+// Pásma se nesmí překrývat. Portrét jede po kartě životů VZHŮRU (až 0,93 výšky
+// karty při 5 životech), takže tohle je nejtěsnější místo celého rozložení.
+describe('mobilní moje zóna – pásma se nekříží', () => {
+    const halfH = (s) => CARD_ART_H * s / 2;
+
+    test('ruka má vlastní řadu pod stolem a vejde se na jeviště', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(MOB, st);
+            assert.ok(L.scaleHand > L.scaleMe, 'karty v ruce jsou větší než na stole');
+            assert.ok(L.handY - halfH(L.scaleHand) >= L.myBaseY + halfH(L.scaleMe) - 1e-9,
+                `${vw}×${vh}: ruka leze na stůl`);
+            assert.ok(L.handY + halfH(L.scaleHand) <= st.bottom + 1e-9, `${vw}×${vh}: ruka pod jevištěm`);
+        }
+    });
+
+    test('portrét při 5 životech nedosáhne na řadu soupeřů', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(MOB, st);
+            const bulletH = CARD_ART_H * L.scaleMe * 0.93 / 5;
+            const charTop = L.myBaseY - bulletH * 5 - halfH(L.scaleMe);
+            assert.ok(charTop >= L.oppTop + L.oppBandH + 1e-9, `${vw}×${vh}: portrét v pásmu soupeřů`);
+        }
+    });
+
+    test('můj stůl leží pod balíčky a tlačítka vedle karty životů', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(MOB, st);
+            assert.ok(L.myBaseY - halfH(L.scaleMe) >= L.pileY + halfH(L.scaleDeck) - 1e-9,
+                `${vw}×${vh}: stůl na balíčcích`);
+            const livesRight = L.livesX + CARD_ART_W * L.scaleMe / 2;
+            assert.ok(L.btnEndX - 320 / 2 >= livesRight, `${vw}×${vh}: tlačítka na kartě životů`);
+            assert.ok(L.btnEndX + 320 / 2 <= st.right + 1e-9, `${vw}×${vh}: tlačítka mimo jeviště`);
+            assert.ok(L.btnEndY + L.btnH / 2 <= L.btnAbilY - L.btnH / 2 + 1e-9, 'dvě řady tlačítek na sobě');
+        }
+    });
+
+    test('do ruky se vejde 5 karet bez překryvu a nevyčuhují z jeviště', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(MOB, st);
+            const cardW = CARD_ART_W * L.scaleHand;
+            assert.ok(Math.abs(L.handMaxSpacing - cardW) < 0.6, 'rozestup = šířka karty');
+            const spacing = Math.min(L.handMaxSpacing, (L.handEndX - L.handStartX) / 5);
+            assert.ok(Math.abs(spacing - L.handMaxSpacing) < 1e-9, `${vw}×${vh}: 5 karet se překrývá`);
+            assert.ok(L.handStartX - cardW / 2 >= st.left + 1e-9, `${vw}×${vh}: ruka vlevo přetéká`);
+            assert.ok(L.handStartX + 4 * spacing + cardW / 2 <= st.right + 1e-9, `${vw}×${vh}: ruka vpravo přetéká`);
+        }
+    });
+
+    test('řada hokynářství se vejde mezi zvednuté balíčky a můj stůl', () => {
+        const L = resolveLayout(MOB, computeStage(844, 390));
+        const pilesTopY = L.pileY - L.storeLift;
+        const rowY = pilesTopY + L.storeRowOffY;
+        assert.ok(rowY - halfH(L.scaleDeck) >= pilesTopY + halfH(L.scaleDeck) - 1e-9, 'řada leze na balíčky');
+        assert.ok(rowY + halfH(L.scaleDeck) <= L.myBaseY - halfH(L.scaleMe) + 1e-9, 'řada leze na můj stůl');
+    });
+
+    test('začátek ruky i tlačítka se lepí na okraj jeviště', () => {
+        const st = computeStage(844, 390);
+        const L = resolveLayout(MOB, st);
+        assert.strictEqual(L.handStartX, st.left + MOB.handStartMargin);
+        assert.strictEqual(L.handEndX, st.right - MOB.handEndMargin);
+        assert.strictEqual(L.btnEndX, st.right - MOB.btnMargin);
+        assert.strictEqual(L.btnAbilX, st.right - MOB.btnMargin);
+        // na 16:9 zůstávají literály z profilu (resolveLayout je tam identita)
+        assert.strictEqual(resolveLayout(MOB, computeStage(1920, 1080)), MOB);
     });
 });

@@ -137,6 +137,20 @@ Testy: `test/layout.test.js` hlídá, že sloupec nevyleze ze své šířky (por
 reálných poměrech stran; `test/positions.test.js` hlídá, že positions.js dává přesně to,
 co kreslí deska.
 
+**Moje zóna na mobilu** má dvě řady: **stůl** (`myBaseY`, měřítko beze změny) a pod ním
+**ruka** (`handY`, `scaleHand` 0.46) přes celou šířku jeviště – na telefonu je karta v ruce
+54 CSS px místo 42 a vedle sebe se jich bez překryvu vejde 15 (dnes se překrývají od 7.).
+Na desktopu je `handY === myBaseY` a `scaleHand === scaleMe`, takže je to pixelově dnešní
+stav. Karta životů je vpravo (`livesX` 1500): portrét při 5 životech sahá 195 px vzhůru,
+takže musí minout jak balíčky uprostřed, tak pásmo soupeřů nahoře – **to je nejtěsnější
+místo celého rozložení a hlídá ho test**. Akční tlačítka (`btnEndX/btnEndY`,
+`btnAbilX/btnAbilY`) jsou ve dvou řadách u pravého okraje vedle karty životů. Řada
+hokynářství (`storeRowOffY`, `storeLift`) se musí vejít mezi zvednuté balíčky a můj stůl.
+
+Zbytky pevných souřadnic mé zóny se proto přesunuly do profilu: `MY_ROLE_X()`/`MY_LIVES_X()`…
+(view/intro.js) a `NI_MY_X()`… (net/handlers.js) jsou **funkce, ne konstanty** – profil se
+ustaví až v `applyStage`, tedy po načtení těch souborů.
+
 ## Dělení karet mezi víc Vulture Samů
 
 Schopnost Vulture Sama může mít zároveň víc hráčů (Vulture Sam + Vera Custer, která ho

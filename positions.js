@@ -52,7 +52,7 @@ function getPlayerHandPos(playerIdx) {
     const cardH = 500 * L.scaleOpp;
     if (playerIdx === view) {
         // Spodní hráč: u diváka vykreslen vystředěně dole (drawSpectatorPlayer), u hráče vpravo dole.
-        return myIndex === null ? { x: L.centerX, y: L.specHandY } : { x: L.myHandAnchorX, y: L.myBaseY };
+        return myIndex === null ? { x: L.centerX, y: L.specHandY } : { x: L.myHandAnchorX, y: L.handY };
     }
     const diff = (playerIdx - view + total) % total;
     const anchor = getOpponentAnchors(total)[diff - 1];
@@ -82,11 +82,12 @@ function getHandSlotPos(playerIdx, slotIndex, totalCards) {
     if (playerIdx === view) {
         // Divák (myIndex === null) má spodního hráče vystředěného jinak → přibližně.
         if (myIndex === null) return getPlayerHandPos(playerIdx);
-        // Zrcadlí drawMyArea: vodorovný pás dole od livesX+handOffX do handEndX, Y = myBaseY.
-        const handAreaStart = L.livesX + L.handOffX;
+        // Zrcadlí drawMyArea: vodorovný pás dole od handStartX do handEndX, Y = handY
+        // (na desktopu je handY = myBaseY, na mobilu má ruka vlastní řadu pod stolem).
+        const handAreaStart = L.handStartX;
         const handAreaWidth = L.handEndX - handAreaStart;
         const spacing = Math.min(L.handMaxSpacing, handAreaWidth / len);
-        return { x: handAreaStart + slotIndex * spacing, y: L.myBaseY };
+        return { x: handAreaStart + slotIndex * spacing, y: L.handY };
     }
 
     const diff = (playerIdx - view + total) % total;

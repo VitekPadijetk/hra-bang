@@ -503,11 +503,10 @@ function _introDealRestPos(idx, myIdx, total, i, count) {
     // mimo 16:9 lepí na pravý okraj jeviště), jinak by karty po intru poskočily.
     if (idx === myIdx) {
         const L = currentLayout();
-        const scaleMe = L.scaleMe;
-        const handAreaStart = L.livesX + L.handOffX;
+        const handAreaStart = L.handStartX;
         const handAreaWidth = L.handEndX - handAreaStart;
         const spacing = Math.min(L.handMaxSpacing, handAreaWidth / count);
-        return { x: handAreaStart + i * spacing, y: L.myBaseY, angle: 0, scale: scaleMe };
+        return { x: handAreaStart + i * spacing, y: L.handY, angle: 0, scale: L.scaleHand };
     }
     // Protihráči – stejné rozložení jako herní render (drawHandCard)
     const L = currentLayout();
@@ -546,14 +545,20 @@ function _introDealRestPos(idx, myIdx, total, i, count) {
     return { x: hand.x, y: hand.y, angle: 0, scale: scaleOpp };
 }
 
-// Pozice karet mého hráče ve hře (pro plynulý přechod do hry)
-const MY_ROLE_X = 850,  MY_ROLE_Y  = 970, MY_ROLE_SCALE = 0.36;
-const MY_LIVES_X = 1050, MY_LIVES_Y = 970, MY_LIVES_SCALE = 0.36;
-// charY = MY_LIVES_Y - bulletH * health, bulletH = 500*0.36*0.93/5 = 33.48
+// Pozice karet mého hráče ve hře (pro plynulý přechod do hry). Čtou se z profilu
+// rozložení – na mobilu mám stůl jinde než na desktopu (core/layout.js). Funkce,
+// ne konstanty: profil se ustaví až v applyStage, tedy po načtení tohohle souboru.
+function MY_ROLE_X()      { const L = currentLayout(); return L.livesX + L.roleOffX; }   // 850
+function MY_ROLE_Y()      { return currentLayout().myBaseY; }                            // 970
+function MY_ROLE_SCALE()  { return currentLayout().scaleMe; }                            // 0.36
+function MY_LIVES_X()     { return currentLayout().livesX; }                             // 1050
+function MY_LIVES_Y()     { return currentLayout().myBaseY; }                            // 970
+function MY_LIVES_SCALE() { return currentLayout().scaleMe; }                            // 0.36
+// charY = MY_LIVES_Y() - bulletH * health, bulletH = 500*0.36*0.93/5 = 33.48
 
 function _myCharY(health) {
-    const bulletH = (500 * 0.36 * 0.93) / 5;
-    return MY_LIVES_Y - bulletH * (health || 4);
+    const bulletH = (500 * MY_LIVES_SCALE() * 0.93) / 5;
+    return MY_LIVES_Y() - bulletH * (health || 4);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -612,11 +617,12 @@ function _introPlaceSurvivors() {
         if (!p || !sv.char) return;
         const charTex = _introCharTex(sv.char);
         if (sv.idx === myIdx) {
-            s.placedCards.push({ tex: 'lives', x: MY_LIVES_X, y: MY_LIVES_Y,
-                scale: MY_LIVES_SCALE, depth: 21, key: 'lives:' + sv.idx });
-            s.placedCards.push({ tex: charTex, x: MY_LIVES_X, y: _myCharY(sv.health),
-                scale: MY_LIVES_SCALE, depth: 23, key: 'char:' + sv.idx });
-            s.placedCards.push({ text: p.name, x: 850, y: 1115, depth: 50, key: 'name:' + sv.idx,
+            s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(),
+                scale: MY_LIVES_SCALE(), depth: 21, key: 'lives:' + sv.idx });
+            s.placedCards.push({ tex: charTex, x: MY_LIVES_X(), y: _myCharY(sv.health),
+                scale: MY_LIVES_SCALE(), depth: 23, key: 'char:' + sv.idx });
+            s.placedCards.push({ text: p.name, x: MY_ROLE_X(), y: MY_ROLE_Y() + currentLayout().myNameOffY,
+                depth: 50, key: 'name:' + sv.idx,
                 style: { fontSize: '20px', color: '#cccccc',
                     backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 7, y: 4 } } });
             s.myNamePlaced = true;
@@ -645,8 +651,8 @@ function _startKeepReveal() {
     const fromY = entry ? entry.y : _myCharY(sv.health);
     if (entry) entry.hidden = true;
     renderUI();
-    const sp = gameScene.add.image(MY_LIVES_X, fromY, _introCharTex(sv.char))
-        .setScale(MY_LIVES_SCALE).setDepth(1000);
+    const sp = gameScene.add.image(MY_LIVES_X(), fromY, _introCharTex(sv.char))
+        .setScale(MY_LIVES_SCALE()).setDepth(1000);
     if (gameScene.introSprites) gameScene.introSprites.add(sp);
     gameScene.tweens.add({
         targets: sp, x: 960, y: 420, scaleX: 0.80, scaleY: 0.80,
@@ -703,8 +709,8 @@ function _confirmKeepChoice(keep) {
         // Šerifův +1 se přidá až s odhalením rolí (sheriff_reveal) – teď je role tajná.
         const toY = _myCharY(baseHealthForCharacter(sv.char));
         gameScene.tweens.add({
-            targets: sp, x: MY_LIVES_X, y: toY,
-            scaleX: MY_LIVES_SCALE, scaleY: MY_LIVES_SCALE,
+            targets: sp, x: MY_LIVES_X(), y: toY,
+            scaleX: MY_LIVES_SCALE(), scaleY: MY_LIVES_SCALE(),
             duration: 620, ease: 'Power2.easeIn',
             onComplete: () => {
                 if (sp?.active) sp.destroy();
@@ -806,9 +812,9 @@ function _introSheriffReveal(idx) {
     const tex = _introCharTex(p.character);
     const health = p.health || 4;
     const sl = isMe ? null : _introOppSlots(idx, health);
-    const toX = isMe ? MY_LIVES_X : sl.charX;
+    const toX = isMe ? MY_LIVES_X() : sl.charX;
     const toY = isMe ? _myCharY(health) : sl.charY;
-    const scale = isMe ? MY_LIVES_SCALE : sl.scale;
+    const scale = isMe ? MY_LIVES_SCALE() : sl.scale;
     const angle = isMe ? 0 : sl.angle;
 
     entry.hidden = true;
@@ -959,15 +965,15 @@ function _renderRoleReveal(roleStr) {
         if (gameScene.introSprites) gameScene.introSprites.add(snap);
         gameScene.tweens.add({
             targets: snap,
-            x: MY_ROLE_X, y: MY_ROLE_Y,
-            scaleX: MY_ROLE_SCALE, scaleY: MY_ROLE_SCALE,
+            x: MY_ROLE_X(), y: MY_ROLE_Y(),
+            scaleX: MY_ROLE_SCALE(), scaleY: MY_ROLE_SCALE(),
             duration: 550, ease: 'Power2.easeIn',
             onComplete: () => {
                 if (snap?.active) snap.destroy();
                 // Přidej do placedCards - bude vidět po celý zbytek intra
                 if (_introState) {
                     _introState.placedCards.push(
-                        { tex, x: MY_ROLE_X, y: MY_ROLE_Y, scale: MY_ROLE_SCALE, depth: 22 }
+                        { tex, x: MY_ROLE_X(), y: MY_ROLE_Y(), scale: MY_ROLE_SCALE(), depth: 22 }
                     );
                 }
                 renderUI();
@@ -1102,15 +1108,15 @@ function _confirmCharSelect(charName) {
                 onComplete: () => {
                     gameScene.tweens.add({
                         targets: rejected,
-                        x: MY_LIVES_X, y: MY_LIVES_Y,
-                        scaleX: MY_LIVES_SCALE, scaleY: MY_LIVES_SCALE,
+                        x: MY_LIVES_X(), y: MY_LIVES_Y(),
+                        scaleX: MY_LIVES_SCALE(), scaleY: MY_LIVES_SCALE(),
                         duration: 450, ease: 'Power2.easeIn',
                         onComplete: () => {
                             if (rejected?.active) rejected.destroy();
                             if (_introState) {
                                 _introState.placedCards.push(
-                                    { tex: 'lives', x: MY_LIVES_X, y: MY_LIVES_Y,
-                                      scale: MY_LIVES_SCALE, depth: 21 }
+                                    { tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(),
+                                      scale: MY_LIVES_SCALE(), depth: 21 }
                                 );
                             }
                             // Hned překresli, aby lives placedCard naskočila
@@ -1128,15 +1134,15 @@ function _confirmCharSelect(charName) {
     // doletu lives (~770ms), takže se postava viditelně usadí NAD lives kartou.
     gameScene.tweens.add({
         targets: chosen,
-        x: MY_LIVES_X, y: charY,
-        scaleX: MY_LIVES_SCALE, scaleY: MY_LIVES_SCALE,
+        x: MY_LIVES_X(), y: charY,
+        scaleX: MY_LIVES_SCALE(), scaleY: MY_LIVES_SCALE(),
         delay: 450, duration: 480, ease: 'Power2.easeIn',
         onComplete: () => {
             if (chosen?.active) chosen.destroy();
             if (_introState) {
                 _introState.placedCards.push(
-                    { tex: chosenTex, x: MY_LIVES_X, y: charY,
-                      scale: MY_LIVES_SCALE, depth: 23 }
+                    { tex: chosenTex, x: MY_LIVES_X(), y: charY,
+                      scale: MY_LIVES_SCALE(), depth: 23 }
                 );
                 _introState.charAnimDone = true;
             }

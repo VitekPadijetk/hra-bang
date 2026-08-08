@@ -264,10 +264,16 @@ test('mobil: odhalená role mrtvého dosedne na první slot jeho řady', () => {
     });
 });
 
-test('mobil: moje ruka zůstává dole (kompaktní řada se týká jen soupeřů)', () => {
+test('mobil: moje ruka má vlastní řadu POD stolem (soupeři to nemění)', () => {
     withMobile(844, 390, (st, L) => {
         setWorld([{ health: 4, board: [] }, {}, {}], 0);
-        assert.equal(getPlayerHandPos(0).y, L.myBaseY);
-        assert.ok(getHandSlotPos(0, 0, 5).y > 800);
+        assert.equal(getPlayerHandPos(0).y, L.handY);
+        assert.equal(getHandSlotPos(0, 0, 5).y, L.handY);
+        assert.ok(L.handY > L.myBaseY, 'ruka je pod stolem');
+        // 5 karet vedle sebe bez překryvu, začátek u levého okraje jeviště
+        assert.equal(getHandSlotPos(0, 0, 5).x, st.left + 85);
+        assert.equal(getHandSlotPos(0, 1, 5).x - getHandSlotPos(0, 0, 5).x, L.handMaxSpacing);
+        // můj stůl zůstává v horní řadě mé zóny
+        assert.equal(getBoardCardPos(0, 0).y, L.myBaseY);
     });
 });
