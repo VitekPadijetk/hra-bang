@@ -108,7 +108,12 @@ const LAYOUT_DESKTOP = {
     deckOffX: 90, pileY: 540, hnPileX: 1170, hnActiveX: 1280,
     storeRowOffY: 188, storeSpacing: 120,
 };
-const LAYOUT_MOBILE = { ...LAYOUT_DESKTOP, name: 'mobile' };
+const LAYOUT_MOBILE = {
+    ...LAYOUT_DESKTOP, name: 'mobile',
+    // 'compact' = soupeři v jedné řadě nahoře (viz compactMetrics níže). Pásmo končí
+    // těsně nad balíčky (pileY 540 − půlka karty 75 = 465), proto výška 435.
+    oppMode: 'compact', oppTop: 16, oppBandH: 435,
+};
 
 const LAYOUT_PROFILES = { desktop: LAYOUT_DESKTOP, mobile: LAYOUT_MOBILE };
 
@@ -143,6 +148,130 @@ function stretchAnchors(row, L, stage) {
     if (!(inner > 0)) return row;
     const k = (st.w - 2 * m) / inner;
     return row.map(a => ({ ...a, x: Math.round(st.left + m + (a.x - m) * k) }));
+}
+
+// ── Kompaktní řada soupeřů (mobilní profil) ──────────────────────────────────
+// Soupeři nesedí kolem stolu, ale stojí v jedné řadě nahoře – jeden sloupec na
+// soupeře. Uvolní to oba boky i spodek pro moji zónu a hlavně dá vyloženým kartám
+// soupeřů vlastní řadu (dnes jsou namačkané u okraje plátna).
+//
+//   ┌──────── colW ─────────┐
+//   │ [životy+portrét ▶]    │  řada A: karta životů OTOČENÁ (jako soupeř vlevo),
+//   │ 🂠🂠🂠                  │  řada H: vějíř rubů ruky (menší, ale pořád karty)
+//   │        Franta         │  jméno + ⏳ stav (řádky rezervované vždy)
+//   │ [c1][c2][c3]          │  vyložené karty – jedna řada, od 4. s překryvem
+//   └───────────────────────┘
+//
+// Měřítko se odvozuje ze ŠÍŘKY sloupce (aby řada vyložených karet sloupec přesně
+// vyplnila) a stropí se VÝŠKOU pásma. Řada karet je vždy jedna: druhá by přetekla
+// na balíčky, a překryv od 4. karty je čitelnější než o čtvrtinu menší karty.
+const COMPACT = {
+    pad: 40,          // odsazení celé řady od okraje jeviště
+    colPad: 8,        // vnitřní okraj sloupce
+    gap: 8,           // mezera mezi vyloženými kartami
+    rowGap: 8,        // mezera mezi řadami uvnitř sloupce
+    nameH: 30, statusH: 26,
+    maxColW: 560, minScale: 0.24, maxScale: 0.38,
+    perRow: 3,        // kolik vyložených karet se vejde vedle sebe bez překryvu
+    fanScale: 0.46,   // měřítko rubu v ruce vůči kartě soupeře
+    fanFrac: 0.35, fanMax: 26,   // rozteč vějíře (jako oppFanFrac/oppFanMax u okruhu)
+};
+
+// Rozměry kompaktní řady pro daný počet soupeřů. Čistý výpočet – volá ho renderer
+// (view/board.js) i zacílení animací (positions.js), takže se nemůžou rozejít.
+function compactMetrics(oppCount, L, stage) {
+    const st = stage || currentStage();
+    const P = L || LAYOUT_DESKTOP;
+    const C = COMPACT;
+    const n = Math.max(1, Math.floor(oppCount) || 1);
+    const colW = Math.min(C.maxColW, (st.w - 2 * C.pad) / n);
+    const sW = (colW - 2 * C.colPad - (C.perRow - 1) * C.gap) / (C.perRow * CARD_ART_W);
+    // Na jevišti vyšším než 16:9 (úzké okno) je nahoře plocha navíc – st.top je záporné.
+    const bandH = (P.oppBandH || 435) - st.top;
+    const sH = (bandH - (3 * C.rowGap + C.nameH + C.statusH)) /
+               (CARD_ART_W + CARD_ART_H * C.fanScale + CARD_ART_H);
+    const scale = Math.max(C.minScale, Math.min(C.maxScale, sW, sH));
+    return {
+        n, colW, scale,
+        // Sloupce se vejdou-li s rezervou (málo soupeřů), řada se vystředí.
+        startX: st.left + (st.w - n * colW) / 2,
+        top: st.top + (P.oppTop || 16),
+        cardW: CARD_ART_W * scale,
+        cardH: CARD_ART_H * scale,
+        fanScale: C.fanScale * scale,
+    };
+}
+
+// Kotva soupeře = STŘED jeho karty životů (stejný význam jako u okruhu), aby se
+// zbytek kódu (portrét po nábojích, hvězda, animace) choval jako u strany 'left'.
+function compactAnchors(oppCount, L, stage) {
+    const m = compactMetrics(oppCount, L, stage);
+    const out = [];
+    for (let i = 0; i < m.n; i++) {
+        out.push({
+            x: m.startX + i * m.colW + COMPACT.colPad + m.cardH / 2,
+            y: m.top + m.cardW / 2,
+            side: 'compact',
+        });
+    }
+    return out;
+}
+
+// Levý okraj sloupce, ve kterém kotva leží (z ní se odvozuje všechno ostatní).
+function compactColLeft(anchor, m) { return anchor.x - COMPACT.colPad - m.cardH / 2; }
+function compactColCenter(anchor, m) { return compactColLeft(anchor, m) + m.colW / 2; }
+
+// Rozestup vyložených karet: do `perRow` se vejdou vedle sebe, od další se zmenšuje,
+// aby řada nevylezla ze sloupce (nesmí zasáhnout souseda ani balíčky pod sebou).
+function compactBoardStep(count, m) {
+    const k = Math.max(1, count);
+    if (k < 2) return 0;
+    const avail = m.colW - 2 * COMPACT.colPad - m.cardW;
+    return Math.min(m.cardW + COMPACT.gap, avail / (k - 1));
+}
+function compactBoardPos(anchor, idx, count, m) {
+    const C = COMPACT;
+    return {
+        x: compactColLeft(anchor, m) + C.colPad + m.cardW / 2 + idx * compactBoardStep(count, m),
+        y: anchor.y + m.cardW / 2 + 3 * C.rowGap + CARD_ART_H * m.fanScale
+           + C.nameH + C.statusH + m.cardH / 2,
+    };
+}
+
+// Vějíř rubů ruky – pořád skutečné karty, jen menší (žádné číslo místo nich).
+function compactHandPos(anchor, slot, count, m) {
+    const C = COMPACT;
+    const k = Math.max(1, count);
+    const cw = CARD_ART_W * m.fanScale;
+    const avail = m.colW - 2 * C.colPad - cw;
+    const step = k > 1 ? Math.min(cw * C.fanFrac, C.fanMax, avail / (k - 1)) : 0;
+    return {
+        x: compactColLeft(anchor, m) + C.colPad + cw / 2 + slot * step,
+        y: anchor.y + m.cardW / 2 + C.rowGap + CARD_ART_H * m.fanScale / 2,
+    };
+}
+
+// Horní okraj jmenovky (text má origin 0.5, 0); ⏳ stav sedí o nameH níž.
+function compactNameY(anchor, m) {
+    return anchor.y + m.cardW / 2 + 2 * COMPACT.rowGap + CARD_ART_H * m.fanScale;
+}
+
+// Měřítko, ve kterém leží karty soupeře. U okruhu pevné z profilu, u kompaktní řady
+// dopočítané ze šířky sloupce – ptát se přes tohle, ne na L.scaleOpp napřímo.
+function oppScale(L, oppCount, stage) {
+    const P = L || LAYOUT_DESKTOP;
+    if (P.oppMode !== 'compact') return P.scaleOpp;
+    return compactMetrics(oppCount, P, stage).scale;
+}
+
+// Měřítko karty v RUCE hráče. U okruhu je shodné s vyloženými kartami (proto se dosud
+// nerozlišovalo), u kompaktní řady je vějíř rubů menší – jinak by se sloupec nevešel.
+// Letící karta musí na hand slot dosednout v TOMHLE měřítku, ne v oppScale.
+function handCardScale(L, oppCount, isSelf, stage) {
+    const P = L || LAYOUT_DESKTOP;
+    if (isSelf) return P.scaleHand || P.scaleMe;
+    if (P.oppMode !== 'compact') return P.scaleOpp;
+    return compactMetrics(oppCount, P, stage).fanScale;
 }
 
 // Profil dopočítaný na dané jeviště. Na 16:9 vrací TÝŽ objekt (identita), takže PC ve
@@ -186,5 +315,8 @@ if (typeof module !== 'undefined' && module.exports) {
         computeStage, stageCoverSize,
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
         resolveLayout, stretchAnchors, boardRowLimit,
+        COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
+        compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
+        oppScale, handCardScale,
     };
 }

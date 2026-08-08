@@ -567,7 +567,16 @@ function _renderSideAngle(playerIdx) {
     return side === 'left' ? 90 : side === 'right' ? -90 : side === 'top' ? 180 : 0;
 }
 function _renderSideScale(playerIdx) {
-    return (playerIdx === (myIndex === null ? 0 : myIndex)) ? 0.36 : 0.27;
+    const L = currentLayout();
+    return (playerIdx === (myIndex === null ? 0 : myIndex))
+        ? L.scaleMe : oppScale(L, (state?.players?.length || 2) - 1);
+}
+// Karta v RUCE daného hráče. Na desktopu vychází stejně jako _renderSideScale (vějíř
+// má měřítko vyložených karet), u kompaktní řady soupeřů na mobilu je vějíř menší.
+function _renderHandScale(playerIdx) {
+    const L = currentLayout();
+    return handCardScale(L, (state?.players?.length || 2) - 1,
+        playerIdx === (myIndex === null ? 0 : myIndex));
 }
 
 function _deathCardSeq(pid, blue, weapon, hand) {
@@ -625,7 +634,8 @@ function _fadeOutColt(pos) {
 // Jeden let do odhozu: já vidím vše lícem, modré vidí lícem všichni (bez otáčení),
 // karty z ruky se ostatním za letu odhalí (rub→líc).
 function _deathFlyToDiscard(it, o) {
-    const { isMine, ang, sc, discard } = o;
+    const { isMine, ang, discard } = o;
+    const sc = it.kind === 'hand' ? o.scHand : o.sc;   // z vějíře ruky vs. ze stolu
     // Kartu na vrcholu odhozu odkryj AŽ když už opravdu je ve stavu odhozu, a letící
     // sprite do té chvíle drž na místě (holdUntil) – jinak po jeho zániku problikne
     // předchozí vrchní karta, než dorazí room_update (dřív se odkrývalo dávkově pozdě).
@@ -660,12 +670,14 @@ function _deathFlyToDiscard(it, o) {
 // na Samovu – bez toho karty dosedaly placaté a v cizí velikosti.
 // `n` = pořadí PŘENÁŠENÉ karty (Colt .45 se nepřenáší, ten se rozplyne na místě).
 function _deathFlyToVulture(it, o, n) {
-    const { isMine, isVulture, vid, baseLen, incoming, ang, sc, holdTries } = o;
+    const { isMine, isVulture, vid, baseLen, incoming, ang, sc, scHand, holdTries } = o;
     const fc = getCardTex(it.id);
     const endAngle = _renderSideAngle(vid);
     // Pozor: divák kreslí i spodního hráče v soupeřově měřítku (drawSpectatorPlayer),
-    // proto ne _renderSideScale – ta by mu pro seat 0 vrátila 0.36 (viz _deathRoleEndScale).
-    const endScale = (myIndex !== null && vid === myIndex) ? 0.36 : 0.27;
+    // proto ne _renderHandScale – ta by mu pro seat 0 vrátila měřítko mojí ruky.
+    const endScale = handCardScale(currentLayout(), (state?.players?.length || 2) - 1,
+        myIndex !== null && vid === myIndex);
+    const startScale = it.kind === 'hand' ? scHand : sc;   // z vějíře ruky vs. ze stolu
     const to = getHandSlotPos(vid, baseLen + n, baseLen + incoming);
     // Karta se u Sama odkryje PŘESNĚ při dosednutí spritu: v jeho ruce už leží (nastavil ji
     // _vultureStageIncoming), jen byla schovaná – Samovi přes pendingDrawIds, ostatním přes
@@ -681,7 +693,7 @@ function _deathFlyToVulture(it, o, n) {
     const hold = isVulture
         ? () => (state?.players?.[vid]?.hand || []).some(c => c.id === it.id)
         : () => (state?.players?.[vid]?.hand?.length || 0) >= baseLen + n + 1;
-    const geo = { startAngle: ang, endAngle, startScale: sc, endScale, duration: 420, holdUntil: hold, holdTries };
+    const geo = { startAngle: ang, endAngle, startScale, endScale, duration: 420, holdUntil: hold, holdTries };
     if (it.kind === 'hand') {
         if (isVulture)      animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, onComplete: done });
         else if (isMine)    animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true, onComplete: done });
@@ -742,7 +754,9 @@ function _deathRoleStartPos(pid) {
 // Velikost, ve které karta role u hráče leží. Pozor: divák kreslí i spodního hráče
 // v soupeřově měřítku (drawSpectatorPlayer), proto ne _renderSideScale.
 function _deathRoleEndScale(pid) {
-    return (myIndex !== null && pid === myIndex) ? 0.36 : 0.27;
+    const L = currentLayout();
+    return (myIndex !== null && pid === myIndex)
+        ? L.scaleMe : oppScale(L, (state?.players?.length || 2) - 1);
 }
 
 function _deathRoleReveal(pid, onDone) {
@@ -754,7 +768,8 @@ function _deathRoleReveal(pid, onDone) {
     const startAngle = _renderSideAngle(pid);
     const faceTex = RoleImages[player.role] || 'role_001';
     const spr = gameScene.add.image(from.x, from.y, 'role_card_back')
-        .setScale(0.27).setAngle(startAngle).setDepth(900).setAlpha(0.97);
+        .setScale(oppScale(currentLayout(), (state?.players?.length || 2) - 1))
+        .setAngle(startAngle).setDepth(900).setAlpha(0.97);
     const finish = () => { if (spr.active) spr.destroy(); if (onDone) onDone(); };
 
     // 1) nálet doprostřed: cestou se zvětší a dotočí do čitelné polohy. Otáčení bez
@@ -809,11 +824,12 @@ function playDeathSequence(data) {
     // v ruce má teď (baseLen) a kolik jich přiletí (incoming – Colt .45 se nepřenáší).
     const flyCtx = isVulture
         ? { isMine, isVulture: data.toPlayerIdx === myIndex, vid: data.toPlayerIdx,
-            ang: _renderSideAngle(pid), sc: _renderSideScale(pid),
+            ang: _renderSideAngle(pid), sc: _renderSideScale(pid), scHand: _renderHandScale(pid),
             baseLen: state?.players?.[data.toPlayerIdx]?.hand?.length ?? 0,
             incoming: seq.filter(s => s.kind !== 'colt').length,
             holdTries: Math.ceil(T.total / 16) }
-        : { isMine, ang: _renderSideAngle(pid), sc: _renderSideScale(pid), discard: discardTopPos() };
+        : { isMine, ang: _renderSideAngle(pid), sc: _renderSideScale(pid),
+            scHand: _renderHandScale(pid), discard: discardTopPos() };
 
     // Po celou sekvenci nikdo nehraje: klik je zamčený, nový stav čeká ve frontě
     // animací a boti stojí na serveru (room._deathBlockUntil).
@@ -941,7 +957,7 @@ function playSheriffPenaltyDiscard(data) {
         .filter(it => it.kind !== 'colt');
     if (!seq.length) return;
     const flyCtx = { isMine: pid === myIndex, ang: _renderSideAngle(pid),
-                     sc: _renderSideScale(pid), discard: discardTopPos() };
+                     sc: _renderSideScale(pid), scHand: _renderHandScale(pid), discard: discardTopPos() };
 
     App.blockInput = true;
     App.deathHandHide[pid] = new Set();
@@ -1207,8 +1223,11 @@ function _playCardAnim(data) {
         const side = getOpponentAnchors(total)[diff - 1]?.side;
         return side === 'left' ? 90 : side === 'right' ? -90 : side === 'top' ? 180 : 0;
     };
-    // Velikost karet na boardu daného hráče: já 0.36 (scaleMe), soupeři 0.27 (scaleOpp).
-    const sideScale = (playerIdx) => (playerIdx === (myIndex === null ? 0 : myIndex)) ? 0.36 : 0.27;
+    // Velikost karet na boardu daného hráče: já scaleMe, soupeři scaleOpp (u kompaktní
+    // řady na mobilu se dopočítává ze šířky sloupce, proto přes oppScale).
+    // area 'hand' = karta leží ve vějíři ruky (u kompaktní řady menší než na stole).
+    const sideScale = (playerIdx, area) => (area === 'hand')
+        ? _renderHandScale(playerIdx) : _renderSideScale(playerIdx);
 
     // holdUntil predikáty pro letové animace: karta je už ve stavu odhozu / na boardu daného
     // hráče. Letící sprite se drží na cíli, dokud to neplatí (jinak po doletu problikne stará
@@ -1343,7 +1362,7 @@ function _playCardAnim(data) {
             // nevzlétne o kus větší než ostatní karty v ruce.
             const isMine = fromIdx === myIndex;
             animateCardFlip(from.x, from.y, discard.x, discard.y, 'card_back', faceTex,
-                { flip: !isMine, startScale: sideScale(fromIdx), endScale: 0.3, duration: 380, onComplete: done,
+                { flip: !isMine, startScale: sideScale(fromIdx, 'hand'), endScale: 0.3, duration: 380, onComplete: done,
                   startAngle: sideAngle(fromIdx), endAngle: 0, holdUntil: () => inDiscard(data.cardId) });
             break;
         }
@@ -1367,17 +1386,18 @@ function _playCardAnim(data) {
             _liftCardFromHand(data.playerIdx, data.cardId);
             const ang = sideAngle(data.playerIdx);
             const sc = sideScale(data.playerIdx);
+            const scFrom = sideScale(data.playerIdx, 'hand');   // vzlétá z vějíře ruky
             const hold = () => onBoardOf(data.playerIdx, data.cardId);
             if (data.playerIdx === myIndex) {
                 // Svou modrou/zbraň znám → jen letí na board (bez odhalování), ve VELIKOSTI
                 // karty na mém boardu (0.36, ne malý default). holdUntil brání probliknutí.
                 animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
-                    { flip: false, startAngle: ang, endAngle: ang, startScale: sc, endScale: sc, duration: 400, holdUntil: hold });
+                    { flip: false, startAngle: ang, endAngle: ang, startScale: scFrom, endScale: sc, duration: 400, holdUntil: hold });
             } else {
                 // Cizí modrá/zbraň se ostatním teprve odhalí (rub→líc) a usadí v orientaci
                 // vykládajícího hráče (bok = ±90°, protější = 180°) → flip s rotací i po hraně.
                 animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
-                    { flip: true, startAngle: ang, endAngle: ang, startScale: sc, endScale: sc, duration: 400, holdUntil: hold });
+                    { flip: true, startAngle: ang, endAngle: ang, startScale: scFrom, endScale: sc, duration: 400, holdUntil: hold });
             }
             break;
         }
@@ -1424,13 +1444,13 @@ function _playCardAnim(data) {
                         // na velikost jeho ruky a dotočí do jeho orientace.
                         animateCardFlip(from.x, from.y, toAtk.x, toAtk.y, 'card_back', getCardTex(data.stolenCardId),
                             { reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
-                              startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx),
+                              startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx, 'hand'),
                               duration: 320, onComplete: revealStolen });
                     } else {
                         // Skrytá karta z ruky do ruky: jen rub. exactAngle – mezi hráči
                         // naproti (180°) by se rotace jinak zrušila a karta letí „placatě".
                         animateCard(from.x, from.y, toAtk.x, toAtk.y, 'card_back', 320, revealStolen,
-                            { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true, scale: sideScale(data.attackerIdx) });
+                            { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true, scale: sideScale(data.attackerIdx, 'hand') });
                     }
                 }
             };
@@ -1520,13 +1540,13 @@ function _playCardAnim(data) {
                     // Jsem cíl a kartu znám → schová se (líc→rub) a otočí do orientace Jesseho.
                     animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(stolenCard.id),
                         { flip: true, reverse: true, startAngle: fromAngle, endAngle: drawerAngle,
-                          startScale: sideScale(data.fromPlayerIdx), endScale: sideScale(data.playerIdx), duration: 380 });
+                          startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: sideScale(data.playerIdx, 'hand'), duration: 380 });
                 } else {
                     // Jiný divák: jen rub, otočí se z orientace cíle do orientace Jesseho.
                     // exactAngle: cíl a Jesse přímo naproti (180° od sebe) by se bez něj
                     // srovnali na 0° a karta by letěla placatě – takhle se dotočí naplno.
                     animateCard(from.x, from.y, to.x, to.y, 'card_back', 380, null,
-                        { startAngle: fromAngle, endAngle: drawerAngle, exactAngle: true, scale: sideScale(data.playerIdx) });
+                        { startAngle: fromAngle, endAngle: drawerAngle, exactAngle: true, scale: sideScale(data.playerIdx, 'hand') });
                 }
             }
             break;
@@ -1548,7 +1568,7 @@ function _playCardAnim(data) {
                 const to = getHandSlotPos(data.playerIdx, dLen, dLen + 1);
                 animateCardFlip(discard.x, discard.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
                     { reverse: true, startAngle: 0, endAngle: sideAngle(data.playerIdx),
-                      startScale: 0.3, endScale: sideScale(data.playerIdx), duration: 380, onComplete: pedroDone });
+                      startScale: 0.3, endScale: sideScale(data.playerIdx, 'hand'), duration: 380, onComplete: pedroDone });
             }
             break;
         }
@@ -1590,14 +1610,14 @@ function _playCardAnim(data) {
                     // zamíří na správný slot a dotočí se z orientace cíle do orientace útočníka.
                     animateCardFlip(from.x, from.y, toAtk.x, toAtk.y, 'card_back', getCardTex(data.stolenCardId),
                         { reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
-                          startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx),
+                          startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx, 'hand'),
                           duration: 360, onComplete: revealStolen });
                 } else {
                     // Skrytá karta z ruky do ruky: jen rub. exactAngle – mezi hráči naproti
                     // (180°) by se rotace jinak zrušila a karta by letěla „placatě".
                     const stolenTex = data.stolenCardId ? getCardTex(data.stolenCardId) : 'card_back';
                     animateCard(from.x, from.y, toAtk.x, toAtk.y, stolenTex, 360, revealStolen,
-                        { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true, scale: sideScale(data.attackerIdx) });
+                        { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true, scale: sideScale(data.attackerIdx, 'hand') });
                 }
             }
             break;
@@ -1664,7 +1684,7 @@ function _playCardAnim(data) {
             // orientace cíle a přeškáluje z velikosti ruky útočníka na velikost boardu cíle.
             animateCardFlip(atk.x, atk.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
                 { flip: !isMine, startAngle: atkAngle, endAngle: tgtAngle,
-                  startScale: sideScale(data.attackerIdx), endScale: sideScale(data.targetIdx),
+                  startScale: sideScale(data.attackerIdx, 'hand'), endScale: sideScale(data.targetIdx),
                   duration: 400, holdUntil: hold });
             break;
         }
@@ -1762,7 +1782,7 @@ function _playCardAnim(data) {
                 const dLen = state?.players?.[data.pickerIdx]?.hand?.length ?? 0;
                 const to = getHandSlotPos(data.pickerIdx, dLen, dLen + 1);
                 animateCardFlip(slot.x, slot.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
-                    { flip: true, reverse: true, startScale: 0.32, endScale: sideScale(data.pickerIdx),
+                    { flip: true, reverse: true, startScale: 0.32, endScale: sideScale(data.pickerIdx, 'hand'),
                       duration: 420, onComplete: cleanup, holdUntil: gone,
                       startAngle: 0, endAngle: sideAngle(data.pickerIdx) });
             }

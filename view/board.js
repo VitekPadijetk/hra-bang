@@ -59,7 +59,9 @@ function renderGameBoard() {
     // čte tentýž profil, takže zacílení animací a vykreslení nemůžou utéct od sebe.
     const L = currentLayout();
     const scaleMe = L.scaleMe;
-    const scaleOpp = L.scaleOpp;
+    // Kompaktní řada soupeřů (mobil) si měřítko dopočítává ze šířky sloupce – proto
+    // přes oppScale, ne z L.scaleOpp napřímo (na desktopu vrací přesně L.scaleOpp).
+    const scaleOpp = oppScale(L, state.players.length - 1);
     const scaleDeck = L.scaleDeck;
 
     const anchors = getOpponentAnchors(state.players.length);
@@ -599,7 +601,10 @@ function drawOpponents(ctx) {
             reflowCard('ob' + actualIdx + '_' + (card._isRole ? 'role' : card.id), bCard, x, y, tex, scaleOpp, angle);
         };
 
-        const drawHandCard = (x, y, angle, slot) => {
+        // scl = měřítko rubu; kompaktní řada (mobil) kreslí vějíř ruky menší než
+        // vyložené karty, jinak se použije měřítko soupeře.
+        const drawHandCard = (x, y, angle, slot, scl) => {
+            const hScale = scl || scaleOpp;
             // Smrt: karta z tohoto slotu už odletěla do odhozu / k Vulture Samovi.
             // Slot zůstává prázdný, zbytek vějíře se pod ní nepřeskládá.
             if (slot !== undefined && App.deathHandHide[actualIdx]?.has(slot)) return;
@@ -613,7 +618,7 @@ function drawOpponents(ctx) {
             const isElGringoSteal = state.phase === "EL_GRINGO_STEAL" &&
                 state.pendingElGringoSteal?.playerIdx === myIndex &&
                 state.pendingElGringoSteal?.attackerIdx === actualIdx;
-            let hCard = gameScene.add.sprite(x, y, 'card_back').setAngle(angle).setScale(scaleOpp);
+            let hCard = gameScene.add.sprite(x, y, 'card_back').setAngle(angle).setScale(hScale);
             if (isJesseJonesDraw) {
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });
@@ -644,14 +649,22 @@ function drawOpponents(ctx) {
             gameScene.cardsSprites.add(hCard);
             // Reflow slide: rub nemá identitu → klíč per-slot; vějíř ruky se při ubrání/
             // přibytí karty plynule přeskládá (slot = pozice ve vějíři).
-            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, 'card_back', scaleOpp, angle);
+            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, 'card_back', hScale, angle);
         };
 
         const showElGringoHint = () => {};  // hint odstraněn
 
         const starScale = 0.3;
 
-        if (anchor.side === 'left') {
+        if (anchor.side === 'compact') {
+            drawCompactOpponent({
+                player, actualIdx, anchor, scaleOpp, getCharTex, L,
+                cardW, cardH, bulletH, displayCards, handFan, handLen,
+                isCurrent, isWaiting, waiting: _waiting, waitTint: WAIT_TINT, starScale,
+                drawBoardCard, drawHandCard, addCharInteraction,
+            });
+        }
+        else if (anchor.side === 'left') {
             const charX = anchor.x;
             const charY = anchor.y;
             const angle = 90;
@@ -865,6 +878,80 @@ function drawOpponents(ctx) {
                     gameScene.cardsSprites.add(stTxt);
                 }
             }
+        }
+    }
+}
+
+// ── Kompaktní sloupec soupeře (mobilní profil) ───────────────────────────────
+// Mobil nemá místo na okruh kolem stolu, takže soupeři stojí v jedné řadě nahoře.
+// Sloupec: otočená karta životů s portrétem (chová se přesně jako soupeř vlevo –
+// portrét jede po nábojích doprava), pod ní menší vějíř rubů ruky, jmenovka se
+// stavem a řada vyložených karet. Veškerá geometrie je v core/layout.js (compact*),
+// aby ji stejně počítalo i zacílení animací v positions.js.
+// Chování karet (klikatelnost, zvýraznění, reflow) přebírá z uzávěrů drawOpponents,
+// proto se sem předávají v ctx – tělo zůstává jen kreslení.
+function drawCompactOpponent(ctx) {
+    const { player, actualIdx, anchor, scaleOpp, getCharTex, L,
+            cardW, cardH, bulletH, displayCards, handFan, handLen,
+            isCurrent, isWaiting, waiting, waitTint, starScale,
+            drawBoardCard, drawHandCard, addCharInteraction } = ctx;
+
+    const m = compactMetrics(state.players.length - 1, L);
+    const angle = 90;
+    const livesCX = anchor.x;
+    const livesCY = anchor.y;
+
+    let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
+    gameScene.cardsSprites.add(livesOpp);
+
+    let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
+        .setScale(scaleOpp).setAngle(angle);
+    if (isCurrent) charOpp.setTint(0x88ff88);
+    else if (isWaiting) charOpp.setTint(waitTint);
+    addCharInteraction(charOpp);
+    gameScene.cardsSprites.add(charOpp);
+    const _slidingC = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 1, 0, angle, scaleOpp, getCharTex(player.character),
+        player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null);
+    reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
+    reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingC);
+    registerVeraPortrait(charOpp, player, getCharTex);
+
+    if (player.role === "Sheriff") {
+        let star = gameScene.add.image(
+            charOpp.x + cardH * 0.45,
+            charOpp.y - cardW * 0.42,
+            'sheriff_star').setScale(starScale).setAngle(90).setDepth(STAR_DEPTH);
+        gameScene.cardsSprites.add(star);
+        reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingC, STAR_DEPTH);
+    }
+
+    // Vyložené karty stojí (angle 0) v jedné řadě – čitelné stejně jako moje.
+    displayCards.forEach((card, bIdx) => {
+        const p = compactBoardPos(anchor, bIdx, displayCards.length, m);
+        drawBoardCard(p.x, p.y, card, 0, bIdx);
+    });
+
+    // Ruka zůstává vějířem rubů (žádné číslo místo karet), jen v menším měřítku.
+    for (let c = 0; c < handLen; c++) {
+        const p = compactHandPos(anchor, c, handFan, m);
+        drawHandCard(p.x, p.y, 0, c, m.fanScale);
+    }
+
+    {
+        const nameX = compactColCenter(anchor, m);
+        const nameY = compactNameY(anchor, m);
+        let nameTxt = gameScene.add.text(nameX, nameY,
+            player.name,
+            { fontSize: '18px', color: isCurrent ? '#ffff88' : (isWaiting ? '#ffcc44' : '#cccccc'),
+              backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } })
+            .setOrigin(0.5, 0).setDepth(50);
+        gameScene.cardsSprites.add(nameTxt);
+        if (isWaiting && waiting.text) {
+            let stTxt = gameScene.add.text(nameX, nameY + 30, '⏳ ' + waiting.text,
+                { fontSize: '15px', color: '#ffcc44',
+                  backgroundColor: 'rgba(60,30,0,0.88)', padding: { x: 6, y: 2 } })
+                .setOrigin(0.5, 0).setDepth(51);
+            gameScene.cardsSprites.add(stTxt);
         }
     }
 }

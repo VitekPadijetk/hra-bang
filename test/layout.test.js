@@ -2,10 +2,13 @@ const { test, describe, before } = require('node:test');
 const assert = require('node:assert');
 
 const {
-    STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H, CARD_ART_W,
+    STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H, CARD_ART_W, CARD_ART_H,
     computeStage, stageCoverSize,
     LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
     resolveLayout, stretchAnchors, boardRowLimit,
+    COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
+    compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
+    oppScale, handCardScale,
 } = require('../core/layout.js');
 
 before(() => { console.log = () => {}; });
@@ -294,5 +297,167 @@ describe('stageCoverSize', () => {
             assert.ok(c.h >= st.h - 1e-9, `${vw}×${vh} výška`);
             assert.ok(Math.abs(c.w / c.h - STAGE_BASE_W / STAGE_BASE_H) < 1e-9, 'poměr stran');
         }
+    });
+});
+
+// ── Kompaktní řada soupeřů (mobilní profil) ─────────────────────────────────
+// Sloupec musí zůstat UVNITŘ své šířky (jinak zasáhne souseda) a UVNITŘ pásma
+// (jinak přeteče na balíčky). Obojí jde spočítat bez prohlížeče, takže se to tady
+// kontroluje pro každý počet hráčů na všech reálných poměrech stran.
+const MOB = LAYOUT_PROFILES.mobile;
+const STAGES = [[1920, 1080], [1600, 800], [844, 390], [915, 412], [2340, 1080]];
+
+describe('compactMetrics – měřítko sloupce', () => {
+    test('na desktopovém profilu se kompaktní řada nepoužívá', () => {
+        assert.strictEqual(LAYOUT_PROFILES.desktop.oppMode, 'ring');
+        assert.strictEqual(MOB.oppMode, 'compact');
+        // oppScale/handCardScale proto na desktopu vrací prostý profil (PC beze změny).
+        for (let n = 1; n <= 6; n++) {
+            assert.strictEqual(oppScale(LAYOUT_PROFILES.desktop, n), 0.27);
+            assert.strictEqual(handCardScale(LAYOUT_PROFILES.desktop, n, false), 0.27);
+            assert.strictEqual(handCardScale(LAYOUT_PROFILES.desktop, n, true), 0.36);
+        }
+    });
+
+    test('měřítko drží v mezích a s přibývajícími soupeři neroste', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            let prev = Infinity;
+            for (let n = 1; n <= 6; n++) {
+                const m = compactMetrics(n, MOB, st);
+                assert.ok(m.scale >= COMPACT.minScale - 1e-9, `${vw}×${vh} n=${n} min`);
+                assert.ok(m.scale <= COMPACT.maxScale + 1e-9, `${vw}×${vh} n=${n} max`);
+                assert.ok(m.scale <= prev + 1e-9, `${vw}×${vh} n=${n} neroste`);
+                prev = m.scale;
+            }
+        }
+    });
+
+    test('karty soupeřů jsou větší než v okruhu (kvůli tomu to celé je)', () => {
+        // 0.27 = dnešní scaleOpp; na telefonu na šířku musí vyjít víc i pro 7 hráčů.
+        const st = computeStage(844, 390);
+        for (let n = 1; n <= 6; n++) {
+            assert.ok(compactMetrics(n, MOB, st).scale > 0.27, `n=${n}`);
+        }
+    });
+
+    test('širší jeviště = širší sloupce (telefon má víc místa než 16:9)', () => {
+        const base = compactMetrics(6, MOB, computeStage(1920, 1080));
+        const wide = compactMetrics(6, MOB, computeStage(844, 390));
+        assert.ok(wide.colW > base.colW, 'sloupec se roztáhne');
+        assert.ok(wide.scale > base.scale, 'a karty jsou tím pádem větší');
+    });
+
+    test('řada je vystředěná a vejde se na jeviště', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            for (let n = 1; n <= 6; n++) {
+                const m = compactMetrics(n, MOB, st);
+                const rowW = n * m.colW;
+                assert.ok(m.startX >= st.left - 1e-9, `${vw}×${vh} n=${n} levý okraj`);
+                assert.ok(m.startX + rowW <= st.right + 1e-9, `${vw}×${vh} n=${n} pravý okraj`);
+                assert.ok(Math.abs((m.startX + rowW / 2) - (st.left + st.w / 2)) < 1e-9, 'vystředěno');
+            }
+        }
+    });
+});
+
+describe('compactAnchors – sloupce soupeřů', () => {
+    test('počet, strana a rovnoměrné rozestupy', () => {
+        const st = computeStage(844, 390);
+        const a = compactAnchors(5, MOB, st);
+        assert.strictEqual(a.length, 5);
+        a.forEach(x => assert.strictEqual(x.side, 'compact'));
+        a.forEach(x => assert.strictEqual(x.y, a[0].y));   // všichni v jedné řadě
+        const m = compactMetrics(5, MOB, st);
+        for (let i = 1; i < a.length; i++) {
+            assert.ok(Math.abs((a[i].x - a[i - 1].x) - m.colW) < 1e-9, 'rozestup = colW');
+        }
+    });
+
+    test('kotva je střed karty životů a leží ve svém sloupci', () => {
+        const st = computeStage(1600, 800);
+        const m = compactMetrics(4, MOB, st);
+        const a = compactAnchors(4, MOB, st);
+        assert.ok(Math.abs(compactColLeft(a[0], m) - m.startX) < 1e-9, 'levý okraj sloupce');
+        assert.ok(Math.abs(a[0].y - (m.top + m.cardW / 2)) < 1e-9, 'svisle na vršku pásma');
+    });
+});
+
+describe('kompaktní sloupec se vejde do své šířky', () => {
+    // Portrét jede po nábojích doprava (jako soupeř vlevo), takže při 5 životech sahá
+    // skupina nejdál – nesmí přesto vylézt ze sloupce k sousedovi.
+    test('životy + portrét při plných 5 životech', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            for (let n = 1; n <= 6; n++) {
+                const m = compactMetrics(n, MOB, st);
+                const a = compactAnchors(n, MOB, st)[n - 1];
+                const bulletH = m.cardH * 0.93 / 5;
+                const right = a.x + bulletH * 5 + m.cardH / 2;
+                assert.ok(right <= compactColLeft(a, m) + m.colW + 1e-9,
+                    `${vw}×${vh} n=${n}: portrét vyčnívá`);
+            }
+        }
+    });
+
+    test('vyložené karty i vějíř ruky – od 4. karty se rozestup zmenší', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            for (const n of [1, 3, 6]) {
+                const m = compactMetrics(n, MOB, st);
+                const a = compactAnchors(n, MOB, st)[0];
+                const rightEdge = compactColLeft(a, m) + m.colW;
+                for (const k of [1, 3, 4, 7]) {
+                    const last = compactBoardPos(a, k - 1, k, m);
+                    assert.ok(last.x + m.cardW / 2 <= rightEdge + 1e-9,
+                        `${vw}×${vh} n=${n} k=${k}: stůl vyčnívá`);
+                    const hand = compactHandPos(a, k - 1, k, m);
+                    assert.ok(hand.x + CARD_ART_W * m.fanScale / 2 <= rightEdge + 1e-9,
+                        `${vw}×${vh} n=${n} k=${k}: vějíř vyčnívá`);
+                }
+                // do perRow karet žádný překryv, teprve od další
+                assert.ok(Math.abs(compactBoardStep(COMPACT.perRow, m) - (m.cardW + COMPACT.gap)) < 1e-9);
+                assert.ok(compactBoardStep(COMPACT.perRow + 2, m) < m.cardW + COMPACT.gap);
+            }
+        }
+    });
+});
+
+describe('kompaktní sloupec se vejde do pásma nad balíčky', () => {
+    test('spodek řady vyložených karet nedosáhne na balíčky', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            // spodek pásma v souřadnicích 0…1080 (pod ním je horní hrana balíčků)
+            const bandBottom = MOB.oppTop + MOB.oppBandH;
+            for (let n = 1; n <= 6; n++) {
+                const m = compactMetrics(n, MOB, st);
+                const a = compactAnchors(n, MOB, st)[0];
+                const bottom = compactBoardPos(a, 0, 1, m).y + m.cardH / 2;
+                assert.ok(bottom <= bandBottom + 1e-9, `${vw}×${vh} n=${n}: sloupec přetéká`);
+            }
+        }
+    });
+
+    test('pořadí řad ve sloupci: životy → ruka → jméno → stůl', () => {
+        const st = computeStage(1920, 1080);
+        const m = compactMetrics(4, MOB, st);
+        const a = compactAnchors(4, MOB, st)[0];
+        const livesBottom = a.y + m.cardW / 2;
+        const hand = compactHandPos(a, 0, 3, m);
+        const name = compactNameY(a, m);
+        const board = compactBoardPos(a, 0, 1, m);
+        assert.ok(hand.y - CARD_ART_H * m.fanScale / 2 >= livesBottom, 'ruka pod životy');
+        assert.ok(name >= hand.y + CARD_ART_H * m.fanScale / 2, 'jméno pod rukou');
+        assert.ok(board.y - m.cardH / 2 >= name, 'stůl pod jménem');
+        assert.ok(Math.abs(compactColCenter(a, m) - (compactColLeft(a, m) + m.colW / 2)) < 1e-9);
+    });
+
+    test('vějíř ruky je menší než vyložené karty (jinak by se sloupec nevešel)', () => {
+        const st = computeStage(844, 390);
+        const m = compactMetrics(3, MOB, st);
+        assert.ok(m.fanScale < m.scale);
+        assert.strictEqual(handCardScale(MOB, 3, false, st), m.fanScale);
+        assert.strictEqual(oppScale(MOB, 3, st), m.scale);
     });
 });

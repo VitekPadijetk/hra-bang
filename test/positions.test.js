@@ -3,7 +3,10 @@ const assert = require('node:assert/strict');
 const {
     getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
-const { computeStage, resolveLayout, LAYOUT_PROFILES } = require('../core/layout.js');
+const {
+    computeStage, resolveLayout, LAYOUT_PROFILES,
+    compactMetrics, compactAnchors, compactBoardPos, compactHandPos,
+} = require('../core/layout.js');
 
 // getPlayerHandPos/getBoardCardPos čtou globály state/myIndex (bare identifiers).
 // V prohlížeči jsou deklarované (let state = null) – v Node je proto držíme na null
@@ -166,6 +169,12 @@ function withStage(vw, vh, fn) {
     global.App = { stage, layout: resolveLayout(LAYOUT_PROFILES.desktop, stage) };
     try { fn(stage, global.App.layout); } finally { delete global.App; }
 }
+function withMobile(vw, vh, fn) {
+    const stage = computeStage(vw, vh);
+    const L = resolveLayout(LAYOUT_PROFILES.mobile, stage);
+    global.App = { stage, layout: L };
+    try { fn(stage, L); } finally { delete global.App; }
+}
 
 test('široké jeviště: krajní soupeři se přilepí na okraj', () => {
     withStage(1600, 800, (st) => {
@@ -204,5 +213,61 @@ test('široké jeviště: do řady mého stolu se vejde víc karet (sedmá už n
         const first = getBoardCardPos(0, 0), seventh = getBoardCardPos(0, 6);
         assert.equal(seventh.y, first.y, 'sedmá karta zůstane v prvním řádku');
         assert.ok(seventh.x - (325 * 0.36) / 2 >= st.left, 'a nevyčuhuje z jeviště');
+    });
+});
+
+// ── Mobilní profil: kompaktní řada soupeřů ──────────────────────────────────
+// positions.js MUSÍ dávat přesně to, co kreslí view/board.js (drawCompactOpponent) –
+// obojí se ptá core/layout.js, takže se tady kontroluje shoda s ním. Kdyby se
+// rozešly, animace by mířily mimo karty.
+test('mobil: kotvy soupeřů jsou kompaktní řada nahoře', () => {
+    withMobile(844, 390, (st, L) => {
+        const a = getOpponentAnchors(5);
+        assert.deepEqual(a, compactAnchors(4, L, st));
+        a.forEach(x => assert.equal(x.side, 'compact'));
+        assert.ok(a[0].y < 300, 'řada sedí nahoře');
+    });
+});
+
+test('mobil: sloty ruky soupeře sedí s vějířem, který kreslí deska', () => {
+    withMobile(844, 390, (st, L) => {
+        setWorld([{}, {}, {}, {}], 0);       // 4 hráči → 3 soupeři
+        const m = compactMetrics(3, L, st);
+        const anchor = getOpponentAnchors(4)[0];
+        for (const slot of [0, 2, 4]) {
+            assert.deepEqual(getHandSlotPos(1, slot, 5), compactHandPos(anchor, slot, 5, m));
+        }
+        // kotva ruky = střed vějíře (cíl animací bez konkrétního slotu)
+        setWorld([{}, { hand: [{}, {}, {}] }, {}, {}], 0);
+        assert.deepEqual(getPlayerHandPos(1), compactHandPos(anchor, 1, 3, m));
+    });
+});
+
+test('mobil: vyložené karty soupeře jsou v jedné řadě pod jmenovkou', () => {
+    withMobile(844, 390, (st, L) => {
+        setWorld([{}, { health: 4, weapon: { id: 7 }, board: [{ id: 1 }, { id: 2 }] }, {}], 0);
+        const m = compactMetrics(2, L, st);
+        const anchor = getOpponentAnchors(3)[0];
+        const first = getBoardCardPos(1, 0), third = getBoardCardPos(1, 2);
+        assert.deepEqual(first, compactBoardPos(anchor, 0, 3, m));
+        assert.equal(third.y, first.y, 'žádné zalamování do dalšího řádku');
+        assert.ok(third.x > first.x, 'řada roste doprava');
+    });
+});
+
+test('mobil: odhalená role mrtvého dosedne na první slot jeho řady', () => {
+    withMobile(844, 390, (st, L) => {
+        setWorld([{}, { health: 0, weapon: { id: -1 }, board: [] }, {}], 0);
+        const m = compactMetrics(2, L, st);
+        const anchor = getOpponentAnchors(3)[0];
+        assert.deepEqual(getDeadRoleCardPos(1), compactBoardPos(anchor, 0, 1, m));
+    });
+});
+
+test('mobil: moje ruka zůstává dole (kompaktní řada se týká jen soupeřů)', () => {
+    withMobile(844, 390, (st, L) => {
+        setWorld([{ health: 4, board: [] }, {}, {}], 0);
+        assert.equal(getPlayerHandPos(0).y, L.myBaseY);
+        assert.ok(getHandSlotPos(0, 0, 5).y > 800);
     });
 });

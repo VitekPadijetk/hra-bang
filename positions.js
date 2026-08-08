@@ -4,6 +4,12 @@
 var _layoutMod = (typeof module !== 'undefined' && module.exports) ? require('./core/layout.js') : null;
 function _L() { return _layoutMod ? _layoutMod.currentLayout() : currentLayout(); }
 function _stretchAnchors(row, L) { return (_layoutMod ? _layoutMod.stretchAnchors : stretchAnchors)(row, L); }
+// Kompaktní řada soupeřů (mobil) – geometrii vlastní core/layout.js, tady se jen volá,
+// aby zacílení animací sedělo s tím, co kreslí view/board.js.
+function _compactMetrics(n, L)  { return (_layoutMod ? _layoutMod.compactMetrics : compactMetrics)(n, L); }
+function _compactAnchors(n, L)  { return (_layoutMod ? _layoutMod.compactAnchors : compactAnchors)(n, L); }
+function _compactBoardPos(a, i, k, m) { return (_layoutMod ? _layoutMod.compactBoardPos : compactBoardPos)(a, i, k, m); }
+function _compactHandPos(a, i, k, m)  { return (_layoutMod ? _layoutMod.compactHandPos : compactHandPos)(a, i, k, m); }
 
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
 // (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
@@ -21,8 +27,11 @@ const OPPONENT_ANCHORS = {
 // v pruhu uprostřed. Na 16:9 vrací přesně tabulku (stretchAnchors je tam identita).
 function getOpponentAnchors(totalPlayers) {
     const L = _L();
+    const n = totalPlayers - 1;
+    // Mobil: soupeři stojí v jedné řadě nahoře, kotvy se počítají ze šířky jeviště.
+    if (L.oppMode === 'compact') return n > 0 ? _compactAnchors(n, L) : [];
     const table = L.anchors || OPPONENT_ANCHORS;
-    return _stretchAnchors(table[totalPlayers - 1] || [], L);
+    return _stretchAnchors(table[n] || [], L);
 }
 
 function getPlayerPosition(myIdx, targetIdx, totalPlayers) {
@@ -48,6 +57,11 @@ function getPlayerHandPos(playerIdx) {
     const diff = (playerIdx - view + total) % total;
     const anchor = getOpponentAnchors(total)[diff - 1];
     if (!anchor) return { x: 960, y: 540 };
+    if (anchor.side === 'compact') {
+        // Střed vějíře rubů (pozice je ve slotu lineární, takže prostřední slot = střed).
+        const k = Math.max(1, state.players[playerIdx].hand?.length || 1);
+        return _compactHandPos(anchor, (k - 1) / 2, k, _compactMetrics(total - 1, L));
+    }
     if (anchor.side === 'left') return { x: anchor.x - cardH * L.oppHandOff, y: anchor.y };
     if (anchor.side === 'top') return { x: anchor.x, y: anchor.y - cardH * L.oppHandOff };
     if (anchor.side === 'right') return { x: anchor.x + cardH * L.oppHandOff, y: anchor.y };
@@ -78,6 +92,7 @@ function getHandSlotPos(playerIdx, slotIndex, totalCards) {
     const diff = (playerIdx - view + total) % total;
     const anchor = getOpponentAnchors(total)[diff - 1];
     if (!anchor) return getPlayerHandPos(playerIdx);
+    if (anchor.side === 'compact') return _compactHandPos(anchor, slotIndex, len, _compactMetrics(total - 1, L));
     // Zrcadlí fan ruky soupeřů v drawOpponents (left/right svisle, top vodorovně).
     const scaleOpp = L.scaleOpp;
     const cardW = 325 * scaleOpp, cardH = 500 * scaleOpp;
@@ -126,6 +141,11 @@ function getBoardCardPos(playerIdx, boardIdx) {
     const numBlue = Math.min(numBoardCards, 3);
     const displayIdx = isDead ? boardIdx + 1 : boardIdx;
 
+    if (anchor.side === 'compact') {
+        // Jedna řada pod jmenovkou; rozestup zná compactBoardStep (od 4. karty překryv).
+        const count = Math.max(displayIdx + 1, numBoardCards);
+        return _compactBoardPos(anchor, displayIdx, count, _compactMetrics(total - 1, L));
+    }
     if (anchor.side === 'left') {
         const groupH = (1 + numBlue) * cardW + numBlue * gap;
         const livesCY = anchor.y + groupH / 2 - cardH / 2;

@@ -60,7 +60,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | Soubor | Export | Co rozhoduje |
 |---|---|---|
 | `core/distance.js` | `computeDistance`, `computeCanHit`, **`effectiveCharacter`**, **`isInPlay`** | vzdálenost a dostřel + **která schopnost hráči právě platí** a **kdo je vůbec ve hře**. `effectiveCharacter(p)` je jediný trychtýř všech ~45 kontrol „character === X" (v `logic/*` i v klientských zrcadlech): vrací `null` při Kocovině (`p._noAbility`), jinak `p._copiedCharacter || p.character`. Max. životy (`healthForCharacter`) a portrét čtou `p.character` napřímo, takže se Kocovinou nemění. `isInPlay(p)` = `health > 0 || p._ghost` – duch (Město duchů) má 0 životů, ale na svůj tah sedí zase v kole (vzdálenost, hokynářství, hromadné útoky, Vulture Sam). Prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger, poslední život). Ptá se jím i klient, komu ještě probliká portrét (`registerVeraPortrait` – vyřazená Vera Custer už nekopíruje, zůstane Vera; duch probliká dál). Problikávající portrét si přitom drží obarvení, které měl (`baseTint` v `_tickVeraPortraits`) – hráč na tahu je zelený i ve chvíli, kdy je na jeho místě vidět kopírovaná postava. |
-| `core/layout.js` | `computeStage`, `stageCoverSize`, `LAYOUT_PROFILES`, `getLayout`, **`currentLayout`**, `pickLayoutProfile`, **`resolveLayout`**, `stretchAnchors`, `boardRowLimit` | **jeviště + profil rozložení**. `computeStage(vw,vh)` = velikost plátna v design px podle SKUTEČNÉHO poměru stran: základ 1920×1080 zůstává souřadnicovou soustavou, ale plátno se natáhne do poměru displeje (strop 2560×1440) a kamera se posune o půlku přírůstku (`applyStage` v game.js), takže se souřadnicemi 0…1920/0…1080 se nehne – jen po stranách přibude plocha (`stageLeft/Right/Top/Bottom`). Zaokrouhluje se dolů, takže **měřítko obsahu zůstává identické**; mizí jen mrtvé pruhy (telefon na šířku ~18 % šířky, okno prohlížeče na PC taky). Pozadí a všechny celoobrazovkové překryvy se proto kreslí na `stageW()/stageH()` (resp. `stageCoverSize()`) a nálety „zpoza okraje" startují za okrajem JEVIŠTĚ. `currentLayout()` = profil rozložení desky (`App.layout`, mimo prohlížeč vždy desktopový) – jediný zdroj geometrie pro `view/board.js` i `positions.js`, které se dřív musely shodovat ručně. **`resolveLayout(profil, jeviště)`** (volá `applyStage`, výsledek jde do `App.layout`) dopočítá to, co se má **lepit na okraj**: konec mé ruky (`handEndX = stage.right − handEndMargin`) a počet vyložených karet v jedné řadě mého stolu (`boardRowLimit` – rostou doleva od karty role, takže je omezuje levý okraj). `stretchAnchors` totéž dělá s kotvami soupeřů (volá ji `getOpponentAnchors`): krajní zůstanou `oppEdgeMargin` od okraje JEVIŠTĚ, prostřední se mezi ně rovnoměrně rozestoupí, střed zůstává středem. **Na 16:9 jsou obě identita** (`resolveLayout` vrací týž objekt), takže PC ve fullscreenu je pixelově dnešní stav. Rohové ovládání (Zpět, ⚙ DEBUG, Ukončit hru, debug sloupec) a prahy „která je to strana" v `view/intro.js` se proto kotví přes `stageLeft/Right/Top/Bottom`, ne přes 0/1920. |
+| `core/layout.js` | `computeStage`, `stageCoverSize`, `LAYOUT_PROFILES`, `getLayout`, **`currentLayout`**, `pickLayoutProfile`, **`resolveLayout`**, `stretchAnchors`, `boardRowLimit`, **`compactMetrics`/`compactAnchors`/`compactBoardPos`/`compactHandPos`**, **`oppScale`/`handCardScale`** | **jeviště + profil rozložení**. `computeStage(vw,vh)` = velikost plátna v design px podle SKUTEČNÉHO poměru stran: základ 1920×1080 zůstává souřadnicovou soustavou, ale plátno se natáhne do poměru displeje (strop 2560×1440) a kamera se posune o půlku přírůstku (`applyStage` v game.js), takže se souřadnicemi 0…1920/0…1080 se nehne – jen po stranách přibude plocha (`stageLeft/Right/Top/Bottom`). Zaokrouhluje se dolů, takže **měřítko obsahu zůstává identické**; mizí jen mrtvé pruhy (telefon na šířku ~18 % šířky, okno prohlížeče na PC taky). Pozadí a všechny celoobrazovkové překryvy se proto kreslí na `stageW()/stageH()` (resp. `stageCoverSize()`) a nálety „zpoza okraje" startují za okrajem JEVIŠTĚ. `currentLayout()` = profil rozložení desky (`App.layout`, mimo prohlížeč vždy desktopový) – jediný zdroj geometrie pro `view/board.js` i `positions.js`, které se dřív musely shodovat ručně. **`resolveLayout(profil, jeviště)`** (volá `applyStage`, výsledek jde do `App.layout`) dopočítá to, co se má **lepit na okraj**: konec mé ruky (`handEndX = stage.right − handEndMargin`) a počet vyložených karet v jedné řadě mého stolu (`boardRowLimit` – rostou doleva od karty role, takže je omezuje levý okraj). `stretchAnchors` totéž dělá s kotvami soupeřů (volá ji `getOpponentAnchors`): krajní zůstanou `oppEdgeMargin` od okraje JEVIŠTĚ, prostřední se mezi ně rovnoměrně rozestoupí, střed zůstává středem. **Na 16:9 jsou obě identita** (`resolveLayout` vrací týž objekt), takže PC ve fullscreenu je pixelově dnešní stav. Rohové ovládání (Zpět, ⚙ DEBUG, Ukončit hru, debug sloupec) a prahy „která je to strana" v `view/intro.js` se proto kotví přes `stageLeft/Right/Top/Bottom`, ne přes 0/1920. **Mobilní profil (`oppMode: 'compact'`) navíc nese kompaktní řadu soupeřů** – viz „Kompaktní soupeři" níže. |
 | `core/cardRules.js` | `getActionForCard` | jakou akci spustit po výběru karty |
 | `core/phaseInfo.js` | `isResponseTurn`, `isPlayTurn`, `canActOnHand` | čí je tah / co smí hráč |
 | `core/pending.js` | `pendingActor`, `waitingStatus`, `describePendingResponse` | **na koho a na jaké rozhodnutí hra čeká** (jedna větev na fázi). Jediný zdroj pravdy pro UI štítek, bota (`botPolicy`), log i serverový guard (`server/guard.js`). Vrátí `null` u přechodných fází – kdo to používá jako autoritu, musí `null` ošetřit. |
@@ -98,6 +98,44 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
   - **`ctx`-destructuring pattern** pro sub-renderery: `function drawX(ctx) { const { a, b } = ctx; <byte-přesné tělo> }`, voláno `drawX({ a, b })`. Drží tělo identické a vyhýbá se kolizím v globálním scope.
   - Po úpravě render kódu **požádej uživatele o ověření v prohlížeči** (pravidelně to kontroluje).
 - **Verifikace každého kroku:** `node --check <soubor>`, `npm test`, boot serveru (`node server.js`, port 3000), HTTP 200 na změněné soubory.
+
+## Kompaktní soupeři (mobilní profil rozložení)
+
+Na mobilu se soupeři nekreslí v okruhu kolem stolu (`oppMode: 'ring'`), ale v jedné řadě
+nahoře – jeden sloupec na soupeře (`oppMode: 'compact'`). Uvolní to boky i spodek pro moji
+zónu a hlavně dá vyloženým kartám soupeřů vlastní řadu.
+
+Sloupec shora dolů: **otočená karta životů s portrétem** (chová se přesně jako soupeř
+vlevo – portrét jede po nábojích doprava, hvězda šerifa se stejnými offsety) → **vějíř
+rubů ruky** (menší měřítko, ale pořád skutečné karty) → **jméno + ⏳ stav** (oba řádky se
+rezervují vždy, ať se sloupec nemění) → **řada vyložených karet** (stojí, angle 0).
+
+- **Veškerá geometrie je v `core/layout.js`** (`COMPACT` + `compact*`), protože ji musí
+  stejně počítat renderer (`drawCompactOpponent` ve view/board.js) i zacílení animací
+  (`positions.js`). Nic z toho se nikde nepočítá „ručně podle sebe".
+- **Měřítko není v profilu**, závisí na počtu soupeřů: `compactMetrics(n, L, stage)` ho
+  odvodí ze ŠÍŘKY sloupce (`colW = min(560, (stage.w − 80)/n)`, aby řada 3 karet sloupec
+  přesně vyplnila) a zastropí VÝŠKOU pásma (`oppBandH` – pod ním leží balíčky). Ptát se
+  proto přes **`oppScale(L, n)`**, ne na `L.scaleOpp`. Řada vyložených karet je vždy JEN
+  JEDNA – od 4. karty se rozestup zmenší (`compactBoardStep`); druhá řada by přetekla na
+  balíčky a odpovídající zmenšení všech karet by bylo horší než překryv.
+- **Vějíř ruky je menší než vyložené karty** (`m.fanScale`), jinak by se sloupec nevešel.
+  Tím se poprvé rozchází „velikost karty na stole" a „velikost karty v ruce", což u okruhu
+  nikdy neplatilo: letící karta musí na hand slot dosednout v `handCardScale(L, n, isSelf)`,
+  jinak při dosednutí viditelně skočí. V `net/handlers.js` to řeší **`sideScale(idx, 'hand')`**
+  (bez druhého parametru = karta na stole) – na desktopu vrací obojí totéž, takže rozlišení
+  nemůže PC rozbít.
+- Kotva soupeře zůstává **středem karty životů** jako u okruhu, takže helpery „pod jakým
+  úhlem leží karty hráče" (`_renderSideAngle`, `_kitSpecAngleFor`) propadnou na 0° správně
+  a `_deathRoleStartPos` pošle kartu role zpoza HORNÍHO okraje.
+- Intro: `_introOppSlots` bere stranu **z kotvy** (dřív ji dopočítávalo zpětně z pozice
+  ruky prahy na okraje – u kompaktní řady je strana jen jedna a netrefilo by ji);
+  `_introDealRestPos` míří u kompaktní řady rovnou na `getHandSlotPos`.
+
+Testy: `test/layout.test.js` hlídá, že sloupec nevyleze ze své šířky (portrét při 5
+životech, řada karet, vějíř) ani z pásma nad balíčky, a to pro 1–6 soupeřů na všech
+reálných poměrech stran; `test/positions.test.js` hlídá, že positions.js dává přesně to,
+co kreslí deska.
 
 ## Dělení karet mezi víc Vulture Samů
 

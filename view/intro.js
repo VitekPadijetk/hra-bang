@@ -272,38 +272,53 @@ function _animateIntroShuffle(cx, cy, tex, scale, N, tiltDeck, onComplete, onSet
 // numBlue=0 (na začátku hry nemá nikdo karty na stole). `dx/dy` = vektor „ze zákulisí"
 // pro slide-in.
 function _introOppSlots(idx, health) {
-    const oppScale   = 0.27;
-    const oppCardH   = 500 * oppScale;          // 135
+    const L = currentLayout();
+    const total = (state && state.players) ? state.players.length : 0;
+    const view = myIndex === null ? 0 : myIndex;
+    // Kotva rovnou od rendereru (dřív se dopočítávala zpětně z pozice ruky). Kompaktní
+    // řada soupeřů (mobil) se z pozice ruky odvodit nedá – tam je „strana" jen jedna.
+    const anchor = total ? getOpponentAnchors(total)[((idx - view + total) % total) - 1] : null;
+    const oppScl     = oppScale(L, Math.max(1, total - 1));
+    const oppCardH   = 500 * oppScl;            // 135
     const oppBulletH = oppCardH * 0.93 / 5;     // 25.11
-    const oppOffset  = oppCardH * 1.1;          // 148.5 (ruka od anchor)
+    const oppOffset  = oppCardH * L.oppHandOff; // 148.5 (ruka od anchor)
 
-    // Zjisti anchor pozici z hand pozice
-    const hand = getPlayerHandPos(idx);
     let ax, ay, side;
-    // Prahy proti okraji JEVIŠTĚ (viz _introDealRestPos) – na 16:9 vychází 50 / 1870.
-    if (hand.x < stageLeft() + 50)       { ax = hand.x + oppOffset; ay = hand.y; side = 'left'; }
-    else if (hand.y < stageTop() + 50)   { ax = hand.x; ay = hand.y + oppOffset; side = 'top'; }
-    else if (hand.x > stageRight() - 50) { ax = hand.x - oppOffset; ay = hand.y; side = 'right'; }
-    else                                 { ax = hand.x; ay = hand.y - oppOffset; side = 'bottom'; }
+    if (anchor) { ax = anchor.x; ay = anchor.y; side = anchor.side; }
+    else {
+        // Bez kotvy (spodní hráč / ještě není stav) – zpětně z pozice ruky jako dřív.
+        const hand = getPlayerHandPos(idx);
+        if (hand.x < stageLeft() + 50)       { ax = hand.x + oppOffset; ay = hand.y; side = 'left'; }
+        else if (hand.y < stageTop() + 50)   { ax = hand.x; ay = hand.y + oppOffset; side = 'top'; }
+        else if (hand.x > stageRight() - 50) { ax = hand.x - oppOffset; ay = hand.y; side = 'right'; }
+        else                                 { ax = hand.x; ay = hand.y - oppOffset; side = 'bottom'; }
+    }
 
-    // Natočení karet podle strany (stejně jako herní render)
-    const angle = side === 'left' ? 90 : side === 'top' ? 180 : side === 'right' ? -90 : 0;
+    // Natočení karet podle strany (stejně jako herní render); kompaktní sloupec má
+    // kartu životů otočenou jako soupeř vlevo.
+    const angle = (side === 'left' || side === 'compact') ? 90 : side === 'top' ? 180 : side === 'right' ? -90 : 0;
+    const cm = side === 'compact' ? compactMetrics(Math.max(1, total - 1), L) : null;
 
     // Jmenovka soupeře – PŘESNĚ na herní pozici (drawOpponents): x = anchor.x,
     // y = anchor.y + offset dle strany (left +38.25, top/right +85.5). Styl shodný.
     const nameOffY = side === 'left' ? 38.25 : 85.5;
-    const NAME_X = ax, NAME_Y = ay + nameOffY;
+    const NAME_X = cm ? compactColCenter(anchor, cm) : ax;
+    const NAME_Y = cm ? compactNameY(anchor, cm) : ay + nameOffY;
     const OPP_NAME_STYLE = { fontSize: '18px', color: '#cccccc',
         backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } };
 
     // Cílové pozice lives + postavy – PŘESNĚ podle herního renderu
     // (renderUI: anchor.side větve). numBlue=0, protože na začátku hry
     // nemá nikdo karty na stole. (ax,ay) == herní anchor.
-    const cardW  = 325 * oppScale;              // 97.5
+    const cardW  = 325 * oppScl;                // 97.5
     const numBlue = 0;
     const groupH = (1 + numBlue) * cardW;       // == cardW
     let livesEndX, livesEndY, charEndX, charEndY;
-    if (side === 'left') {
+    if (side === 'compact') {
+        // Kotva JE střed karty životů, portrét jede po nábojích doprava (jako 'left').
+        livesEndX = ax; livesEndY = ay;
+        charEndX  = ax + oppBulletH * health; charEndY = ay;
+    } else if (side === 'left') {
         livesEndX = ax;
         livesEndY = ay + groupH / 2 - oppCardH / 2;
         charEndX  = livesEndX + oppBulletH * health;
@@ -328,19 +343,19 @@ function _introOppSlots(idx, health) {
     // vidět a karta by v nich čekala na svůj let.
     let dx = 0, dy = 0;
     if (side === 'left')   dx = stageLeft() - (oppCardH + 50) - ax;
-    else if (side === 'top')    dy = stageTop() - (oppCardH + 50) - ay;
+    else if (side === 'top' || side === 'compact') dy = stageTop() - (oppCardH + 50) - ay;
     else if (side === 'right')  dx = stageRight() - ax + oppCardH + 50;
     else                       dy = stageBottom() - ay + oppCardH + 50;
 
     // Šerifova hvězda se usadí nad kartou postavy – offsety dle strany zrcadlí board.js.
     const starScale = 0.3;
     let starDx = 0, starDy = 0;
-    if (side === 'left')       { starDx =  oppCardH * 0.45; starDy = -cardW * 0.42; }
+    if (side === 'left' || side === 'compact') { starDx =  oppCardH * 0.45; starDy = -cardW * 0.42; }
     else if (side === 'top')   { starDx =  cardW * 0.42;    starDy =  oppCardH * 0.45; }
     else if (side === 'right') { starDx = -oppCardH * 0.45; starDy =  cardW * 0.42; }
 
     return {
-        side, angle, scale: oppScale, cardW, cardH: oppCardH, bulletH: oppBulletH,
+        side, angle, scale: oppScl, cardW, cardH: oppCardH, bulletH: oppBulletH,
         livesX: livesEndX, livesY: livesEndY, charX: charEndX, charY: charEndY,
         nameX: NAME_X, nameY: NAME_Y, nameStyle: OPP_NAME_STYLE,
         starX: charEndX + starDx, starY: charEndY + starDy, starScale,
@@ -495,7 +510,15 @@ function _introDealRestPos(idx, myIdx, total, i, count) {
         return { x: handAreaStart + i * spacing, y: L.myBaseY, angle: 0, scale: scaleMe };
     }
     // Protihráči – stejné rozložení jako herní render (drawHandCard)
-    const scaleOpp = 0.27;
+    const L = currentLayout();
+    const oppN = Math.max(1, ((state && state.players) ? state.players.length : total) - 1);
+    const scaleOpp = oppScale(L, oppN);
+    // Kompaktní řada (mobil): sloty i menší měřítko vějíře zná positions.js/core/layout.js,
+    // prahové odvozování strany z pozice ruky by tu stranu netrefilo.
+    if (L.oppMode === 'compact') {
+        const p = getHandSlotPos(idx, i, count);
+        return { x: p.x, y: p.y, angle: 0, scale: handCardScale(L, oppN, false) };
+    }
     const cardW = 325 * scaleOpp;   // 87.75
     const cardH = 500 * scaleOpp;   // 135
     const hand = getPlayerHandPos(idx);
