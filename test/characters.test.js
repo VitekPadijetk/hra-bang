@@ -72,6 +72,100 @@ test('Suzy si lízne i UPROSTŘED obrany proti Slabovi (poslední karta byla Ved
     assert.equal(g.players[1].health, 4);
 });
 
+// ── Pravidlo „nejdřív doběhne efekt zahrané karty" (FAQ) ─────────────────────
+// Schopnost postavy se použije AŽ po dokončení efektu naposledy zahrané karty.
+// U Suzy to znamená: když jí ten efekt karty vrátí, prázdnou ruku nemá a nelíže si.
+test('Suzy: Úhyb jako poslední karta → lízne si JEN jednu (z Úhybu, ne ze schopnosti)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw', character: 'Suzy Lafayette' }]);
+    const bang = give(g, 0, CardType.BANG);
+    const uhyb = give(g, 1, CardType.UHYB, { props: { draw: 1 } });   // Suzyina JEDINÁ karta
+    g.deck.cards = [mkCard(CardType.BEER, { name: 'druhá' }), mkCard(CardType.BEER, { name: 'z Úhybu' })];
+
+    g.playBang(0, 1, bang);
+    g.handleResponse(1, uhyb);              // uhnula → ruka prázdná, ale Úhyb ještě líže
+    assert.equal(g.phase, 'UHYB_DRAW');     // efekt karty jde první
+    assert.equal(g.specialActionQueue.filter(a => a.type === 'SUZY_DRAW').length, 1);
+
+    g.uhybDraw(1);
+    assert.equal(g.players[1].hand.length, 1);          // JEN karta z Úhybu
+    assert.equal(g.players[1].hand[0].name, 'z Úhybu');
+    assert.equal(g.phase, 'PLAY');                      // žádná SUZY_DRAW fáze navíc
+    assert.equal(g.specialActionQueue.length, 0);
+});
+
+test('Suzy: Úhyb uprostřed obrany proti Slabovi → taky jen 1 karta a obrana pokračuje', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Slab the Killer' },
+                      { role: 'Outlaw', character: 'Suzy Lafayette' }]);
+    const bang = give(g, 0, CardType.BANG);
+    give(g, 1, CardType.UHYB, { props: { draw: 1 } });   // Suzyina JEDINÁ karta
+    g.deck.cards = [mkCard(CardType.MISSED, { name: 'z Úhybu' })];
+
+    g.playBang(0, 1, bang);
+    assert.equal(g.missesRequired, 2);
+    g.handleResponse(1, 0);                 // 1. uhnutí → ruka prázdná
+    assert.equal(g.phase, 'UHYB_DRAW');     // líznutí z Úhybu má přednost před schopností
+
+    g.uhybDraw(1);
+    assert.equal(g.phase, 'RESPOND');       // zpět k obraně (chybí 2. Vedle!)
+    assert.equal(g.players[1].hand.length, 1);
+    assert.equal(g.players[1].hand[0].name, 'z Úhybu');
+});
+
+test('Suzy: posledním Bang! zabije banditu → jen 3 karty za banditu (ne 3+1)', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette' },
+                      { role: 'Outlaw', health: 1 },
+                      { role: 'Outlaw' }]);
+    const bang = give(g, 0, CardType.BANG);   // Suzyina JEDINÁ karta
+    g.deck.cards = [mkCard(CardType.BEER), mkCard(CardType.BEER), mkCard(CardType.BEER), mkCard(CardType.BEER)];
+
+    g.playBang(0, 1, bang);
+    // Efekt Bang! ještě běží (cíl se brání) → schopnost se zatím nespustí.
+    assert.equal(g.phase, 'RESPOND');
+
+    g.handleResponse(1, null);                // bandita schytal zásah a umírá
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g.phase, 'DRAW');            // odměna za banditu jde první
+    g.drawCard('deck'); g.drawCard('deck'); g.drawCard('deck');
+
+    assert.equal(g.players[0].hand.length, 3);   // jen odměna, schopnost se nespustila
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.specialActionQueue.length, 0);
+});
+
+test('Suzy: poslední Bang! na El Gringa → nemá co ukrást, Suzy si lízne až potom', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette' },
+                      { role: 'Outlaw', character: 'El Gringo', health: 2 }]);
+    const bang = give(g, 0, CardType.BANG);   // Suzyina JEDINÁ karta
+    g.deck.cards = [mkCard(CardType.BEER, { name: 'Suzyina' })];
+
+    g.playBang(0, 1, bang);
+    g.handleResponse(1, null);                // zásah → El Gringo krade z prázdné ruky
+    assert.equal(g.phase, 'SUZY_DRAW');       // efekt Bang! doběhl, teprve teď schopnost
+
+    g.suzyLafayetteDraw(0);
+    assert.equal(g.players[0].hand.length, 1);
+    assert.equal(g.players[0].hand[0].name, 'Suzyina');   // El Gringo jí ji nesebral
+    assert.equal(g.players[1].hand.length, 0);
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Suzy: Ragtime zaplacený poslední kartou → má jen ukradenou kartu', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette' }, { role: 'Outlaw' }]);
+    const ragtime = give(g, 0, CardType.RAGTIME, { name: 'Ragtime', props: { discardExtra: 'steal_any' } });
+    give(g, 0, CardType.BEER);                // „další karta" (cena) → obě poslední
+    board(g, 1, CardType.BARREL, { name: 'ukradený Barel' });
+    g.deck.cards = [mkCard(CardType.BEER, { name: 'z balíčku' })];
+
+    g.startDiscardExtra(ragtime, { targetIdx: 1, area: 'board', boardIdx: 0 });
+    assert.equal(g.phase, 'DISCARD_ANOTHER');
+    g.discardAnotherCard(0, 1);               // zaplať druhou (poslední) kartou
+
+    assert.equal(g.players[0].hand.length, 1);              // jen ukradená karta
+    assert.equal(g.players[0].hand[0].name, 'ukradený Barel');
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.specialActionQueue.length, 0);
+});
+
 // ── Sid Ketchum: odhodí 2 karty → +1 život ───────────────────────────────────
 test('Sid Ketchum odhodí 2 karty a vyléčí si 1 život', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Sid Ketchum', health: 2 }, { role: 'Outlaw' }]);

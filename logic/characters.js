@@ -25,15 +25,59 @@ const CharactersMixin = {
         this._resumeAfterSpecial();
     },
 
+    // ── Pravidlo „nejdřív doběhne efekt zahrané karty" ──────────────────────────
+    // FAQ: „Musíte počkat na dokončení efektu naposledy zahrané karty, než budete moci
+    // použít speciální schopnost své postavy nebo zahrát další kartu." U Suzy Lafayette
+    // se proto prázdná ruka posuzuje AŽ POTOM: líznutí z Úhybu/Bible, ukradená karta
+    // (Panika/Ragtime) i odměna za banditu jsou pořád součást té zahrané karty – po nich
+    // už prázdnou ruku nemá a schopnost se vůbec nespustí.
+
+    // Vyhoď z fronty líznutí, které mezitím přestalo platit (karty už dostala / je mimo hru).
+    _pruneSuzyQueue() {
+        for (let i = this.specialActionQueue.length - 1; i >= 0; i--) {
+            const a = this.specialActionQueue[i];
+            if (a.type !== 'SUZY_DRAW') continue;
+            const p = this.players[a.playerIdx];
+            if (!p || p.health <= 0 || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
+        }
+    },
+
+    // Běží ještě efekt karty, kterou Suzy zahrála? (čeká se na cizí reakci nebo cizí barel)
+    // Dokud běží, líznutí zůstane ve frontě – každá cesta z RESPOND/barelu končí voláním
+    // _processSpecialQueue, takže se k němu hra sama vrátí. Když je cílem ona sama (obrana
+    // proti Slabovi), schopnost platí hned: efekt JEJÍ karty (Vedle!) už doběhl.
+    _suzyEffectRunning(playerIdx) {
+        const pr = this.pendingResponse;
+        if (pr?.active && pr.targetIdx !== playerIdx) return true;
+        const pbc = this.pendingBarrelCheck;
+        if (pbc?.active && pbc.targetIdx !== playerIdx) return true;
+        return false;
+    },
+
+    // Vrací `true`, když se z fronty něco rozeběhlo (nebo běží lízání) – tedy když hra
+    // pokračuje sama a volající nemá sahat na fázi. `false` = fronta nic nespustila.
     _processSpecialQueue() {
-        if (this.specialActionQueue.length === 0) return;
+        this._pruneSuzyQueue();
+        if (this.specialActionQueue.length === 0) return false;
 
         // Neber další akci z fronty, když právě běží líznutí (běžné, Dostavník/Wells Fargo
         // i kill-reward). Jinak by se rozpracovaný drawPhaseState přepsal a hra uvázla ve
         // fázi DRAW s active=false (typicky 2 kill-rewardy z jedné smrti u hromadného útoku:
         // Herb Hunter + odměna za banditu). Po dokončení líznutí frontu dobere _resumeAfterSpecial
         // / _finishDraw (ty aktivní draw nastaví na false PŘED voláním, takže tenhle guard pustí).
-        if (this.phase === "DRAW" && this.drawPhaseState?.active) return;
+        if (this.phase === "DRAW" && this.drawPhaseState?.active) return true;
+
+        // Suzy Lafayette: dokud efekt její karty běží, líznutí počká ve frontě. A když jí
+        // ten efekt ještě dluží karty (odměna za banditu, Úhyb), pustíme je před ní – po
+        // nich už prázdnou ruku mít nebude a _pruneSuzyQueue líznutí zahodí.
+        if (this.specialActionQueue[0].type === 'SUZY_DRAW') {
+            const suzyIdx = this.specialActionQueue[0].playerIdx;
+            if (this._suzyEffectRunning(suzyIdx)) return false;
+            if (this.specialActionQueue.some((a, i) => i > 0 && a.playerIdx === suzyIdx &&
+                    (a.type === 'KILL_REWARD' || a.type === 'UHYB_DRAW'))) {
+                this.specialActionQueue.push(this.specialActionQueue.shift());
+            }
+        }
 
         if (this.phase !== "BART_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW") {
             this.interruptedPhase = this.phase;
@@ -63,11 +107,15 @@ const CharactersMixin = {
             };
             this.phase = "DRAW";
         }
+        return true;
     },
 
     _resumeAfterSpecial() {
-        if (this.specialActionQueue.length > 0) {
-            this._processSpecialQueue();
+        // Ve frontě může zbýt jen odložené Suzyino líznutí (čeká na dokončení efektu) –
+        // pak se pokračuje, jako by byla prázdná. Jinak by hra zůstala viset ve fázi právě
+        // dokončené schopnosti (např. EL_GRINGO_STEAL uprostřed hromadného útoku).
+        if (this._processSpecialQueue()) {
+            return;
         } else if (this._nextTurnAfterQueue) {
             // Fronta po smrti na dynamit (Herb Hunter apod.) je dobraná → teprve teď posuň tah.
             this._nextTurnAfterQueue = false;
