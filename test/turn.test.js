@@ -26,6 +26,56 @@ test('Dynamit: piky 2–9 → výbuch, fáze DYNAMITE_DAMAGE, 3 zásahy', () => 
     assert.equal(g.phase, 'DRAW');         // pokračuje normální tah
 });
 
+// Bart si líže za KAŽDÝ ztracený život, dynamit nevyjímaje (3 zásahy = 3 karty).
+// Zásahy se klikají po jednom, takže líznutí přijde po každém z nich a fáze se vrací
+// do DYNAMITE_DAMAGE; po posledním se teprve rozjede kontrola Vězení / fáze lízání.
+test('Dynamit: Bart Cassidy si lízne za každý ze 3 zásahů', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Bart Cassidy' }, { role: 'Outlaw' }]);
+    board(g, 0, CardType.DYNAMITE, { name: 'Dynamit' });
+    g.deck.cards = [];
+    for (let i = 0; i < 5; i++) topDeck(g, Suits.CLUBS, '5');  // zásoba na líznutí + fázi lízání
+    topDeck(g, Suits.SPADES, '5');                             // check karta → výbuch
+
+    g.handleStartOfTurnChecks();
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+
+    for (let hit = 1; hit <= 3; hit++) {
+        g.takeDynamiteHit(0);
+        assert.equal(g.phase, 'BART_DRAW');          // líznutí za ztracený život
+        assert.equal(g.pendingBartDraw.playerIdx, 0);
+        g.bartCassidyDraw(0);
+        assert.equal(g.players[0].hand.length, hit);
+        // Po posledním zásahu se pokračuje v tahu, jinak zpět na klikání životů.
+        assert.equal(g.phase, hit < 3 ? 'DYNAMITE_DAMAGE' : 'DRAW');
+    }
+    assert.equal(g.players[0].health, 1);            // 4 → 1
+    assert.equal(g.specialActionQueue.length, 0);
+});
+
+test('Dynamit: Bart si za smrtelný zásah nelízne (vyřazení)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw', character: 'Bart Cassidy', health: 2 }],
+                     { current: 1 });
+    board(g, 1, CardType.DYNAMITE, { name: 'Dynamit' });
+    g.deck.cards = [];
+    for (let i = 0; i < 4; i++) topDeck(g, Suits.CLUBS, '5');
+    topDeck(g, Suits.SPADES, '5');   // check karta → výbuch
+
+    g.handleStartOfTurnChecks();
+    g.triggerCheckDraw();
+    g.resolveCheck();
+
+    g.takeDynamiteHit(1);
+    g.bartCassidyDraw(1);            // 1. zásah přežil → líznutí
+    assert.equal(g.players[1].hand.length, 1);
+
+    g.takeDynamiteHit(1);            // 2. zásah = smrt, žádné líznutí navíc
+    assert.equal(g.players[1].health, 0);
+    assert.notEqual(g.phase, 'BART_DRAW');
+    assert.equal(g.specialActionQueue.filter(a => a.type === 'BART_DRAW').length, 0);
+});
+
 test('Dynamit: smrt hráče → Herb Hunter lízne HNED (fronta), teprve pak další tah', () => {
     const g = mkGame([
         { role: 'Outlaw', health: 3 },                    // umře na dynamit (3 zásahy)

@@ -186,11 +186,32 @@ const CombatMixin = {
         }
 
         pdd.hitsLeft--;
+
+        // Bart Cassidy si líže za KAŽDÝ ztracený život – dynamit nevyjímaje. Zásahy se tu
+        // klikají po jednom, takže líznutí přibude ke každému z nich (a Bart smí zahrát
+        // Pivo z karty, kterou si zrovna líznul). Nejde to přes handleDamage: ten by
+        // spustil i cizí reakce (El Gringo), jenže u dynamitu žádný útočník není. Do fronty
+        // se dává jen za PŘEŽITÝ zásah – stejně jako v handleDamage (smrt řeší větev výš).
+        if (effectiveCharacter(p) === "Bart Cassidy") {
+            this.specialActionQueue.push({ type: 'BART_DRAW', playerIdx });
+        }
+
         if (pdd.hitsLeft <= 0) {
             this.pendingDynamiteDamage = null;
-            this.handleStartOfTurnChecks();
+            // Frontu je nutné dobrat DŘÍV než kontrolu Vězení a fázi lízání:
+            // _processSpecialQueue během aktivního lízání záměrně nic nepouští, takže by
+            // Bartova líznutí zůstala viset až za jeho vlastní fází lízání.
+            if (this.specialActionQueue.length > 0) {
+                this._startChecksAfterQueue = true;
+                this._processSpecialQueue();
+            } else {
+                this.handleStartOfTurnChecks();
+            }
+            return;
         }
-        // Jinak zůstane v DYNAMITE_DAMAGE – hráč klikne znovu
+        // Zbývají další zásahy: po případném líznutí se přes interruptedPhase vrátíme
+        // do DYNAMITE_DAMAGE a hráč klikne znovu.
+        this._processSpecialQueue();
     }
 };
 

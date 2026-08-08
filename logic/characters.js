@@ -104,6 +104,12 @@ const CharactersMixin = {
             this._resumeBeginTurnAfterQueue = false;
             this.interruptedPhase = null;
             if (!this.winner) this._resumeBeginTurn();
+        } else if (this._startChecksAfterQueue) {
+            // Výbuch dynamitu: Bartova líznutí za ztracené životy jsou dobraná → teprve
+            // teď kontrola Vězení a fáze lízání (viz takeDynamiteHit).
+            this._startChecksAfterQueue = false;
+            this.interruptedPhase = null;
+            if (!this.winner) this.handleStartOfTurnChecks();
         } else {
             this.phase = this.interruptedPhase || "PLAY";
             this.interruptedPhase = null;
