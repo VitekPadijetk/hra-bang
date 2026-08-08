@@ -3,6 +3,7 @@
 // nekříží s lexikálními globály z core/layout.js.
 var _layoutMod = (typeof module !== 'undefined' && module.exports) ? require('./core/layout.js') : null;
 function _L() { return _layoutMod ? _layoutMod.currentLayout() : currentLayout(); }
+function _stretchAnchors(row, L) { return (_layoutMod ? _layoutMod.stretchAnchors : stretchAnchors)(row, L); }
 
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
 // (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
@@ -15,9 +16,13 @@ const OPPONENT_ANCHORS = {
     5: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},{x:960,y:150,side:'top'},{x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
     6: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},{x:715,y:150,side:'top'},{x:1205,y:150,side:'top'},{x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
 };
+// Kotvy roztažené na skutečnou šířku jeviště: krajní soupeři zůstávají stejně daleko
+// od OKRAJE jako dnes od kraje plátna, takže na širším displeji sedí u kraje a ne
+// v pruhu uprostřed. Na 16:9 vrací přesně tabulku (stretchAnchors je tam identita).
 function getOpponentAnchors(totalPlayers) {
-    const table = _L().anchors || OPPONENT_ANCHORS;
-    return table[totalPlayers - 1] || [];
+    const L = _L();
+    const table = L.anchors || OPPONENT_ANCHORS;
+    return _stretchAnchors(table[totalPlayers - 1] || [], L);
 }
 
 function getPlayerPosition(myIdx, targetIdx, totalPlayers) {

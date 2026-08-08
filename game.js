@@ -27,7 +27,7 @@ window.addEventListener('unhandledrejection', (e) => _reportCrash('promise', e.r
 // stávajícím rozložením nehne – přibude jen viditelná plocha po stranách.
 App.stage = computeStage(window.innerWidth, window.innerHeight);
 App.uiProfile = detectLayoutProfile();
-App.layout = getLayout(App.uiProfile);
+App.layout = resolveLayout(getLayout(App.uiProfile), App.stage);
 
 const config = {
     type: Phaser.AUTO,
@@ -250,7 +250,9 @@ function applyStage() {
     const profileChanged = App.uiProfile !== profile;
     App.stage = stage;
     App.uiProfile = profile;
-    App.layout = getLayout(profile);
+    // Profil se dopočítá na jeviště – co se lepí na okraj (konec ruky, počet karet
+    // v řadě stolu, kotvy soupeřů) se odvodí od skutečné šířky, ne od pevných 1920.
+    App.layout = resolveLayout(getLayout(profile), stage);
     // setGameSize je metoda určená přesně pro škálovací režimy typu FIT (na rozdíl od
     // resize, které patří k NONE/RESIZE). Voláme ji jen při skutečné změně.
     if (sizeChanged && game?.scale?.setGameSize) game.scale.setGameSize(stage.w, stage.h);

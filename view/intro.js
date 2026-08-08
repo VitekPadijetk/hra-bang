@@ -31,7 +31,7 @@ function _introLeaderEndButton() {
     if (!gameScene || typeof roomState === 'undefined' || !roomState) return;
     if (roomState.leaderSocketId !== socket.id) return;
     // Stejný vzhled jako lídrovské „Ukončit hru" ve hře (game.js) – themeButton.
-    const { bg } = themeButton(gameScene, 30, 30, 210, 48, '✕  Ukončit hru', {
+    const { bg } = themeButton(gameScene, stageLeft() + 30, stageTop() + 30, 210, 48, '✕  Ukončit hru', {
         origin: [0, 0], fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030,
         stroke: THEME.color.dangerNum, fontSize: '18px',
         onClick: () => {
@@ -280,10 +280,11 @@ function _introOppSlots(idx, health) {
     // Zjisti anchor pozici z hand pozice
     const hand = getPlayerHandPos(idx);
     let ax, ay, side;
-    if (hand.x < 50)        { ax = hand.x + oppOffset; ay = hand.y; side = 'left'; }
-    else if (hand.y < 50)   { ax = hand.x; ay = hand.y + oppOffset; side = 'top'; }
-    else if (hand.x > 1870) { ax = hand.x - oppOffset; ay = hand.y; side = 'right'; }
-    else                    { ax = hand.x; ay = hand.y - oppOffset; side = 'bottom'; }
+    // Prahy proti okraji JEVIŠTĚ (viz _introDealRestPos) – na 16:9 vychází 50 / 1870.
+    if (hand.x < stageLeft() + 50)       { ax = hand.x + oppOffset; ay = hand.y; side = 'left'; }
+    else if (hand.y < stageTop() + 50)   { ax = hand.x; ay = hand.y + oppOffset; side = 'top'; }
+    else if (hand.x > stageRight() - 50) { ax = hand.x - oppOffset; ay = hand.y; side = 'right'; }
+    else                                 { ax = hand.x; ay = hand.y - oppOffset; side = 'bottom'; }
 
     // Natočení karet podle strany (stejně jako herní render)
     const angle = side === 'left' ? 90 : side === 'top' ? 180 : side === 'right' ? -90 : 0;
@@ -483,13 +484,15 @@ function _startCharChoicesFlip() {
 // (renderUI: moje ruka resp. ruce protihráčů), aby přechod do hry byl beze skoku.
 // Vrací { x, y, angle, scale }. count = počet karet v ruce hráče.
 function _introDealRestPos(idx, myIdx, total, i, count) {
-    // Moje ruka – stejné rozložení jako herní render (livesX=1050, myBaseY=970)
+    // Moje ruka – stejné rozložení jako herní render. Čte se z profilu (handEndX se
+    // mimo 16:9 lepí na pravý okraj jeviště), jinak by karty po intru poskočily.
     if (idx === myIdx) {
-        const scaleMe = 0.36;
-        const handAreaStart = 1050 + 160;     // 1210
-        const handAreaWidth = 1860 - handAreaStart;
-        const spacing = Math.min(117, handAreaWidth / count);
-        return { x: handAreaStart + i * spacing, y: 970, angle: 0, scale: scaleMe };
+        const L = currentLayout();
+        const scaleMe = L.scaleMe;
+        const handAreaStart = L.livesX + L.handOffX;
+        const handAreaWidth = L.handEndX - handAreaStart;
+        const spacing = Math.min(L.handMaxSpacing, handAreaWidth / count);
+        return { x: handAreaStart + i * spacing, y: L.myBaseY, angle: 0, scale: scaleMe };
     }
     // Protihráči – stejné rozložení jako herní render (drawHandCard)
     const scaleOpp = 0.27;
@@ -497,10 +500,12 @@ function _introDealRestPos(idx, myIdx, total, i, count) {
     const cardH = 500 * scaleOpp;   // 135
     const hand = getPlayerHandPos(idx);
     let side;
-    if (hand.x < 50)        side = 'left';
-    else if (hand.y < 50)   side = 'top';
-    else if (hand.x > 1870) side = 'right';
-    else                    side = 'bottom';
+    // Prahy proti okraji JEVIŠTĚ – kotvy krajních soupeřů se lepí na okraj, takže
+    // pevných 50 / 1870 by mimo 16:9 stranu netrefilo (na 16:9 vychází stejně).
+    if (hand.x < stageLeft() + 50)        side = 'left';
+    else if (hand.y < stageTop() + 50)    side = 'top';
+    else if (hand.x > stageRight() - 50)  side = 'right';
+    else                                  side = 'bottom';
     const rawSpacing = count > 1 ? Math.min(cardW * 0.35, 36) : 0;
     if (side === 'left' || side === 'right') {
         const maxHandH = cardH * 3.5;

@@ -2,9 +2,10 @@ const { test, describe, before } = require('node:test');
 const assert = require('node:assert');
 
 const {
-    STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H,
+    STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H, CARD_ART_W,
     computeStage, stageCoverSize,
     LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
+    resolveLayout, stretchAnchors, boardRowLimit,
 } = require('../core/layout.js');
 
 before(() => { console.log = () => {}; });
@@ -163,6 +164,92 @@ describe('profil rozložení – desktop je pixelově dnešní stav', () => {
 
     test('PILE_SCALE v game.js musí sedět se scaleDeck, kterým kreslí board.js', () => {
         assert.strictEqual(LAYOUT_PROFILES.desktop.scaleDeck, LAYOUT_PROFILES.mobile.scaleDeck);
+    });
+});
+
+describe('resolveLayout – co se lepí na okraj jeviště', () => {
+    const D = LAYOUT_PROFILES.desktop;
+    const BASE = computeStage(1920, 1080);
+
+    test('na 16:9 vrací TÝŽ profil (PC ve fullscreenu je pixelově dnešní stav)', () => {
+        assert.strictEqual(resolveLayout(D, BASE), D);
+        assert.strictEqual(resolveLayout(D, computeStage(1366, 768)), D);
+        // vyšší než 16:9 roste jen do výšky → vodorovné hodnoty se taky nemění
+        assert.strictEqual(resolveLayout(D, computeStage(1000, 1000)), D);
+    });
+
+    test('konec ruky drží stejné odsazení od PRAVÉHO okraje jako dnes od kraje plátna', () => {
+        assert.strictEqual(D.handEndX, STAGE_BASE_W - D.handEndMargin);   // 1860
+        for (const [vw, vh] of [[1600, 800], [844, 390], [3440, 1440]]) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(D, st);
+            assert.strictEqual(L.handEndX, st.right - D.handEndMargin, `${vw}×${vh}`);
+            assert.ok(L.handEndX > D.handEndX, 'ruka se má natáhnout doprava');
+        }
+    });
+
+    test('širší jeviště = víc vyložených karet v jedné řadě, ale pořád na jevišti', () => {
+        for (const [vw, vh, expect] of [[1920, 1080, 6], [1600, 800, 7], [844, 390, 7]]) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(D, st);
+            assert.strictEqual(L.boardMaxPerRow, expect, `${vw}×${vh}`);
+            // nejlevější karta řady nesmí přetéct přes levý okraj
+            const cardW = CARD_ART_W * L.scaleMe;
+            const step = cardW + L.boardGap;
+            const leftEdge = (L.livesX + L.roleOffX) - L.boardMaxPerRow * step - cardW / 2;
+            assert.ok(leftEdge >= st.left, `${vw}×${vh}: ${leftEdge} < ${st.left}`);
+        }
+    });
+
+    test('boardRowLimit na základním jevišti dá dnešních 6', () => {
+        assert.strictEqual(boardRowLimit(D, BASE), D.boardMaxPerRow);
+    });
+
+    test('zbytek profilu se dopočtem nemění', () => {
+        const L = resolveLayout(D, computeStage(1600, 800));
+        for (const k of Object.keys(D)) {
+            if (k === 'handEndX' || k === 'boardMaxPerRow') continue;
+            assert.deepStrictEqual(L[k], D[k], 'pole ' + k);
+        }
+    });
+});
+
+describe('stretchAnchors – krajní soupeři se lepí na okraj', () => {
+    const D = LAYOUT_PROFILES.desktop;
+    const ROW = [
+        { x: 180, y: 540, side: 'left' },
+        { x: 600, y: 150, side: 'top' },
+        { x: 1320, y: 150, side: 'top' },
+        { x: 1740, y: 540, side: 'right' },
+    ];
+
+    test('na 16:9 vrací původní pole beze změny (žádná alokace)', () => {
+        assert.strictEqual(stretchAnchors(ROW, D, computeStage(1920, 1080)), ROW);
+        assert.strictEqual(stretchAnchors(ROW, D, computeStage(1000, 1000)), ROW);
+        assert.deepStrictEqual(stretchAnchors([], D, computeStage(1600, 800)), []);
+    });
+
+    test('krajní kotvy sedí u okraje jeviště, střed zůstává středem', () => {
+        for (const [vw, vh] of [[1600, 800], [844, 390], [3440, 1440]]) {
+            const st = computeStage(vw, vh);
+            const out = stretchAnchors(ROW, D, st);
+            assert.strictEqual(out[0].x, st.left + D.oppEdgeMargin, `${vw}×${vh} vlevo`);
+            assert.strictEqual(out[3].x, st.right - D.oppEdgeMargin, `${vw}×${vh} vpravo`);
+            // souměrnost kolem 960 (kamera drží starou soustavu uprostřed)
+            assert.strictEqual(out[1].x + out[2].x, STAGE_BASE_W, `${vw}×${vh} souměrnost`);
+            assert.ok(out[1].x < 600 && out[2].x > 1320, 'prostřední se rozestoupí');
+            // y a strana se nemění
+            out.forEach((a, i) => {
+                assert.strictEqual(a.y, ROW[i].y);
+                assert.strictEqual(a.side, ROW[i].side);
+            });
+        }
+    });
+
+    test('jediná horní kotva zůstane přesně uprostřed', () => {
+        const st = computeStage(844, 390);
+        const [a] = stretchAnchors([{ x: 960, y: 150, side: 'top' }], D, st);
+        assert.strictEqual(a.x, 960);
     });
 });
 

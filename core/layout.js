@@ -74,6 +74,9 @@ function stageCoverSize(stage) {
 // Desktopové hodnoty jsou PŘESNĚ ty dnešní – PC se tím pádem nemění (pojistkou je
 // test/layout.test.js). Mobilní profil je zatím jejich kopie: liší se teprve
 // kompaktním rozložením (soupeři v jedné řadě nahoře), které přijde v další fázi.
+// Rozměr artu karty v design px (nezmenšený); měřítka profilu se počítají z něj.
+const CARD_ART_W = 325, CARD_ART_H = 500;
+
 const LAYOUT_DESKTOP = {
     name: 'desktop',
     // 'ring' = dnešní okruh soupeřů kolem stolu (left/top/right)
@@ -84,8 +87,10 @@ const LAYOUT_DESKTOP = {
     scaleMe: 0.36, scaleOpp: 0.27, scaleDeck: 0.3,
 
     // moje zóna (drawMyArea + getHandSlotPos/getBoardCardPos)
+    // handEndX/boardMaxPerRow jsou hodnoty pro jeviště 16:9; na širším je přepočítá
+    // resolveLayout podle handEndMargin (odsazení konce ruky od PRAVÉHO okraje).
     livesX: 1050, myBaseY: 970, roleOffX: -200,
-    handOffX: 160, handEndX: 1860, handMaxSpacing: 117,
+    handOffX: 160, handEndX: 1860, handEndMargin: 60, handMaxSpacing: 117,
     boardGap: 10, boardMaxPerRow: 6,
     myHandAnchorX: 1450,
     btnRowOffY: -170, btnH: 62,
@@ -94,8 +99,9 @@ const LAYOUT_DESKTOP = {
     specScale: 0.27, specLivesY: 900, specHandY: 1065,
 
     // soupeři – kotvy (null = základní tabulka OPPONENT_ANCHORS v positions.js),
+    // odsazení krajních kotev od okraje jeviště (stretchAnchors),
     // odsazení ruky od portrétu a rozteč vějíře rubů
-    anchors: null,
+    anchors: null, oppEdgeMargin: 180,
     oppGap: 10, oppHandOff: 1.1, oppFanFrac: 0.35, oppFanMax: 36, oppFanSpan: 3.5,
 
     // balíčky uprostřed stolu + řada hokynářství
@@ -108,6 +114,49 @@ const LAYOUT_PROFILES = { desktop: LAYOUT_DESKTOP, mobile: LAYOUT_MOBILE };
 
 function getLayout(name) {
     return LAYOUT_PROFILES[name] || LAYOUT_DESKTOP;
+}
+
+// ── Dopočet profilu na konkrétní jeviště ─────────────────────────────────────
+// Profil nese rozložení pro jeviště 16:9. Na širším displeji (telefon na šířku, okno
+// prohlížeče mimo fullscreen) je navíc plocha po stranách – co se má „lepit" na okraj,
+// se proto musí odvodit ze SKUTEČNÉ šířky, ne z pevných 1920.
+
+// Kolik vyložených karet se vejde do jedné řady mého stolu. Rostou doleva od karty role,
+// takže je omezuje levý okraj jeviště; na 16:9 z toho vyjde dnešních 6.
+function boardRowLimit(L, stage) {
+    const st = stage || currentStage();
+    const cardW = CARD_ART_W * L.scaleMe;
+    const step = cardW + L.boardGap;
+    const roleX = L.livesX + L.roleOffX;
+    return Math.max(1, Math.floor((roleX - cardW / 2 - st.left) / step));
+}
+
+// Krajní soupeři se „přilepí" na okraj jeviště: kotvy se vodorovně roztáhnou tak, aby
+// levá/pravá zůstaly stejně daleko od OKRAJE (oppEdgeMargin) jako dnes od kraje plátna
+// a prostřední se mezi ně rovnoměrně rozestoupily. Střed (960) zůstává středem.
+// Na 16:9 vrací původní pole beze změny (žádná alokace, žádný posun).
+function stretchAnchors(row, L, stage) {
+    const st = stage || currentStage();
+    if (!row || !row.length || st.w === STAGE_BASE_W) return row || [];
+    const m = (L || LAYOUT_DESKTOP).oppEdgeMargin;
+    const inner = STAGE_BASE_W - 2 * m;
+    if (!(inner > 0)) return row;
+    const k = (st.w - 2 * m) / inner;
+    return row.map(a => ({ ...a, x: Math.round(st.left + m + (a.x - m) * k) }));
+}
+
+// Profil dopočítaný na dané jeviště. Na 16:9 vrací TÝŽ objekt (identita), takže PC ve
+// fullscreenu je pixelově dnešní stav. Volá se z applyStage (game.js), výsledek jde do
+// App.layout → currentLayout(), ze kterého kreslí view/board.js i positions.js.
+function resolveLayout(profile, stage) {
+    const L = profile || LAYOUT_DESKTOP;
+    const st = stage || currentStage();
+    if (st.w === STAGE_BASE_W) return L;
+    return {
+        ...L,
+        handEndX: st.right - L.handEndMargin,
+        boardMaxPerRow: boardRowLimit(L, st),
+    };
 }
 // Profil, který právě platí. Mimo prohlížeč (testy, server) vždy desktopový.
 function currentLayout() {
@@ -133,7 +182,9 @@ function pickLayoutProfile(opts) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H,
+        CARD_ART_W, CARD_ART_H,
         computeStage, stageCoverSize,
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
+        resolveLayout, stretchAnchors, boardRowLimit,
     };
 }

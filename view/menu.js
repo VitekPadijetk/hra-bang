@@ -193,7 +193,8 @@ function menuBtn(x, y, label, color, hoverColor, w, h) {
 }
 
 function menuBackBtn(cb) {
-    const { bg } = themeButton(gameScene, 110, 56, 150, 54, '◀  Zpět', {
+    // Rohové tlačítko – kotví se k okraji JEVIŠTĚ (mimo 16:9 je plátno širší), ne k 0.
+    const { bg } = themeButton(gameScene, stageLeft() + 110, stageTop() + 56, 150, 54, '◀  Zpět', {
         fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum,
         stroke: THEME.color.borderNum, textColor: THEME.color.textMuted, fontSize: '22px',
         onClick: cb,
@@ -316,7 +317,7 @@ function renderMenuScreen(screen) {
             });
         });
 
-        const dbg = gameScene.add.text(1900, 1060, '⚙ DEBUG',
+        const dbg = gameScene.add.text(stageRight() - 20, stageBottom() - 20, '⚙ DEBUG',
             { fontFamily: THEME.fontUI, fontSize: '16px', color: THEME.color.textMuted, backgroundColor: 'rgba(0,0,0,0.5)', padding: { x: 8, y: 5 } })
             .setOrigin(1, 1).setInteractive({ useHandCursor: true });
         dbg.on('pointerup', () => { App.menuScreen = 'debug'; renderUI(); });
@@ -463,7 +464,7 @@ function renderMenuScreen(screen) {
             } : undefined,
         });
 
-        const dbg2 = gameScene.add.text(1900, 1060, '⚙ DEBUG',
+        const dbg2 = gameScene.add.text(stageRight() - 20, stageBottom() - 20, '⚙ DEBUG',
             { fontFamily: THEME.fontUI, fontSize: '16px', color: THEME.color.textMuted, backgroundColor: 'rgba(0,0,0,0.5)', padding: { x: 8, y: 5 } })
             .setOrigin(1, 1).setInteractive({ useHandCursor: true });
         dbg2.on('pointerup', () => { App.menuScreen = 'debug'; renderUI(); });

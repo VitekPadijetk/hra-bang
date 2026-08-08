@@ -1,8 +1,9 @@
 const { test, before, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    getPlayerPosition, getPlayerHandPos, getBoardCardPos, getDeadRoleCardPos, getOpponentAnchors,
+    getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
+const { computeStage, resolveLayout, LAYOUT_PROFILES } = require('../core/layout.js');
 
 // getPlayerHandPos/getBoardCardPos čtou globály state/myIndex (bare identifiers).
 // V prohlížeči jsou deklarované (let state = null) – v Node je proto držíme na null
@@ -156,4 +157,52 @@ test('getDeadRoleCardPos: sedí na místo, kde roli kreslí deska (slot před mo
 test('getBoardCardPos: bez stavu → střed', () => {
     global.state = null;
     assert.deepEqual(getBoardCardPos(0, 0), { x: 960, y: 540 });
+});
+
+// ── Širší jeviště než 16:9 (telefon na šířku, okno prohlížeče mimo fullscreen) ──
+// Rozložení se čte z App.layout/App.stage (v prohlížeči je nastaví applyStage).
+function withStage(vw, vh, fn) {
+    const stage = computeStage(vw, vh);
+    global.App = { stage, layout: resolveLayout(LAYOUT_PROFILES.desktop, stage) };
+    try { fn(stage, global.App.layout); } finally { delete global.App; }
+}
+
+test('široké jeviště: krajní soupeři se přilepí na okraj', () => {
+    withStage(1600, 800, (st) => {
+        const [left, right] = getOpponentAnchors(3);
+        assert.equal(left.x, st.left + 180);      // stejné odsazení od okraje jako dnes od kraje plátna
+        assert.equal(right.x, st.right - 180);
+        assert.equal(left.y, 540);                // svisle se nic nemění
+        assert.equal(right.side, 'right');
+    });
+});
+
+test('široké jeviště: ruka soupeře jde s kotvou, takže nezůstane v pruhu uprostřed', () => {
+    withStage(1600, 800, (st) => {
+        setWorld([{}, {}, {}], 0);
+        assert.deepEqual(getPlayerHandPos(1), { x: st.left + 180 - 148.5, y: 540 });
+    });
+});
+
+test('široké jeviště: moje ruka se roztáhne až k pravému okraji (menší překryv)', () => {
+    setWorld([{ health: 4, board: [] }], 0);
+    const base0 = getHandSlotPos(0, 0, 8), base1 = getHandSlotPos(0, 1, 8);
+    withStage(1600, 800, (st) => {
+        const wide0 = getHandSlotPos(0, 0, 8), wide7 = getHandSlotPos(0, 7, 8);
+        const wide1 = getHandSlotPos(0, 1, 8);
+        assert.equal(wide0.x, base0.x, 'začátek ruky zůstává u portrétu');
+        assert.ok(wide1.x - wide0.x > base1.x - base0.x, 'větší rozteč = menší překryv');
+        assert.ok(wide7.x < st.right, 'poslední karta zůstane na jevišti');
+        assert.ok(wide7.x > 1860, 'a využije i plochu za starým okrajem plátna');
+    });
+});
+
+test('široké jeviště: do řady mého stolu se vejde víc karet (sedmá už nepřeteče)', () => {
+    setWorld([{ health: 4, board: [] }], 0);
+    assert.equal(getBoardCardPos(0, 6).y, 780);      // dnes: druhý řádek výš
+    withStage(1600, 800, (st) => {
+        const first = getBoardCardPos(0, 0), seventh = getBoardCardPos(0, 6);
+        assert.equal(seventh.y, first.y, 'sedmá karta zůstane v prvním řádku');
+        assert.ok(seventh.x - (325 * 0.36) / 2 >= st.left, 'a nevyčuhuje z jeviště');
+    });
 });

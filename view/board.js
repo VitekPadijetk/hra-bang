@@ -1752,9 +1752,9 @@ function drawMyArea(ctx) {
             // Debug nástroje – sjednocený vzhled s herními tlačítky (themeButton). Levý
             // sloupec POD rohovým „Ukončit hru" (30..78), ať se nepřekrývají.
             const _dbgStyle = { origin: [0, 0], fontSize: '16px', textColor: THEME.color.gold };
-            themeButton(gameScene, 30, 90, 156, 42, '🃏 CREATIVE',
+            themeButton(gameScene, stageLeft() + 30, stageTop() + 90, 156, 42, '🃏 CREATIVE',
                 { ..._dbgStyle, onClick: () => showCreativeMode(myIndex) }).bg.setDepth(1000);
-            themeButton(gameScene, 30, 138, 156, 42, '🔎 KARTY',
+            themeButton(gameScene, stageLeft() + 30, stageTop() + 138, 156, 42, '🔎 KARTY',
                 { ..._dbgStyle, onClick: () => showCardGallery() }).bg.setDepth(1000);
         }
 }
