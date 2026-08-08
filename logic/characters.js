@@ -28,9 +28,10 @@ const CharactersMixin = {
     // ── Pravidlo „nejdřív doběhne efekt zahrané karty" ──────────────────────────
     // FAQ: „Musíte počkat na dokončení efektu naposledy zahrané karty, než budete moci
     // použít speciální schopnost své postavy nebo zahrát další kartu." U Suzy Lafayette
-    // se proto prázdná ruka posuzuje AŽ POTOM: líznutí z Úhybu/Bible, ukradená karta
-    // (Panika/Ragtime) i odměna za banditu jsou pořád součást té zahrané karty – po nich
-    // už prázdnou ruku nemá a schopnost se vůbec nespustí.
+    // se proto prázdná ruka posuzuje AŽ POTOM: líznutí z Úhybu/Bible i ukradená karta
+    // (Panika/Ragtime) jsou pořád součást té zahrané karty – po nich prázdnou ruku nemá
+    // a schopnost se vůbec nespustí. Naopak schopnost platí DŘÍV než odměna za banditu
+    // a než krádež El Gringa (ten jí tedy sebere právě líznutou kartu – přímo v pravidlech).
 
     // Vyhoď z fronty líznutí, které mezitím přestalo platit (karty už dostala / je mimo hru).
     _pruneSuzyQueue() {
@@ -40,18 +41,6 @@ const CharactersMixin = {
             const p = this.players[a.playerIdx];
             if (!p || p.health <= 0 || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
         }
-    },
-
-    // Běží ještě efekt karty, kterou Suzy zahrála? (čeká se na cizí reakci nebo cizí barel)
-    // Dokud běží, líznutí zůstane ve frontě – každá cesta z RESPOND/barelu končí voláním
-    // _processSpecialQueue, takže se k němu hra sama vrátí. Když je cílem ona sama (obrana
-    // proti Slabovi), schopnost platí hned: efekt JEJÍ karty (Vedle!) už doběhl.
-    _suzyEffectRunning(playerIdx) {
-        const pr = this.pendingResponse;
-        if (pr?.active && pr.targetIdx !== playerIdx) return true;
-        const pbc = this.pendingBarrelCheck;
-        if (pbc?.active && pbc.targetIdx !== playerIdx) return true;
-        return false;
     },
 
     // Vrací `true`, když se z fronty něco rozeběhlo (nebo běží lízání) – tedy když hra
@@ -66,18 +55,6 @@ const CharactersMixin = {
         // Herb Hunter + odměna za banditu). Po dokončení líznutí frontu dobere _resumeAfterSpecial
         // / _finishDraw (ty aktivní draw nastaví na false PŘED voláním, takže tenhle guard pustí).
         if (this.phase === "DRAW" && this.drawPhaseState?.active) return true;
-
-        // Suzy Lafayette: dokud efekt její karty běží, líznutí počká ve frontě. A když jí
-        // ten efekt ještě dluží karty (odměna za banditu, Úhyb), pustíme je před ní – po
-        // nich už prázdnou ruku mít nebude a _pruneSuzyQueue líznutí zahodí.
-        if (this.specialActionQueue[0].type === 'SUZY_DRAW') {
-            const suzyIdx = this.specialActionQueue[0].playerIdx;
-            if (this._suzyEffectRunning(suzyIdx)) return false;
-            if (this.specialActionQueue.some((a, i) => i > 0 && a.playerIdx === suzyIdx &&
-                    (a.type === 'KILL_REWARD' || a.type === 'UHYB_DRAW'))) {
-                this.specialActionQueue.push(this.specialActionQueue.shift());
-            }
-        }
 
         if (this.phase !== "BART_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW") {
             this.interruptedPhase = this.phase;
@@ -111,9 +88,9 @@ const CharactersMixin = {
     },
 
     _resumeAfterSpecial() {
-        // Ve frontě může zbýt jen odložené Suzyino líznutí (čeká na dokončení efektu) –
-        // pak se pokračuje, jako by byla prázdná. Jinak by hra zůstala viset ve fázi právě
-        // dokončené schopnosti (např. EL_GRINGO_STEAL uprostřed hromadného útoku).
+        // Řídí se tím, jestli se z fronty něco rozeběhlo – ne její délkou: _pruneSuzyQueue
+        // z ní může všechno vyházet (Suzy si mezitím kartu vzala z Úhybu) a hra by pak
+        // zůstala viset ve fázi právě dokončené schopnosti (UHYB_DRAW) bez obnovení fáze.
         if (this._processSpecialQueue()) {
             return;
         } else if (this._nextTurnAfterQueue) {

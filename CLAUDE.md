@@ -24,7 +24,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `logic/play.js` | **Mixin GameState.** Hraní karet: `playCard` (router efektů), `playBang`, `playSpecialCard` (Vězení/Cat Balou/Panika/Duel/Kulomet/Indiáni), `playBoardCard` (modré i zelené na stůl), `triggerBarrelDraw`, `startBarrelCheck`, `resolveCardSelection`, `_advanceMassAttack`, `waitForMissed`. |
 | `logic/combat.js` | **Mixin GameState.** Zranění a smrt: `handleDamage`, `handlePlayerDeath` (Vulture Sam, kill reward, šerif×pomocník), `sidSaveDiscard`, `takeDynamiteHit`. |
 | `logic/response.js` | **Mixin GameState.** Fáze RESPOND: `handleResponse` (Vedle!/Bang!, duel, hromadné útoky), záchrana posledního života `beerLastLifeSave`/`sidLastLifeSave`, `_advanceAfterLastLifeSave`. |
-| `logic/characters.js` | **Mixin GameState.** Schopnosti postav + fronta odložených akcí: `_processSpecialQueue`/`_resumeAfterSpecial`, `checkSuzyLafayette`/`suzyLafayetteDraw`, `bartCassidyDraw`, `elGringoSteal`, `sidKetchumDiscardOne`/`useSidKetchum`, `startLuckyDukeCheck`/`luckyDukePick` + **dělení karet mezi víc Vulture Samů** (`_nextVultureSplitPick`/`_advanceVultureSplit`/`_finishVultureSplit`, viz níže) a **pravidlo „nejdřív doběhne efekt zahrané karty"** (`_pruneSuzyQueue`/`_suzyEffectRunning`, viz níže). |
+| `logic/characters.js` | **Mixin GameState.** Schopnosti postav + fronta odložených akcí: `_processSpecialQueue`/`_resumeAfterSpecial`, `checkSuzyLafayette`/`suzyLafayetteDraw`, `bartCassidyDraw`, `elGringoSteal`, `sidKetchumDiscardOne`/`useSidKetchum`, `startLuckyDukeCheck`/`luckyDukePick` + **dělení karet mezi víc Vulture Samů** (`_nextVultureSplitPick`/`_advanceVultureSplit`/`_finishVultureSplit`, viz níže) a **pravidlo „nejdřív doběhne efekt zahrané karty"** (`_pruneSuzyQueue`, viz níže). |
 | `logic/checks.js` | **Mixin GameState.** Kontrolní líznutí na začátku tahu (Dynamit/Vězení) a vyhodnocení checků: `handleStartOfTurnChecks`, `triggerCheckDraw`, `_applyCheckResult` (Dynamit/Vězení/Barel/Jourdonnais), `resolveCheck`. |
 | `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (odkrytí události → její okamžitý efekt → Pravé poledne), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit`, **Daltonové** (`_startDaltons`/`_advanceDaltons`/`_resumeDaltons`/`_daltonsBlueCount`, viz níže) a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/`_turnStep`/**`_effSuit`**. `_turnStep()` = krok pro `nextTurn` (Zlatá horečka jede proti směru, tj. `players.length - 1`); **jediné místo, kde se směr obrací** – posun dynamitu, hokynářství, hromadné útoky, Rvačka i samotní Daltonové zůstávají po směru (FAQ H3). **Kocovina** nemá vlastní metodu: `_applyEventOnEnter` při KAŽDÉ výměně události přepíše všem hráčům `p._noAbility`, což čte `effectiveCharacter` (core/distance.js). `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí. **Město duchů**: `_teardownGhost()` (konec tahu ducha – volá ho `nextTurn` jako první krok, viz níže). **Přibalené karty** (`options.highNoonExtra`): `_dealSecondIdentities`/`_newIdentityOffer`/`resolveNewIdentity` (Nová identita) a `_startHandcuffs`/`chooseHandcuffsSuit`/`_suitBlocked` (Želízka). |
 | `server.js` | **Socket.IO bootstrap (~76 ř.).** Express/io setup → poskládá sdílený `ctx` (`require('./server/*')(ctx)` v pořadí rooms→gamelog→ledger→guard→intro→anim→lifecycle→bots) → `io.on('connection')` jen definuje per-connection `withRoom` a zavolá `register*Handlers(socket, ctx, withRoom)` → `server.listen`. Veškerá logika je v `server/*`. |
@@ -119,27 +119,23 @@ speciální schopnost své postavy nebo zahrát další kartu."** Platí to na o
   to týká **Suzy Lafayette** (prázdná ruka → líznutí): prázdná ruka se posuzuje **až po**
   dokončení efektu, protože jí ten efekt může karty vrátit.
 
-Řeší to `logic/characters.js`, dvě místa v `_processSpecialQueue`:
+Řeší to **`_pruneSuzyQueue()`** (`logic/characters.js`): před každým odbavením fronty
+(i na začátku `_resumeAfterSpecial`) zahodí čekající `SUZY_DRAW`, když už neplatí – hráč
+mezitím karty dostal, nebo je mimo hru. Líznutí z Úhybu/Bible (`UHYB_DRAW`) i krádež
+(Panika/Ragtime) totiž leží ve frontě PŘED ním, takže se odbaví dřív a Suzy pak prázdnou
+ruku nemá. Pokryto testy v `test/characters.test.js` (Úhyb jako poslední karta = **1 karta,
+ne 2**; Ragtime zaplacený poslední kartou = jen ukradená karta).
 
-1. **`_pruneSuzyQueue()`** – před každým odbavením fronty (i na začátku `_resumeAfterSpecial`)
-   zahodí čekající `SUZY_DRAW`, když už neplatí: hráč mezitím karty dostal (líznutí z Úhybu/
-   Bible, ukradená karta z Paniky/Ragtimu, odměna za banditu) nebo je mimo hru.
-2. **`_suzyEffectRunning(idx)`** – dokud se čeká na **cizí** reakci (`pendingResponse.active`
-   s jiným cílem) nebo **cizí** barel, zůstane `SUZY_DRAW` stát ve frontě. Hra se k němu
-   vrátí sama: každá cesta z `RESPOND`/barelu končí voláním `_processSpecialQueue`. Je-li
-   cílem ona sama (obrana proti Slabovi), líže si hned – efekt JEJÍ karty už doběhl.
-   Navíc: má-li ve frontě i akci, která jí karty teprve dá (`KILL_REWARD`, `UHYB_DRAW`),
-   pustí se ta první a `SUZY_DRAW` propadne (bod 1).
+**Kde se naopak nečeká:** schopnost jde PŘED odměnu za banditu (ta se vyhodnocuje až po
+postavě → Suzy lízne 1+3) a před krádež **El Gringa** – ten jí sebere právě líznutou kartu
+(je to přímo v pravidlech) a ruka se tím vyprázdní znovu, takže si líže podruhé. Stejně tak
+si líže hned uprostřed obrany proti Slabovi: efekt jejího Vedle! už doběhl.
 
-Dopady, které se tím srovnaly (a pokrývají je testy v `test/characters.test.js`):
-Úhyb/Bible jako poslední karta = **1 karta, ne 2**; Ragtime zaplacený poslední kartou =
-jen ukradená karta; posledním Bang! zabitý bandita = **3 karty, ne 3+1**; poslední Bang!
-na El Gringa = nemá co ukrást (Suzy si líže až po dojezdu).
-
-`_processSpecialQueue` proto **vrací `true`/`false`** („rozeběhlo se něco?"). `_resumeAfterSpecial`
-se podle toho rozhoduje – dřív stačilo „fronta není prázdná", jenže s odloženým `SUZY_DRAW`
-by hra zůstala viset ve fázi právě dokončené schopnosti (např. `EL_GRINGO_STEAL` uprostřed
-hromadného útoku).
+`_processSpecialQueue` proto **vrací `true`/`false`** („rozeběhlo se něco?") a
+`_resumeAfterSpecial` se řídí tím, ne délkou fronty. Po vyházení neplatného `SUZY_DRAW`
+totiž fronta zbyde prázdná – s původní podmínkou „fronta není prázdná" by se hra vrátila
+z `_processSpecialQueue` bez obnovení fáze a zůstala viset ve fázi právě dokončené
+schopnosti (po Úhybu v `UHYB_DRAW`).
 
 ## Kompaktní soupeři (mobilní profil rozložení)
 

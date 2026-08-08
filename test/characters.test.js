@@ -111,7 +111,8 @@ test('Suzy: Úhyb uprostřed obrany proti Slabovi → taky jen 1 karta a obrana 
     assert.equal(g.players[1].hand[0].name, 'z Úhybu');
 });
 
-test('Suzy: posledním Bang! zabije banditu → jen 3 karty za banditu (ne 3+1)', () => {
+// Odměna za banditu se vyhodnocuje AŽ PO schopnosti postavy → Suzy lízne 1 + 3.
+test('Suzy: posledním Bang! zabije banditu → schopnost první, pak 3 karty za banditu', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette' },
                       { role: 'Outlaw', health: 1 },
                       { role: 'Outlaw' }]);
@@ -119,33 +120,44 @@ test('Suzy: posledním Bang! zabije banditu → jen 3 karty za banditu (ne 3+1)'
     g.deck.cards = [mkCard(CardType.BEER), mkCard(CardType.BEER), mkCard(CardType.BEER), mkCard(CardType.BEER)];
 
     g.playBang(0, 1, bang);
-    // Efekt Bang! ještě běží (cíl se brání) → schopnost se zatím nespustí.
+    assert.equal(g.phase, 'SUZY_DRAW');       // schopnost hned po zahrání karty
+    g.suzyLafayetteDraw(0);
+    assert.equal(g.players[0].hand.length, 1);
     assert.equal(g.phase, 'RESPOND');
 
     g.handleResponse(1, null);                // bandita schytal zásah a umírá
     assert.equal(g.players[1].health, 0);
-    assert.equal(g.phase, 'DRAW');            // odměna za banditu jde první
+    assert.equal(g.phase, 'DRAW');            // teprve teď odměna za banditu
     g.drawCard('deck'); g.drawCard('deck'); g.drawCard('deck');
 
-    assert.equal(g.players[0].hand.length, 3);   // jen odměna, schopnost se nespustila
+    assert.equal(g.players[0].hand.length, 4);   // 1 ze schopnosti + 3 za banditu
     assert.equal(g.phase, 'PLAY');
     assert.equal(g.specialActionQueue.length, 0);
 });
 
-test('Suzy: poslední Bang! na El Gringa → nemá co ukrást, Suzy si lízne až potom', () => {
+// El Gringo je přímo v pravidlech: krade z ruky toho, kdo ho zranil – a to je až po
+// Suzyině líznutí, takže mu padne do ruky právě ta líznutá karta.
+test('Suzy: poslední Bang! na El Gringa → lízne si hned a El Gringo jí kartu sebere', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette' },
                       { role: 'Outlaw', character: 'El Gringo', health: 2 }]);
     const bang = give(g, 0, CardType.BANG);   // Suzyina JEDINÁ karta
-    g.deck.cards = [mkCard(CardType.BEER, { name: 'Suzyina' })];
+    g.deck.cards = [mkCard(CardType.BEER, { name: 'druhá' }), mkCard(CardType.BEER, { name: 'Suzyina' })];
 
     g.playBang(0, 1, bang);
-    g.handleResponse(1, null);                // zásah → El Gringo krade z prázdné ruky
-    assert.equal(g.phase, 'SUZY_DRAW');       // efekt Bang! doběhl, teprve teď schopnost
-
+    assert.equal(g.phase, 'SUZY_DRAW');
     g.suzyLafayetteDraw(0);
-    assert.equal(g.players[0].hand.length, 1);
-    assert.equal(g.players[0].hand[0].name, 'Suzyina');   // El Gringo jí ji nesebral
-    assert.equal(g.players[1].hand.length, 0);
+    assert.equal(g.players[0].hand[0].name, 'Suzyina');
+
+    g.handleResponse(1, null);                // zásah → El Gringo krade
+    assert.equal(g.phase, 'EL_GRINGO_STEAL');
+    g.elGringoSteal(1);
+    assert.equal(g.players[1].hand.length, 1);
+    assert.equal(g.players[1].hand[0].name, 'Suzyina');   // sebral právě líznutou
+
+    // Ruka je zase prázdná → schopnost se spustí znovu.
+    assert.equal(g.phase, 'SUZY_DRAW');
+    g.suzyLafayetteDraw(0);
+    assert.equal(g.players[0].hand[0].name, 'druhá');
     assert.equal(g.phase, 'PLAY');
 });
 
