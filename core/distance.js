@@ -21,11 +21,12 @@ function effectiveCharacter(player) {
 }
 
 // High Noon – Město duchů (`_ghost`): vyřazený hráč se na JEDEN svůj tah vrací do hry.
-// Zůstává na 0 životech (aby ho pravidla o životech dál braly jako mrtvého – nejde léčit
-// a nemůže umřít), ale po dobu svého tahu sedí zase v kole: má vzdálenost, může cílit
-// i být cílen a počítá se do hokynářství. Tenhle helper je jediný test „je ve hře";
-// prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger,
-// záchrana posledního života). Příznak drží jen po dobu svého tahu (viz _teardownGhost).
+// Nastupuje s 0 životy, ale po dobu svého tahu sedí zase v kole: má vzdálenost, může cílit
+// i být cílen, počítá se do hokynářství a **léčit se smí** (naléčené životy pak utratí
+// třeba Chuck Wengam; umřít stejně nemůže – viz handleDamage). Tenhle helper je jediný
+// test „je ve hře"; prosté `health > 0` zůstává tam, kde jde o skutečný život (Greg
+// Digger, záchrana posledního života). Příznak drží jen po dobu svého tahu (_teardownGhost,
+// který duchovi zároveň vrátí životy na nulu).
 function isInPlay(player) {
     return !!player && (player.health > 0 || !!player._ghost);
 }

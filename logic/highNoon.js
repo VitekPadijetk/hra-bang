@@ -211,6 +211,10 @@ const HighNoonMixin = {
         const g = this.players[idx];
         if (!g || !g._ghost) return false;
         g._ghost = false;
+        // Co si duch během tahu naléčil, tu končí. Normálně to shodí už tryEndTurn (ještě
+        // před limitem karet), tady je to pojistka pro každou jinou cestu ke konci tahu –
+        // vyřazený hráč musí mít nulu, jinak by ho `health > 0` počítalo za živého.
+        g.health = 0;
 
         const weapon = (g.weapon && g.weapon.id !== -1) ? [g.weapon] : [];
         const leftCount = g.hand.length + g.board.length + weapon.length;

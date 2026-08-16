@@ -57,8 +57,9 @@ module.exports = function installRoomService(ctx) {
 
         const players = (gs.players || []).map((p, i) => {
             if (i === viewerIdx) return p;
-            // Duch (Město duchů) má health 0 a roli odhalenou od svého vyřazení.
-            const roleVisible = p.role === 'Sheriff' || p.health <= 0;
+            // Duch (Město duchů) má roli odkrytou od svého vyřazení – i ve chvíli, kdy si
+            // během svého tahu naléčil životy (a `health <= 0` tedy neplatí).
+            const roleVisible = p.role === 'Sheriff' || p.health <= 0 || !!p._ghost;
             return {
                 ...p,
                 role: roleVisible ? p.role : null,

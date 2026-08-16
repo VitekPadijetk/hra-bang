@@ -226,8 +226,9 @@ const CharactersMixin = {
     sidKetchumDiscardOne(playerIdx, cardIdx) {
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
-        // Mrtvý (i duch při Městě duchů) se neléčí – jinak by se dvěma kartami „obživl".
-        if (p.health <= 0 || p.health >= p.maxHealth) return;
+        // Mrtvý se neléčí – jinak by se dvěma kartami „obživl". Duch (Město duchů) ve hře
+        // je, takže se léčit smí (na konci svého tahu o to stejně přijde).
+        if (!isInPlay(p) || p.health >= p.maxHealth) return;
         if (!p.hand[cardIdx]) return;
 
         const card = p.hand.splice(cardIdx, 1)[0];
@@ -237,7 +238,7 @@ const CharactersMixin = {
         if (!this.sidKetchumPending) {
             this.sidKetchumPending = { playerIdx };
         } else if (this.sidKetchumPending.playerIdx === playerIdx) {
-            p.health = Math.min(p.health + 1, p.maxHealth);
+            this._heal(p, 1);
             this.sidKetchumPending = null;
         }
     },
@@ -276,13 +277,13 @@ const CharactersMixin = {
     useSidKetchum(playerIdx, cardIndices) {
         let p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
-        if (p.health <= 0 || p.health >= p.maxHealth) return;   // duch (Město duchů) se neléčí
+        if (!isInPlay(p) || p.health >= p.maxHealth) return;   // duch (Město duchů) se léčit smí
         if (cardIndices.length !== 2) return;
         cardIndices.sort((a, b) => b - a);
         if (new Set(cardIndices).size !== 2) return;
         this.deck.discardPile.push(p.hand.splice(cardIndices[0], 1)[0]);
         this.deck.discardPile.push(p.hand.splice(cardIndices[1], 1)[0]);
-        p.health++;
+        this._heal(p, 1);
         this.checkSuzyLafayette(p);
     },
 

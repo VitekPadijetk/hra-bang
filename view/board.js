@@ -398,7 +398,10 @@ function drawOpponents(ctx) {
         if (player.board) allBoardCards.push(...player.board);
 
         const deadRoleMap = { 'Sheriff': 'role_000', 'Outlaw': 'role_001', 'Renegade': 'role_002', 'Deputy': 'role_003' };
-        const isDead = player.health <= 0;
+        // Duch (Město duchů) má roli odkrytou od svého vyřazení – i když si během svého
+        // tahu naléčí životy, karta role mu ze stolu zmizet nesmí (`_ghost` proto zůstává
+        // „mrtvý" pro slot role; cílení a interakci řeší `isDead && !player._ghost` níž).
+        const isDead = player.health <= 0 || !!player._ghost;
         // Cinematika vyřazení (core/deathAnim.js): dokud hráč klesá na nulu a odhazuje
         // karty, kreslí se jeho místo pořád ještě BEZ karty role – ta se odhaluje až
         // nakonec. Ve fázi 'settled' je slot role rezervovaný (postava se k němu posune),
@@ -440,7 +443,7 @@ function drawOpponents(ctx) {
                 selectedState.action === 'DE_HEAL' ? 'heal' : null;
             const deValid = !deMode ? false : (deMode === 'bang'
                 ? player.health > 0
-                : (player.health > 0 && player.health < player.maxHealth));
+                : (isInPlay(player) && player.health < player.maxHealth));   // duch (Město duchů) se léčit smí
             const canActuallyTarget = (
                 (isShoot && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ||
                 isDuel ||
@@ -1354,7 +1357,7 @@ function drawMyArea(ctx) {
                 } else if (card.bangEffect && card.range === 'mass') {
                     ok = state.players.some((pl, idx) => idx !== myIndex && pl.health > 0);
                 } else if (card.activate === 'heal_self') {
-                    ok = me.health > 0 && me.health < me.maxHealth;   // duch se neléčí
+                    ok = isInPlay(me) && me.health < me.maxHealth;   // duch se léčit smí
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
                     // Cíl může být soupeř (má kartu) NEBO já sám (moje karta na stole – mimo
                     // tuhle aktivovanou zelenou), pravidla umožňují cílit i na sebe.
@@ -1692,7 +1695,7 @@ function drawMyArea(ctx) {
         state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidCanHeal = effectiveCharacter(me) === "Sid Ketchum" &&
                 me.hand.filter(c => !c._placeholder).length >= 2 &&
-                me.health > 0 && me.health < me.maxHealth;
+                isInPlay(me) && me.health < me.maxHealth;
             // Zelená karta na mém stole, kterou lze teď aktivovat, se počítá jako
             // hratelná akce (blikání „Ukončit tah" pak nemá smysl). Zrcadlí `ok`-logiku
             // aktivace zelených karet výše v drawMyArea.
@@ -1706,7 +1709,7 @@ function drawMyArea(ctx) {
                 } else if (card.bangEffect && card.range === 'mass') {
                     return state.players.some((pl, idx) => idx !== myIndex && pl.health > 0);
                 } else if (card.activate === 'heal_self') {
-                    return me.health > 0 && me.health < me.maxHealth;   // duch se neléčí
+                    return isInPlay(me) && me.health < me.maxHealth;   // duch se léčit smí
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
                     return state.players.some((pl, idx) => idx !== myIndex && pl.health > 0 &&
                         (pl.hand.length > 0 || (pl.weapon && pl.weapon.id !== -1) || (pl.board || []).length > 0));
@@ -1759,7 +1762,7 @@ function drawMyArea(ctx) {
             }
         }
 
-        if (effectiveCharacter(me) === "Sid Ketchum" && me.hand.length >= 2 && me.health > 0 && me.health < me.maxHealth
+        if (effectiveCharacter(me) === "Sid Ketchum" && me.hand.length >= 2 && isInPlay(me) && me.health < me.maxHealth
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE', 'NOON_DAMAGE'].includes(state.phase)
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
@@ -1858,7 +1861,7 @@ function drawSpectatorPlayer(ctx) {
 
         const player = me;
         const isCurrent = state.currentPlayerIndex === 0;
-        const isDead = player.health <= 0;
+        const isDead = player.health <= 0 || !!player._ghost;   // duch: role zůstává odkrytá (viz drawOpponents)
         const sOpp = L.specScale;
         const cW = 325 * sOpp;
         const cH = 500 * sOpp;

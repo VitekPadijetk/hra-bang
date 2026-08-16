@@ -899,19 +899,83 @@ test('Město duchů: duch nemůže během svého tahu umřít', () => {
     assert.equal(g.winner, null);
 });
 
-test('Město duchů: duch se nedá vyléčit Pivem ani Sidem Ketchumem', () => {
+// Duch je ve hře, takže se léčit MŮŽE (na kartě Města duchů žádný zákaz léčení není).
+// Naléčené životy pak smí utratit postava, která za dobrovolnou ztrátu života profituje
+// (Chuck Wengam); na konci tahu o ně stejně přijde.
+test('Město duchů: duch se vyléčí Pivem i Sidem Ketchumem', () => {
     const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Sid Ketchum', health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
     g.players[1]._ghost = true;
     g.currentPlayerIndex = 1;
     g.phase = 'PLAY';
     const beer = give(g, 1, CardType.BEER);
     g.playCard(beer);
-    assert.equal(g.players[1].health, 0, 'duch neožije');
-    assert.equal(g.players[1].hand.length, 1, 'nezahrané Pivo zůstává v ruce');
+    assert.equal(g.players[1].health, 1, 'Pivo duchovi život přidá');
+    assert.equal(g.players[1].hand.length, 0, 'Pivo se zahrálo');
+    give(g, 1, CardType.BANG);
     give(g, 1, CardType.BANG);
     g.useSidKetchum(1, [0, 1]);
+    assert.equal(g.players[1].health, 2);
+    assert.equal(g.players[1].hand.length, 0, 'Sid odhodil obě karty');
+});
+
+test('Město duchů: Salón vyléčí i ducha', () => {
+    const g = mkHnGame([{ role: 'Sheriff', health: 2 }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    const saloon = give(g, 1, CardType.SALOON);
+    g.playCard(saloon);
+    assert.equal(g.players[1].health, 1, 'duch je zraněný hráč ve hře');
+    assert.equal(g.players[0].health, 3);
+});
+
+test('Město duchů: naléčený duch pořád nemůže umřít – zásah ho srazí jen na nulu', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { role: 'Outlaw', health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.players[1].health = 1;
+    g.currentPlayerIndex = 1;
+    g.handleDamage(1, 0);
     assert.equal(g.players[1].health, 0);
-    assert.equal(g.players[1].hand.length, 2, 'Sid nic neodhodil');
+    assert.equal(g.players[1]._ghost, true, 'duch zůstává ve hře až do konce svého tahu');
+    assert.equal(g.winner, null);
+    g.handleDamage(1, 0);
+    assert.equal(g.players[1].health, 0, 'na nule už nemá co ztratit');
+    assert.equal(g.players[1]._ghost, true);
+});
+
+// Duch je platný cíl (dostřel i klikatelnost ho pouštějí – isInPlay), jen ho zásah
+// nevyřadí. Bez toho by server Bang! na ducha tiše zahodil.
+test('Město duchů: na ducha se dá vystřelit, zásah ho jen zraní', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.players[1]._ghost = true;
+    g.players[1].health = 2;
+    g.currentPlayerIndex = 0;
+    const bang = give(g, 0, CardType.BANG);
+    g.playBang(0, 1, bang);
+    assert.equal(g.phase, 'RESPOND', 'duch se brání jako každý jiný');
+    assert.equal(g.pendingResponse.targetIdx, 1);
+    g.handleResponse(1, null);
+    assert.equal(g.players[1].health, 1);
+    assert.equal(g.players[1]._ghost, true);
+});
+
+test('Město duchů: naléčené životy duch na konci tahu ztrácí (a odhodí celou ruku)', () => {
+    const g = mkHnGame([{ role: 'Sheriff' }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
+    g.eventDeck = [];
+    g.players[1]._ghost = true;
+    g.players[1].health = 3;
+    g.currentPlayerIndex = 1;
+    g.phase = 'PLAY';
+    give(g, 1, CardType.BANG);
+    give(g, 1, CardType.BANG);
+    g.tryEndTurn();
+    assert.equal(g.players[1].health, 0, 'životy padají na nulu ještě před limitem karet');
+    assert.equal(g.phase, 'DISCARD', 'limit karet = 0 → odhazuje celou ruku');
+    g.discardCard(0);
+    g.discardCard(0);
+    assert.equal(g.currentPlayerIndex, 2);
+    assert.ok(!g.players[1]._ghost);
+    assert.equal(g.players[1].health, 0);
 });
 
 test('Město duchů: konec tahu ducha – karty ze stolu do odhozu', () => {
@@ -987,13 +1051,18 @@ test('Město duchů: duch se počítá do hokynářství', () => {
     assert.equal(g.storePickerIndex, 2);
 });
 
-test('Město duchů: duch Chuck Wengam schopnost použít nemůže (FAQ X5)', () => {
+test('Město duchů: duch Chuck Wengam nemá co ztratit, dokud se nevyléčí', () => {
     const g = mkHnGame([{ role: 'Sheriff' }, { character: 'Chuck Wengam', health: 0 }, {}], { event: 'MESTO_DUCHU' });
     g.players[1]._ghost = true;
     g.currentPlayerIndex = 1;
     g.phase = 'PLAY';
-    assert.equal(g.useChuckWengam(1), false);
+    assert.equal(g.useChuckWengam(1), false, 'na nule (i na jednom životě) schopnost nejde');
     assert.equal(g.players[1].health, 0);
+    // Naléčený duch schopnost použít smí – přesně kvůli tomu se léčit může.
+    g.players[1].health = 2;
+    assert.equal(g.useChuckWengam(1), true);
+    assert.equal(g.players[1].health, 1);
+    assert.equal(g.phase, 'DRAW', 'lízne si 2 karty');
 });
 
 test('Město duchů: zabije-li duch šerifa, počítá se za živého (FAQ H7)', () => {

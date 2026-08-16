@@ -35,15 +35,17 @@ const PlayMixin = {
                 // High Noon – Reverend: po celé kolo nejde zahrát Pivo (Salón ano, FAQ H1).
                 if (this._beerBlocked()) return false;
                 // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
-                // Přes _heal, který ohlídá i to, že mrtvý (duch při Městě duchů) se
-                // neléčí – Pivo se pak vůbec nezahraje.
+                // Přes _heal, který ohlídá i to, že mrtvého léčit nejde (duch při Městě
+                // duchů ale ano) – jinak se Pivo vůbec nezahraje.
                 const gain = effectiveCharacter(player) === "Tequila Joe" ? 2 : 1;
                 return this._heal(player, gain) > 0;
             },
             [CardType.SALOON]: () => {
-                const anyDamaged = this.players.some(p => p.health > 0 && p.health < p.maxHealth);
+                // Léčí každého VE HŘE – při Městě duchů (High Noon) tedy i ducha, který si
+                // zrovna odbývá svůj tah (isInPlay, ne health > 0).
+                const anyDamaged = this.players.some(p => isInPlay(p) && p.health < p.maxHealth);
                 if (!anyDamaged) return false;
-                this.players.forEach(p => { if (p.health > 0 && p.health < p.maxHealth) p.health++; });
+                this.players.forEach(p => { this._heal(p, 1); });
                 return true;
             },
             [CardType.STAGECOACH]: () => {
@@ -99,7 +101,10 @@ const PlayMixin = {
         const target = this.players[targetIdx];
         const card = attacker?.hand[cardIdx];
         if (!attacker || !target || !card) return;
-        if (target.health <= 0) return;
+        // Cílem je každý VE HŘE – duch (Město duchů) v ní na svůj tah je, takže se na něj
+        // střílet dá (jen umřít nemůže, viz handleDamage). Dostřel i klikatelnost cíle ho
+        // pouštějí (computeCanHit/isInPlay), takže bez tohohle server Bang! tiše zahodil.
+        if (!isInPlay(target)) return;
         if (this._suitBlocked(attackerIdx, card)) return;   // High Noon – Želízka
 
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův

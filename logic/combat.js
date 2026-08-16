@@ -17,8 +17,14 @@ const CombatMixin = {
 
         if (target.health <= 0) {
             target.health = 0;
-            this.handlePlayerDeath(targetIdx);
-            return;
+            // High Noon – Město duchů: duch během svého tahu umřít nemůže. Zásah mu život
+            // sebere (klidně i ten, který si naléčil), ale srazí ho jen na nulu – tam už
+            // ho další zásahy míjejí (early return nahoře). Schopnosti za ztrátu života
+            // (Bart Cassidy, El Gringo) se pod tím spustí normálně.
+            if (!target._ghost) {
+                this.handlePlayerDeath(targetIdx);
+                return;
+            }
         }
 
         if (effectiveCharacter(target) === "Bart Cassidy") {

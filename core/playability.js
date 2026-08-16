@@ -12,6 +12,10 @@ if (typeof require === 'function') {
         if (typeof bangEffectReach === 'undefined') globalThis.bangEffectReach = __d.bangEffectReach;
         if (typeof effectiveCharacter === 'undefined') globalThis.effectiveCharacter = __d.effectiveCharacter;
     }
+    // Samostatný guard: kdo načte distance.js dřív (botPolicy), doplní si jen část globálů.
+    if (typeof isInPlay === 'undefined') {
+        globalThis.isInPlay = require('./distance.js').isInPlay;
+    }
     if (typeof isResponseTurn === 'undefined') {
         const __ph = require('./phaseInfo.js');
         globalThis.isResponseTurn = __ph.isResponseTurn;
@@ -69,9 +73,10 @@ function cardPlayability(state, me, myIndex, card) {
         // pro cílené efekty musí existovat smysluplný cíl (jinak by se nic nestalo).
         if (card.discardExtra) {
             if (me.hand.length < 2) return false;
-            // Duch (Město duchů, High Noon) má 0 životů a léčit se nemůže → nemá co získat.
-            if (card.discardExtra === 'heal_self_2') return me.health > 0 && me.health < me.maxHealth;
-            if (card.discardExtra === 'heal_any') return state.players.some(p => p.health > 0 && p.health < p.maxHealth);
+            // Léčit lze každého VE HŘE – duch (Město duchů, High Noon) v ní na svůj tah je,
+            // takže i jeho (isInPlay, ne health > 0).
+            if (card.discardExtra === 'heal_self_2') return isInPlay(me) && me.health < me.maxHealth;
+            if (card.discardExtra === 'heal_any') return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
             if (card.discardExtra === 'bang_any') return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
             if (card.discardExtra === 'steal_any') return state.players.some((p, idx) =>
                 idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0))
@@ -101,10 +106,10 @@ function cardPlayability(state, me, myIndex, card) {
             if (beerBlockedFor(state)) return false;   // Reverend (High Noon)
             const aliveCount = state.players.filter(p => p.health > 0).length;
             if (aliveCount <= 2) return false;
-            if (me.health <= 0 || me.health >= me.maxHealth) return false;   // duch se neléčí
+            if (!isInPlay(me) || me.health >= me.maxHealth) return false;   // duch se léčit smí
             return true;
         }
-        if (card.type === "Salon") return state.players.some(p => p.health > 0 && p.health < p.maxHealth);
+        if (card.type === "Salon") return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
         if (["Zbraň","Barel","Vybavení","Dynamit"].includes(card.type)) {
             if (card.type === "Zbraň") { if (me.weapon?.id !== -1 && me.weapon?.name === card.name) return false; }
             else { if ((me.board||[]).some(c => c.name === card.name)) return false; }

@@ -23,8 +23,9 @@ const DodgeCityMixin = {
 
         // Validace zvoleného cíle podle efektu (neplatný cíl → nic se nestane).
         if (effect === 'heal_any') {
+            // Tequila léčí kohokoli VE HŘE – duch (Město duchů) v ní na svůj tah je.
             const t = this.players[target?.targetIdx];
-            if (!t || t.health <= 0) return;
+            if (!isInPlay(t)) return;
         } else if (effect === 'bang_any') {
             const t = this.players[target?.targetIdx];
             if (!t || t.health <= 0 || target.targetIdx === pIdx) return;
@@ -85,7 +86,7 @@ const DodgeCityMixin = {
     _dispatchDiscardExtraEffect(playerIdx, effect, target, mainName = null) {
         const player = this.players[playerIdx];
         if (effect === 'heal_self_2') {
-            // Whisky: +2 sobě (do maxima). Přes _heal: mrtvý (duch při Městě duchů) se neléčí.
+            // Whisky: +2 sobě (do maxima). Přes _heal: mrtvý se neléčí, duch (Město duchů) ano.
             this._heal(player, 2);
             this.phase = "PLAY";
             this._processSpecialQueue();
@@ -93,7 +94,7 @@ const DodgeCityMixin = {
             // Tequila: +1 zvolenému hráči. Je to efekt „vyléčit život", ne Pivo → i
             // Tequila Joe dostane jen +1 jako kdokoli jiný.
             const t = this.players[target?.targetIdx];
-            if (t && t.health > 0) t.health = Math.min(t.health + 1, t.maxHealth);
+            this._heal(t, 1);
             this.phase = "PLAY";
             this._processSpecialQueue();
         } else if (effect === 'bang_any') {
@@ -236,8 +237,9 @@ const DodgeCityMixin = {
 
         const eff = card.activate;
         if (eff === 'heal_self') {                       // Čutora – +1 sobě (efekt, ne Pivo)
-            // Duch (Město duchů) se neléčit nemůže → karta se ani neaktivuje.
-            if (player.health <= 0 || player.health >= player.maxHealth) return;
+            // Na plných životech (a mimo hru) se karta neaktivuje – neměla by co udělat.
+            // Duch (Město duchů) ve hře je, takže se jím vyléčit může.
+            if (!isInPlay(player) || player.health >= player.maxHealth) return;
             discardAndTrack();
             this._heal(player, 1);
             this.checkSuzyLafayette(player);

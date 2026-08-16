@@ -27,6 +27,10 @@ if (typeof require === 'function') {
         globalThis.bangEffectReach = __d.bangEffectReach;
         globalThis.effectiveCharacter = __d.effectiveCharacter;
     }
+    // Samostatný guard – viz stejná poznámka u suitBlockedFor níž.
+    if (typeof isInPlay === 'undefined') {
+        globalThis.isInPlay = require('./distance.js').isInPlay;
+    }
     if (typeof cardPlayability === 'undefined') {
         globalThis.cardPlayability = require('./playability.js').cardPlayability;
     }
@@ -335,7 +339,7 @@ function decidePlay(state, myIndex, beliefs) {
         }
         if (action === 'DE_HEAL') { // Tequila: +1 sobě nebo zraněnému spojenci
             let tIdx = null;
-            if (me.health > 0 && me.health < me.maxHealth) tIdx = myIndex;   // duch se neléčí
+            if (isInPlay(me) && me.health < me.maxHealth) tIdx = myIndex;   // duch se léčit smí
             else {
                 const ally = state.players.findIndex((p, idx) => idx !== myIndex && p.health > 0
                     && p.health < p.maxHealth && hostilityOf(state, myIndex, idx, beliefs) < -ENEMY_EPS);
@@ -432,9 +436,9 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
         if (card.activate === 'heal_self') {
-            // Duch (Město duchů) se neléčí – server by kartu neaktivoval a bot by ji
-            // vybíral pořád dokola (stav by se nezměnil = zaseknutá hra).
-            if (me.health > 0 && me.health < me.maxHealth) consider(me.health <= 2 ? 28 : 8, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
+            // Mimo hru (mrtvý) by server kartu neaktivoval a bot by ji vybíral pořád dokola
+            // (stav by se nezměnil = zaseknutá hra). Duch (Město duchů) ve hře je.
+            if (isInPlay(me) && me.health < me.maxHealth) consider(me.health <= 2 ? 28 : 8, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
             return;
         }
         if (card.activate === 'draw_3') {

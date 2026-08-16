@@ -253,20 +253,34 @@ Recykluje se sekvenční výběr Rvačky, jen `attackerIdx === targetIdx`: hrá�
 Vyřazení hráči se na svůj tah vracejí jako duchové: líznou si **3 karty**, během svého
 tahu **nemohou umřít** a na konci tahu jsou zase vyřazeni.
 
-Model: hráč zůstane na `health = 0` a dostane `player._ghost = true`. Díky nulovým životům
-platí zadarmo všechno, co se váže na skutečný život – **neléčí se** (`_heal` mrtvého
-odmítá) a **handleDamage na něm rovnou vypadne**, takže „nemůže umřít" není zvláštní větev.
+Model: hráč nastoupí s `health = 0` a `player._ghost = true`, **ale životy se mu během tahu
+hýbat můžou**: duch je ve hře, takže se **léčí jako kdokoli jiný** (Pivo, Salón, Whisky,
+Čutora, Tequila, Sid Ketchum). Je to kvůli postavám, které za dobrovolnou ztrátu života
+profitují – naléčené životy pak smí utratit **Chuck Wengam**. Na kartě události žádný zákaz
+léčení není; „nemohou umřít" je proto jediné, co se musí hlídat zvlášť:
+
+- **`_heal` (logic.js) se ptá přes `isInPlay`**, ne `health > 0` – to je jediný trychtýř
+  léčení (Salón, Tequila i Sid jím prošly, aby se pravidlo nedublovalo).
+- **`handleDamage` (logic/combat.js)**: zásah ducha srazí nejvýš na nulu a `handlePlayerDeath`
+  se pro `_ghost` NEvolá; na nule ho další zásahy míjejí (early return `health <= 0`).
+  Schopnosti za ztrátu života (Bart Cassidy, El Gringo) běží normálně.
+- **Konec tahu**: `tryEndTurn` (logic.js) shodí duchovi životy na 0 **ještě před limitem
+  karet**, takže dál platí „klasika" – limit = 0 → odhodí celou ruku (FAQ H8). Pojistkou
+  pro každou jinou cestu ke konci tahu je stejné vynulování v `_teardownGhost`
+  (vyřazený hráč MUSÍ mít nulu, jinak by ho `health > 0` počítalo za živého).
 
 Kdo je „ve hře" se ptá přes **`isInPlay(p)`** (core/distance.js) = `health > 0 || _ghost`:
 vzdálenost (`computeDistance` – bez toho by duch neměl na koho střílet), hokynářství
-(`openStore`/`pickFromStore`), hromadné útoky, Rvačka, Vězení a Vulture Sam. Prosté
-`health > 0` zůstává tam, kde jde o životy (Salón, Doktor, Greg Digger, poslední život).
+(`openStore`/`pickFromStore`), hromadné útoky, **cíl Bang!** (`playBang`), Rvačka, Vězení,
+Vulture Sam a **všechno léčení**. Prosté `health > 0` zůstává tam, kde jde o skutečný
+život (Doktor, Greg Digger, poslední život).
 
 1. **Nástup** – `nextTurn` (logic.js): při `hasEvent('MESTO_DUCHU')` se mrtví v pořadí
    **nepřeskakují** a nastupující mrtvý dostane `_ghost = true`. Událost se mění jen na
    šerifově tahu (uvnitř `_beginTurn`), takže v tomhle bodě už platí ta správná.
 2. **Tah** – běžný: `_drawCountFor` dá duchovi základ 3 (Pixie Pete 4, Bill Noface 5 –
    FAQ X3), limit karet na konci tahu je 0 životů, takže odhodí celou ruku (FAQ H8).
+   Léčit se smí (viz model výš); Pravé poledne ho míjí, protože do tahu nastupuje s nulou.
 3. **Odchod** – `_teardownGhost()` (logic/highNoon.js) volaný jako **první krok
    `nextTurn`**: co zbylo na stole sebere Vulture Sam (víc Samů → existující dělení
    `pendingVultureSplit` s `isGhost: true`, tedy bez odhalení role), jinak to jde do
@@ -284,11 +298,15 @@ vzdálenost (`computeDistance` – bez toho by duch neměl na koho střílet), h
    teprve STAV, a ten stojí ve frontě až za odkrytím karty High Noon (~7 s), protože duch
    bývá poslední před šerifem. Bez čekání se odložené karty na tu dobu vrátily na stůl
    a zmizely až během odkrývání události.
-6. **Klient** – duch se kreslí jako hráč na tahu s nulou životů: `drawMyArea` mu vykreslí
-   vlastní stůl (`me._ghost`) a `addCharInteraction` ho nepřeskočí jako mrtvého.
-   Zrcadla „duch se neléčí" jsou v `core/playability.js` (Pivo, Whisky), `view/board.js`
-   (Čutora, Sid) a `core/botPolicy.js` – **bez nich by bot vybíral akci, kterou server
-   odmítne, a hra by se zasekla** (stav se nezmění → stejná akce znovu).
+6. **Klient** – duch se kreslí jako hráč na tahu (`drawMyArea` mu vykreslí vlastní stůl
+   přes `me._ghost`, `addCharInteraction` ho nepřeskočí jako mrtvého). Zrcadla „ve hře je,
+   takže se léčí" jsou v `core/playability.js` (Pivo, Salón, Whisky/Tequila), `view/board.js`
+   (Čutora, Sid, cíl Tequily) a `core/botPolicy.js` – **bez nich by bot vybíral akci, kterou
+   server odmítne, a hra by se zasekla** (stav se nezmění → stejná akce znovu; přesně to
+   odhalí zátěžový test „hra jen botů s balíčkem samých Měst duchů").
+   **Roli má duch odkrytou od svého vyřazení, i když si naléčí životy**: `isDead` ve
+   `view/board.js` (slot karty role) a `roleVisible` v redakci (`server/rooms.js`) proto
+   berou `health <= 0 || _ghost`, ne jen nulové životy.
 
 ## Nová identita a Želízka (přibalené karty z A Fistful of Cards)
 

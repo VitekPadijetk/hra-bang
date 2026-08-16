@@ -139,10 +139,13 @@ class GameState {
         return player ? (player.health || 0) : 0;
     }
 
-    // Vyléčení se stropem na maximu životů. Mrtvého (0 životů) neléčí – ten se vrací
-    // do hry jen přes vlastní pravidla (Pivo při posledním životě, Sid Ketchum).
+    // Vyléčení se stropem na maximu životů. Mrtvého neléčí – ten se vrací do hry jen
+    // přes vlastní pravidla (Pivo při posledním životě, Sid Ketchum). Duch (Město duchů)
+    // ve hře JE (isInPlay), takže se léčit MŮŽE: naléčené životy pak smí utratit postava,
+    // která za dobrovolnou ztrátu života profituje (Chuck Wengam). Na konci jeho tahu
+    // spadnou zase na nulu (tryEndTurn / _teardownGhost).
     _heal(player, amount = 1) {
-        if (!player || player.health <= 0 || amount <= 0) return 0;
+        if (!player || !isInPlay(player) || amount <= 0) return 0;
         const before = player.health;
         player.health = Math.min(player.health + amount, player.maxHealth);
         return player.health - before;
@@ -250,6 +253,10 @@ class GameState {
             this.nextTurn();
             return;
         }
+        // High Noon – Město duchů: co si duch během svého tahu naléčil, na jeho konci zase
+        // ztrácí (do hry se vrátil s nulou). Musí to padnout PŘED limitem karet, aby zbytek
+        // tahu proběhl „klasicky": limit = 0 životů → odhodí celou ruku (FAQ H8).
+        if (p._ghost) p.health = 0;
         const handLength = p.hand ? p.hand.length : 0;
         if (handLength > this._handLimit(p)) {
             this.phase = "DISCARD";
