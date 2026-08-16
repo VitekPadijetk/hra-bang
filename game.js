@@ -124,8 +124,8 @@ function discardTopPos() {
 }
 
 // ── NOVÉ VYKRESLOVÁNÍ KARET ───────────────────────────────────────────────────
-// Karta se při startu složí z art-obrázku druhu (assets/card_art/<art>.png) + malých
-// marek hodnoty/barvy (assets/card_marks/*.png) do textury card_<id> (buildCardTextures).
+// Karta se při startu složí z art-obrázku druhu (assets/card_art/<art>.webp) + malých
+// marek hodnoty/barvy (assets/card_marks/*.webp) do textury card_<id> (buildCardTextures).
 // Když art druhu chybí, karta se poskládá z placeholderu + názvu + marek – čitelná karta
 // vznikne VŽDY. (Staré hotové karty assets/playing_cards/<id>.png jako fallback padly:
 // v repu ani na hostingu nejsou, takže se jen 80× zbytečně stahovalo 404.)
@@ -1647,17 +1647,17 @@ function preload() {
         if (this._loadingText) this._loadingText.setText('Načítám… ' + Math.round(p * 100) + ' %');
     });
 
-    // Pozadí ve 4K: primárně malý WebP (~0,7 MB), PNG (~8 MB) zůstává jako fallback.
-    // Při paralelním stahování všech textur občas soubor skončí loaderror → zůstala by
-    // holá barva plátna. Proto ho při chybě párkrát znovu zařadíme do fronty: 1. pokus
-    // spadne na PNG, další přidají cache-buster (obejde nakešovanou chybu). Retry běží,
-    // dokud loader v preloadu ještě jede, takže se stihne než doběhne create().
+    // Pozadí ve 4K. Při paralelním stahování všech textur občas soubor skončí loaderror
+    // → zůstala by holá barva plátna. Proto ho při chybě párkrát znovu zařadíme do fronty
+    // s cache-busterem (obejde nakešovanou chybu). Retry běží, dokud loader v preloadu
+    // ještě jede, takže se stihne než doběhne create(). (Dřív tu byl jako první pokus
+    // fallback na background.png – ten v repu ani na hostingu není, takže jen plodil 404.)
     let bgRetries = 0;
-    const bgSources = ['assets/background.webp', 'assets/background.png'];
+    const BG_SRC = 'assets/background.webp';
     this.load.on('loaderror', function (file) {
         if (file.key === 'background' && bgRetries < 4) {
             bgRetries++;
-            const src = bgSources[Math.min(bgRetries, bgSources.length - 1)] + '?retry=' + bgRetries;
+            const src = BG_SRC + '?retry=' + bgRetries;
             clog('warn', 'Pozadí se nenačetlo, pokus č. ' + bgRetries, { src });
             this.load.image('background', src);
             return;
@@ -1668,24 +1668,24 @@ function preload() {
         clog('warn', 'Chybí textura, použije se placeholder', { src: file.src, status });
     }, this);
 
-    loadAsset(this, 'image', 'background', bgSources[0]);
-    loadAsset(this, 'image', 'logo', 'assets/logo.png');
-    loadAsset(this, 'image', 'card_back', 'assets/other_cards/playing_card_back.png');
-    loadAsset(this, 'image', 'placeholder', 'assets/card_placeholder.png');
-    loadAsset(this, 'image', 'colt_.45', 'assets/other_cards/colt_.45.png');
+    loadAsset(this, 'image', 'background', BG_SRC);
+    loadAsset(this, 'image', 'logo', 'assets/logo.webp');
+    loadAsset(this, 'image', 'card_back', 'assets/other_cards/playing_card_back.webp');
+    loadAsset(this, 'image', 'placeholder', 'assets/card_placeholder.webp');
+    loadAsset(this, 'image', 'colt_.45', 'assets/other_cards/colt_.45.webp');
 
-    // Nové vykreslování: data karet + art druhů (assets/card_art/<art>.png) + marky
-    // hodnoty/barvy (assets/card_marks/*.png). Art/marky se doplní do fronty, jakmile
+    // Nové vykreslování: data karet + art druhů (assets/card_art/<art>.webp) + marky
+    // hodnoty/barvy (assets/card_marks/*.webp). Art/marky se doplní do fronty, jakmile
     // je JSON načtený (chybějící art jen zaloguje loaderror → karta z placeholderu).
     loadAsset(this, 'json', 'cards_data', 'cards.json');
     this.load.on('filecomplete-json-cards_data', (key, type, data) => {
-        // Soubory: card_art/<art>.png, card_marks/<hodnota>.png (Q.png, 10.png…) a
-        // card_marks/<barva>.png (hearts.png…). Texturové klíče drží prefix (art_/value_/suit_).
-        distinctArtKeys(data).forEach(a => loadAsset(this, 'image', 'art_' + a, `assets/card_art/${a}.png`));
+        // Soubory: card_art/<art>.webp, card_marks/<hodnota>.webp (Q.webp, 10.webp…) a
+        // card_marks/<barva>.webp (hearts.webp…). Texturové klíče drží prefix (art_/value_/suit_).
+        distinctArtKeys(data).forEach(a => loadAsset(this, 'image', 'art_' + a, `assets/card_art/${a}.webp`));
         ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'].forEach(v =>
-            loadAsset(this, 'image', 'value_' + v, `assets/card_marks/${v}.png`));
+            loadAsset(this, 'image', 'value_' + v, `assets/card_marks/${v}.webp`));
         ['hearts', 'diamonds', 'clubs', 'spades'].forEach(s =>
-            loadAsset(this, 'image', 'suit_' + s, `assets/card_marks/${s}.png`));
+            loadAsset(this, 'image', 'suit_' + s, `assets/card_marks/${s}.webp`));
     });
 
     // Data karet rozšíření (JSON je malý, art se dotahuje až se zapnutým rozšířením –
@@ -1696,16 +1696,16 @@ function preload() {
     loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
         let paddedId = i.toString().padStart(3, '0');
-        loadAsset(this, 'image', 'char_' + i, `assets/characters/${paddedId}.png`);
+        loadAsset(this, 'image', 'char_' + i, `assets/characters/${paddedId}.webp`);
     }
 
-    loadAsset(this, 'image', 'lives', 'assets/other_cards/lives.png');
-    loadAsset(this, 'image', 'role_card_back', 'assets/other_cards/role_card_back.png');
-    loadAsset(this, 'image', 'role_000', 'assets/roles/000.png');
-    loadAsset(this, 'image', 'role_001', 'assets/roles/001.png');
-    loadAsset(this, 'image', 'role_002', 'assets/roles/002.png');
-    loadAsset(this, 'image', 'role_003', 'assets/roles/003.png');
-    loadAsset(this, 'image', 'sheriff_star', 'assets/other_cards/sheriff_star.png');
+    loadAsset(this, 'image', 'lives', 'assets/other_cards/lives.webp');
+    loadAsset(this, 'image', 'role_card_back', 'assets/other_cards/role_card_back.webp');
+    loadAsset(this, 'image', 'role_000', 'assets/roles/000.webp');
+    loadAsset(this, 'image', 'role_001', 'assets/roles/001.webp');
+    loadAsset(this, 'image', 'role_002', 'assets/roles/002.webp');
+    loadAsset(this, 'image', 'role_003', 'assets/roles/003.webp');
+    loadAsset(this, 'image', 'sheriff_star', 'assets/other_cards/sheriff_star.webp');
 }
 
 // Počká, dokud nejsou v cache VŠECHNY assety, které na serveru jsou – co při preloadu
@@ -1754,10 +1754,10 @@ const EXPANSION_LOADERS = {
         // Art se sdíleným slugem se základem (bang…) se nenačítá znovu – klíč art_<slug>
         // už drží základní karta (duplicitní klíč Phaser přeskočí), takže „reskin" karty
         // rozšíření použijí základní art + domalovaný býk.
-        distinctArtKeys(data).forEach(a => loadAsset(scene, 'image', 'art_' + a, `assets/card_art/dodge_city/${a}.png`));
-        loadAsset(scene, 'image', 'mark_dodge_city', 'assets/card_marks/dodge_city.png');
+        distinctArtKeys(data).forEach(a => loadAsset(scene, 'image', 'art_' + a, `assets/card_art/dodge_city/${a}.webp`));
+        loadAsset(scene, 'image', 'mark_dodge_city', 'assets/card_marks/dodge_city.webp');
         for (let i = 16; i <= 30; i++) {
-            loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.png`);
+            loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.webp`);
         }
         return {
             // Bez artu jsou karty rozšíření placeholder – kritické je proto všechno,
@@ -1777,10 +1777,10 @@ const EXPANSION_LOADERS = {
         // Pořadí ve frontě loaderu = pořadí stahování. Rub balíčku a Pravé poledne se
         // ukazují hned v intru (hromádka + odložená karta), takže musí být první;
         // zbytek karet se stihne dotáhnout, než šerif první událost odkryje.
-        loadAsset(scene, 'image', 'hn_back', 'assets/other_cards/high_noon/high_noon_back.png');
+        loadAsset(scene, 'image', 'hn_back', 'assets/other_cards/high_noon/high_noon_back.webp');
         const noon = data.find(c => c.key === 'PRAVE_POLEDNE');
-        if (noon) loadAsset(scene, 'image', 'hn_' + noon.art, `assets/high_noon_cards/${noon.art}.png`);
-        data.forEach(c => loadAsset(scene, 'image', 'hn_' + c.art, `assets/high_noon_cards/${c.art}.png`));
+        if (noon) loadAsset(scene, 'image', 'hn_' + noon.art, `assets/high_noon_cards/${noon.art}.webp`);
+        data.forEach(c => loadAsset(scene, 'image', 'hn_' + c.art, `assets/high_noon_cards/${c.art}.webp`));
         return {
             // Kritické = co je vidět hned v intru: rub balíčku a odložené Pravé poledne.
             critical: ['hn_back'].concat(noon ? ['hn_' + noon.art] : []),
