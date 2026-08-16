@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const http = require('http');
 const { Server } = require('socket.io');
 const fs = require('fs');
@@ -7,8 +8,31 @@ const { pendingActor } = require('./core/pending.js');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
-app.use(express.static(__dirname));
+
+// Komprese websocketů. Stav hry chodí jako JSON a při KAŽDÉM broadcastu všem hráčům
+// (jeden room_update ~25 KB, z toho 10 KB je zbytek balíčku; za partii jich je ~270
+// na hráče, tedy ~34 MB při pěti lidech). Socket.IO má od v3 perMessageDeflate
+// vypnutý; zapnutý stlačí ten payload na ~2,6 KB. Práh nechává drobné potvrzovací
+// zprávy nekomprimované – u nich by režie zlibu převážila.
+const io = new Server(server, { perMessageDeflate: { threshold: 1024 } });
+
+// gzip textových odpovědí (JS/HTML/JSON je dohromady ~1,1 MB → ~250 KB). Obrázky
+// middleware sám přeskočí, ty jsou komprimované už formátem.
+app.use(compression());
+
+// express.static dává všemu max-age=0 + ETag, tedy „vždy se zeptej, obvykle dostaneš
+// 304". Pro kód je to správně (nasazená verze musí být vidět hned), pro assety ne –
+// těch je přes sto souborů a tahat je znovu každou session je právě to, co vyžralo
+// bandwidth. Den je kompromis: pokryje „hrajeme dnes večer ještě jednou" a zároveň
+// se změněný art projeví nejpozději druhý den. Delší platnost by chtěla verzi v URL,
+// kterou tu bez build stepu nemáme.
+app.use(express.static(__dirname, {
+    setHeaders(res, filePath) {
+        if (filePath.replace(/\\/g, '/').includes('/assets/')) {
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+    }
+}));
 
 const cardData = JSON.parse(fs.readFileSync('cards.json', 'utf8'));
 // Karty rozšíření Dodge City (přidají se do balíčku jen když je rozšíření zapnuté).
