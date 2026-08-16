@@ -2,10 +2,11 @@
 // BEZ závislosti na Phaseru/DOM. Izomorfní: v prohlížeči <script> vytvoří globály,
 // v Node/testech se importuje přes require('./core/cardArt.js').
 //
-// Nové vykreslování: v assetech je jeden art-obrázek na DRUH karty (assets/card_art/<art>.png,
-// pole `art` v cards.json) a malé průhledné marky hodnoty/barvy (assets/card_marks/*.png).
+// Nové vykreslování: v assetech je jeden art-obrázek na DRUH karty (assets/card_art/<art>.webp,
+// pole `art` v cards.json) a malé průhledné marky hodnoty/barvy (assets/card_marks/*.webp).
 // Klient je při startu složí do textury `card_<id>` (viz buildCardTextures v game.js);
-// když art/marky pro daný druh chybí, spadne na starou kartu playing_cards/<id>.png.
+// když art/marky pro daný druh chybí, poskládá se karta z placeholderu + názvu + marek –
+// čitelná karta vznikne vždy (staré hotové karty playing_cards/<id>.png jako fallback padly).
 
 // Mapa suit → slug souboru marky barvy. Klíče jsou DVOJÍ, protože karta má za života
 // dvě podoby barvy: v datech (cards.json, ze kterých se pečou textury) je to 'HEARTS',

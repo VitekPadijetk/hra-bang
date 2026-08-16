@@ -421,6 +421,39 @@ hodnota zůstává). Musí se to projevit ve dvou vrstvách:
   v `core/cardArt.js` proto zná **obojí**; jinak `suitMarkKey` pro kartu ZE STAVU vrátí
   null a tiše vypadne celý pulz při snímání.
 
+## Bandwidth: assety jsou WebP, ne PNG
+
+Hosting jednou spadl na vyčerpanou bandwidth — jedna partie pěti lidí stála ~0,5 GB.
+Art karet je sken malované karty **včetně vysázeného pravidlového textu**; jako PNG
+650×1000 vážil ~1,3 MB (skoro 2 bajty na pixel, prakticky bez komprese) a celá sada
+95,8 MB. Jedno načtení hry z toho stáhlo 42 MB (základ) až 97 MB (obě rozšíření) — a
+protože se to nevešlo do cache mobilního prohlížeče, tahal si telefon všechno znovu
+každou session.
+
+- **V `assets/` jsou `.webp`, žádné `.png`.** Cesty staví výhradně `preload()` a
+  `EXPANSION_LOADERS` v `game.js` (jinde se URL assetu nesestavuje). Sada má 6,3 MB,
+  jedno načtení 3,0 MB / 7,1 MB s oběma rozšířeními.
+- **Převod dělá `tools/webp.js`** (`--measure`, `--quality=N`, `--replace`). `sharp`
+  není závislost hry, instaluje se jen na převod přes `npm install sharp --no-save`.
+  Zdrojové PNG zůstávají v historii gitu, takže jde kdykoli převést na jinou kvalitu.
+- **Nasazeno je q70.** Naměřeno na 122 souborech: q70 6,3 MB / q80 8,3 MB / q90 13,3 MB.
+- **Marky hodnoty/barvy jdou bezeztrátově** — jsou to ostré glyfy, které se při snímání
+  zvětšují (`pulseCheckMark`), takže by na nich byly artefakty vidět. Celá složka má
+  i tak jen 216 kB. Řeší to `isLossless()` v `tools/webp.js`.
+- **Alfa je všude reálně využitá** (zaoblené rohy karet). WebP ji nese a u lossy ukládá
+  bezeztrátově, takže rohy zůstávají ostré — nový art proto smí mít průhlednost.
+- **Nový art přidávej rovnou jako `.webp`.** Přibude-li PNG, stačí znovu spustit skript.
+
+Server k tomu v `server.js`:
+
+- `perMessageDeflate` na Socket.IO. `room_update` (~25 kB, z toho 10 kB zbytek balíčku)
+  chodí všem hráčům při každém broadcastu, za partii ~270× — zabalený má ~2,6 kB.
+  Socket.IO ho má od v3 vypnutý, takže se to musí zapnout ručně.
+- `compression()` na HTTP (klientský JS je 38 souborů / 807 kB → 242 kB).
+- `Cache-Control` v `express.static`: assety `max-age=86400`, kód zůstává na
+  `max-age=0` + ETag (nasazená verze musí být vidět hned). Delší platnost assetů by
+  chtěla verzi v URL, kterou tu bez build stepu nemáme.
+
 ## Testy
 
 - Runner: **vestavěný `node --test`** (zero deps). Spuštění: `npm test`. Soubory: `test/**/*.test.js`.
