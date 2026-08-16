@@ -132,3 +132,103 @@ test('leaveRoom přepíše lídra při odchodu lídra (zůstávají hráči)', (
     assert.equal(room.leaderSocketId, 's2');
     assert.equal(room.players[0].playerIdx, 0);
 });
+
+// ── Redakce stavu (skryté informace) ───────────────────────────────────────────
+// GameState se serializuje celý, takže bez redakce vidí každý hráč v konzoli role
+// všech, jejich ruce i pořadí balíčku. Tyhle testy hlídají, co komu smí odejít.
+
+function mkPlaying(ctx, opts = {}) {
+    const room = ctx.makeRoom('A', 4, 's1', 'Alice', opts);
+    room.players.push({ socketId: 's2', playerIdx: 1, name: 'Bob', ready: false, wantsNext: null });
+    room.players.push({ socketId: 's3', playerIdx: 2, name: 'Cyril', ready: false, wantsNext: null });
+    const gs = room.gameState;
+    gs.players = [
+        { name: 'Alice', role: 'Outlaw',   health: 3, hand: [{ id: 1, name: 'Bang!' }, { id: 2, name: 'Pivo' }] },
+        { name: 'Bob',   role: 'Sheriff',  health: 5, hand: [{ id: 3, name: 'Vedle!' }] },
+        { name: 'Cyril', role: 'Renegade', health: 4, hand: [{ id: 4, name: 'Barel' }, { id: 5, name: 'Duel' }] },
+    ];
+    gs.deck = { cards: [{ id: 6, name: 'Dynamit' }, { id: 7, name: 'Mustang' }], discardPile: [{ id: 8, name: 'Salón' }] };
+    return room;
+}
+
+function payloadFor(emits, socketId) {
+    const e = emits.filter(x => x.scope === 'socket:' + socketId && x.ev === 'room_update').pop();
+    return e && e.payload.gameState;
+}
+
+test('redakce: hráč vidí svoji roli a šerifovu, ostatní ne', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');   // Alice = index 0
+    assert.equal(gsA.players[0].role, 'Outlaw', 'svoji roli vidí');
+    assert.equal(gsA.players[1].role, 'Sheriff', 'šerif je veřejný');
+    assert.equal(gsA.players[2].role, null, 'roli soupeře nevidí');
+});
+
+test('redakce: ruce soupeřů jsou zástupné karty se správným počtem', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');
+    assert.deepEqual(gsA.players[0].hand.map(c => c.name), ['Bang!', 'Pivo'], 'svoji ruku vidí celou');
+    assert.equal(gsA.players[2].hand.length, 2, 'počet karet soupeře zůstává');
+    assert.ok(gsA.players[2].hand.every(c => c._placeholder && c.id === null), 'ale bez identity');
+});
+
+test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');
+    assert.equal(gsA.deck.cards.length, 2, 'výška hromádky sedí');
+    assert.ok(gsA.deck.cards.every(c => c._placeholder), 'příští líznutí nejsou vidět');
+    assert.deepEqual(gsA.deck.discardPile.map(c => c.name), ['Salón'], 'odhoz je veřejný');
+    assert.equal(room.gameState.deck.cards[0].name, 'Dynamit', 'skutečný stav se nezměnil');
+});
+
+test('redakce: role vyřazeného hráče je veřejná', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.players[2].health = 0;
+    ctx.broadcastRoom(room);
+    assert.equal(payloadFor(emits, 's1').players[2].role, 'Renegade');
+});
+
+test('redakce: po konci hry jsou role všech veřejné', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.winner = 'Bandité vyhráli!';
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');
+    assert.equal(gsA.players[2].role, 'Renegade', 'výherní obrazovka a statistiky role ukazují');
+});
+
+test('redakce: debug hra se neredaguje (jeden socket ovládá všechna místa)', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.isDebug = true;
+    ctx.broadcastRoom(room);
+    assert.equal(payloadFor(emits, 's1').players[2].role, 'Renegade');
+});
+
+test('redakce: divák vidí jen veřejné, u hry jen botů vidí všechno', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    ctx.broadcastRoom(room);
+    const spec = emits.filter(e => e.scope === 'to:' + room.id + '_spectators' && e.ev === 'room_update').pop();
+    assert.equal(spec.payload.gameState.players[2].role, null, 'druhá záložka jako divák neprozradí karty');
+    assert.ok(spec.payload.gameState.players[0].hand.every(c => c._placeholder));
+
+    const botRoom = mkPlaying(ctx, { botGame: true });
+    ctx.broadcastRoom(botRoom);
+    const specBot = emits.filter(e => e.scope === 'to:' + botRoom.id + '_spectators' && e.ev === 'room_update').pop();
+    assert.equal(specBot.payload.gameState.players[2].role, 'Renegade', 'není komu podvádět');
+});

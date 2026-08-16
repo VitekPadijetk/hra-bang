@@ -36,14 +36,51 @@ module.exports = function installRoomService(ctx) {
         return room;
     }
 
-    function roomPayload(room) {
+    // ── Redakce stavu pro jednoho příjemce ──────────────────────────────────────
+    // GameState se serializuje celý (nikde není toJSON), takže bez tohohle kroku vidí
+    // KAŽDÝ hráč v konzoli role všech, jejich ruce i pořadí balíčku – klient to jen
+    // nekreslí. Ořízneme to na to, co daný příjemce vidět má.
+    //
+    // Veřejné zůstává: šerifova role (zná ji celý stůl), role vyřazených (odhalí se při
+    // smrti), odhoz, vyložené karty, zbraně, životy a postavy. `charChoices` se nechává –
+    // pendingActor (core/pending.js) podle jejich počtu pozná fázi výběru postav i na
+    // klientovi, a nabídka se stejně odhalí volbou.
+    //
+    // Skrytá karta drží tvar, který klient už zná z optimistického lízání (game.js) a
+    // který core/playability.js i core/selection.js umí odmítnout.
+    const HIDDEN_CARD = { id: null, _placeholder: true };
+
+    function redactState(gs, viewerIdx, revealAll) {
+        // Debug hra: jeden socket ovládá všechna místa, redakce by ji rozbila.
+        // Po konci hry jsou role veřejné (výherní obrazovka i statistiky je ukazují).
+        if (!gs || gs.isDebug || gs.winner || revealAll) return gs;
+
+        const players = (gs.players || []).map((p, i) => {
+            if (i === viewerIdx) return p;
+            // Duch (Město duchů) má health 0 a roli odhalenou od svého vyřazení.
+            const roleVisible = p.role === 'Sheriff' || p.health <= 0;
+            return {
+                ...p,
+                role: roleVisible ? p.role : null,
+                hand: (p.hand || []).map(() => HIDDEN_CARD),
+                _secondChar: null,   // odložená identita je lícem dolů (klient ji nečte)
+            };
+        });
+        // Z balíčku klient čte jen délku (výška hromádky). Pořadí = příští líznutí.
+        const deck = gs.deck
+            ? { ...gs.deck, cards: (gs.deck.cards || []).map(() => HIDDEN_CARD) }
+            : gs.deck;
+        return { ...gs, players, deck };
+    }
+
+    function roomPayload(room, viewerIdx = null, revealAll = false) {
         const gs = room.gameState;
         // V debugu posíláme klientovi i seznam karet (pro galerii / dávání karet) –
         // včetně karet rozšíření, ať jdou testovat i bez zapnutého balíčku rozšíření.
         const base = gs.isDebug
             ? Object.assign(Object.create(Object.getPrototypeOf(gs)), gs,
                 { _cardData: cardData.concat(dodgeCityCardData || []) })
-            : gs;
+            : redactState(gs, viewerIdx, revealAll);
         return {
             roomId: room.id, roomName: room.name, roomPhase: room.phase,
             leaderSocketId: room.leaderSocketId, maxPlayers: room.maxPlayers,
@@ -67,10 +104,14 @@ module.exports = function installRoomService(ctx) {
             const s = io.sockets.sockets.get(p.socketId);
             if (s) {
                 const idx = p.playerIdx;
-                s.emit('room_update', { ...roomPayload(room), myIndex: idx });
+                s.emit('room_update', { ...roomPayload(room, idx), myIndex: idx });
             }
         });
-        io.to(room.id + '_spectators').emit('room_update', { ...roomPayload(room), myIndex: null });
+        // Divák nesedí u stolu, takže vidí jen veřejné informace – jinak by si stačilo
+        // otevřít hru ve druhé záložce jako divák a číst spoluhráčům karty. Výjimka je
+        // hra jen botů: není komu podvádět a smysl sledování je vidět, co boti drží.
+        io.to(room.id + '_spectators').emit('room_update',
+            { ...roomPayload(room, null, !!room.options?.botGame), myIndex: null });
         // Egress: kompaktní snapshot stavu do logu hry (dedup uvnitř – delayed broadcast nezdvojí).
         ctx.glog.snapshot(room);
         // Hook pro driver botů: po každém ustálení stavu se může probudit bot (server/bots.js).

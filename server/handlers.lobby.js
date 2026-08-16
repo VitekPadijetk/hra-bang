@@ -162,7 +162,9 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         if (!room || (room.phase !== 'playing' && room.phase !== 'char_select')) return;
         leaveSpectate(socket);   // přepnutí mezi hrami: ať nekouká do dvou najednou
         socket.join(roomId + '_spectators');
-        socket.emit('room_update', { ...roomPayload(room), myIndex: null });
+        // Divák vidí jen veřejné informace (viz redactState v server/rooms.js).
+        socket.emit('room_update',
+            { ...roomPayload(room, null, !!room.options?.botGame), myIndex: null });
     });
 
     // Konec sledování. Bez odhlášení z kanálu by divákovi chodily další room_update
@@ -185,7 +187,8 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         leaveSpectate(socket);              // ať nekouká zároveň do jiné hry
         socket.join(room.id + '_spectators');
         startGame(room);                    // botGame → přeskočí intro (lifecycle)
-        socket.emit('room_update', { ...roomPayload(room), myIndex: null });
+        // Hra jen botů: divák vidí všechno, není komu podvádět.
+        socket.emit('room_update', { ...roomPayload(room, null, true), myIndex: null });
         broadcastLobbyList();
         ctx.glog.system(`Spuštěna hra ${n} botů (divák ${socket.id})`);
     });

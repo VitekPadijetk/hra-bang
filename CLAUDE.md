@@ -421,6 +421,38 @@ hodnota zůstává). Musí se to projevit ve dvou vrstvách:
   v `core/cardArt.js` proto zná **obojí**; jinak `suitMarkKey` pro kartu ZE STAVU vrátí
   null a tiše vypadne celý pulz při snímání.
 
+## Redakce stavu: klient dostane jen to, co má vidět
+
+`GameState` nemá `toJSON`, takže se do `room_update` serializuje **celý**. Dřív to
+znamenalo, že si každý hráč mohl v konzoli přečíst role všech, jejich ruce i pořadí
+balíčku — klient to jen nekreslil. Ořezává to **`redactState(gs, viewerIdx, revealAll)`**
+v `server/rooms.js`, kterým prochází každý `roomPayload`.
+
+- **Skryje se**: role ostatních, jejich ruce (nahradí je `{ id: null, _placeholder: true }`,
+  takže **délka ruky zůstává** — jen podle ní se kreslí vějíř rubů), pořadí balíčku
+  (`deck.cards` → stejný počet zástupných karet) a odložené identity (`_secondChar`).
+- **Veřejné zůstává**: šerifova role (zná ji celý stůl), role vyřazených (odhalí se při
+  smrti — duch má `health 0`, takže spadne pod stejnou podmínku), odhoz, vyložené karty,
+  zbraně, životy, postavy a `charChoices` (podle jejich počtu pozná `pendingActor` fázi
+  výběru postav i na klientovi).
+- **Neredaguje se vůbec**: debug hra (jeden socket ovládá všechna místa), stav po konci
+  hry (`gs.winner` — výherní obrazovka i statistiky role ukazují) a divák u hry jen botů.
+- **Divák běžné hry vidí jen veřejné informace.** Bez toho by stačilo otevřít si hru ve
+  druhé záložce jako divák a číst spoluhráčům karty.
+- **Boti redakcí neprocházejí** — `server/bots.js` čte `room.gameState` napřímo.
+
+Dvě místa, kde na to musí kód myslet:
+
+- **Role při vyřazení chodí v datech animace** (`role` v `player_death_discard` /
+  `vulture_sam_steal` / `player_death_reveal`), ne ze stavu. Stav se na klientu aplikuje
+  až ZA celou cinematikou (fronta animací), takže v okamžiku odhalení je pro klienta
+  vyřazený hráč pořád živý a jeho roli by redakce ještě schovávala.
+- **Karta odlétající z ruky soupeře se nedá najít podle `id`.** `_liftCardFromHand`
+  (net/handlers.js) proto u zakryté ruky odebere poslední slot — ve vějíři rubů na tom
+  nezáleží a bez toho by ruka zůstala do příchodu stavu o kartu širší a pak cuknula.
+
+Pokryto testy v `test/server.rooms.test.js` (sekce „Redakce stavu").
+
 ## Bandwidth: assety jsou WebP, ne PNG
 
 Hosting jednou spadl na vyčerpanou bandwidth — jedna partie pěti lidí stála ~0,5 GB.

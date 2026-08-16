@@ -768,14 +768,17 @@ function _deathRoleEndScale(pid) {
         ? L.scaleMe : oppScale(L, (state?.players?.length || 2) - 1);
 }
 
-function _deathRoleReveal(pid, onDone) {
+// `role` chodí v datech animace, ne ze stavu: stav se aplikuje až ZA celou cinematikou
+// (fronta animací), takže tady je vyřazený hráč ještě „živý" a jeho roli server ve stavu
+// schovává (redactState v server/rooms.js). Fallback na stav drží starší cesty a debug hru.
+function _deathRoleReveal(pid, onDone, role) {
     const player = state?.players?.[pid];
     if (!gameScene || !player) { if (onDone) onDone(); return; }
     const D = DEATH_ANIM;
     const BIG = 0.80, CX = 960, CY = 480;
     const from = _deathRoleStartPos(pid);
     const startAngle = _renderSideAngle(pid);
-    const faceTex = RoleImages[player.role] || 'role_001';
+    const faceTex = RoleImages[role || player.role] || 'role_001';
     const spr = gameScene.add.image(from.x, from.y, 'role_card_back')
         .setScale(oppScale(currentLayout(), (state?.players?.length || 2) - 1))
         .setAngle(startAngle).setDepth(900).setAlpha(0.97);
@@ -827,7 +830,7 @@ function playDeathSequence(data) {
     const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || []);
     // Šerifovu roli zná celý stůl od začátku → neodhaluje se. Sekvence končí odhozením
     // karet (pak už jen doběhne hra). Server počítá stejně (server/anim.js).
-    const skipReveal = p.role === 'Sheriff';
+    const skipReveal = (data.role || p.role) === 'Sheriff';
     const T = deathAnimTimeline(seq.length, skipReveal);
     // Vulture Sam: karty míří na FINÁLNÍ sloty jeho vějíře, takže potřebujeme, kolik jich
     // v ruce má teď (baseLen) a kolik jich přiletí (incoming – Colt .45 se nepřenáší).
@@ -887,7 +890,7 @@ function playDeathSequence(data) {
     if (!skipReveal) {
         setTimeout(() => {
             if (isMine) return;
-            _deathRoleReveal(pid, () => _deathSeqCleanup(pid, seq));
+            _deathRoleReveal(pid, () => _deathSeqCleanup(pid, seq), data.role);
         }, T.fly);
     }
 
@@ -937,7 +940,7 @@ function playDeathRoleReveal(data) {
     const p = state?.players?.[pid];
     App.vultureSplitIdx = null;
     if (!gameScene || !p) return;
-    const skipReveal = p.role === 'Sheriff';
+    const skipReveal = (data.role || p.role) === 'Sheriff';
     const isMine = pid === myIndex;   // umírám já → odhalení role nevidím, jen čekám
     App.blockInput = true;
     p.hand = [];
@@ -949,7 +952,7 @@ function playDeathRoleReveal(data) {
     const done = () => { delete App.deathSeq[pid]; if (gameScene) renderUI(); };
     setTimeout(() => {
         if (skipReveal || isMine) { done(); return; }
-        _deathRoleReveal(pid, done);
+        _deathRoleReveal(pid, done, data.role);
     }, DEATH_ANIM.settleMs);
 }
 
@@ -1157,6 +1160,13 @@ function _liftCardFromHand(playerIdx, cardId) {
     if (!h) return;
     const k = h.findIndex(c => c.id === cardId);
     if (k !== -1) { h.splice(k, 1); if (gameScene) renderUI(); }
+    // Cizí ruka chodí ve stavu zakrytá (redactState v server/rooms.js), takže se karta
+    // podle ID najít nedá – vějíř soupeře je stejně jen rub, kde na slotu nezáleží.
+    // Bez tohohle by zůstal do příchodu stavu o kartu širší a pak by cuknul.
+    else if (playerIdx !== myIndex && h.length && h.every(c => c._placeholder)) {
+        h.splice(h.length - 1, 1);
+        if (gameScene) renderUI();
+    }
 }
 
 // Karta braná z RUKY cíle (Panika/Cat Balou/Ragtime/Krytý vůz/dělení mezi Vulture Samy):
@@ -1858,7 +1868,7 @@ function _animDurationMs(data) {
     // stejný vzorec počítá server (server/anim.js), aby o tu dobu podržel boty.
     if (data.type === 'player_death_discard' || data.type === 'vulture_sam_steal') {
         const dIdx = data.type === 'vulture_sam_steal' ? data.fromPlayerIdx : data.playerIdx;
-        const skipReveal = state?.players?.[dIdx]?.role === 'Sheriff';
+        const skipReveal = (data.role || state?.players?.[dIdx]?.role) === 'Sheriff';
         return deathSequenceMs((data.blue?.length || 0) + 1 + (data.hand?.length || 0), skipReveal);
     }
     // Šerifova ztráta karet za zabití pomocníka (bez Coltu → bez „+1" jako u smrti).

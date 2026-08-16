@@ -74,10 +74,15 @@ module.exports = function installAnimService(ctx) {
         const vultureIdx = gs.players.findIndex(
             (p, idx) => idx !== deadIdx && p.character === "Vulture Sam" && p.health > 0
         );
+        // Role jde s animací, ne ze stavu: stav se na klientu aplikuje až ZA cinematikou
+        // (fronta animací), takže v tu chvíli je vyřazený hráč pro klienta ještě živý
+        // a jeho roli redactState schovává. Odhalením role se stává veřejnou, takže ji
+        // sem posíláme právem.
+        const deadRole = gs.players[deadIdx]?.role || null;
         if (vultureIdx !== -1) {
-            emitAnim(room, { type: 'vulture_sam_steal', fromPlayerIdx: deadIdx, toPlayerIdx: vultureIdx, blue, weapon, hand });
+            emitAnim(room, { type: 'vulture_sam_steal', fromPlayerIdx: deadIdx, toPlayerIdx: vultureIdx, blue, weapon, hand, role: deadRole });
         } else {
-            emitAnim(room, { type: 'player_death_discard', playerIdx: deadIdx, blue, weapon, hand });
+            emitAnim(room, { type: 'player_death_discard', playerIdx: deadIdx, blue, weapon, hand, role: deadRole });
         }
         // Klient hraje celou cinematiku vyřazení (pokles na nulu → odhoz karet po jedné →
         // odhalení role uprostřed obrazovky) a stav si do jejího konce drží ve frontě.
@@ -99,7 +104,8 @@ module.exports = function installAnimService(ctx) {
         const di = gs._pendingDeathReveal;
         if (di === null || di === undefined) return;
         gs._pendingDeathReveal = null;
-        emitAnim(room, { type: 'player_death_reveal', playerIdx: di });
+        // Role s animací – ve stavu je do konce cinematiky schovaná (viz emitDeathAnim).
+        emitAnim(room, { type: 'player_death_reveal', playerIdx: di, role: gs.players[di]?.role || null });
         room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
             Date.now() + deathRevealMs(gs.players[di]?.role === 'Sheriff'));
     }
