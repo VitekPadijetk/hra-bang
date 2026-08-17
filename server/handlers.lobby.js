@@ -125,10 +125,10 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
             room.players = [leader, ...rest].filter(Boolean);
             room.players.forEach((p, i) => { p.playerIdx = i; });
             startGame(room);
-            // Zapamatuji šerifa první hry pro rotaci
+            // Zapamatuji prvního hráče první hry pro rotaci (ve hře pro 3 je to pomocník)
             if (room.options?.rotatingSheriff) {
-                const sheriffPlayer = room.gameState.players.find(p => p.role === 'Sheriff');
-                if (sheriffPlayer) room.lastSheriffName = sheriffPlayer.name;
+                const firstPlayer = room.gameState.players[room.gameState._firstPlayerIndex()];
+                if (firstPlayer) room.lastSheriffName = firstPlayer.name;
             }
             ctx.glog.system(`"${room.name}" startuje – pořadí: ${room.players.map(p => p.name).join(', ')}`);
         });

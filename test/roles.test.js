@@ -1,10 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { rolesForPlayerCount, baseHealthForCharacter, healthForCharacter } = require('../core/roles.js');
+const { rolesForPlayerCount, baseHealthForCharacter, healthForCharacter,
+        TARGET_3P, isThreePlayerMode, firstPlayerIndex } = require('../core/roles.js');
 
 test('rolesForPlayerCount: správné složení rolí podle počtu hráčů', () => {
     assert.deepEqual(rolesForPlayerCount(2), ["Sheriff", "Outlaw"]);
-    assert.deepEqual(rolesForPlayerCount(3), ["Sheriff", "Outlaw", "Renegade"]);
+    // Město duchů: hra pro 3 je bez šerifa (role leží lícem nahoru, cíle v kruhu).
+    assert.deepEqual(rolesForPlayerCount(3), ["Deputy", "Outlaw", "Renegade"]);
     assert.deepEqual(rolesForPlayerCount(4), ["Sheriff", "Outlaw", "Outlaw", "Renegade"]);
     assert.deepEqual(rolesForPlayerCount(5), ["Sheriff", "Outlaw", "Outlaw", "Renegade", "Deputy"]);
     assert.deepEqual(rolesForPlayerCount(6), ["Sheriff", "Outlaw", "Outlaw", "Outlaw", "Renegade", "Deputy"]);
@@ -21,12 +23,40 @@ test('rolesForPlayerCount: 8 hráčů (Město duchů) – 1/2/3/2', () => {
     assert.equal(roles.filter(r => r === "Renegade").length, 2);
 });
 
-test('rolesForPlayerCount: každá tabulka má právě jednoho šerifa', () => {
+test('rolesForPlayerCount: každá tabulka má právě jednoho šerifa (kromě hry pro 3)', () => {
     for (let n = 2; n <= 8; n++) {
         const roles = rolesForPlayerCount(n);
         assert.equal(roles.length, n);
-        assert.equal(roles.filter(r => r === "Sheriff").length, 1);
+        // Hra pro 3 (Město duchů) šerifa nemá vůbec – místo něj hraje pomocník.
+        assert.equal(roles.filter(r => r === "Sheriff").length, n === 3 ? 0 : 1);
     }
+});
+
+// ── Hra pro 3 hráče: kruh cílů a rozpoznání režimu ───────────────────────────
+test('TARGET_3P je kruh: pomocník → odpadlík → bandita → pomocník', () => {
+    assert.equal(TARGET_3P.Deputy, 'Renegade');
+    assert.equal(TARGET_3P.Renegade, 'Outlaw');
+    assert.equal(TARGET_3P.Outlaw, 'Deputy');
+    // každá role je právě jednou cílem a právě jednou lovcem
+    assert.deepEqual(Object.values(TARGET_3P).sort(), Object.keys(TARGET_3P).sort());
+});
+
+test('isThreePlayerMode: tři hráči bez šerifa ano, se šerifem (debug) ne', () => {
+    const P = (role) => ({ role });
+    assert.equal(isThreePlayerMode([P('Deputy'), P('Outlaw'), P('Renegade')]), true);
+    assert.equal(isThreePlayerMode([P('Sheriff'), P('Outlaw'), P('Renegade')]), false);
+    assert.equal(isThreePlayerMode([P('Deputy'), P('Outlaw')]), false);
+    assert.equal(isThreePlayerMode([P('Deputy'), P('Outlaw'), P('Renegade'), P('Outlaw')]), false);
+    assert.equal(isThreePlayerMode(null), false);
+});
+
+test('firstPlayerIndex: šerif, jinak pomocník, jinak seat 0', () => {
+    const P = (role) => ({ role });
+    assert.equal(firstPlayerIndex([P('Outlaw'), P('Sheriff'), P('Deputy')]), 1);
+    // hra pro 3 (Město duchů) – šerif není, začíná pomocník
+    assert.equal(firstPlayerIndex([P('Outlaw'), P('Renegade'), P('Deputy')]), 2);
+    assert.equal(firstPlayerIndex([P('Outlaw'), P('Renegade')]), 0);
+    assert.equal(firstPlayerIndex([]), 0);
 });
 
 test('rolesForPlayerCount: neznámý počet → prázdné pole', () => {

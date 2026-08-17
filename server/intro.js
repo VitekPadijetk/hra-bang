@@ -2,6 +2,8 @@
 // balíčku) přes timeouty emitující 'intro_phase'/'intro_role'/'intro_chars'.
 // Factory installIntroService(ctx): bere { io, broadcastRoom } z ctx a vystaví
 // emit*/runIntroSequence/introStart*Phase zpět na ctx. Bez listenu.
+const { firstPlayerIndex } = require('../core/roles.js');
+
 module.exports = function installIntroService(ctx) {
     const { io, broadcastRoom } = ctx;
 
@@ -152,8 +154,9 @@ module.exports = function installIntroService(ctx) {
     function introStartCharPhase(room) {
         const gs = room.gameState;
         const n = room.players.length;
-        const sheriffIdx = gs.players.findIndex(p => p.role === 'Sheriff');
-        // Klasicky od šerifa doprava; přeživší, kteří si postavu nechali, se přeskočí
+        // Od šerifa doprava; ve hře pro 3 (Město duchů) šerif není, tak od pomocníka.
+        const sheriffIdx = firstPlayerIndex(gs.players);
+        // Přeživší, kteří si postavu nechali, se přeskočí
         // (v klasické hře je _introKeepers prázdné → pořadí i počet beze změny).
         const keepers = room._introKeepers || new Set();
         const charOrder = Array.from({ length: n }, (_, k) => (sheriffIdx + k) % n)
@@ -211,7 +214,7 @@ module.exports = function installIntroService(ctx) {
     function introStartDeckPhase(room) {
         const gs = room.gameState;
         const n = room.players.length;
-        const sheriffIdx = gs.players.findIndex(p => p.role === 'Sheriff');
+        const sheriffIdx = firstPlayerIndex(gs.players);
         const cardOrder = Array.from({ length: n }, (_, k) => (sheriffIdx + k) % n);
         // Plný balíček PŘED rozdáním počátečních rukou. selectCharacter() už ruce
         // rozdal (gs.deck.cards.length je tedy zmenšený) → přičteme rozdané karty zpět,

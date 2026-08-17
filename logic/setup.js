@@ -16,6 +16,20 @@ const SetupMixin = {
         return base;
     },
 
+    // Zapne pravidla pro 3 hráče (Město duchů), pokud u stolu opravdu platí – tedy když
+    // sedí tři a nikdo z nich není šerif. Volá se z obou setupů; debug hra si role losuje
+    // ze všech čtyř, takže tam šerif být může a jede klasika.
+    _applyThreePlayerMode() {
+        this.mode3p = isThreePlayerMode(this.players);
+        this._winClaim3p = null;
+        if (this.mode3p) {
+            this.logEvent('system', {
+                msg: `Hra pro 3 (Město duchů): role jsou odkryté, cíle v kruhu – ` +
+                     this.players.map(p => `${p.name} (${p.role}) loví ${TARGET_3P[p.role]}`).join(', '),
+            });
+        }
+    },
+
     _deckDataFor(options = {}) {
         if (options.expansions && options.expansions.dodge_city && Array.isArray(this.dodgeCityCardData)) {
             return this.cardData.concat(this.dodgeCityCardData);
@@ -57,6 +71,7 @@ const SetupMixin = {
             this.logEvent('system', { msg: `Hráč #${i}: ${name} – role: ${role}, výběr postav: ${p.charChoices.join(' / ')}` });
         };
 
+        this._applyThreePlayerMode();
         this.phase = "CHARACTER_SELECT";
         this.charSelectIndex = 0;
     },
@@ -154,13 +169,14 @@ const SetupMixin = {
         const allChosen = this.players.every(pl => pl.character);
 
         if (allChosen) {
-            this.logEvent('system', { msg: `Všichni vybrali postavy, hra začíná! Šerif: ${this.players.find(pl => pl.role === 'Sheriff')?.name}` });
+            const firstIdx = this._firstPlayerIndex();
+            this.logEvent('system', { msg: `Všichni vybrali postavy, hra začíná! Začíná: ${this.players[firstIdx]?.name} (${this.players[firstIdx]?.role})` });
             this.players.forEach(pl => {
                 const startCards = pl._baseHealth ?? (pl.health > 0 ? pl.health - (pl.role === "Sheriff" ? 1 : 0) : pl.health);
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
-            this.currentPlayerIndex = this.players.findIndex(pl => pl.role === "Sheriff");
+            this.currentPlayerIndex = firstIdx;
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;
             this.handleStartOfTurnChecks();
@@ -200,15 +216,18 @@ const SetupMixin = {
         const playerCount = playerNames.length;
         let roles = rolesForPlayerCount(playerCount);
 
-        // Rotující šerif: pokud víme komu připadá role šerifa, přiřadíme mu ji
+        // Rotující šerif: pokud víme komu připadá role šerifa, přiřadíme mu ji. Ve hře pro
+        // 3 (Město duchů) šerif není – rotuje se pomocník, tedy hráč, který začíná. Bez
+        // toho by filter neodebral nic a splice by do 3členné hry přidal ČTVRTOU roli.
+        const rotatedRole = roles.includes('Sheriff') ? 'Sheriff' : 'Deputy';
         if (nextSheriffName) {
             const targetIdx = playerNames.indexOf(nextSheriffName);
             if (targetIdx !== -1) {
-                // Dáme šerifa cílovému hráči, ostatní role zamícháme
-                roles = roles.filter(r => r !== 'Sheriff');
+                // Dáme rotovanou roli cílovému hráči, ostatní role zamícháme
+                roles = roles.filter(r => r !== rotatedRole);
                 this.deck.shuffleArray(roles);
-                roles.splice(targetIdx, 0, 'Sheriff');
-                this.logEvent('system', { msg: `Rotující šerif: ${nextSheriffName} (idx ${targetIdx})` });
+                roles.splice(targetIdx, 0, rotatedRole);
+                this.logEvent('system', { msg: `Rotující ${rotatedRole}: ${nextSheriffName} (idx ${targetIdx})` });
             } else {
                 this.deck.shuffleArray(roles);
             }
@@ -234,6 +253,7 @@ const SetupMixin = {
             this.logEvent('system', { msg: `Hráč #${i}: ${name} – role: ${role}${p._survivorChar ? ` (přeživší s ${p._survivorChar})` : ' (zemřelý, čeká na postavu)'}` });
         }
 
+        this._applyThreePlayerMode();
         this._remainingChars = chars;
         this.phase = "CHARACTER_SELECT";
 
@@ -296,7 +316,7 @@ const SetupMixin = {
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
-            this.currentPlayerIndex = this.players.findIndex(pl => pl.role === "Sheriff");
+            this.currentPlayerIndex = this._firstPlayerIndex();
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;
             this.handleStartOfTurnChecks();

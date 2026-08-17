@@ -74,12 +74,7 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
                 const n = pl._baseHealth ?? (pl.role === "Sheriff" ? pl.health - 1 : pl.health);
                 for (let i = 0; i < n; i++) pl.hand.push(gs.deck.draw());
             });
-            let start = gs.players.findIndex(pl => pl.role === "Sheriff");
-            if (start === -1) {
-                const dep = gs.players.findIndex(pl => pl.role === "Deputy");
-                start = dep !== -1 ? dep : Math.floor(Math.random() * gs.players.length);
-            }
-            gs.currentPlayerIndex = start;
+            gs.currentPlayerIndex = gs._firstPlayerIndex();
             gs.handleStartOfTurnChecks();
             room.phase = 'playing';
         }

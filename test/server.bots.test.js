@@ -238,14 +238,16 @@ test('create_bot_game: bot select-char doběhne k vítězi a go_to_menu rozpust�
 });
 
 // ── B4: zátěž – mnoho her jen botů vždy doběhne bez nouzové akce ───────────────
-test('40 her jen botů (4–7) vždy doběhne bez stallu', () => {
+// Počty 3–8: hra pro 3 má vlastní pravidla (odkryté role, cíle v kruhu) a 8 hráčů má dva
+// odpadlíky, takže obojí prochází jinými větvemi bota než klasické 4–7.
+test('60 her jen botů (3–8) vždy doběhne bez stallu', () => {
     const ctx = buildCtx();
     let stalls = 0;
     const origSystem = ctx.glog.system;
     ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
     try {
-        for (let k = 0; k < 40; k++) {
-            const n = 4 + (k % 4);
+        for (let k = 0; k < 60; k++) {
+            const n = 3 + (k % 6);
             const gs = new GameState();
             gs.cardData = cardData;
             const room = { id: 'stress' + k, players: [], gameState: gs, maxPlayers: n, options: {} };
@@ -268,7 +270,7 @@ test('20 her jen botů se zapnutým Dodge City vždy doběhne (zelené karty v b
     ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
     try {
         for (let k = 0; k < 20; k++) {
-            const n = 4 + (k % 4);
+            const n = 3 + (k % 6);
             const gs = new GameState();
             gs.cardData = cardData;
             gs.dodgeCityCardData = dodgeCityCardData;
@@ -292,7 +294,7 @@ test('20 her jen botů se zapnutým High Noon vždy doběhne (události v každ�
     ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
     try {
         for (let k = 0; k < 20; k++) {
-            const n = 4 + (k % 4);
+            const n = 3 + (k % 6);
             const gs = new GameState();
             gs.cardData = cardData;
             gs.highNoonCardData = highNoonCardData;
@@ -316,7 +318,7 @@ test('20 her jen botů s High Noon + Dodge City zároveň vždy doběhne', () =>
     ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
     try {
         for (let k = 0; k < 20; k++) {
-            const n = 4 + (k % 4);
+            const n = 3 + (k % 6);
             const gs = new GameState();
             gs.cardData = cardData;
             gs.dodgeCityCardData = dodgeCityCardData;
@@ -441,7 +443,7 @@ test('20 her jen botů jede i s balíčkem samých Daltonů/Kocovin/Zlatých hor
     };
     try {
         for (let k = 0; k < 20; k++) {
-            const n = 4 + (k % 4);
+            const n = 3 + (k % 6);
             const gs = new GameState();
             gs.cardData = cardData;
             gs.dodgeCityCardData = dodgeCityCardData;
@@ -478,7 +480,7 @@ test('20 her jen botů jede i s balíčkem samých Měst duchů', () => {
     };
     try {
         for (let k = 0; k < 20; k++) {
-            const n = 4 + (k % 4);
+            const n = 3 + (k % 6);
             const gs = new GameState();
             gs.cardData = cardData;
             gs.dodgeCityCardData = dodgeCityCardData;
@@ -520,7 +522,7 @@ test('20 her jen botů jede i s balíčkem samých Želízek/Nových identit', (
     };
     try {
         for (let k = 0; k < 20; k++) {
-            const n = 4 + (k % 4);
+            const n = 3 + (k % 6);
             const gs = new GameState();
             gs.cardData = cardData;
             gs.dodgeCityCardData = dodgeCityCardData;

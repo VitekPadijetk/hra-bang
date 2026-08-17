@@ -177,10 +177,11 @@ module.exports = function installLifecycle(ctx) {
             if (room.gameState.phase !== 'CHARACTER_SELECT') room.phase = 'playing';
         }
 
-        // Zapamatuji šerifa pro příští rotaci (pokud rotující šerif zapnut)
+        // Zapamatuji prvního hráče pro příští rotaci (pokud rotující šerif zapnut). Ve hře
+        // pro 3 (Město duchů) šerif není, rotuje se pomocník – proto _firstPlayerIndex.
         if (room.options?.rotatingSheriff) {
-            const sheriffPlayer = room.gameState.players.find(p => p.role === 'Sheriff');
-            if (sheriffPlayer) room.lastSheriffName = sheriffPlayer.name;
+            const firstPlayer = room.gameState.players[room.gameState._firstPlayerIndex()];
+            if (firstPlayer) room.lastSheriffName = firstPlayer.name;
         }
 
         // debug/singleChar/botGame: intro se přeskakuje (klasická obrazovka výběru).

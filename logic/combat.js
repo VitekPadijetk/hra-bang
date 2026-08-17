@@ -125,10 +125,22 @@ const CombatMixin = {
             }
         });
 
-        if (deadPlayer.role === "Outlaw" && killerIdx !== null && killerIdx !== deadIdx) {
+        // Hra pro 3 (Město duchů): 3 karty dostane každý, kdo někoho vyřadil, bez ohledu na
+        // role. Kdo vyřadil SVÉHO určeného nepřítele (TARGET_3P), hru tím vyhrál – zabije-li
+        // ho někdo jiný (nebo dynamit, tedy nikdo), novým cílem obou zbylých je zůstat
+        // naživu jako poslední, což řeší samo evaluateWinner3p.
+        if (this.mode3p) {
+            if (killerIdx !== null && killerIdx !== deadIdx) {
+                this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: killerIdx, cardsNeeded: 3 });
+                if (killer && TARGET_3P[killer.role] === deadPlayer.role) this._winClaim3p = killerIdx;
+            }
+        }
+        else if (deadPlayer.role === "Outlaw" && killerIdx !== null && killerIdx !== deadIdx) {
             this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: killerIdx, cardsNeeded: 3 });
         }
 
+        // Pokuta za zabití vlastního pomocníka. Ve hře pro 3 šerif není, takže tahle větev
+        // tam nikdy nespustí (podmínka na roli Sheriff se nesplní).
         if (deadPlayer.role === "Deputy" && killer && killer.role === "Sheriff") {
             const killerWeapon = (killer.weapon && killer.weapon.id !== -1) ? [killer.weapon] : [];
             // Snapshot PŘED přesunem: klient odhodí šerifovy karty stejnou animací jako
@@ -149,7 +161,11 @@ const CombatMixin = {
 
         const killerName = killerIdx !== null ? this.players[killerIdx]?.name : 'dynamit';
         let deathReward = null;
-        if (deadPlayer.role === "Outlaw") deathReward = `${killerName} +3 karty`;
+        if (this.mode3p) {
+            if (killerIdx !== null && killerIdx !== deadIdx) deathReward = `${killerName} +3 karty`;
+            if (this._winClaim3p !== null) deathReward += ' a vyhrává (vlastní cíl)';
+        }
+        else if (deadPlayer.role === "Outlaw") deathReward = `${killerName} +3 karty`;
         else if (deadPlayer.role === "Deputy" && this.players[killerIdx]?.role === "Sheriff") deathReward = `Šerif ${killerName} ztrácí všechny karty`;
         this.logEvent('death', { who: deadPlayer.name, role: deadPlayer.role, killer: killerName, reward: deathReward });
 

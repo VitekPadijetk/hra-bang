@@ -26,7 +26,7 @@ function mkPlayer(role, health) {
 // ── setupGame: rozdělení rolí ──────────────────────────────────────────────
 const ROLE_TABLE = {
     2: ['Sheriff', 'Outlaw'],
-    3: ['Sheriff', 'Outlaw', 'Renegade'],
+    3: ['Deputy', 'Outlaw', 'Renegade'],      // Město duchů: pro 3 hráče BEZ šerifa
     4: ['Sheriff', 'Outlaw', 'Outlaw', 'Renegade'],
     5: ['Sheriff', 'Outlaw', 'Outlaw', 'Renegade', 'Deputy'],
     6: ['Sheriff', 'Outlaw', 'Outlaw', 'Outlaw', 'Renegade', 'Deputy'],

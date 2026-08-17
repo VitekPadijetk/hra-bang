@@ -88,12 +88,13 @@ const HighNoonMixin = {
         return false;
     },
 
-    // Odkrytí nové události. Jen na šerifově tahu a až od jeho DRUHÉHO tahu
-    // („počínaje druhým kolem"). Animaci odkrytí dohraje server podle
-    // `_pendingHighNoonReveal` (vyzvedne ji hák před broadcastem, viz server/anim.js).
+    // Odkrytí nové události. Jen na tahu prvního hráče a až od jeho DRUHÉHO tahu
+    // („počínaje druhým kolem"). Prvním hráčem je šerif; ve hře pro 3 (Město duchů) šerif
+    // není, takže kolo počítá tah pomocníka (_firstPlayerIndex). Animaci odkrytí dohraje
+    // server podle `_pendingHighNoonReveal` (vyzvedne ji hák před broadcastem, server/anim.js).
     _flipEvent() {
         const p = this.getCurrentPlayer();
-        if (!p || p.role !== 'Sheriff') return false;
+        if (!p || this.currentPlayerIndex !== this._firstPlayerIndex()) return false;
         this._sheriffTurns = (this._sheriffTurns || 0) + 1;
         if (this._sheriffTurns < 2) return false;
         if (!this.eventDeck || !this.eventDeck.length) return false;
@@ -137,13 +138,13 @@ const HighNoonMixin = {
 
     // ── Daltonové: každý odhodí jednu svou modrou kartu ───────────────────────
     // Pořadí od šerifa po směru hodinových ručiček – i při Zlaté horečce, protože
-    // efekty karet jdou vždy po směru (FAQ H3). Vybírá se stejnou cestou jako u Rvačky
-    // (pendingSelection / SELECTING_TARGET_CARD), jen attacker === target: hráč sahá na
-    // SVŮJ stůl. Klik klienta, bot i guard tím fungují beze změny.
+    // efekty karet jdou vždy po směru (FAQ H3). Ve hře pro 3 (Město duchů) šerif není,
+    // takže se začíná u pomocníka (_firstPlayerIndex). Vybírá se stejnou cestou jako
+    // u Rvačky (pendingSelection / SELECTING_TARGET_CARD), jen attacker === target: hráč
+    // sahá na SVŮJ stůl. Klik klienta, bot i guard tím fungují beze změny.
     _startDaltons() {
         const n = this.players.length;
-        const sheriff = this.players.findIndex(p => p.role === 'Sheriff');
-        const from = sheriff === -1 ? this.currentPlayerIndex : sheriff;
+        const from = this._firstPlayerIndex();
         const order = [];
         for (let k = 0; k < n; k++) {
             const idx = (from + k) % n;

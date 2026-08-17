@@ -20,9 +20,20 @@ test('setupNextGame rozdá správnou sadu rolí (4 hráči)', () => {
 
 test('setupNextGame: rotující šerif připadne určenému hráči', () => {
     const g = newGame();
-    g.setupNextGame(['A', 'B', 'C'], {}, {}, 'B');
+    g.setupNextGame(['A', 'B', 'C', 'D'], {}, {}, 'B');
     assert.equal(g.players[1].role, 'Sheriff');
-    assert.deepEqual(g.players.map(p => p.role).sort(), ['Outlaw', 'Renegade', 'Sheriff']);
+    assert.deepEqual(g.players.map(p => p.role).sort(), ['Outlaw', 'Outlaw', 'Renegade', 'Sheriff']);
+});
+
+// Ve hře pro 3 (Město duchů) šerif není – rotuje se pomocník, tedy hráč, který začíná.
+// Dřív filter('Sheriff') neodebral nic a splice by do 3členné hry přidal ČTVRTOU roli.
+test('setupNextGame pro 3 hráče rotuje pomocníka a nepřidá čtvrtou roli', () => {
+    const g = newGame();
+    g.setupNextGame(['A', 'B', 'C'], {}, {}, 'C');
+    assert.equal(g.players.length, 3);
+    assert.equal(g.players[2].role, 'Deputy');
+    assert.deepEqual(g.players.map(p => p.role).sort(), ['Deputy', 'Outlaw', 'Renegade']);
+    assert.equal(g.mode3p, true);
 });
 
 test('setupNextGame bez přeživších rovnou nabídne postavy', () => {
@@ -77,7 +88,7 @@ test('setupNextGame si pamatuje životy přeživšího (pro rozložení desky v 
 test('Ponechaná postava se dolije na maximum a nastaví _baseHealth (počet startovních karet)', () => {
     const g = newGame();
     // Šerif si nechá 4životou postavu → max 5, ale startovních karet 4.
-    g.setupNextGame(['A', 'B', 'C'], { 0: 'Willy the Kid' }, {}, 'A', { 0: 1 });
+    g.setupNextGame(['A', 'B', 'C', 'D'], { 0: 'Willy the Kid' }, {}, 'A', { 0: 1 });
     assert.equal(g.players[0].role, 'Sheriff');
     g.selectCharacterForNextGame(0);
     assert.equal(g.players[0].health, 5);

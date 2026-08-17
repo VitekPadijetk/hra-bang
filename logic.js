@@ -33,6 +33,13 @@ if (typeof rolesForPlayerCount === 'undefined' && typeof require === 'function')
     globalThis.rolesForPlayerCount = __roles.rolesForPlayerCount;
     globalThis.healthForCharacter = __roles.healthForCharacter;
 }
+// Hra pro 3 hráče (Město duchů): kruh cílů + dotaz „platí tady pravidla pro 3?"
+if (typeof TARGET_3P === 'undefined' && typeof require === 'function') {
+    const __roles3 = require('./core/roles.js');
+    globalThis.TARGET_3P = __roles3.TARGET_3P;
+    globalThis.isThreePlayerMode = __roles3.isThreePlayerMode;
+    globalThis.firstPlayerIndex = __roles3.firstPlayerIndex;
+}
 if (typeof evaluateWinner === 'undefined' && typeof require === 'function') {
     globalThis.evaluateWinner = require('./core/winCondition.js').evaluateWinner;
 }
@@ -97,10 +104,23 @@ class GameState {
         this.pendingNewIdentity = null;  // Nová identita: nabídka výměny postavy na začátku tahu
         this._sheriffTurns = 0;          // kolikátý tah šerifa běží (událost až od 2.)
         this._beginTurnStep = 0;         // krokovač startu tahu (viz logic/highNoon.js)
+        // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do
+        // klienta (řídí zobrazení karet rolí i redakci stavu), _winClaim3p drží seat, který
+        // osobně vyřadil svého určeného nepřítele, a tím hru vyhrál.
+        this.mode3p = false;
+        this._winClaim3p = null;
     }
 
     getCurrentPlayer() {
         return this.players[this.currentPlayerIndex];
+    }
+
+    // „Šerifova pozice": kdo začíná hru, od koho jdou efekty po směru (Daltonové) a na čí
+    // tah se odkrývá karta High Noon. Ve hře pro 3 (Město duchů) šerif není a začíná
+    // pomocník – bez tohohle by findIndex('Sheriff') vrátil -1 a hra se nerozjela.
+    // Pravidlo samo je čistá funkce v core/roles.js (ptá se jí i server nad prostým stavem).
+    _firstPlayerIndex() {
+        return firstPlayerIndex(this.players);
     }
 
     // Deleguje na sdílenou čistou funkci z core/distance.js (this == {players}).
@@ -281,7 +301,8 @@ class GameState {
             if (result) this.logEvent('system', { msg: `DEBUG – ${result} (hra pokračuje)` });
             return;
         }
-        const w = evaluateWinner(this.players);
+        // mode3p/_winClaim3p: hra pro 3 hráče (Město duchů) – viz core/winCondition.js.
+        const w = evaluateWinner(this.players, { mode3p: this.mode3p, winClaimIdx: this._winClaim3p });
         if (w) {
             this.winner = w;
             this.logEvent('win', {
