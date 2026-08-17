@@ -968,8 +968,16 @@ function drawMyArea(ctx) {
         const roleX = livesX + L.roleOffX;
 
         const roleMap = { 'Sheriff': '000', 'Outlaw': '001', 'Renegade': '002', 'Deputy': '003' };
-        let roleImg = gameScene.add.image(roleX, myBaseY, 'role_' + (roleMap[me.role] || '001')).setScale(scaleMe);
+        const roleTex = 'role_' + (roleMap[me.role] || '001');
+        let roleImg = gameScene.add.image(roleX, myBaseY, roleTex).setScale(scaleMe);
         gameScene.cardsSprites.add(roleImg);
+        // Zvětšení karty (hover / long press) jako u postavy a karet na stole – text role
+        // je na kartě vysázený drobně a v herní velikosti se nedá přečíst. Kurzor zůstává
+        // šipkou (na vlastní kartu role se nikdy neklika), klíč zoomu přežije překreslení.
+        roleImg.setInteractive({ useHandCursor: false });
+        roleImg._zoomKey = 'role:' + myIndex;
+        roleImg.on('pointerover', () => startCardZoom(roleTex, 'role:' + myIndex));
+        roleImg.on('pointerout', scheduleZoomFade);
 
         {
             const isCurrentMe = state.currentPlayerIndex === myIndex;
