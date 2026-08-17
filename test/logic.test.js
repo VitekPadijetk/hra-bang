@@ -31,6 +31,7 @@ const ROLE_TABLE = {
     5: ['Sheriff', 'Outlaw', 'Outlaw', 'Renegade', 'Deputy'],
     6: ['Sheriff', 'Outlaw', 'Outlaw', 'Outlaw', 'Renegade', 'Deputy'],
     7: ['Sheriff', 'Outlaw', 'Outlaw', 'Outlaw', 'Renegade', 'Deputy', 'Deputy'],
+    8: ['Sheriff', 'Deputy', 'Deputy', 'Outlaw', 'Outlaw', 'Outlaw', 'Renegade', 'Renegade'],
 };
 
 for (const [count, expected] of Object.entries(ROLE_TABLE)) {
@@ -59,6 +60,27 @@ test('setupGame se singleChar dá rovnou jednu postavu', () => {
         assert.equal(p.charChoices.length, 1);
     }
 });
+
+// 8 hráčů × 2 nabídky = PŘESNĚ 16 základních postav, tedy nulová rezerva. Kdyby se pool
+// zmenšil (nebo se začaly brát postavy jinam), vylezlo by z chars.pop() undefined.
+for (const opts of [{}, { singleChar: true }, { highNoonExtra: true },
+                    { singleChar: true, highNoonExtra: true }]) {
+    test(`setupGame(8) rozdá postavy všem – options ${JSON.stringify(opts)}`, () => {
+        const g = newGame();
+        const names = Array.from({ length: 8 }, (_, i) => `H${i}`);
+        g.setupGame(8, names, opts);
+        for (const p of g.players) {
+            assert.equal(p.charChoices.length, opts.singleChar ? 1 : 2);
+            assert.ok(p.charChoices.every(c => typeof c === 'string' && c.length > 0),
+                `prázdná nabídka postav: ${JSON.stringify(p.charChoices)}`);
+        }
+        g.autoSelectAllCharacters();
+        for (const p of g.players) {
+            assert.ok(p.character, `hráč ${p.name} nemá postavu`);
+            assert.ok(p.health > 0);
+        }
+    });
+}
 
 // ── getDistance / canHit: delegace na core/distance.js ──────────────────────
 test('GameState.getDistance dává stejné výsledky jako sdílená čistá funkce', () => {

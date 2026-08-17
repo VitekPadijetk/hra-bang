@@ -8,6 +8,11 @@ function rolesForPlayerCount(playerCount) {
     if (playerCount === 5) return ["Sheriff", "Outlaw", "Outlaw", "Renegade", "Deputy"];
     if (playerCount === 6) return ["Sheriff", "Outlaw", "Outlaw", "Outlaw", "Renegade", "Deputy"];
     if (playerCount === 7) return ["Sheriff", "Outlaw", "Outlaw", "Outlaw", "Renegade", "Deputy", "Deputy"];
+    // Rozšíření Město duchů: 8 karet rolí nahrazuje původní sadu – 1 šerif, 2 pomocníci,
+    // 3 bandité, 2 odpadlíci. Je to JEDINÝ počet se dvěma odpadlíky: každý hraje sám za
+    // sebe a vyhrává, jen když zůstane ve hře poslední (viz core/winCondition.js).
+    if (playerCount === 8) return ["Sheriff", "Deputy", "Deputy",
+                                   "Outlaw", "Outlaw", "Outlaw", "Renegade", "Renegade"];
     return [];
 }
 

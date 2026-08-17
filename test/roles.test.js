@@ -11,8 +11,18 @@ test('rolesForPlayerCount: správné složení rolí podle počtu hráčů', () 
     assert.deepEqual(rolesForPlayerCount(7), ["Sheriff", "Outlaw", "Outlaw", "Outlaw", "Renegade", "Deputy", "Deputy"]);
 });
 
+// Město duchů: 8 hráčů = 1 šerif, 2 pomocníci, 3 bandité, 2 odpadlíci.
+test('rolesForPlayerCount: 8 hráčů (Město duchů) – 1/2/3/2', () => {
+    const roles = rolesForPlayerCount(8);
+    assert.equal(roles.length, 8);
+    assert.equal(roles.filter(r => r === "Sheriff").length, 1);
+    assert.equal(roles.filter(r => r === "Deputy").length, 2);
+    assert.equal(roles.filter(r => r === "Outlaw").length, 3);
+    assert.equal(roles.filter(r => r === "Renegade").length, 2);
+});
+
 test('rolesForPlayerCount: každá tabulka má právě jednoho šerifa', () => {
-    for (let n = 2; n <= 7; n++) {
+    for (let n = 2; n <= 8; n++) {
         const roles = rolesForPlayerCount(n);
         assert.equal(roles.length, n);
         assert.equal(roles.filter(r => r === "Sheriff").length, 1);
@@ -21,7 +31,7 @@ test('rolesForPlayerCount: každá tabulka má právě jednoho šerifa', () => {
 
 test('rolesForPlayerCount: neznámý počet → prázdné pole', () => {
     assert.deepEqual(rolesForPlayerCount(1), []);
-    assert.deepEqual(rolesForPlayerCount(8), []);
+    assert.deepEqual(rolesForPlayerCount(9), []);
 });
 
 test('baseHealthForCharacter: Paul Regret a El Gringo mají 3, ostatní 4', () => {
