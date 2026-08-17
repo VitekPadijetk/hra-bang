@@ -1701,10 +1701,13 @@ function preload() {
 
     loadAsset(this, 'image', 'lives', 'assets/other_cards/lives.webp');
     loadAsset(this, 'image', 'role_card_back', 'assets/other_cards/role_card_back.webp');
-    loadAsset(this, 'image', 'role_000', 'assets/roles/000.webp');
-    loadAsset(this, 'image', 'role_001', 'assets/roles/001.webp');
-    loadAsset(this, 'image', 'role_002', 'assets/roles/002.webp');
-    loadAsset(this, 'image', 'role_003', 'assets/roles/003.webp');
+    // Karty rolí jsou dodané ve 2× (650×1000) → v createScene se srovnají na 325×500
+    // (normalizeTexture), takže se všude kreslí ve stejném měřítku jako dřív.
+    // Klíč zůstal číselný (role_000…003 = mapa RoleImages), soubor nese jméno role.
+    loadAsset(this, 'image', 'role_000', 'assets/roles/sceriffo.webp');   // Sheriff
+    loadAsset(this, 'image', 'role_001', 'assets/roles/bandita.webp');    // Outlaw
+    loadAsset(this, 'image', 'role_002', 'assets/roles/odpadlik.webp');   // Renegade
+    loadAsset(this, 'image', 'role_003', 'assets/roles/vice.webp');       // Deputy
     loadAsset(this, 'image', 'sheriff_star', 'assets/other_cards/sheriff_star.webp');
 }
 
@@ -2000,6 +2003,13 @@ function normalizeCharTextures(scene, from = 0, to = 30) {
     for (let i = from; i <= to; i++) normalizeTexture(scene, 'char_' + i);
 }
 
+// Karty rolí (assets/roles/*.webp jsou dodané ve 2×) srovnané na 325×500 – kreslí se
+// na desce, v intru i při odhalení role vedle běžných karet, takže musí mít stejnou
+// velikost textury jako ony (jinak by se musela půlit měřítka na všech těch místech).
+function normalizeRoleTextures(scene) {
+    for (let i = 0; i <= 3; i++) normalizeTexture(scene, 'role_' + i.toString().padStart(3, '0'));
+}
+
 function create() {
     // Nejdřív dotáhni, co při preloadu spadlo (jinak by se zapekly placeholdery), teprve
     // pak postav scénu. gameScene se nastaví až v createScene – dokud je null, renderUI
@@ -2018,6 +2028,7 @@ function createScene() {
     applyStage();
 
     normalizeCharTextures(this);
+    normalizeRoleTextures(this);
     buildCardTextures(this);
 
     // Pozadí i závoj se roztahují přes CELÉ jeviště (tedy i přes pruhy po stranách,
