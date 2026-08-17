@@ -198,6 +198,12 @@ const CombatMixin = {
             // vyřazení). Ty se MUSÍ dobrat DŘÍV, než se posune tah – jinak by začal hrát další
             // hráč (a líznul si na svůj dynamit) s Herbovou odměnou pořád ve frontě a hra by
             // uvázla. Tah proto posuneme až po vyprázdnění fronty (viz _nextTurnAfterQueue).
+            // Frontu je nutné nejdřív pročistit: _pruneSuzyQueue z ní vyhodí líznutí, které
+            // už neplatí (Suzy Lafayette mezitím karty dostala / je mimo hru). Bez toho by
+            // `length > 0` prošlo, _processSpecialQueue by nic nerozeběhlo a hra by uvázla
+            // ve fázi, ve které zrovna je – u dynamitu s prázdným pendingDynamiteDamage,
+            // takže by na ni ani nešlo kliknout (pendingActor = null).
+            this._pruneSuzyQueue();
             if (this.specialActionQueue.length > 0) {
                 this._nextTurnAfterQueue = true;
                 this._processSpecialQueue();
@@ -223,6 +229,7 @@ const CombatMixin = {
             // Frontu je nutné dobrat DŘÍV než kontrolu Vězení a fázi lízání:
             // _processSpecialQueue během aktivního lízání záměrně nic nepouští, takže by
             // Bartova líznutí zůstala viset až za jeho vlastní fází lízání.
+            this._pruneSuzyQueue();   // viz komentář u smrti na dynamit výš
             if (this.specialActionQueue.length > 0) {
                 this._startChecksAfterQueue = true;
                 this._processSpecialQueue();

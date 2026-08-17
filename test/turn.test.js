@@ -260,3 +260,48 @@ test('nextTurn přeskočí mrtvého hráče', () => {
     g.nextTurn(); // z 0 → 1 (mrtvý) → 2
     assert.equal(g.currentPlayerIndex, 2);
 });
+
+// Fronta odložených akcí se před rozhodnutím „počkat na frontu?" MUSÍ pročistit.
+// _pruneSuzyQueue z ní vyhazuje líznutí, které už neplatí (Suzy Lafayette mezitím karty
+// dostala). Bez pročištění prošlo `length > 0`, _processSpecialQueue nic nerozeběhlo a hra
+// uvázla ve fázi DYNAMITE_DAMAGE s prázdným pendingDynamiteDamage – tedy s pendingActor
+// null, takže na dynamit nešlo ani kliknout. V zátěži botů to padalo ~1× z 2700 her.
+test('Dynamit: neplatné líznutí ve frontě hru nezasekne (poslední zásah)', () => {
+    const g = mkGame([{ role: 'Sheriff', health: 4 }, { role: 'Outlaw', character: 'Suzy Lafayette' }],
+                     { current: 0 });
+    g.deck.cards = [];
+    for (let i = 0; i < 6; i++) topDeck(g, Suits.CLUBS, '5');
+    g.phase = 'DYNAMITE_DAMAGE';
+    g.pendingDynamiteDamage = { playerIdx: 0, hitsLeft: 1 };
+    // Suzy má kartu v ruce → líznutí ve frontě už neplatí (typicky ho tam nechal
+    // efekt, který jí kartu mezitím vrátil).
+    give(g, 1, CardType.BANG);
+    g.specialActionQueue.push({ type: 'SUZY_DRAW', playerIdx: 1 });
+
+    g.takeDynamiteHit(0);
+
+    assert.equal(g.pendingDynamiteDamage, null);
+    assert.notEqual(g.phase, 'DYNAMITE_DAMAGE');   // hra se pohnula dál (kontroly/lízání)
+    assert.equal(g._startChecksAfterQueue, undefined, 'příznak nezůstal viset');
+});
+
+test('Dynamit: neplatné líznutí ve frontě nezasekne ani smrt na dynamitu', () => {
+    // Umírá bandita (ne šerif), takže hra pokračuje a musí se posunout tah.
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw', health: 1 },
+                      { role: 'Renegade', character: 'Suzy Lafayette' }, { role: 'Deputy' }],
+                     { current: 1 });
+    g.deck.cards = [];
+    for (let i = 0; i < 8; i++) topDeck(g, Suits.CLUBS, '5');
+    g.phase = 'DYNAMITE_DAMAGE';
+    g.pendingDynamiteDamage = { playerIdx: 1, hitsLeft: 3 };
+    give(g, 2, CardType.BANG);
+    g.specialActionQueue.push({ type: 'SUZY_DRAW', playerIdx: 2 });
+
+    g.takeDynamiteHit(1);   // 1 → 0, vyřazení
+
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g.winner, null, 'hra pokračuje');
+    assert.equal(g.pendingDynamiteDamage, null);
+    assert.notEqual(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.currentPlayerIndex, 2, 'tah se posunul na dalšího hráče');
+});

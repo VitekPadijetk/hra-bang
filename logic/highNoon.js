@@ -192,6 +192,7 @@ const HighNoonMixin = {
         // Odhoz mohl do fronty přidat odloženou akci (Suzy Lafayette s prázdnou rukou).
         // Ta musí doběhnout dřív, než se rozjede zbytek startu tahu (Pravé poledne,
         // kontroly na Dynamit/Vězení) – stejně jako po zásahu od Pravého poledne.
+        this._pruneSuzyQueue();   // stejný důvod jako u dynamitu (viz logic/combat.js)
         if (this.specialActionQueue.length > 0) {
             this.phase = "PLAY";
             this._resumeBeginTurnAfterQueue = true;
@@ -270,6 +271,7 @@ const HighNoonMixin = {
         this.checkWinCondition();
         if (this.winner) return true;
 
+        this._pruneSuzyQueue();   // stejný důvod jako u dynamitu (viz logic/combat.js)
         if (this.specialActionQueue.length > 0) {
             this.phase = "PLAY";
             this._nextTurnAfterQueue = true;
@@ -312,6 +314,7 @@ const HighNoonMixin = {
 
         // Zranění mohlo do fronty přidat odloženou akci (Bart Cassidy si líže za zásah).
         // Ta musí doběhnout dřív, než se rozjedou kontroly na Dynamit/Vězení.
+        this._pruneSuzyQueue();   // stejný důvod jako u dynamitu (viz logic/combat.js)
         if (this.specialActionQueue.length > 0) {
             this._resumeBeginTurnAfterQueue = true;
             this._processSpecialQueue();
