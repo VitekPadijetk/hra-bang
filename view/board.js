@@ -402,6 +402,9 @@ function drawOpponents(ctx) {
         if (player.weapon && player.weapon.id !== -1) allBoardCards.push(player.weapon);
         if (player.board) allBoardCards.push(...player.board);
 
+        // Fallback je RUB, ne 'role_001' (bandita): roli chvíli neznáme (stav ji do konce
+        // cinematiky vyřazení schovává – viz redactState), a nakreslit místo ní banditu
+        // znamená ukázat lež, kterou pak příchozí stav „opraví" na jinou kartu.
         const deadRoleMap = { 'Sheriff': 'role_000', 'Outlaw': 'role_001', 'Renegade': 'role_002', 'Deputy': 'role_003' };
         // Duch (Město duchů) má roli odkrytou od svého vyřazení – i když si během svého
         // tahu naléčí životy, karta role mu ze stolu zmizet nesmí (`_ghost` proto zůstává
@@ -417,7 +420,7 @@ function drawOpponents(ctx) {
         // v positions.js, jinak by animace mířily o kartu vedle).
         const _roleSlot = !!state.mode3p || (isDead && !deathCardsStillShown(actualIdx));
         const displayCards = _roleSlot
-            ? [{ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' }, ...allBoardCards]
+            ? [{ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_card_back' }, ...allBoardCards]
             : allBoardCards;
 
         const numBluePrimary = Math.min(displayCards.length, L.oppBoardPerRow);
@@ -583,11 +586,13 @@ function drawOpponents(ctx) {
             let bCard = gameScene.add.image(x, y, tex).setScale(scaleOpp).setAngle(angle);
 
             bCard.setInteractive({ useHandCursor: (canTargetThisPlayer || isPatDraw) && !card._isRole });
-            if (!card._isRole) {
-                bCard._zoomKey = card.id;
-                bCard.on('pointerover', () => startCardZoom(tex, card.id));
-                bCard.on('pointerout', scheduleZoomFade);
-            }
+            // Zvětšit jde i karta role (vyřazený hráč / hra pro 3) – text na ní je vysázený
+            // drobně a v herní velikosti se nedá přečíst. Klik na ni nikdy nejde (kurzor
+            // zůstává šipkou), klíč zoomu je stejný jako u mojí role v drawMyArea.
+            const zoomKey = card._isRole ? ('role:' + actualIdx) : card.id;
+            bCard._zoomKey = zoomKey;
+            bCard.on('pointerover', () => startCardZoom(tex, zoomKey));
+            bCard.on('pointerout', scheduleZoomFade);
 
             if (canTargetThisPlayer && !card._isRole) {
                 bCard.setTint(0xffff44);
@@ -1469,7 +1474,7 @@ function drawMyArea(ctx) {
                 // vybrané (2) se zmenší a zašednou. José: modré karty se zvýrazní.
                 const isDocActive = !!selectedState.doc;
                 const isDocStaged = isDocActive && selectedState.doc.staged.includes(index);
-                const isJoseBlue = !!selectedState.jose && ["Zbraň", "Barel", "Vybavení", "Dynamit"].includes(card.type);
+                const isJoseBlue = !!selectedState.jose && isBlueCard(card);
                 const cScale = (isStagedCard || isDAmain || isDocStaged) ? scaleHand * 0.88 : scaleHand;
                 let cSprite = gameScene.add.image(posX, handY, getTex(card.id))
                     .setScale(cScale)
@@ -1593,7 +1598,7 @@ function drawMyArea(ctx) {
                     }
                     // José Delgado: klik na modrou kartu = odhoď ji → lízni 2.
                     if (selectedState.jose) {
-                        if (["Zbraň", "Barel", "Vybavení", "Dynamit"].includes(card.type)) {
+                        if (isBlueCard(card)) {
                             socket.emit('jose_delgado', { cardIdx: index });
                             selectedState = { cardIndex: null, action: null };
                             App.blockInput = true;
@@ -1738,11 +1743,10 @@ function drawMyArea(ctx) {
             // Aktivní schopnosti postav se počítají jako hratelná akce → blikání „Ukončit
             // tah" pak nemá smysl (zrcadlí podmínky tlačítek Chuck/Doc/José níže).
             const _ec = effectiveCharacter(me);
-            const _joseBlue = ["Zbraň", "Barel", "Vybavení", "Dynamit"];
             const hasActiveAbility =
                 (_ec === "Chuck Wengam" && me.health > 1) ||
                 (_ec === "Doc Holyday" && !me._docUsed && me.hand.length >= 2) ||
-                (_ec === "José Delgado" && (me._joseUses || 0) < 2 && me.hand.some(c => _joseBlue.includes(c.type)));
+                (_ec === "José Delgado" && (me._joseUses || 0) < 2 && me.hand.some(isBlueCard));
             const hasPlayable = sidCanHeal || hasPlayableGreen || hasActiveAbility || me.hand.some((card, idx) => {
                 const p = getCardPlayability(card, idx);
                 return p !== false;
@@ -1842,9 +1846,8 @@ function drawMyArea(ctx) {
                 });
             }
             // José Delgado: odhoď modrou → 2 karty (max 2×). Aktivní režim vybere modrou v ruce.
-            const joseBlue = ["Zbraň", "Barel", "Vybavení", "Dynamit"];
             if (effectiveCharacter(me) === "José Delgado" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
-                (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(c => joseBlue.includes(c.type))) && !App.blockInput) {
+                (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput) {
                 const active = !!selectedState.jose;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
                     ...themeToggleStyle(active), fontSize: '21px',
@@ -1897,7 +1900,7 @@ function drawSpectatorPlayer(ctx) {
         // Hra pro 3 (Město duchů): role jsou odkryté u všech, viz drawOpponents.
         const _roleSlot = !!state.mode3p || (isDead && !deathCardsStillShown(0));
         const allBoard = [];
-        if (_roleSlot) allBoard.push({ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' });
+        if (_roleSlot) allBoard.push({ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_card_back' });
         if (player.weapon && player.weapon.id !== -1) allBoard.push(player.weapon);
         if (player.board) allBoard.push(...player.board);
 
@@ -1930,10 +1933,20 @@ function drawSpectatorPlayer(ctx) {
         // se nekreslí, dokud letí doprostřed obrazovky (fáze 'settled').
         const stealHidden = (c) => c._isRole ? (_deathStage === 'settled') : App.stealHideIds.has(c.id);
         const specBoardKey = (c) => 'ob0_' + (c._isRole ? 'role' : c.id);
+        // Divák si karty jen prohlíží (nikam neklika), ale zvětšit si je musí umět stejně
+        // jako hráč – včetně odhalené karty role (klíč jako v drawOpponents).
+        const specZoom = (img, c) => {
+            const key = c._isRole ? 'role:0' : c.id;
+            img.setInteractive({ useHandCursor: false });
+            img._zoomKey = key;
+            img.on('pointerover', () => startCardZoom(texOf(c), key));
+            img.on('pointerout', scheduleZoomFade);
+        };
         for (let i = 0; i < firstRowN; i++) {
             if (stealHidden(allBoard[i])) continue;
             const bX = groupLeft + (firstRowN - 1 - i) * (cW + g) + cW / 2;
             const bImg = gameScene.add.image(bX, livesCY, texOf(allBoard[i])).setScale(sOpp);
+            specZoom(bImg, allBoard[i]);
             gameScene.cardsSprites.add(bImg);
             reflowCard(specBoardKey(allBoard[i]), bImg, bX, livesCY, texOf(allBoard[i]), sOpp, 0);
         }
@@ -1943,6 +1956,7 @@ function drawSpectatorPlayer(ctx) {
             const bX = groupLeft + (firstRowN - 1 - col) * (cW + g) + cW / 2;
             const bY = livesCY - (cH + g);
             const bImg = gameScene.add.image(bX, bY, texOf(allBoard[i])).setScale(sOpp);
+            specZoom(bImg, allBoard[i]);
             gameScene.cardsSprites.add(bImg);
             reflowCard(specBoardKey(allBoard[i]), bImg, bX, bY, texOf(allBoard[i]), sOpp, 0);
         }

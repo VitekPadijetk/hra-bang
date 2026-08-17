@@ -3,7 +3,7 @@
 // s původním io.on('connection'); helpery se berou z ctx.
 module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     const { rooms, makeRoom, roomPayload, broadcastRoom, broadcastLobbyList,
-            findRoomBySocket, leaveRoom, leaveSpectate, disbandRoom, getGameList, startGame, io,
+            findRoomBySocket, leaveRoom, leaveSpectate, disbandRoom, closeRoom, getGameList, startGame, io,
             createBot, removeBot, botSockets, botControl, botRelease } = ctx;
 
     // Povolený počet hráčů: 3 až 8 (3 a 8 přidává rozšíření Město duchů). Pro počet
@@ -22,9 +22,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     function disbandBotGameWatchedBy(socketId) {
         for (const [, r] of rooms) {
             if (r._watcherSocketId !== socketId) continue;
-            if (r._botTick) { clearTimeout(r._botTick); r._botTick = null; }
-            r.players.forEach(p => { if (p.isBot) botSockets.delete(p.socketId); });
-            disbandRoom(r);
+            disbandRoom(r);   // closeRoom uvnitř zruší tick botů i jejich fake sockety
             return true;
         }
         return false;
@@ -161,11 +159,17 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         // Leader dostane go_to_menu, ostatní kicked_from_game
         const leaderSocket = socket;
         room.players.forEach(p => {
-            if (p.socketId === leaderSocket.id) return; // leader zpracujeme zvlášť
             const s = io.sockets.sockets.get(p.socketId);
-            if (s) s.emit('kicked_from_game', 'Game leader ukončil hru.');
+            if (!s) return;
+            s.leave(room.id);
+            if (p.socketId === leaderSocket.id) return; // leader zpracujeme zvlášť
+            s.emit('kicked_from_game', 'Game leader ukončil hru.');
         });
-        rooms.delete(room.id);
+        io.to(room.id + '_spectators').emit('kicked_from_game', 'Game leader ukončil hru.');
+        // POZOR: nestačí rooms.delete – intro sekvence, odložený broadcast i tick botů
+        // jsou naplánované timeouty a emitovaly by dál (lídr by se z menu překlopil zpátky
+        // do zrušené hry). Všechno zruší closeRoom (server/rooms.js).
+        closeRoom(room);
         broadcastLobbyList();
         leaderSocket.emit('go_to_menu');
     });

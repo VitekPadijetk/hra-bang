@@ -35,6 +35,17 @@ function getActionForCard(card, character) {
     return "PLAY_CARD";
 }
 
+// Modré karty (karty s modrým okrajem, které se vykládají na stůl). Zelené karty
+// rozšíření Dodge City mají vlastní typy a `green: true`, takže sem nespadají.
+// POZOR: **Vězení je modrá karta** – jen se vykládá před SOUPEŘE, ne před sebe.
+// Jediný zdroj pravdy pro schopnost Josého Delgada (odhoď modrou → lízni 2): ptá se
+// jím server (logic/characters.js), klient (view/board.js) i bot (core/botPolicy.js).
+const BLUE_CARD_TYPES = ["Zbraň", "Barel", "Vybavení", "Dynamit", "Vězení"];
+
+function isBlueCard(card) {
+    return !!card && !card.green && BLUE_CARD_TYPES.includes(card.type);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { getActionForCard };
+    module.exports = { getActionForCard, isBlueCard, BLUE_CARD_TYPES };
 }

@@ -7,7 +7,13 @@ const { hnRevealMs } = require('../core/highNoonAnim.js');
 module.exports = function installAnimService(ctx) {
     const { io, broadcastRoomDelayed } = ctx;
 
+    // Do rozpuštěné místnosti se už nic neposílá (closeRoom v server/rooms.js). `roomAlive`
+    // chybí jen testům, které si anim službu instalují samostatně (bez rooms) – tam se
+    // nefiltruje nic.
+    const roomAlive = (room) => typeof ctx.roomAlive !== 'function' || ctx.roomAlive(room);
+
     function emitAnim(room, data) {
+        if (!roomAlive(room)) return;
         // V DEBUG hře sdílí jeden socket VÍC hráčů (room.players mají stejný socketId) –
         // dedup přes seen, jinak by tentýž socket dostal animaci N× (= N překrývajících se letů).
         const seen = new Set();
@@ -24,6 +30,7 @@ module.exports = function installAnimService(ctx) {
     // líznuté karty): majiteli `ownerData` (s cardId pro flip rub→líc), ostatním
     // hráčům i divákům `othersData` (jen rub, identita karty zůstává skrytá).
     function emitAnimPrivate(room, ownerPlayerIdx, ownerData, othersData) {
+        if (!roomAlive(room)) return;
         const ownerSocketId = room.players.find(rp => rp.playerIdx === ownerPlayerIdx)?.socketId;
         // Majitelovu socketu pošli reveal payload jako PRVNÍ a označ ho za vyřízený –
         // v DEBUG hře sdílí jeden socket víc hráčů, takže by ho jinak „ostatní" varianta

@@ -37,6 +37,9 @@ if (typeof require === 'function') {
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
+    if (typeof isBlueCard === 'undefined') {
+        globalThis.isBlueCard = require('./cardRules.js').isBlueCard;
+    }
     if (typeof pendingActor === 'undefined') {
         globalThis.pendingActor = require('./pending.js').pendingActor;
     }
@@ -459,9 +462,8 @@ function decidePlay(state, myIndex, beliefs) {
         consider(28, { event: 'chuck_wengam' });        // ztrať 1 HP → lízni 2 (když jsi na kartách chudý)
     }
     if (ch === 'José Delgado' && (me._joseUses || 0) < 2) {
-        const blueTypes = [T.WEAPON, T.BARREL, T.EQUIPMENT, T.DYNAMITE];
         let blueIdx = -1, blueScore = Infinity;
-        me.hand.forEach((c, i) => { if (blueTypes.includes(c.type) && keepScore(c) < blueScore) { blueScore = keepScore(c); blueIdx = i; } });
+        me.hand.forEach((c, i) => { if (isBlueCard(c) && keepScore(c) < blueScore) { blueScore = keepScore(c); blueIdx = i; } });
         if (blueIdx !== -1) consider(18, { event: 'jose_delgado', payload: { cardIdx: blueIdx } });
     }
     if (ch === 'Doc Holyday' && !me._docUsed && me.hand.length >= 3) {

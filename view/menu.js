@@ -544,6 +544,7 @@ function renderMenuScreen(screen) {
             fill: 0x2a1a33, fillHover: 0x3d2749, fontSize: '26px',
             onClick: () => {
                 const hn = !!(App.botGameExpansions && App.botGameExpansions.high_noon);
+                App.ignoreRoomId = null;   // vstupujeme do hry (jako u sledování) – filtr už nemá co blokovat
                 socket.emit('create_bot_game', {
                     count: App.botGameCount || 4,
                     options: {

@@ -305,9 +305,9 @@ const CharactersMixin = {
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "José Delgado") return false;
         if ((p._joseUses || 0) >= 2) return false;
-        const card = p.hand[cardIdx];
-        const blueTypes = [CardType.WEAPON, CardType.BARREL, CardType.EQUIPMENT, CardType.DYNAMITE];
-        if (!card || !blueTypes.includes(card.type)) return false;
+        // Modrá = i Vězení (viz isBlueCard v core/cardRules.js) – to, že se vykládá před
+        // soupeře, z něj modrou kartu dělat nepřestává.
+        if (!isBlueCard(p.hand[cardIdx])) return false;
         this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
         p._joseUses = (p._joseUses || 0) + 1;
         this.checkSuzyLafayette(p);

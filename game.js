@@ -1204,17 +1204,30 @@ function startBlackJackReveal(ds) {
     const endScale = isOwner ? 0.4 : 0.3;
     const sprite = gameScene.add.image(DECK_X, DECK_Y, 'card_back')
         .setScale(0.28).setDepth(820).setAlpha(0.98);
+    // Black Jack zkoumá BARVU druhé karty úplně stejně jako kdokoli při sejmutí, takže
+    // musí i stejně blikat hodnota+barva (bez toho stůl nevěděl, na co se vlastně kouká).
+    let pulse = null;
+    const stopPulse = () => {
+        if (!pulse) return;
+        if (pulse.tween) pulse.tween.remove();
+        pulse.marks.forEach(m => m.destroy());
+        pulse = null;
+    };
     // 1) balíček → střed (karta je veřejná – všichni vidí líc)
     gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: 450, ease: 'Cubic.easeOut' });
     gameScene.tweens.add({ targets: sprite, scaleY: REVEAL_BIG, duration: 450, ease: 'Cubic.easeOut' });
     gameScene.tweens.add({ targets: sprite, scaleX: 0, duration: 225, ease: 'Sine.easeIn',
         onComplete: () => { if (!sprite.active) return; sprite.setTexture(faceTex);
-            gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 225, ease: 'Sine.easeOut' }); } });
+            gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 225, ease: 'Sine.easeOut',
+                onComplete: () => { if (sprite.active) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card); } }); } });
     if (isOwner) App.pendingDrawIds.add(card.id);   // skryj v ruce do doletu (staging)
     const flyDelay = 450 + 3000;
     // 2) po 3 s letí do ruky Black Jacka
     gameScene.tweens.add({ targets: sprite, x: handTarget.x, y: handTarget.y, scaleY: endScale,
         delay: flyDelay, duration: 420, ease: 'Cubic.easeIn',
+        // Marka leží na PEVNÉ pozici uprostřed obrazovky (nedrží se karty), takže musí
+        // zhasnout přesně se startem letu do ruky – jinak by zůstala viset ve vzduchu.
+        onStart: () => stopPulse(),
         onComplete: () => { if (sprite.active) sprite.destroy();
             if (isOwner) {
                 App.pendingDrawIds.delete(card.id);

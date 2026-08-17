@@ -7,8 +7,16 @@ const { firstPlayerIndex } = require('../core/roles.js');
 module.exports = function installIntroService(ctx) {
     const { io, broadcastRoom } = ctx;
 
-    // Emituje intro_phase všem hráčům v místnosti
+    // Do rozpuštěné místnosti se už nic neposílá (closeRoom v server/rooms.js). `roomAlive`
+    // chybí jen testům, které si intro službu instalují samostatně (bez rooms).
+    const roomAlive = (room) => typeof ctx.roomAlive !== 'function' || ctx.roomAlive(room);
+
+    // Emituje intro_phase všem hráčům v místnosti.
+    // Celá sekvence je řetěz timeoutů, které se nedají odvolat – když se místnost mezitím
+    // rozpustí (lídr ukončil hru), musí se zbytek cinematiky zahodit tady. Bez toho by
+    // hráčům chodily intro fáze zrušené hry a klient by je z menu vrátil zpátky do ní.
     function emitIntro(room, data) {
+        if (!roomAlive(room)) return;
         room.players.forEach(rp => {
             const s = io.sockets.sockets.get(rp.socketId);
             if (s) s.emit('intro_phase', { ...data, myIndex: rp.playerIdx });
@@ -21,6 +29,7 @@ module.exports = function installIntroService(ctx) {
 
     // Emituje intro_role pouze konkrétnímu hráči (soukromé)
     function emitIntroRole(room, playerIdx, roleStr) {
+        if (!roomAlive(room)) return;
         const rp = room.players[playerIdx];
         if (!rp) return;
         const s = io.sockets.sockets.get(rp.socketId);
@@ -29,6 +38,7 @@ module.exports = function installIntroService(ctx) {
 
     // Emituje intro_chars (2 karty postav) pouze konkrétnímu hráči
     function emitIntroChars(room, playerIdx, charChoices) {
+        if (!roomAlive(room)) return;
         const rp = room.players[playerIdx];
         if (!rp) return;
         const s = io.sockets.sockets.get(rp.socketId);

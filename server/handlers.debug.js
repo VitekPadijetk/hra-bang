@@ -39,8 +39,8 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
     socket.on('debug_end_game', () => {
         const room = findRoomBySocket(socket.id);
         if (!room?.gameState.isDebug) return;
-        ctx.glog.closeGame(room);
-        rooms.delete(room.id);
+        socket.leave(room.id);
+        ctx.closeRoom(room);   // zruší i naplánované timeouty (viz server/rooms.js)
         broadcastLobbyList();
         socket.emit('go_to_menu');
     });

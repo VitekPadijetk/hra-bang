@@ -887,6 +887,12 @@ function playDeathSequence(data) {
         dp.hand = [];
         dp.board = [];
         dp.weapon = { id: -1, name: 'Colt .45', type: 'Zbraň', props: { range: 1 } };
+        // Roli zapiš do stavu UŽ TEĎ (chodí v datech animace – ve stavu je do konce
+        // cinematiky schovaná, viz redactState). Karta role se v téhle fázi ještě nekreslí
+        // (letí doprostřed obrazovky), ale ve chvíli, kdy dosedne na svůj slot, ji deska
+        // musí umět nakreslit správně. Bez toho tam do příchodu stavu (o pár set ms
+        // později) svítil fallback – tedy bandita, ať měl mrtvý roli jakoukoli.
+        if (data.role) dp.role = data.role;
         App.deathSeq[pid] = 'settled';
         delete App.deathHandHide[pid];
         renderUI();
@@ -952,6 +958,7 @@ function playDeathRoleReveal(data) {
     p.hand = [];
     p.board = [];
     p.weapon = { id: -1, name: 'Colt .45', type: 'Zbraň', props: { range: 1 } };
+    if (data.role) p.role = data.role;   // viz playDeathSequence: karta role musí dosednout se SPRÁVNOU rolí
     App.deathSeq[pid] = 'settled';
     delete App.deathHandHide[pid];
     renderUI();
@@ -2274,25 +2281,30 @@ function stopSpectating(roomId) {
 // takže starší updaty té místnosti už dorazily → filtr může jít pryč.
 socket.on('spectate_left', () => { App.ignoreRoomId = null; });
 
-socket.on('go_to_menu', () => {
-    App.ignoreRoomId = null;
+// Odchod z místnosti do menu. `ignoreRoomId` se nastaví na opuštěnou hru (ne na null):
+// server sice po rozpuštění místnosti nic dalšího neposílá (closeRoom v server/rooms.js),
+// ale zprávy odeslané těsně předtím můžou ještě dorazit – bez filtru by nás vrátily z menu
+// zpátky do hry (a člověk by v ní byl „napůl": deska se kreslí, ale hra už neexistuje).
+// Filtr shodí `room_joined` (vstup do jakékoli místnosti) i klik na sledování ve view/menu.js.
+function _leaveToMenu(screen) {
+    App.ignoreRoomId = roomState?.roomId || null;
     clearBangSession();   // záměrný odchod → po F5 se nevracet do hry
     _resetIntro();        // odchod během intra → zahoď zbytky cinematiky (jinak se zdědí do další hry)
     _animQ.reset();       // rozdělaná fronta patří opuštěné hře – nic z ní už nedocommitovat
     roomState = null; state = null; myIndex = null; _myNextGameVote = null; App.startPressed = false;
     App.spectating = false;
-    App.menuScreen = 'main';
+    App.blockInput = false;   // zámek patřil akci v opuštěné hře
+    App.menuScreen = screen;
     if (gameScene) renderUI();
+}
+
+socket.on('go_to_menu', () => {
+    _leaveToMenu('main');
 });
 
 socket.on('kicked_from_game', (msg) => {
-    clearBangSession();
-    _resetIntro();
-    _animQ.reset();
-    roomState = null; state = null; myIndex = null; _myNextGameVote = null; App.startPressed = false;
-    App.menuScreen = 'kicked';
     App.kickedMsg = msg || 'Game leader ukončil hru.';
-    if (gameScene) renderUI();
+    _leaveToMenu('kicked');
 });
 
 socket.on('notify', (msg) => {

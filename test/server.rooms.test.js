@@ -251,3 +251,46 @@ test('redakce: divák vidí jen veřejné, u hry jen botů vidí všechno', () =
     const specBot = emits.filter(e => e.scope === 'to:' + botRoom.id + '_spectators' && e.ev === 'room_update').pop();
     assert.equal(specBot.payload.gameState.players[2].role, 'Renegade', 'není komu podvádět');
 });
+
+// ── Rozpuštění místnosti (closeRoom) ───────────────────────────────────────────
+// Intro sekvence, odložený broadcast i tick botů jsou naplánované timeouty, které si
+// drží referenci na `room`. Po pouhém rooms.delete běžely dál a emitovaly hráčům, kteří
+// jsou už v menu – klient je pak z menu překlopil zpátky do zrušené hry.
+
+test('closeRoom: po rozpuštění už broadcastRoom nic neemituje', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    ctx.closeRoom(room);
+    assert.equal(ctx.rooms.size, 0);
+    assert.equal(ctx.roomAlive(room), false);
+    ctx.broadcastRoom(room);
+    ctx.broadcastRoomDelayed(room, 1);
+    assert.equal(emits.filter(e => e.ev === 'room_update').length, 0);
+});
+
+test('closeRoom zruší naplánovaný odložený broadcast', async () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    ctx.broadcastRoomDelayed(room, 5);
+    ctx.closeRoom(room);
+    await new Promise(r => setTimeout(r, 30));
+    assert.equal(emits.filter(e => e.ev === 'room_update').length, 0);
+    assert.equal(room._pendingEmit, null);
+});
+
+test('closeRoom umlčí i intro sekvenci (emitIntro rozpuštěné místnosti)', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    require('../server/intro.js')(ctx);
+    ctx.emitIntro(room, { sub: 'shuffle_roles', roleCount: 3 });
+    assert.ok(emits.some(e => e.ev === 'intro_phase'), 'živá místnost intro dostane');
+    emits.length = 0;
+    ctx.closeRoom(room);
+    ctx.emitIntro(room, { sub: 'deal_roles', order: [0, 1, 2] });
+    ctx.emitIntroRole(room, 0, 'Outlaw');
+    ctx.emitIntroChars(room, 0, []);
+    assert.equal(emits.length, 0, 'doběhlé timeouty už nikomu nic neposílají');
+});

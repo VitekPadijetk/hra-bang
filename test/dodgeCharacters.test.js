@@ -236,6 +236,19 @@ test('José Delgado: odhoď modrou → lízni 2 (max 2×/tah)', () => {
     assert.equal(g.players[0]._joseUses, 1);
 });
 
+// Vězení JE modrá karta (jen se vykládá před soupeře) – stejně jako Dynamit.
+// Dřív ho seznam modrých typů neznal a José s ním schopnost použít nemohl.
+test('José Delgado: modrá je i Vězení a Dynamit', () => {
+    for (const type of [CardType.JAIL, CardType.DYNAMITE, CardType.WEAPON, CardType.EQUIPMENT]) {
+        const g = mkGame([{ role: 'Sheriff', character: 'José Delgado' }, { role: 'Outlaw' }]);
+        g.players[0]._joseUses = 0;
+        g.deck.cards = [mkCard(CardType.BANG, { id: 880 }), mkCard(CardType.BANG, { id: 881 })];
+        const idx = give(g, 0, type, { id: 882 });
+        assert.equal(g.useJoseDelgado(0, idx), true, type);
+        assert.equal(g.players[0]._joseUses, 1, type);
+    }
+});
+
 test('José Delgado: nemodrou kartu nelze použít', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'José Delgado' }, { role: 'Outlaw' }]);
     g.players[0]._joseUses = 0;

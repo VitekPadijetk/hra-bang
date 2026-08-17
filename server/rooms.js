@@ -97,7 +97,38 @@ module.exports = function installRoomService(ctx) {
         };
     }
 
+    // ── Konec místnosti ─────────────────────────────────────────────────────────
+    // Rozpuštění NENÍ jen `rooms.delete`: intro sekvence (server/intro.js), odložený
+    // broadcast, tick botů, čekání na assety i odpočet navazující hry jsou naplánované
+    // timeouty, které si drží referenci na `room` a emitují do socketů dál. Po pouhém
+    // smazání z registru tak hráči, kteří jsou už zpátky v menu, dostávali `intro_phase`
+    // / `room_update` zrušené hry a klient je z menu překlopil zpátky do ní – „jsem ve
+    // hře a zároveň nejsem" (viz cancel_game). closeRoom proto všechno naplánované zruší
+    // a označí místnost za mrtvou; emit cesty se ptají přes roomAlive().
+    function closeRoom(room) {
+        if (!room) return;
+        room._closed = true;
+        if (room._pendingEmit) { clearTimeout(room._pendingEmit); room._pendingEmit = null; }
+        if (room._botTick) { clearTimeout(room._botTick); room._botTick = null; }
+        if (room._assetWaitTimer) { clearTimeout(room._assetWaitTimer); room._assetWaitTimer = null; }
+        if (room._nextGameTimerInterval) { clearInterval(room._nextGameTimerInterval); room._nextGameTimerInterval = null; }
+        room._assetWaitCb = null;
+        room.assetsWaiting = false;
+        room._introPlaying = false;
+        room._keepPhase = false;
+        // Fake sockety botů patřily téhle hře – bez úklidu by v registru zůstaly navždy.
+        if (ctx.botSockets) room.players.forEach(p => { if (p.isBot) ctx.botSockets.delete(p.socketId); });
+        ctx.glog.closeGame(room);
+        rooms.delete(room.id);
+    }
+
+    // Smí se do místnosti ještě emitovat? (viz closeRoom)
+    function roomAlive(room) { return !!room && !room._closed && rooms.has(room.id); }
+
     function broadcastRoom(room) {
+        // Rozpuštěná místnost: doběhlý timeout (intro, odložený broadcast, odpočet) už
+        // nesmí nikomu poslat stav – adresáti jsou dávno v menu.
+        if (!roomAlive(room)) return;
         // Hook PŘED odesláním stavu: pravidla mohla nachystat animaci, která musí dojet
         // dřív, než se stav aplikuje (odkrytí karty High Noon – server/anim.js). Fronta
         // animací na klientu drží pořadí příjmu, takže stačí emitovat před stavem.
@@ -121,6 +152,7 @@ module.exports = function installRoomService(ctx) {
     }
 
     function broadcastRoomDelayed(room, ms = 400) {
+        if (!roomAlive(room)) return;
         if (room._pendingEmit) clearTimeout(room._pendingEmit);
         room._pendingEmit = setTimeout(() => {
             room._pendingEmit = null;
@@ -184,8 +216,7 @@ module.exports = function installRoomService(ctx) {
         // Když debug okno odejde, nemá smysl hru držet (nic se v ní už neděje, jen by
         // svítila jako sledovatelná) → zruš ji celou.
         if (room.gameState?.isDebug) {
-            ctx.glog.closeGame(room);
-            rooms.delete(room.id);
+            closeRoom(room);
             socket.leave(room.id);
             socket.emit('go_to_menu');
             broadcastLobbyList();
@@ -200,8 +231,7 @@ module.exports = function installRoomService(ctx) {
         socket.emit('go_to_menu');
 
         if (room.players.length === 0) {
-            ctx.glog.closeGame(room);
-            rooms.delete(room.id);
+            closeRoom(room);
             broadcastLobbyList();
             return;
         }
@@ -210,10 +240,10 @@ module.exports = function installRoomService(ctx) {
         if (wasLeader && (room.phase === 'playing' || room.phase === 'char_select' || room.phase === 'finished')) {
             room.players.forEach(p => {
                 const s = io.sockets.sockets.get(p.socketId);
-                if (s) s.emit('kicked_from_game', 'Game leader opustil hru.');
+                if (s) { s.leave(room.id); s.emit('kicked_from_game', 'Game leader opustil hru.'); }
             });
-            ctx.glog.closeGame(room);
-            rooms.delete(room.id);
+            io.to(room.id + '_spectators').emit('kicked_from_game', 'Game leader opustil hru.');
+            closeRoom(room);
             broadcastLobbyList();
             return;
         }
@@ -230,6 +260,7 @@ module.exports = function installRoomService(ctx) {
         room.players.forEach(p => {
             const s = io.sockets.sockets.get(p.socketId);
             if (s) {
+                s.leave(room.id);
                 if (reason) {
                     s.emit('kicked_from_game', reason);
                 } else {
@@ -237,15 +268,18 @@ module.exports = function installRoomService(ctx) {
                 }
             }
         });
-        ctx.glog.closeGame(room);
-        rooms.delete(room.id);
+        // Divák sedí ve vlastním kanálu (není v room.players), takže se o konci jinak
+        // nedozví. Bez `reason` je to řízený odchod toho, kdo hru sledoval (hra jen botů) –
+        // ten dostane 'go_to_menu' od svého handleru a hlášku by mu jen přebilo.
+        if (reason) io.to(room.id + '_spectators').emit('kicked_from_game', reason);
+        closeRoom(room);
         broadcastLobbyList();
     }
 
     Object.assign(ctx, {
         rooms, genId, makeRoom, roomPayload, broadcastRoom, broadcastRoomDelayed,
         broadcastLobbyList, getLobbyList, getGameList, findRoomBySocket,
-        leaveRoom, leaveSpectate, disbandRoom,
+        leaveRoom, leaveSpectate, disbandRoom, closeRoom, roomAlive,
     });
     return ctx;
 };

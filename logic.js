@@ -43,6 +43,10 @@ if (typeof TARGET_3P === 'undefined' && typeof require === 'function') {
 if (typeof evaluateWinner === 'undefined' && typeof require === 'function') {
     globalThis.evaluateWinner = require('./core/winCondition.js').evaluateWinner;
 }
+// „Je to modrá karta?" (José Delgado) – jediný zdroj pravdy pro server, klient i bota.
+if (typeof isBlueCard === 'undefined' && typeof require === 'function') {
+    globalThis.isBlueCard = require('./core/cardRules.js').isBlueCard;
+}
 
 class GameState {
     constructor() {
