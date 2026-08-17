@@ -283,3 +283,98 @@ test('mobil: moje ruka má vlastní řadu POD stolem (soupeři to nemění)', ()
         assert.equal(getBoardCardPos(0, 0).y, L.myBaseY);
     });
 });
+
+// ── Pás vyložených karet nesmí dosáhnout na balíčky uprostřed stolu ──────────
+// Řady rostou vždy směrem k balíčkům (u soupeře dovnitř stolu, u mě vzhůru), takže je
+// jejich počet zastropovaný a přeplněná řada se místo další řady jen zhustí
+// (core/layout.js boardBand). Tohle je pojistka, že to platí pro každé sedadlo i počet
+// hráčů – dřív rostly řady bez stropu a horní soupeř od 7. karty ležel na balíčku.
+const DSK = LAYOUT_PROFILES.desktop;
+
+// Obdélník, který zabírají balíčky: od balíčku vlevo po místo aktivní karty High Noon.
+// Plný balíček (80 karet po 0,125 px) roste vzhůru, proto `stack`.
+function pileRect(L) {
+    const w = 325 * L.scaleDeck, h = 500 * L.scaleDeck;
+    const stack = 79 * 0.125;
+    return {
+        x0: L.centerX - L.deckOffX - w / 2, x1: L.hnActiveX + w / 2,
+        y0: L.pileY - h / 2 - stack,        y1: L.pileY + h / 2,
+    };
+}
+// Karta soupeře vlevo/vpravo leží otočená o 90° → na obrazovce je široká jako VÝŠKA artu.
+function cardRect(pos, side, scale) {
+    const w = 325 * scale, h = 500 * scale;
+    const rot = side === 'left' || side === 'right';
+    const bw = rot ? h : w, bh = rot ? w : h;
+    return { x0: pos.x - bw / 2, x1: pos.x + bw / 2, y0: pos.y - bh / 2, y1: pos.y + bh / 2 };
+}
+const overlaps = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+
+test('vyložené karty soupeřů nedosáhnou na balíčky (žádný počet hráčů, žádný počet karet)', () => {
+    const piles = pileRect(DSK);
+    for (let total = 2; total <= 8; total++) {
+        const anchors = getOpponentAnchors(total);
+        if (!anchors.length) continue;          // počet bez tabulky kotev (viz test výš)
+        for (let k = 1; k <= 14; k++) {
+            // hráč 0 = já, soupeři mají k vyložených karet (zbraň + modré/zelené)
+            const players = Array.from({ length: total }, () => ({
+                health: 4, hand: [], board: Array.from({ length: k - 1 }, (_, i) => ({ id: i })),
+                weapon: { id: 1 },
+            }));
+            setWorld(players, 0);
+            for (let opp = 1; opp < total; opp++) {
+                const side = anchors[opp - 1].side;
+                for (let b = 0; b < k; b++) {
+                    const r = cardRect(getBoardCardPos(opp, b), side, DSK.scaleOpp);
+                    assert.ok(!overlaps(r, piles),
+                        `${total} hráčů, soupeř ${opp} (${side}), ${k} karet, karta ${b}: leze na balíčky`);
+                }
+            }
+            global.state = null; global.myIndex = null;
+        }
+    }
+});
+
+test('moje vyložené karty nedosáhnou na balíčky', () => {
+    const piles = pileRect(DSK);
+    for (let k = 1; k <= 20; k++) {
+        const players = [{
+            health: 4, hand: [], board: Array.from({ length: k - 1 }, (_, i) => ({ id: i })),
+            weapon: { id: 1 },
+        }, { health: 4, hand: [], board: [], weapon: { id: -1 } }];
+        setWorld(players, 0);
+        for (let b = 0; b < k; b++) {
+            const r = cardRect(getBoardCardPos(0, b), 'bottom', DSK.scaleMe);
+            assert.ok(!overlaps(r, piles), `${k} karet, karta ${b}: leze na balíčky`);
+        }
+        global.state = null; global.myIndex = null;
+    }
+});
+
+test('pás vyložených karet soupeře se s počtem karet nerozšíří', () => {
+    for (let total = 2; total <= 8; total++) {
+        const anchors = getOpponentAnchors(total);
+        if (!anchors.length) continue;
+        const spanOf = (k) => {
+            const players = Array.from({ length: total }, () => ({
+                health: 4, hand: [], board: Array.from({ length: k - 1 }, (_, i) => ({ id: i })),
+                weapon: { id: 1 },
+            }));
+            setWorld(players, 0);
+            let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+            for (let b = 0; b < k; b++) {
+                const p = getBoardCardPos(1, b);
+                x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+                y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+            }
+            global.state = null; global.myIndex = null;
+            return { w: x1 - x0, h: y1 - y0 };
+        };
+        const full = spanOf(DSK.oppBoardRows * DSK.oppBoardPerRow);
+        for (let k = 7; k <= 16; k++) {
+            const s = spanOf(k);
+            assert.ok(s.w <= full.w + 1e-9 && s.h <= full.h + 1e-9,
+                `${total} hráčů, ${k} karet: pás se rozšířil`);
+        }
+    }
+});

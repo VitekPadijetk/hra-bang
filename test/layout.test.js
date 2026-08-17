@@ -9,6 +9,7 @@ const {
     COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
     compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
     oppScale, handCardScale, myHandRow, myHandSlotX,
+    boardBand, boardSlot,
 } = require('../core/layout.js');
 
 before(() => { console.log = () => {}; });
@@ -591,5 +592,76 @@ describe('mobilní moje zóna – pásma se nekříží', () => {
         assert.strictEqual(L.btnAbilX, st.right - MOB.btnMargin);
         // na 16:9 zůstávají literály z profilu (resolveLayout je tam identita)
         assert.strictEqual(resolveLayout(MOB, computeStage(1920, 1080)), MOB);
+    });
+});
+
+// ── Pás vyložených karet (boardBand/boardSlot) ───────────────────────────────
+// Řady rostou vždy směrem k balíčkům uprostřed stolu, takže je jejich počet
+// zastropovaný a přeplněná řada se místo další řady jen zhustí. Půdorys pásu
+// proto zůstává stejný, ať má hráč na stole cokoli.
+describe('boardBand – pás vyložených karet', () => {
+    const DSK = LAYOUT_PROFILES.desktop;
+    const cardW = CARD_ART_W * DSK.scaleOpp;   // 87.75
+    const gap = DSK.oppGap;                    // 10
+    const rows = DSK.oppBoardRows;             // 2
+    const perRow = DSK.oppBoardPerRow;         // 3
+
+    test('do kapacity pásu je rozestup přesně karta + mezera (dnešní stav)', () => {
+        for (let k = 1; k <= rows * perRow; k++) {
+            const b = boardBand(k, rows, perRow, cardW, gap);
+            assert.strictEqual(b.step, cardW + gap, `k=${k}`);
+            assert.strictEqual(b.perRow, perRow, `k=${k}`);
+            assert.strictEqual(b.rows, rows, `k=${k}`);
+        }
+    });
+
+    test('do kapacity pásu jsou slouty přesně dnešní % perRow / floor(/perRow)', () => {
+        const b = boardBand(rows * perRow, rows, perRow, cardW, gap);
+        for (let i = 0; i < rows * perRow; i++) {
+            assert.deepStrictEqual(boardSlot(i, b),
+                { row: Math.floor(i / perRow), col: i % perRow }, `i=${i}`);
+        }
+    });
+
+    test('nad kapacitu nepřibude řada – zhustí se rozestup', () => {
+        for (let k = rows * perRow + 1; k <= 20; k++) {
+            const b = boardBand(k, rows, perRow, cardW, gap);
+            assert.strictEqual(b.rows, rows, `k=${k}`);
+            assert.ok(b.step < cardW + gap, `k=${k}: rozestup se nezhustil`);
+            assert.ok(b.step > 0, `k=${k}: nulový rozestup`);
+            // žádná karta nevypadne z povolených řad
+            for (let i = 0; i < k; i++) {
+                assert.ok(boardSlot(i, b).row < rows, `k=${k} i=${i}: přetekla řada`);
+            }
+        }
+    });
+
+    test('půdorys pásu se s počtem karet nemění', () => {
+        const spanOf = (k) => {
+            const b = boardBand(k, rows, perRow, cardW, gap);
+            let max = 0;
+            for (let i = 0; i < k; i++) max = Math.max(max, boardSlot(i, b).col * b.step);
+            return max + cardW;
+        };
+        const full = spanOf(perRow);   // rozpětí plné, nezhuštěné řady
+        for (let k = perRow; k <= 20; k++) {
+            assert.ok(spanOf(k) <= full + 1e-9, `k=${k}: pás se rozšířil (${spanOf(k)} > ${full})`);
+        }
+    });
+
+    test('degenerované vstupy nespadnou', () => {
+        assert.strictEqual(boardBand(0, rows, perRow, cardW, gap).step, cardW + gap);
+        assert.strictEqual(boardBand(1, 0, 0, cardW, gap).rows, 1);
+        assert.ok(Number.isFinite(boardBand(9, 1, 1, cardW, gap).step));
+    });
+
+    test('moje zóna: mobil má jednu řadu, desktop dvě', () => {
+        assert.strictEqual(DSK.myBoardRows, 2);
+        assert.strictEqual(LAYOUT_PROFILES.mobile.myBoardRows, 1);
+        const mob = LAYOUT_PROFILES.mobile;
+        const b = boardBand(15, mob.myBoardRows, mob.boardMaxPerRow,
+                            CARD_ART_W * mob.scaleMe, mob.boardGap);
+        assert.strictEqual(b.rows, 1);
+        for (let i = 0; i < 15; i++) assert.strictEqual(boardSlot(i, b).row, 0);
     });
 });

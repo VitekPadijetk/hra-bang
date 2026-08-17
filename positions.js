@@ -11,6 +11,9 @@ function _compactAnchors(n, L)  { return (_layoutMod ? _layoutMod.compactAnchors
 function _compactBoardPos(a, i, k, m) { return (_layoutMod ? _layoutMod.compactBoardPos : compactBoardPos)(a, i, k, m); }
 function _compactHandPos(a, i, k, m)  { return (_layoutMod ? _layoutMod.compactHandPos : compactHandPos)(a, i, k, m); }
 function _myHandSlotX(L, i, k)  { return (_layoutMod ? _layoutMod.myHandSlotX : myHandSlotX)(L, i, k); }
+// Pás vyložených karet (pevný počet slotů, od přeplnění se zmenšuje rozestup v řadě).
+function _boardBand(k, rows, perRow, ext, gap) { return (_layoutMod ? _layoutMod.boardBand : boardBand)(k, rows, perRow, ext, gap); }
+function _boardSlot(i, band)    { return (_layoutMod ? _layoutMod.boardSlot : boardSlot)(i, band); }
 
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
 // (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
@@ -117,13 +120,15 @@ function getBoardCardPos(playerIdx, boardIdx) {
         // Divák: spodní hráč (seat 0) má desku vystředěnou dole (drawSpectatorPlayer) – přibližně.
         if (myIndex === null) return { x: L.centerX, y: L.specLivesY };
         const myBaseY = L.myBaseY, roleX = L.livesX + L.roleOffX;
-        const boardCardW = 325 * scaleMe + L.boardGap;
+        const myCardW = 325 * scaleMe;
         const boardCardH = 500 * scaleMe;
-        const boardMaxPerRow = L.boardMaxPerRow;   // MUSÍ zrcadlit drawMyArea v view/board.js
-        const bRow = Math.floor(boardIdx / boardMaxPerRow);
-        const bCol = boardIdx % boardMaxPerRow;
-        const bx = roleX - boardCardW - (bCol * boardCardW);
-        const by = myBaseY - bRow * (boardCardH + L.boardGap);
+        // Pás vyložených karet – MUSÍ zrcadlit drawMyArea v view/board.js. Ve stole je
+        // vždycky i zbraň (bez skutečné leží na jejím místě Colt .45), proto 1 + board.
+        const myCount = Math.max(boardIdx + 1, 1 + (player.board?.length || 0));
+        const band = _boardBand(myCount, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
+        const s = _boardSlot(boardIdx, band);
+        const bx = roleX - (myCardW + L.boardGap) - s.col * band.step;
+        const by = myBaseY - s.row * (boardCardH + L.boardGap);
         return { x: bx, y: by };
     }
 
@@ -137,34 +142,33 @@ function getBoardCardPos(playerIdx, boardIdx) {
 
     const isDead = player.health <= 0;
     const numBoardCards = Math.max(boardIdx, (isDead ? 1 : 0) + (player.weapon?.id !== -1 ? 1 : 0) + (player.board?.length || 0));
-    const numBlue = Math.min(numBoardCards, 3);
+    const numBlue = Math.min(numBoardCards, L.oppBoardPerRow);
     const displayIdx = isDead ? boardIdx + 1 : boardIdx;
+    const count = Math.max(displayIdx + 1, numBoardCards);
 
     if (anchor.side === 'compact') {
         // Jedna řada pod jmenovkou; rozestup zná compactBoardStep (od 4. karty překryv).
-        const count = Math.max(displayIdx + 1, numBoardCards);
         return _compactBoardPos(anchor, displayIdx, count, _compactMetrics(total - 1, L));
     }
+    // Pás vyložených karet – MUSÍ zrcadlit drawOpponents v view/board.js. `band.row` roste
+    // dovnitř stolu (k balíčkům) a je zastropovaný, `band.col` jde podél řady se
+    // zmenšujícím se rozestupem.
+    const band = _boardBand(count, L.oppBoardRows, L.oppBoardPerRow, cardW, gap);
+    const s = _boardSlot(displayIdx, band);
     if (anchor.side === 'left') {
         const groupH = (1 + numBlue) * cardW + numBlue * gap;
         const livesCY = anchor.y + groupH / 2 - cardH / 2;
-        const rowInCol = displayIdx % 3;
-        const col = Math.floor(displayIdx / 3);
-        return { x: anchor.x + col * (cardH + gap), y: livesCY - (1 + rowInCol) * (cardW + gap) };
+        return { x: anchor.x + s.row * (cardH + gap), y: livesCY - (cardW + gap) - s.col * band.step };
     }
     if (anchor.side === 'top') {
         const groupW = (1 + numBlue) * cardW + numBlue * gap;
         const groupStartX = anchor.x - groupW / 2;
-        const colInRow = displayIdx % 3;
-        const row = Math.floor(displayIdx / 3);
-        return { x: groupStartX + (1 + colInRow) * (cardW + gap) + cardW / 2, y: anchor.y + row * (cardH + gap) };
+        return { x: groupStartX + (cardW + gap) + cardW / 2 + s.col * band.step, y: anchor.y + s.row * (cardH + gap) };
     }
     if (anchor.side === 'right') {
         const groupH = (1 + numBlue) * cardW + numBlue * gap;
         const livesCY = anchor.y - groupH / 2 + cardH / 2;
-        const rowInCol = displayIdx % 3;
-        const col = Math.floor(displayIdx / 3);
-        return { x: anchor.x - col * (cardH + gap), y: livesCY + (1 + rowInCol) * (cardW + gap) };
+        return { x: anchor.x - s.row * (cardH + gap), y: livesCY + (cardW + gap) + s.col * band.step };
     }
     return getPlayerHandPos(playerIdx);
 }

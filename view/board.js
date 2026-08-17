@@ -416,7 +416,11 @@ function drawOpponents(ctx) {
             ? [{ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' }, ...allBoardCards]
             : allBoardCards;
 
-        const numBluePrimary = Math.min(displayCards.length, 3);
+        const numBluePrimary = Math.min(displayCards.length, L.oppBoardPerRow);
+        // Pás vyložených karet – MUSÍ zrcadlit getBoardCardPos v positions.js. Řady jsou
+        // zastropované (rostou k balíčkům uprostřed stolu), přeplněná řada se místo další
+        // řady jen zhustí. `row` = napříč řadami (dovnitř stolu), `col` = podél řady.
+        const oppBand = boardBand(displayCards.length, L.oppBoardRows, L.oppBoardPerRow, cardW, gap);
 
         // oppHandHideCount: dočasně skryté karty v ruce soupeře, které k němu právě LETÍ
         // (Kit Carlson – vybraná karta). Objeví se v ruce teprve po dosednutí animace,
@@ -705,10 +709,9 @@ function drawOpponents(ctx) {
             }
 
             displayCards.forEach((card, bIdx) => {
-                const rowInCol = bIdx % 3;
-                const col = Math.floor(bIdx / 3);
-                const bY = livesCY - (1 + rowInCol) * (cardW + gap);
-                const bX = livesCX + col * (cardH + gap);
+                const s = boardSlot(bIdx, oppBand);
+                const bY = livesCY - (cardW + gap) - s.col * oppBand.step;
+                const bX = livesCX + s.row * (cardH + gap);
                 drawBoardCard(bX, bY, card, angle, bIdx);
             });
 
@@ -777,10 +780,9 @@ function drawOpponents(ctx) {
             }
 
             displayCards.forEach((card, bIdx) => {
-                const colInRow = bIdx % 3;
-                const row = Math.floor(bIdx / 3);
-                const bX = groupStartX + (1 + colInRow) * (cardW + gap) + cardW / 2;
-                const bY = livesCY + row * (cardH + gap);
+                const s = boardSlot(bIdx, oppBand);
+                const bX = groupStartX + (cardW + gap) + cardW / 2 + s.col * oppBand.step;
+                const bY = livesCY + s.row * (cardH + gap);
                 drawBoardCard(bX, bY, card, angle, bIdx);
             });
 
@@ -848,10 +850,9 @@ function drawOpponents(ctx) {
             }
 
             displayCards.forEach((card, bIdx) => {
-                const rowInCol = bIdx % 3;
-                const col = Math.floor(bIdx / 3);
-                const bY = livesCY + (1 + rowInCol) * (cardW + gap);
-                const bX = livesCX - col * (cardH + gap);
+                const s = boardSlot(bIdx, oppBand);
+                const bY = livesCY + (cardW + gap) + s.col * oppBand.step;
+                const bX = livesCX - s.row * (cardH + gap);
                 drawBoardCard(bX, bY, card, angle, bIdx);
             });
 
@@ -1176,9 +1177,12 @@ function drawMyArea(ctx) {
         if (_coltNow && !App.coltVisible) App.coltFadeStart = Date.now();
         App.coltVisible = _coltNow;
 
-        const boardCardW = 325 * scaleMe + L.boardGap;
+        const myCardW = 325 * scaleMe;
         const boardCardH = 500 * scaleMe;
-        const boardMaxPerRow = L.boardMaxPerRow;   // MUSÍ zrcadlit getBoardCardPos v positions.js
+        // Pás vyložených karet – MUSÍ zrcadlit getBoardCardPos v positions.js. Řady rostou
+        // vzhůru, tedy k balíčkům uprostřed stolu, proto je jejich počet zastropovaný a
+        // přeplněná řada se místo další řady jen zhustí.
+        const myBand = boardBand(myBoardCards.length, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
         const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action);
         // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
         // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
@@ -1216,10 +1220,9 @@ function drawMyArea(ctx) {
             // (i Colt .45 – při smrti se místo letu rozplyne, viz _fadeOutColt; jeho
             //  klíč '_colt' se s ID skutečných karet nikdy nepotká)
             if (App.stealHideIds.has(card.id)) return;
-            const bRow = Math.floor(i / boardMaxPerRow);
-            const bCol = i % boardMaxPerRow;
-            const bx = roleX - boardCardW - (bCol * boardCardW);
-            const by = myBaseY - bRow * (boardCardH + L.boardGap);
+            const s = boardSlot(i, myBand);
+            const bx = roleX - (myCardW + L.boardGap) - s.col * myBand.step;
+            const by = myBaseY - s.row * (boardCardH + L.boardGap);
             let tex = card._isColt ? 'colt_.45' : getTex(card.id);
             // Ručička kurzoru: jediné setInteractive na sprite (opakované volání by ji už
             // nepřepsalo) → musí pokrýt VŠECHNY režimy míření na vlastní stůl, i Ragtime /

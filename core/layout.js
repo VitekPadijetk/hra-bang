@@ -100,6 +100,11 @@ const LAYOUT_DESKTOP = {
     // v jedné řadě se stolem (handY = myBaseY, scaleHand = scaleMe) jako dosud.
     handY: 970, scaleHand: 0.36,
     boardGap: 10, boardMaxPerRow: 6,
+    // Pás vyložených karet (boardBand): kolik ŘAD smí pás mít. Řady rostou vždy směrem
+    // k balíčkům uprostřed stolu (u soupeře dolů/dovnitř, u mě vzhůru), takže je to
+    // jediná pojistka, aby na ně karty nikdy nedosáhly. Karty nad kapacitu pásu se
+    // nepřelijí do další řady – zmenší se rozestup uvnitř řady.
+    oppBoardRows: 2, oppBoardPerRow: 3, myBoardRows: 2,
     myHandAnchorX: 1450,
     btnEndX: 820, btnEndY: 800, btnAbilX: 1320, btnAbilY: 800, btnMargin: null, btnH: 62,
 
@@ -138,7 +143,10 @@ const LAYOUT_MOBILE = {
     // Pás ruky jde přes celou šířku jeviště, takže pár karet by se krčilo v levém
     // rohu – ruka se v něm proto vystředí (a s ní i myHandAnchorX).
     handAlign: 'center',
-    boardMaxPerRow: 10, myHandAnchorX: 960,
+    // Moje zóna je na mobilu vejš (myBaseY 750) a druhá řada karet by spadla přímo na
+    // balíčky (y 470–650 vs. 465–615), takže má pás JEDNU řadu. Prakticky se to nepozná:
+    // do řady se vejde 10 karet a víc jich nikdo na stole nemá.
+    boardMaxPerRow: 10, myBoardRows: 1, myHandAnchorX: 960,
     // Akční tlačítka ve dvou řadách u pravého okraje, vedle karty životů.
     btnEndX: 1740, btnEndY: 690, btnAbilX: 1740, btnAbilY: 786, btnMargin: 180, btnH: 76,
     // Řada hokynářství o kus výš, ať nesahá na můj stůl (ten je na mobilu vejš).
@@ -183,6 +191,38 @@ function myHandRow(L, count) {
 function myHandSlotX(L, slotIndex, count) {
     const r = myHandRow(L, count);
     return r.startX + slotIndex * r.spacing;
+}
+
+// ── Pás vyložených karet ─────────────────────────────────────────────────────
+// Vyložené karty (výzbroj + modré + zelené, u vyřazeného i karta role) se sázely po
+// `perRow` do řady a řady rostly BEZ STROPU. U horního soupeře rostou dolů, u mě vzhůru –
+// tedy vždy směrem k balíčkům uprostřed stolu. Horní soupeř tak od 7. karty ležel na
+// balíčku (řada 2 sahá na y 507, vrch plného balíčku je 455) a v Dodge City je 7–10 karet
+// na stole běžné.
+//
+// Pás má proto pevný počet slotů (`rows × perRow`) a jeho PŮDORYS SE NIKDY NEMĚNÍ. Karty
+// nad kapacitu se nepřelijí do další řady – zmenší se rozestup uvnitř řady (stejný princip
+// jako compactBoardStep na mobilu). Dvě řady tak zůstanou vidět vždy.
+//
+// Jediný zdroj pravdy pro renderer (view/board.js) i zacílení animací (positions.js).
+// cardExtent = rozměr karty PODÉL řady (u soupeře vlevo/vpravo je řada svislá, takže je to
+// šířka artu; u horního soupeře a u mě vodorovná, taky šířka artu – jen jinak otočená).
+function boardBand(count, rows, perRow, cardExtent, gap) {
+    const r = Math.max(1, Math.floor(rows) || 1);
+    const p = Math.max(1, Math.floor(perRow) || 1);
+    const k = Math.max(1, Math.floor(count) || 1);
+    const full = cardExtent + gap;
+    if (k <= r * p) return { rows: r, perRow: p, step: full };
+    // Do řady se vejde ceil(k/r) karet; rozpětí řady zůstává jako u `p` karet, takže
+    // step = (p−1)·full / (inRow−1) < full (inRow > p, jinak bychom tu nebyli).
+    const inRow = Math.ceil(k / r);
+    return { rows: r, perRow: inRow, step: (p - 1) * full / (inRow - 1) };
+}
+
+// Slot karty v pásu. `row` roste směrem od hráče (k balíčkům), `col` podél řady.
+function boardSlot(idx, band) {
+    const p = Math.max(1, band.perRow);
+    return { row: Math.min(band.rows - 1, Math.floor(idx / p)), col: idx % p };
 }
 
 // Krajní soupeři se „přilepí" na okraj jeviště: kotvy se vodorovně roztáhnou tak, aby
@@ -369,6 +409,7 @@ if (typeof module !== 'undefined' && module.exports) {
         computeStage, stageCoverSize,
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
         resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
+        boardBand, boardSlot,
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
         compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
         oppScale, handCardScale,
