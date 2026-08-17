@@ -357,6 +357,10 @@ function drawOpponents(ctx) {
         let player = state.players[actualIdx];
         let anchor = anchors[oppIdx];
         oppIdx++;
+        // Kotva pro tenhle počet soupeřů v tabulce chybí (getOpponentAnchors vrátí []).
+        // Ostatní konzumenti kotev mají fallback, tady by `anchor.side` níž hru shodil –
+        // radši soupeře nevykreslit než ztuhnout na hnědé obrazovce.
+        if (!anchor) continue;
 
         const panicInRange = selectedState.action !== 'Panika!' ||
             computeDistance(state, myIndex, actualIdx) <= 1;
