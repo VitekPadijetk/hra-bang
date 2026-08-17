@@ -45,7 +45,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 |---|---|
 | `game.js` | Klientský bootstrap: Phaser scéna (`preload`/`create`/`update`), `socket.on` handlery, `renderUI()` router, intro animace, menu/lobby. **Velký — postupně se rozkládá do `view/`** (viz Konvence). |
 | `state.js` | Globální `App` objekt — sdílený UI stav klienta (menuScreen, lobbyList, chat, intro flagy…). Žádná logika. |
-| `positions.js` | **Čistý layout math:** pozice hráčů, karet v ruce, karet na stole. `OPPONENT_ANCHORS` = jediný zdroj kotevních bodů soupeřů. |
+| `positions.js` | **Čistý layout math:** pozice hráčů, karet v ruce, karet na stole. `OPPONENT_ANCHORS` = jediný zdroj kotevních bodů soupeřů (**1–7 soupeřů, tedy 2–8 hráčů**; klíč = počet soupeřů, pořadí = po směru od mého levého ramene). |
 | `index.html` | Pořadí `<script>` tagů = pořadí načítání (žádný bundler!). |
 | `chat.js` | Chat overlay. |
 
@@ -60,14 +60,14 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | Soubor | Export | Co rozhoduje |
 |---|---|---|
 | `core/distance.js` | `computeDistance`, `computeCanHit`, **`effectiveCharacter`**, **`isInPlay`** | vzdálenost a dostřel + **která schopnost hráči právě platí** a **kdo je vůbec ve hře**. `effectiveCharacter(p)` je jediný trychtýř všech ~45 kontrol „character === X" (v `logic/*` i v klientských zrcadlech): vrací `null` při Kocovině (`p._noAbility`), jinak `p._copiedCharacter || p.character`. Max. životy (`healthForCharacter`) a portrét čtou `p.character` napřímo, takže se Kocovinou nemění. `isInPlay(p)` = `health > 0 || p._ghost` – duch (Město duchů) má 0 životů, ale na svůj tah sedí zase v kole (vzdálenost, hokynářství, hromadné útoky, Vulture Sam). Prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger, poslední život). Ptá se jím i klient, komu ještě probliká portrét (`registerVeraPortrait` – vyřazená Vera Custer už nekopíruje, zůstane Vera; duch probliká dál). Problikávající portrét si přitom drží obarvení, které měl (`baseTint` v `_tickVeraPortraits`) – hráč na tahu je zelený i ve chvíli, kdy je na jeho místě vidět kopírovaná postava. |
-| `core/layout.js` | `computeStage`, `stageCoverSize`, `LAYOUT_PROFILES`, `getLayout`, **`currentLayout`**, `pickLayoutProfile`, **`resolveLayout`**, `stretchAnchors`, `boardRowLimit`, **`myHandRow`/`myHandSlotX`**, **`compactMetrics`/`compactAnchors`/`compactBoardPos`/`compactHandPos`**, **`oppScale`/`handCardScale`** | **jeviště + profil rozložení**. `computeStage(vw,vh)` = velikost plátna v design px podle SKUTEČNÉHO poměru stran: základ 1920×1080 zůstává souřadnicovou soustavou, ale plátno se natáhne do poměru displeje (strop 2560×1440) a kamera se posune o půlku přírůstku (`applyStage` v game.js), takže se souřadnicemi 0…1920/0…1080 se nehne – jen po stranách přibude plocha (`stageLeft/Right/Top/Bottom`). Zaokrouhluje se dolů, takže **měřítko obsahu zůstává identické**; mizí jen mrtvé pruhy (telefon na šířku ~18 % šířky, okno prohlížeče na PC taky). Pozadí a všechny celoobrazovkové překryvy se proto kreslí na `stageW()/stageH()` (resp. `stageCoverSize()`) a nálety „zpoza okraje" startují za okrajem JEVIŠTĚ. `currentLayout()` = profil rozložení desky (`App.layout`, mimo prohlížeč vždy desktopový) – jediný zdroj geometrie pro `view/board.js` i `positions.js`, které se dřív musely shodovat ručně. **`resolveLayout(profil, jeviště)`** (volá `applyStage`, výsledek jde do `App.layout`) dopočítá to, co se má **lepit na okraj**: konec mé ruky (`handEndX = stage.right − handEndMargin`) a počet vyložených karet v jedné řadě mého stolu (`boardRowLimit` – rostou doleva od karty role, takže je omezuje levý okraj). `stretchAnchors` totéž dělá s kotvami soupeřů (volá ji `getOpponentAnchors`): krajní zůstanou `oppEdgeMargin` od okraje JEVIŠTĚ, prostřední se mezi ně rovnoměrně rozestoupí, střed zůstává středem. **Na 16:9 jsou obě identita** (`resolveLayout` vrací týž objekt), takže PC ve fullscreenu je pixelově dnešní stav. Rohové ovládání (Zpět, ⚙ DEBUG, Ukončit hru, debug sloupec) a prahy „která je to strana" v `view/intro.js` se proto kotví přes `stageLeft/Right/Top/Bottom`, ne přes 0/1920. **`myHandRow(L, počet)`** = začátek a rozteč MOJÍ ruky ve vodorovném pásu `handStartX…handEndX` (to jsou STŘEDY krajních slotů) – jediný zdroj pro `drawMyArea`, `positions.js` i intro. `handAlign` řídí zarovnání: desktop `'left'` (dnešní stav), mobil `'center'`, protože pás jde přes celou šířku jeviště a pár karet by se krčilo v rohu. **Mobilní profil (`oppMode: 'compact'`) navíc nese kompaktní řadu soupeřů** – viz „Kompaktní soupeři" níže. |
+| `core/layout.js` | `computeStage`, `stageCoverSize`, `LAYOUT_PROFILES`, `getLayout`, **`currentLayout`**, `pickLayoutProfile`, **`resolveLayout`**, `stretchAnchors`, `boardRowLimit`, **`myHandRow`/`myHandSlotX`**, **`compactMetrics`/`compactAnchors`/`compactBoardPos`/`compactHandPos`**, **`oppScale`/`handCardScale`**, **`boardBand`/`boardSlot`** | **jeviště + profil rozložení**. `computeStage(vw,vh)` = velikost plátna v design px podle SKUTEČNÉHO poměru stran: základ 1920×1080 zůstává souřadnicovou soustavou, ale plátno se natáhne do poměru displeje (strop 2560×1440) a kamera se posune o půlku přírůstku (`applyStage` v game.js), takže se souřadnicemi 0…1920/0…1080 se nehne – jen po stranách přibude plocha (`stageLeft/Right/Top/Bottom`). Zaokrouhluje se dolů, takže **měřítko obsahu zůstává identické**; mizí jen mrtvé pruhy (telefon na šířku ~18 % šířky, okno prohlížeče na PC taky). Pozadí a všechny celoobrazovkové překryvy se proto kreslí na `stageW()/stageH()` (resp. `stageCoverSize()`) a nálety „zpoza okraje" startují za okrajem JEVIŠTĚ. `currentLayout()` = profil rozložení desky (`App.layout`, mimo prohlížeč vždy desktopový) – jediný zdroj geometrie pro `view/board.js` i `positions.js`, které se dřív musely shodovat ručně. **`resolveLayout(profil, jeviště)`** (volá `applyStage`, výsledek jde do `App.layout`) dopočítá to, co se má **lepit na okraj**: konec mé ruky (`handEndX = stage.right − handEndMargin`) a počet vyložených karet v jedné řadě mého stolu (`boardRowLimit` – rostou doleva od karty role, takže je omezuje levý okraj). `stretchAnchors` totéž dělá s kotvami soupeřů (volá ji `getOpponentAnchors`): krajní zůstanou `oppEdgeMargin` od okraje JEVIŠTĚ, prostřední se mezi ně rovnoměrně rozestoupí, střed zůstává středem. **Na 16:9 jsou obě identita** (`resolveLayout` vrací týž objekt), takže PC ve fullscreenu je pixelově dnešní stav. Rohové ovládání (Zpět, ⚙ DEBUG, Ukončit hru, debug sloupec) a prahy „která je to strana" v `view/intro.js` se proto kotví přes `stageLeft/Right/Top/Bottom`, ne přes 0/1920. **`myHandRow(L, počet)`** = začátek a rozteč MOJÍ ruky ve vodorovném pásu `handStartX…handEndX` (to jsou STŘEDY krajních slotů) – jediný zdroj pro `drawMyArea`, `positions.js` i intro. `handAlign` řídí zarovnání: desktop `'left'` (dnešní stav), mobil `'center'`, protože pás jde přes celou šířku jeviště a pár karet by se krčilo v rohu. **Mobilní profil (`oppMode: 'compact'`) navíc nese kompaktní řadu soupeřů** – viz „Kompaktní soupeři" níže. **`boardBand`/`boardSlot`** = pás vyložených karet s pevným počtem slotů (viz „Pás vyložených karet" níže). **`oppScale(L, n)` závisí na POČTU soupeřů i v okruhu** (`oppScaleByCount`): při 7 soupeřích (8 hráčů) stojí nahoře tři skupiny vedle sebe, takže se karty zmenší z 0,27 na 0,25. Ptát se proto vždy přes `oppScale`, nikdy na `L.scaleOpp` napřímo – platí to i pro `positions.js`. |
 | `core/cardRules.js` | `getActionForCard` | jakou akci spustit po výběru karty |
 | `core/phaseInfo.js` | `isResponseTurn`, `isPlayTurn`, `canActOnHand` | čí je tah / co smí hráč |
 | `core/pending.js` | `pendingActor`, `waitingStatus`, `describePendingResponse` | **na koho a na jaké rozhodnutí hra čeká** (jedna větev na fázi). Jediný zdroj pravdy pro UI štítek, bota (`botPolicy`), log i serverový guard (`server/guard.js`). Vrátí `null` u přechodných fází – kdo to používá jako autoritu, musí `null` ošetřit. |
 | `core/playability.js` | `cardPlayability` | smí se karta teď zahrát? |
 | `core/selection.js` | `decideCardClick` | reducer kliknutí na kartu → „intent" (bez vedlejších efektů) |
-| `core/roles.js` | `rolesForPlayerCount`, `healthForCharacter`, `baseHealthForCharacter`, **`roleNameCz`/`ROLE_CZ`** | rozdělení rolí, startovní životy a **český název role** – role se v kódu i ve stavu jmenují anglicky, hráč je ale nikde nesmí vidět anglicky (debug, statistiky, výběr postavy). |
-| `core/winCondition.js` | `evaluateWinner` | kdo vyhrál z pole hráčů (nebo null). Za živého se počítá i duch (`_ghost`, Město duchů) – FAQ H7. |
+| `core/roles.js` | `rolesForPlayerCount`, `healthForCharacter`, `baseHealthForCharacter`, **`roleNameCz`/`ROLE_CZ`**, **`TARGET_3P`/`isThreePlayerMode`**, **`firstPlayerIndex`** | rozdělení rolí (**3–8 hráčů**), startovní životy a **český název role** – role se v kódu i ve stavu jmenují anglicky, hráč je ale nikde nesmí vidět anglicky (debug, statistiky, výběr postavy). **`firstPlayerIndex(players)`** = kdo je na „šerifově pozici" (začíná hru, od něj jdou po směru efekty karet, na jeho tah se odkrývá karta High Noon) – šerif, a ve hře pro 3 pomocník. `TARGET_3P`/`isThreePlayerMode` viz „Hra pro 3 hráče" níže. |
+| `core/winCondition.js` | `evaluateWinner(players, opts)`, `evaluateWinner3p` | kdo vyhrál z pole hráčů (nebo null). Za živého se počítá i duch (`_ghost`, Město duchů) – FAQ H7. `opts = { mode3p, winClaimIdx }` přepne na pravidla pro 3 hráče (viz níže). Odpadlík vyhrává jen jako JEDINÝ žijící, takže **při 8 hráčích (dva odpadlíci) dá mrtvý šerif proti dvěma živým odpadlíkům výhru banditům** – přesně jak pravidlo pro 8 říká. |
 | `core/botPolicy.js` | `pendingActor`, `decideBotAction(state, i, beliefs)` | „mozek" bota: na koho hra čeká + jednu akci bota. **Nezná cizí role** – cílí přes `beliefs` (dedukce z chování), takže nestřílí na pravděpodobné spojence. Umí zahrát **všechny karty** (dynamit, zelené DC + jejich aktivace, „odhoď další kartu", aktivní schopnosti Chuck/José/Doc). Znovupoužívá `cardPlayability`/`computeCanHit`/`getActionForCard`. **Karty na stole má obodované (`boardCardValue`) podle toho, jestli MAJITELI pomáhají, nebo škodí**: Vězení/Dynamit nepříteli nesundá (pomohl by mu – proto si ani nezahodí vlastní Vězení Cat Balouem hned po zahrání), spojenci je Rvačkou naopak sundá přednostně; `_hasWorthTaking` takové „hodnoty" nepočítá, takže se na ně ani necílí. Zbraně: max **jedna za tah** (`weapon._playedTurn === turnId`), z ruky ta nejlepší podle `weaponValue` (Volcanic = 2.5, ne dostřel 1). Ponechání postavy do navazující hry je náhodné (`decideKeepCharacter`, šance dle `CHAR_RANK`). **Nouzové cílení (`rankEnemies`):** když práh `ENEMY_EPS` nepřekročí NIKDO, propustí se i záporná nepřátelskost (pořadí zůstává „od nejpravděpodobnějšího nepřítele"), jen s podmínkou `enemyProbability >= DESPERATE_ENEMY_P`. Bez toho se koncovka „šerif + pomocníci vs. odpadlík" zasekne: nepřítelem je každý jen z 1/3, takže by strana šerifa nikdy nezaútočila a boti by jen lízali a odhazovali. Jistý spojenec (šance 0) zůstává nedotknutelný vždy. |
 | `core/beliefs.js` | `computeBeliefs`, `expectedHostility`, **`enemyProbability`**, `roleHostility`, `estimateOutlawsAlive` | dedukce skrytých rolí z VEŘEJNÝCH informací (počty rolí, veřejný šerif, mrtví) + ledgeru chování; „očekávaná nepřátelskost" pro cílení (jistý spojenec ≤0, ořez -100 proti paralýze z nejistoty). `enemyProbability` = neváženě „jaká je šance, že je to nepřítel" – pojistka nouzového cílení (viz `rankEnemies`), aby se ani v koncovce nesáhlo na JISTÉHO spojence. |
 | `core/assetLoad.js` | `shouldRetryAsset`, `isPermanentlyMissing`, `retryAssetUrl`, `missingAssets` | **opakované načtení assetů**: co má smysl zkusit znovu (výpadek spojení / 5xx ano, 4xx ne) a co ještě chybí, než se hra smí sestavit. Používá `preload`/`create` v game.js (registr `AssetLoads`, `ensureAssetsLoaded`) – bez toho Phaser chybný soubor jen přeskočí a hra jede se zelenými placeholdery až do F5. |
@@ -137,6 +137,16 @@ totiž fronta zbyde prázdná – s původní podmínkou „fronta není prázdn
 z `_processSpecialQueue` bez obnovení fáze a zůstala viset ve fázi právě dokončené
 schopnosti (po Úhybu v `UHYB_DRAW`).
 
+**Stejná past platí i pro volající, kteří se rozhodují „počkat na frontu?"** – pět míst
+v `logic/combat.js` (dynamit) a `logic/highNoon.js` (Daltonové, Pravé poledne, odchod
+ducha) testovalo `specialActionQueue.length > 0`. Když `_pruneSuzyQueue` frontu vyprázdní,
+podmínka projde, ale `_processSpecialQueue` nic nerozeběhne – a záložní cesta se nespustí.
+U dynamitu tím zůstala nastavená fáze `DYNAMITE_DAMAGE` s prázdným `pendingDynamiteDamage`,
+takže `pendingActor` vrátil `null` a **na dynamit nešlo ani kliknout**. Řešení: **frontu
+pročisti (`_pruneSuzyQueue()`) PŘED tím, než se podle její délky rozhoduješ** – po
+pročištění je `length > 0` ekvivalentní tomu, co `_processSpecialQueue` vrátí. Padalo to
+~1× z 2700 partií botů, tedy jako flaky test.
+
 ## Kompaktní soupeři (mobilní profil rozložení)
 
 Na mobilu se soupeři nekreslí v okruhu kolem stolu (`oppMode: 'ring'`), ale v jedné řadě
@@ -198,6 +208,111 @@ hokynářství (`storeRowOffY`, `storeLift`) se musí vejít mezi zvednuté bal�
 Zbytky pevných souřadnic mé zóny se proto přesunuly do profilu: `MY_ROLE_X()`/`MY_LIVES_X()`…
 (view/intro.js) a `NI_MY_X()`… (net/handlers.js) jsou **funkce, ne konstanty** – profil se
 ustaví až v `applyStage`, tedy po načtení těch souborů.
+
+## Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu
+
+U stolu **nesedí šerif**, ale pomocník, bandita a odpadlík; všechny tři role leží **lícem
+nahoru**. Cíle jsou v kruhu (`TARGET_3P` v core/roles.js): pomocník loví odpadlíka,
+odpadlík banditu, bandita pomocníka. Kdo svého určeného nepřítele vyřadí **osobně**,
+vyhrává hned; zabije-li ho někdo jiný (nebo dynamit, tedy nikdo), novým cílem obou zbylých
+je zůstat naživu jako poslední. Odměnu **3 karet dostane každý, kdo někoho vyřadil**, bez
+ohledu na role.
+
+Trik implementace je, že **většina „co s tím, že není šerif" vypadne sama**: Vězení na
+kohokoli ([logic/play.js](logic/play.js) `playSpecialCard`), žádný +1 život
+(`healthForCharacter`), žádná pokuta za zabití pomocníka ([logic/combat.js](logic/combat.js))
+i zvýraznění cílů v UI viselo na roli `Sheriff`, která ve hře pro 3 neexistuje. **Tyhle
+podmínky se proto neupravovaly – jen se testem ověřilo, že platí.**
+
+- **Zapnutí režimu** – `gs.mode3p`, nastaví `_applyThreePlayerMode()` (logic/setup.js) z obou
+  setupů přes `isThreePlayerMode(players)` = *tři hráči a nikdo není šerif*. Debug hra pro 3
+  si role losuje ze všech čtyř, takže tam šerif být může a jede klasika. `mode3p` je prosté
+  pole stavu → doteče přes `room_update` i ke klientovi (redakce ho propouští).
+- **Kdo začíná** – `firstPlayerIndex(players)` (core/roles.js), na `GameState` jako
+  `_firstPlayerIndex()`. Řídí první tah, pořadí rozdávání v intru (`server/intro.js`),
+  odkrytí karty High Noon (`_flipEvent`) a start Daltonů (`_startDaltons`). **Dřív bylo
+  všude `findIndex(role === 'Sheriff')`, které by vrátilo −1 a hra by se nerozjela.**
+- **Výhra** – `evaluateWinner(players, { mode3p, winClaimIdx })` → `evaluateWinner3p`.
+  `_winClaim3p` nastaví `handlePlayerDeath`, když `TARGET_3P[killer.role] === dead.role`.
+  Bez claimu se vítěz hlásí **až při jednom živém**, čímž se „nový cíl = zůstat poslední"
+  implementuje sám. **Vypisuje se jednotné číslo podle role** („Bandita vyhrál!") – každá
+  role je u stolu jen jedna, množné „Bandité vyhráli!" by nedávalo smysl.
+- **Odkryté role** – `redactState` je propouští (`server/rooms.js`) a karta role leží na
+  stole u každého. Recykluje se **týž slot, jaký dostane vyřazený hráč**: `_roleSlot`
+  ([view/board.js](view/board.js)) a zrcadlící `hasRoleCard`/`displayIdx`
+  ([positions.js](positions.js)) – **ty se musí měnit spolu**, jinak animace míří o kartu
+  vedle. Cinematika vyřazení proto **odhalování role přeskakuje** (`skipReveal`), stejně
+  jako u šerifa; server i klient to počítají shodně, aby se boti podrželi na správnou dobu.
+- **Intro** – `runIntroSequence` posílá roli **i v broadcastu** `role_card_fly`, ale JEN
+  v 3P (u ostatních počtů je tajná a chodí výhradně soukromým `intro_role`; hlídá to test).
+  Klient cizí kartu za letu překlopí a nechá ji ležet přes `placedCards` (`role:<idx>`) na
+  slotu, kam ji pak kreslí deska – přechod do hry je beze skoku.
+- **Rotující šerif** – v 3P rotuje **pomocník**. `roles.filter(r => r !== 'Sheriff')` by
+  v 3P neodebral nic a `splice` by do 3členné hry přidal ČTVRTOU roli.
+- **Bot** – `computeBeliefs` v 3P nic nededukuje (všechny role zná jistě) a `roleHostility`
+  má vlastní cyklickou větev (`opts.mode3p`): můj určený nepřítel 3, třetí hráč 1. **Nikdo
+  není spojenec** – vyhrát může jen jeden.
+- **Rozložení** – oba soupeři sedí **naproti vedle sebe** (`OPPONENT_ANCHORS[2]` = dvě horní
+  kotvy), ne po bocích.
+
+## Hra pro 8 hráčů (Město duchů)
+
+Jen jiná sada rolí: **1 šerif, 2 pomocníci, 3 bandité, 2 odpadlíci**
+(`rolesForPlayerCount(8)`). Je to **jediný počet se dvěma odpadlíky** a `evaluateWinner`
+to zvládá bez úpravy: odpadlík vyhrává jen jako jediný žijící, takže mrtvý šerif proti dvěma
+živým odpadlíkům dá výhru banditům. Co bylo potřeba dodělat:
+
+- **Kotvy soupeřů** – `OPPONENT_ANCHORS[7]` = 2 vlevo, 3 nahoře, 2 vpravo. Nahoře je rozteč
+  430 px, proto se při 7 soupeřích zmenší i karty (`oppScaleByCount`, 0,27 → 0,25).
+- **Bot** – druhý odpadlík je **rival, ne spojenec** (`roleHostility` Renegade vs Renegade)
+  a taky drží šerifa při životě (`opts.renegadesAlive`): dokud žije, je zabití šerifa prohra.
+- **Rozpočet postav** – 8 hráčů × 2 nabídky = **přesně 16 základních postav**, nulová
+  rezerva. Hlídá to smoke test na `setupGame(8)` ve všech kombinacích
+  `singleChar`/`highNoonExtra`.
+- **Mobil** – kompaktní řada zvládá libovolný počet, jen `COMPACT.minScale` muselo klesnout
+  z 0,24 na 0,22: je to PODLAHA (`Math.max`), takže při 7 sloupcích na jevišti 1920 px
+  šroubovala měřítko nahoru a řada tří karet se do sloupce 262,9 px nevešla.
+
+**Povolený rozsah je 3–8 a ořezává ho server** (`clampPlayerCount` v
+`server/handlers.lobby.js`) – `create_room` ho dřív nevalidoval vůbec, takže
+socketem šlo vyrobit místnost pro 99 lidí, kde `rolesForPlayerCount` vrátí prázdné pole.
+
+## Pás vyložených karet: dvě řady, které nikdy nedosáhnou na balíčky
+
+Vyložené karty (výzbroj + modré + zelené, u vyřazeného i karta role) mají **pevný počet
+slotů `rows × perRow`** a jejich **půdorys se nikdy nemění**. Karty nad kapacitu nepřidají
+třetí řadu – **zmenší se rozestup uvnitř řady** (stejný princip jako `compactBoardStep` na
+mobilu). Řeší to `boardBand(count, rows, perRow, cardExtent, gap)` + `boardSlot(idx, band)`
+v [core/layout.js](core/layout.js).
+
+Proč: řady rostou vždy **směrem k balíčkům uprostřed stolu** (u horního soupeře dolů, u mě
+vzhůru) a dřív rostly bez stropu. Horní soupeř tak **od 7. vyložené karty ležel na
+balíčku** (řada 2 sahá na y 507, vrch plného balíčku je 455) a od 10. na něm ležel celý –
+v Dodge City je 7–10 karet na stole běžné, takže to šlo vidět už při 6 hráčích.
+
+- Profil nese `oppBoardRows: 2, oppBoardPerRow: 3` a `myBoardRows` (desktop 2, **mobil 1** –
+  druhá řada mojí zóny by tam spadla přímo na balíčky, y 470–650 vs 465–615; prakticky se to
+  nepozná, do řady se vejde 10 karet).
+- Do kapacity pásu je to **pixelově dnešní stav** (`step = karta + mezera`,
+  `slot = i % perRow` / `floor(i / perRow)`).
+- Konzumenti: tři větve okruhu + `drawMyArea` ([view/board.js](view/board.js)) a
+  `getBoardCardPos` ([positions.js](positions.js)) – **musí se měnit spolu**.
+- `numBluePrimary`/`numBlue` zůstávají `min(count, oppBoardPerRow)`: šířka pásu se nemění,
+  takže vystředění skupiny karty životů je beze změny.
+- **Výjimka:** cinematika hokynářství zvedá balíčky o `storeLift` (120), takže druhou řadu
+  horního soupeře po tu chvíli překryje – stejná dohoda, jaká už platí pro kompaktní
+  sloupce na mobilu. Test proto měří proti **klidové** výšce balíčků.
+
+Testy: `boardBand` v `test/layout.test.js` (pixelová identita do kapacity, konstantní
+půdorys nad ní) a v `test/positions.test.js` invariant „pás nedosáhne na balíčky ani na
+souseda" pro **2–8 hráčů, každé sedadlo a 1–14 karet**.
+
+## Pivo nemá efekt, když jsou ve hře dva hráči
+
+Klient to nenabízel už dřív (`cardPlayability`), ale server pravidlo hlídal jen u záchrany
+posledního života (`beerLastLifeSave`), takže v koncovce 1v1 se z ruky pořád léčilo. Gate je
+teď i v efektu `CardType.BEER` ([logic/play.js](logic/play.js)). **Zákaz platí jen na kartu
+Pivo** – Salón, Whisky, Čutora, Tequila i Sid Ketchum léčí dál.
 
 ## Dělení karet mezi víc Vulture Samů
 
@@ -450,9 +565,9 @@ v `server/rooms.js`, kterým prochází každý `roomPayload`.
   takže **délka ruky zůstává** — jen podle ní se kreslí vějíř rubů), pořadí balíčku
   (`deck.cards` → stejný počet zástupných karet) a odložené identity (`_secondChar`).
 - **Veřejné zůstává**: šerifova role (zná ji celý stůl), role vyřazených (odhalí se při
-  smrti — duch má `health 0`, takže spadne pod stejnou podmínku), odhoz, vyložené karty,
-  zbraně, životy, postavy a `charChoices` (podle jejich počtu pozná `pendingActor` fázi
-  výběru postav i na klientovi).
+  smrti — duch má `health 0`, takže spadne pod stejnou podmínku), **všechny role ve hře pro
+  3** (`gs.mode3p` — leží lícem nahoru), odhoz, vyložené karty, zbraně, životy, postavy
+  a `charChoices` (podle jejich počtu pozná `pendingActor` fázi výběru postav i na klientovi).
 - **Neredaguje se vůbec**: debug hra (jeden socket ovládá všechna místa), stav po konci
   hry (`gs.winner` — výherní obrazovka i statistiky role ukazují) a divák u hry jen botů.
 - **Divák běžné hry vidí jen veřejné informace.** Bez toho by stačilo otevřít si hru ve
@@ -509,6 +624,8 @@ Server k tomu v `server.js`:
 - Runner: **vestavěný `node --test`** (zero deps). Spuštění: `npm test`. Soubory: `test/**/*.test.js`.
 - Testuje se **`GameState`, `core/*`** (čistá logika) a **`server/*`** (factory s fake `io` – `test/server.*.test.js`), ne render.
 - `test/_helpers.js`: `mkGame`/`mkCard`/`give`/`board`/`topDeck`. **Hru stav build ručně** (ne `setupGame` — míchá; ne `setupDebugGame` — `isDebug=true` vypne vyhodnocení výhry).
+- Pravidla pro 3 hráče jsou v `test/threePlayer.test.js`; zátěžové hry jen botů
+  (`test/server.bots.test.js`) jedou **3–8 hráčů** ve všech kombinacích rozšíření.
 - `draw()` popuje z **konce** `deck.cards`. Pro deterministický balíček nastav `g.deck.cards` přímo.
 - Testy umlčí log: `before(() => { console.log = () => {}; })`.
 
