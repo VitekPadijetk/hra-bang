@@ -903,13 +903,19 @@ function renderLobbyScreen() {
             fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
             fontSize: '22px', onClick: () => socket.emit('cancel_game'),
         });
+        // Zahájení se smí zmáčknout jen jednou: `App.startPressed` zamkne tlačítko hned
+        // z kliknutí (odpověď serveru přijde až za sítí), `assetsWaiting` ho drží zamčené
+        // po dobu čekání na art rozšíření. Odemkne se odchodem z lobby (net/handlers.js).
         const full = room.players.length >= room.maxPlayers;
-        themeButton(gameScene, 1180, btY, 380, 68, 'ZAHÁJIT HRU', {
-            fill: full ? THEME.color.successDarkNum : 0x2a2730,
-            fillHover: full ? 0x3f7a3f : 0x2a2730,
-            stroke: full ? THEME.color.successNum : THEME.color.borderNum,
-            textColor: full ? THEME.color.text : THEME.color.textMuted,
-            fontSize: '26px', onClick: full ? () => socket.emit(startEvent) : undefined,
+        const pending = !!(App.startPressed || room.assetsWaiting);
+        const can = full && !pending;
+        themeButton(gameScene, 1180, btY, 380, 68, pending ? 'ZAHAJUJI…' : 'ZAHÁJIT HRU', {
+            fill: can ? THEME.color.successDarkNum : 0x2a2730,
+            fillHover: can ? 0x3f7a3f : 0x2a2730,
+            stroke: can ? THEME.color.successNum : THEME.color.borderNum,
+            textColor: can ? THEME.color.text : THEME.color.textMuted,
+            fontSize: '26px',
+            onClick: can ? () => { App.startPressed = true; socket.emit(startEvent); renderUI(); } : undefined,
         });
     };
 

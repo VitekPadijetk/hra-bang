@@ -29,6 +29,9 @@ const App = {
     joinError: null,
     notifyMsg: null,
     kickedMsg: null,
+    // Lídr zmáčkl „Zahájit hru" – zamkne tlačítko, než dorazí odpověď serveru
+    // (start může chvíli čekat na assety rozšíření). Viz view/menu.js.
+    startPressed: false,
     introRoleOkSent: false,
     introExpected: false,
     myIntroIndex: null,

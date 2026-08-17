@@ -2008,7 +2008,7 @@ socket.on('rejoin_failed', () => {
     if (++_rejoinTries <= 6) { setTimeout(attemptRejoin, 500); return; }
     clearBangSession();
     if (!roomState) return;
-    roomState = null; state = null; myIndex = null; _myNextGameVote = null;
+    roomState = null; state = null; myIndex = null; _myNextGameVote = null; App.startPressed = false;
     App.menuScreen = 'main';
     if (gameScene) renderUI();
 });
@@ -2060,6 +2060,9 @@ function _applyRoomUpdate(payload) {
     // Jakmile intro dorazilo, zrus flag
     if (_introActive()) App.introExpected = false;
     if (!payload.gameState?.winner && roomState?.gameState?.winner) _myNextGameVote = null;
+    // Zámek tlačítka „Zahájit hru" (view/menu.js) platí jen do odchodu z lobby – jakmile
+    // se místnost pohne dál (hra běží / nová sestava), tlačítko je zase klikatelné.
+    if (payload.roomPhase !== 'lobby' && payload.roomPhase !== 'next_lobby') App.startPressed = false;
     roomState = payload;
     state = payload.gameState;
     registerCardTexAliases(state);   // creative karty: id -> id upečené textury
@@ -2253,7 +2256,7 @@ function stopSpectating(roomId) {
     App.ignoreRoomId = roomId || roomState?.roomId || null;
     _resetIntro();        // odchod během intra → zahoď zbytky cinematiky
     _animQ.reset();       // rozdělaná fronta patří opuštěné hře
-    roomState = null; state = null; myIndex = null; _myNextGameVote = null;
+    roomState = null; state = null; myIndex = null; _myNextGameVote = null; App.startPressed = false;
     App.spectating = false;
     App.blockInput = false;
     App.menuScreen = 'spectate_list';
@@ -2270,7 +2273,7 @@ socket.on('go_to_menu', () => {
     clearBangSession();   // záměrný odchod → po F5 se nevracet do hry
     _resetIntro();        // odchod během intra → zahoď zbytky cinematiky (jinak se zdědí do další hry)
     _animQ.reset();       // rozdělaná fronta patří opuštěné hře – nic z ní už nedocommitovat
-    roomState = null; state = null; myIndex = null; _myNextGameVote = null;
+    roomState = null; state = null; myIndex = null; _myNextGameVote = null; App.startPressed = false;
     App.spectating = false;
     App.menuScreen = 'main';
     if (gameScene) renderUI();
@@ -2280,7 +2283,7 @@ socket.on('kicked_from_game', (msg) => {
     clearBangSession();
     _resetIntro();
     _animQ.reset();
-    roomState = null; state = null; myIndex = null; _myNextGameVote = null;
+    roomState = null; state = null; myIndex = null; _myNextGameVote = null; App.startPressed = false;
     App.menuScreen = 'kicked';
     App.kickedMsg = msg || 'Game leader ukončil hru.';
     if (gameScene) renderUI();

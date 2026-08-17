@@ -106,19 +106,24 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     socket.on('start_game', () => {
         const room = findRoomBySocket(socket.id);
         if (!room || room.leaderSocketId !== socket.id) return;
-        if (room.phase !== 'lobby') return;
-        const leader = room.players.find(p => p.socketId === room.leaderSocketId);
-        const rest = room.players.filter(p => p.socketId !== room.leaderSocketId);
-        for (let i = rest.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [rest[i], rest[j]] = [rest[j], rest[i]];
-        }
-        room.players = [leader, ...rest];
-        room.players.forEach((p, i) => { p.playerIdx = i; });
-        broadcastRoom(room);
+        // Druhý klik během čekání na assety: fáze je pořád 'lobby', takže by se bez
+        // téhle podmínky přepsal `_assetWaitCb` a zůstal viset druhý timer – hra by
+        // se po vypršení limitu nastartovala DVAKRÁT.
+        if (room.phase !== 'lobby' || room.assetsWaiting) return;
         // Se zapnutým rozšířením se počká, až budou mít všichni jeho klíčové textury
         // (art se stahuje líně) – jinak by prvním hráčům problikly placeholdery.
         ctx.whenAssetsReady(room, () => {
+            // Pořadí u stolu se losuje AŽ TEĎ, těsně před startem. Kdyby se přeházelo
+            // hned po kliknutí, hráči by během čekání na assety viděli, jak se jim
+            // seznam v lobby přeskládal pod rukama – pořadí patří až do hry.
+            const leader = room.players.find(p => p.socketId === room.leaderSocketId);
+            const rest = room.players.filter(p => p.socketId !== room.leaderSocketId);
+            for (let i = rest.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [rest[i], rest[j]] = [rest[j], rest[i]];
+            }
+            room.players = [leader, ...rest].filter(Boolean);
+            room.players.forEach((p, i) => { p.playerIdx = i; });
             startGame(room);
             // Zapamatuji šerifa první hry pro rotaci
             if (room.options?.rotatingSheriff) {

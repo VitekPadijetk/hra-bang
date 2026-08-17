@@ -247,6 +247,32 @@ test('end_turn / chat handlery běží bez chyby (game + lobby modul)', () => {
     assert.ok(true);
 });
 
+// Start hry se zapnutým rozšířením chvíli čeká na art u všech hráčů. Po tu dobu se
+// v lobby nesmí nic pohnout: pořadí u stolu se losuje až těsně před startem (jinak by
+// se hráčům seznam přeskládal pod rukama) a druhý klik na „Zahájit hru" se zahazuje
+// (jinak by přepsal čekání a hra by po vypršení limitu nastartovala dvakrát).
+test('start_game: pořadí se losuje až po assetech a druhý klik se zahodí', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s1 = mkSocket('s1');
+    s1.fire('create_room', { name: 'X', maxPlayers: 3, playerName: 'A',
+                             options: { expansions: { high_noon: true } } });
+    const room = [...ctx.rooms.values()][0];
+    mkSocket('s2').fire('join_room', { roomId: room.id, playerName: 'B' });
+    mkSocket('s3').fire('join_room', { roomId: room.id, playerName: 'C' });
+
+    const orderBefore = room.players.map(p => p.name);
+    s1.fire('start_game');
+    assert.equal(room.assetsWaiting, true, 'čeká se na art rozšíření');
+    assert.equal(room.phase, 'lobby');
+    assert.deepEqual(room.players.map(p => p.name), orderBefore, 'v lobby se pořadí nepřeskládá');
+
+    const cb = room._assetWaitCb, timer = room._assetWaitTimer;
+    s1.fire('start_game');   // druhý klik během čekání
+    assert.equal(room._assetWaitCb, cb, 'druhý klik nepřepíše čekání na assety');
+    assert.equal(room._assetWaitTimer, timer, 'a nenechá viset druhý timer');
+    clearTimeout(room._assetWaitTimer);
+});
+
 // Lucky Duke: obě odkryté karty musí do odhozu doletět PŘED výsledkem checku (vězení/
 // dynamit), jinak výsledná karta dosedne na hromádku první a ty dvě se přes ni přehrají.
 // Server proto posílá vlastní animaci `lucky_duke_result` (nese, která karta byla vybraná)
