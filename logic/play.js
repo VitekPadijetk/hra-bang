@@ -34,6 +34,11 @@ const PlayMixin = {
             [CardType.BEER]: () => {
                 // High Noon – Reverend: po celé kolo nejde zahrát Pivo (Salón ano, FAQ H1).
                 if (this._beerBlocked()) return false;
+                // Jsou-li ve hře jen dva hráči, Pivo nemá žádný efekt. Doteď to server
+                // hlídal jen u záchrany posledního života (beerLastLifeSave), takže v
+                // koncovce 1v1 se z ruky pořád léčilo. Klient to nenabízel (cardPlayability),
+                // ale pravidlo patří sem – Salón i ostatní léčení platí dál.
+                if (this.players.filter(p => p.health > 0).length <= 2) return false;
                 // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
                 // Přes _heal, který ohlídá i to, že mrtvého léčit nejde (duch při Městě
                 // duchů ale ano) – jinak se Pivo vůbec nezahraje.

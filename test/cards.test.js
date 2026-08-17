@@ -6,7 +6,8 @@ before(() => { console.log = () => {}; });
 
 // ── Pivo ────────────────────────────────────────────────────────────────────
 test('Pivo léčí 1 život, pokud je hráč pod maximem', () => {
-    const g = mkGame([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }]);
+    // Tři hráči: ve dvou už Pivo žádný efekt nemá (pravidlo, viz test níž).
+    const g = mkGame([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }, { role: 'Renegade' }]);
     const beer = give(g, 0, CardType.BEER);
 
     g.playCard(beer);

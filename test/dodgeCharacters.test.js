@@ -71,12 +71,15 @@ test('Sean Mallory drží až 10 karet (neodhazuje na počet životů)', () => {
 
 // ── Léčení ───────────────────────────────────────────────────────────────────
 test('Tequila Joe: karta Pivo dá +2 (do maxima)', () => {
-    const g = mkGame([{ role: 'Sheriff', character: 'Tequila Joe', health: 2, maxHealth: 5 }, { role: 'Outlaw' }]);
+    // Tři hráči: ve dvou už Pivo žádný efekt nemá.
+    const g = mkGame([{ role: 'Sheriff', character: 'Tequila Joe', health: 2, maxHealth: 5 },
+                      { role: 'Outlaw' }, { role: 'Renegade' }]);
     const beer = give(g, 0, CardType.BEER);
     g.playCard(beer);
     assert.equal(g.players[0].health, 4);        // 2 → 4
 
-    const g2 = mkGame([{ role: 'Sheriff', character: 'Tequila Joe', health: 4, maxHealth: 5 }, { role: 'Outlaw' }]);
+    const g2 = mkGame([{ role: 'Sheriff', character: 'Tequila Joe', health: 4, maxHealth: 5 },
+                       { role: 'Outlaw' }, { role: 'Renegade' }]);
     give(g2, 0, CardType.BEER);
     g2.playCard(0);
     assert.equal(g2.players[0].health, 5);       // +2 se zastaví na maxu

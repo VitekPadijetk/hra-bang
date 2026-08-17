@@ -38,7 +38,9 @@ test('El Gringo po zásahu ukradne útočníkovi kartu z ruky', () => {
 
 // ── Suzy Lafayette: prázdná ruka → líznutí ───────────────────────────────────
 test('Suzy Lafayette si po vyprázdnění ruky lízne kartu', () => {
-    const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette', health: 2 }, { role: 'Outlaw' }]);
+    // Tři hráči: Pivo se ve dvou nezahraje (a ruka by se tím nevyprázdnila).
+    const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette', health: 2 },
+                      { role: 'Outlaw' }, { role: 'Renegade' }]);
     const beer = give(g, 0, CardType.BEER); // jediná karta
     g.deck.cards = []; topDeck(g, Suits.CLUBS);
 

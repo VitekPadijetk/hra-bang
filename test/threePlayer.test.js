@@ -205,3 +205,34 @@ test('klasická hra se vyhodnocuje po stranách i dál (mode3p vypnutý)', () =>
     g.checkWinCondition();
     assert.equal(g.winner, 'Zákon vyhrál!');
 });
+
+// ── Pivo nemá efekt, když jsou ve hře jen dva hráči ──────────────────────────
+// Pravidlo platí pro všechny počty hráčů; ve hře pro 3 se do koncovky 1v1 dojde vždycky.
+test('Pivo se nezahraje, když zbývají dva živí hráči', () => {
+    const g = mkGame([{ role: 'Deputy' }, { role: 'Outlaw' }, { role: 'Renegade', health: 0 }]);
+    g.mode3p = true;
+    g.players[0].health = 2;
+    const beer = give(g, 0, CardType.BEER);
+    g.playCard(beer);
+    assert.equal(g.players[0].health, 2, 'Pivo nesmí léčit');
+    assert.equal(g.players[0].hand.length, 1, 'karta zůstává v ruce');
+});
+
+test('Pivo léčí, dokud jsou ve hře tři a víc (i v klasické hře)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Renegade' }]);
+    g.players[0].health = 2;
+    const beer = give(g, 0, CardType.BEER);
+    g.playCard(beer);
+    assert.equal(g.players[0].health, 3);
+    assert.equal(g.players[0].hand.length, 0);
+});
+
+test('Salon léčí i ve dvou (zákaz platí jen na kartu Pivo)', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Renegade', health: 0 }]);
+    g.players[0].health = 2;
+    g.players[1].health = 1;
+    const salon = give(g, 0, CardType.SALOON);
+    g.playCard(salon);
+    assert.equal(g.players[0].health, 3);
+    assert.equal(g.players[1].health, 2);
+});
