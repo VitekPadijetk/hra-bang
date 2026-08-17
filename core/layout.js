@@ -115,6 +115,10 @@ const LAYOUT_DESKTOP = {
     // odsazení krajních kotev od okraje jeviště (stretchAnchors),
     // odsazení ruky od portrétu a rozteč vějíře rubů
     anchors: null, oppEdgeMargin: 180,
+    // Měřítko karet soupeře podle POČTU soupeřů (jinak platí scaleOpp). Při 7 soupeřích
+    // (8 hráčů) stojí nahoře tři skupiny s roztečí 430 px, takže se karty musí o kousek
+    // zmenšit, aby na sebe nedosáhly. Ptát se přes oppScale(), ne na scaleOpp napřímo.
+    oppScaleByCount: { 7: 0.25 },
     oppGap: 10, oppHandOff: 1.1, oppFanFrac: 0.35, oppFanMax: 36, oppFanSpan: 3.5,
 
     // balíčky uprostřed stolu + řada hokynářství
@@ -260,7 +264,12 @@ const COMPACT = {
     gap: 8,           // mezera mezi vyloženými kartami
     rowGap: 8,        // mezera mezi řadami uvnitř sloupce
     nameH: 30, statusH: 26,
-    maxColW: 560, minScale: 0.24, maxScale: 0.38,
+    // minScale je PODLAHA (Math.max), takže při 7 soupeřích (8 hráčů) na jevišti 1920 px
+    // vyšroubovala měřítko nahoru na 0,24, jenže do sloupce 262,9 px se řada tří karet
+    // v téhle velikosti nevejde (potřebuje 266) a přetékala k sousedovi. Na 0,22 se
+    // podlaha uplatní až hluboko za reálnými počty; pro 1–6 soupeřů je to no-op (tam
+    // vychází šířkové měřítko 0,28 a víc).
+    maxColW: 560, minScale: 0.22, maxScale: 0.38,
     perRow: 3,        // kolik vyložených karet se vejde vedle sebe bez překryvu
     fanScale: 0.46,   // měřítko rubu v ruce vůči kartě soupeře
     fanFrac: 0.35, fanMax: 26,   // rozteč vějíře (jako oppFanFrac/oppFanMax u okruhu)
@@ -349,7 +358,10 @@ function compactNameY(anchor, m) {
 // dopočítané ze šířky sloupce – ptát se přes tohle, ne na L.scaleOpp napřímo.
 function oppScale(L, oppCount, stage) {
     const P = L || LAYOUT_DESKTOP;
-    if (P.oppMode !== 'compact') return P.scaleOpp;
+    if (P.oppMode !== 'compact') {
+        const byCount = P.oppScaleByCount && P.oppScaleByCount[oppCount];
+        return byCount || P.scaleOpp;
+    }
     return compactMetrics(oppCount, P, stage).scale;
 }
 
@@ -359,7 +371,7 @@ function oppScale(L, oppCount, stage) {
 function handCardScale(L, oppCount, isSelf, stage) {
     const P = L || LAYOUT_DESKTOP;
     if (isSelf) return P.scaleHand || P.scaleMe;
-    if (P.oppMode !== 'compact') return P.scaleOpp;
+    if (P.oppMode !== 'compact') return oppScale(P, oppCount, stage);
     return compactMetrics(oppCount, P, stage).fanScale;
 }
 

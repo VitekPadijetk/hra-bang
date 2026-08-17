@@ -59,8 +59,9 @@ function renderGameBoard() {
     // čte tentýž profil, takže zacílení animací a vykreslení nemůžou utéct od sebe.
     const L = currentLayout();
     const scaleMe = L.scaleMe;
-    // Kompaktní řada soupeřů (mobil) si měřítko dopočítává ze šířky sloupce – proto
-    // přes oppScale, ne z L.scaleOpp napřímo (na desktopu vrací přesně L.scaleOpp).
+    // Měřítko karet soupeře závisí na jejich POČTU: kompaktní řada (mobil) si ho dopočítá
+    // ze šířky sloupce, okruh ho při 7 soupeřích (8 hráčů) zmenší podle oppScaleByCount.
+    // Proto vždy přes oppScale, nikdy z L.scaleOpp napřímo.
     const scaleOpp = oppScale(L, state.players.length - 1);
     const scaleDeck = L.scaleDeck;
 

@@ -334,18 +334,24 @@ describe('compactMetrics – měřítko sloupce', () => {
         assert.strictEqual(LAYOUT_PROFILES.desktop.oppMode, 'ring');
         assert.strictEqual(MOB.oppMode, 'compact');
         // oppScale/handCardScale proto na desktopu vrací prostý profil (PC beze změny).
+        // Výjimka: při 7 soupeřích (8 hráčů) stojí nahoře tři skupiny vedle sebe, takže
+        // se karty o kousek zmenší podle oppScaleByCount.
         for (let n = 1; n <= 6; n++) {
             assert.strictEqual(oppScale(LAYOUT_PROFILES.desktop, n), 0.27);
             assert.strictEqual(handCardScale(LAYOUT_PROFILES.desktop, n, false), 0.27);
             assert.strictEqual(handCardScale(LAYOUT_PROFILES.desktop, n, true), 0.36);
         }
+        assert.strictEqual(oppScale(LAYOUT_PROFILES.desktop, 7), 0.25);
+        // ruka soupeře musí jít s kartami na stole, jinak by letící karta skočila
+        assert.strictEqual(handCardScale(LAYOUT_PROFILES.desktop, 7, false), 0.25);
+        assert.strictEqual(handCardScale(LAYOUT_PROFILES.desktop, 7, true), 0.36);
     });
 
     test('měřítko drží v mezích a s přibývajícími soupeři neroste', () => {
         for (const [vw, vh] of STAGES) {
             const st = computeStage(vw, vh);
             let prev = Infinity;
-            for (let n = 1; n <= 6; n++) {
+            for (let n = 1; n <= 7; n++) {
                 const m = compactMetrics(n, MOB, st);
                 assert.ok(m.scale >= COMPACT.minScale - 1e-9, `${vw}×${vh} n=${n} min`);
                 assert.ok(m.scale <= COMPACT.maxScale + 1e-9, `${vw}×${vh} n=${n} max`);
@@ -358,7 +364,7 @@ describe('compactMetrics – měřítko sloupce', () => {
     test('karty soupeřů jsou větší než v okruhu (kvůli tomu to celé je)', () => {
         // 0.27 = dnešní scaleOpp; na telefonu na šířku musí vyjít víc i pro 7 hráčů.
         const st = computeStage(844, 390);
-        for (let n = 1; n <= 6; n++) {
+        for (let n = 1; n <= 7; n++) {
             assert.ok(compactMetrics(n, MOB, st).scale > 0.27, `n=${n}`);
         }
     });
@@ -373,7 +379,7 @@ describe('compactMetrics – měřítko sloupce', () => {
     test('řada je vystředěná a vejde se na jeviště', () => {
         for (const [vw, vh] of STAGES) {
             const st = computeStage(vw, vh);
-            for (let n = 1; n <= 6; n++) {
+            for (let n = 1; n <= 7; n++) {
                 const m = compactMetrics(n, MOB, st);
                 const rowW = n * m.colW;
                 assert.ok(m.startX >= st.left - 1e-9, `${vw}×${vh} n=${n} levý okraj`);
@@ -412,7 +418,7 @@ describe('kompaktní sloupec se vejde do své šířky', () => {
     test('životy + portrét při plných 5 životech', () => {
         for (const [vw, vh] of STAGES) {
             const st = computeStage(vw, vh);
-            for (let n = 1; n <= 6; n++) {
+            for (let n = 1; n <= 7; n++) {
                 const m = compactMetrics(n, MOB, st);
                 const a = compactAnchors(n, MOB, st)[n - 1];
                 const bulletH = m.cardH * 0.93 / 5;
@@ -426,7 +432,7 @@ describe('kompaktní sloupec se vejde do své šířky', () => {
     test('vyložené karty i vějíř ruky – od 4. karty se rozestup zmenší', () => {
         for (const [vw, vh] of STAGES) {
             const st = computeStage(vw, vh);
-            for (const n of [1, 3, 6]) {
+            for (const n of [1, 3, 6, 7]) {
                 const m = compactMetrics(n, MOB, st);
                 const a = compactAnchors(n, MOB, st)[0];
                 const rightEdge = compactColLeft(a, m) + m.colW;
@@ -452,7 +458,7 @@ describe('kompaktní sloupec se vejde do pásma nad balíčky', () => {
             const st = computeStage(vw, vh);
             // spodek pásma v souřadnicích 0…1080 (pod ním je horní hrana balíčků)
             const bandBottom = MOB.oppTop + MOB.oppBandH;
-            for (let n = 1; n <= 6; n++) {
+            for (let n = 1; n <= 7; n++) {
                 const m = compactMetrics(n, MOB, st);
                 const a = compactAnchors(n, MOB, st)[0];
                 const bottom = compactBoardPos(a, 0, 1, m).y + m.cardH / 2;
@@ -482,7 +488,7 @@ describe('kompaktní sloupec se vejde do pásma nad balíčky', () => {
         const fullPileTop = MOB.pileY - 79 * 0.125 - CARD_ART_H * MOB.scaleDeck / 2;
         for (const [vw, vh] of STAGES) {
             const st = computeStage(vw, vh);
-            for (let n = 1; n <= 6; n++) {
+            for (let n = 1; n <= 7; n++) {
                 const m = compactMetrics(n, MOB, st);
                 for (const a of compactAnchors(n, MOB, st)) {
                     for (const k of [1, 3, 4, 8, 12]) {

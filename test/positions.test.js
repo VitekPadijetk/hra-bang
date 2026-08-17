@@ -4,7 +4,7 @@ const {
     getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
 const {
-    computeStage, resolveLayout, LAYOUT_PROFILES,
+    computeStage, resolveLayout, LAYOUT_PROFILES, oppScale,
     compactMetrics, compactAnchors, compactBoardPos, compactHandPos,
 } = require('../core/layout.js');
 
@@ -54,14 +54,26 @@ test('getOpponentAnchors: počet kotev = počet soupeřů', () => {
 });
 
 test('getOpponentAnchors: mimo rozsah → []', () => {
-    assert.deepEqual(getOpponentAnchors(8), []);
+    assert.deepEqual(getOpponentAnchors(9), []);
 });
 
+// Hra pro 3 (Město duchů): oba soupeři sedí NAPROTI vedle sebe, ne po bocích.
 test('getOpponentAnchors: konkrétní kotvy pro 2 soupeře (3 hráči)', () => {
     assert.deepEqual(getOpponentAnchors(3), [
-        { x: 180, y: 540, side: 'left' },
-        { x: 1740, y: 540, side: 'right' },
+        { x: 600, y: 150, side: 'top' },
+        { x: 1320, y: 150, side: 'top' },
     ]);
+});
+
+// Hra pro 8 (Město duchů): 2 vlevo, 3 nahoře, 2 vpravo.
+test('getOpponentAnchors: 7 soupeřů (8 hráčů) – 2 vlevo, 3 nahoře, 2 vpravo', () => {
+    const a = getOpponentAnchors(8);
+    assert.equal(a.length, 7);
+    assert.deepEqual(a.map(x => x.side),
+        ['left', 'left', 'top', 'top', 'top', 'right', 'right']);
+    // prostřední horní sedadlo je na středu stolu, krajní symetricky
+    assert.equal(a[3].x, 960);
+    assert.equal(a[2].x + a[4].x, 1920);
 });
 
 // ── getPlayerHandPos ─────────────────────────────────────────────────────────
@@ -75,15 +87,15 @@ test('getPlayerHandPos: vlastní ruka má pevnou pozici', () => {
 });
 
 test('getPlayerHandPos: soupeř vlevo je odsazen o cardH*1.1 doleva', () => {
-    setWorld([{}, {}, {}], 0); // 3 hráči; pid=1 → diff 1 → kotva left {180,540}
+    setWorld([{}, {}, {}, {}], 0); // 4 hráči; pid=1 → diff 1 → kotva left {180,540}
     // cardH = 500*0.27 = 135; left → x = 180 - 135*1.1 = 31.5
     assert.deepEqual(getPlayerHandPos(1), { x: 31.5, y: 540 });
 });
 
 test('getPlayerHandPos: soupeř vpravo je odsazen doprava', () => {
-    setWorld([{}, {}, {}], 0); // pid=2 → diff 2 → kotva right {1740,540}
+    setWorld([{}, {}, {}, {}], 0); // pid=3 → diff 3 → kotva right {1740,540}
     // right → x = 1740 + 135*1.1 = 1888.5
-    assert.deepEqual(getPlayerHandPos(2), { x: 1888.5, y: 540 });
+    assert.deepEqual(getPlayerHandPos(3), { x: 1888.5, y: 540 });
 });
 
 test('getPlayerHandPos: soupeř nahoře je odsazen nahoru', () => {
@@ -99,7 +111,7 @@ test('getPlayerHandPos (divák): spodní hráč (seat 0) je vystředěný dole',
 });
 
 test('getPlayerHandPos (divák): soupeři se počítají z pohledu seat 0', () => {
-    setWorld([{}, {}, {}], null); // pid=1 → diff 1 → kotva left {180,540} → {31.5,540}
+    setWorld([{}, {}, {}, {}], null); // pid=1 → diff 1 → kotva left {180,540} → {31.5,540}
     assert.deepEqual(getPlayerHandPos(1), { x: 31.5, y: 540 });
 });
 
@@ -131,7 +143,7 @@ test('getBoardCardPos (já): sedmá karta přeteče do dalšího řádku výš',
 
 // ── getBoardCardPos: soupeřovy stolní karty ──────────────────────────────────
 test('getBoardCardPos (soupeř vlevo): pozice dle kotvy a počtu modrých', () => {
-    setWorld([{}, { health: 4, weapon: { id: -1 }, board: [] }, {}], 0); // 3 hráči
+    setWorld([{}, { health: 4, weapon: { id: -1 }, board: [] }, {}, {}], 0); // 4 hráči
     // pid=1 → kotva left {180,540}; cardW=87.75, cardH=135, gap=10
     // numBlue=0; groupH=87.75; livesCY = 540 + 43.875 - 67.5 = 516.375
     // boardIdx 0: col 0, rowInCol 0 → x=180, y = 516.375 - 97.75 = 418.625
@@ -141,7 +153,7 @@ test('getBoardCardPos (soupeř vlevo): pozice dle kotvy a počtu modrých', () =
 // ── getDeadRoleCardPos: kam dosedne odhalená role vyřazeného hráče ───────────
 test('getDeadRoleCardPos: slot 0 skupiny mrtvého (hned vedle jeho postavy)', () => {
     // Mrtvý soupeř vlevo s prázdným stolem: skupina = postava + 1 karta (role).
-    setWorld([{}, { health: 0, weapon: { id: -1 }, board: [] }, {}], 0);
+    setWorld([{}, { health: 0, weapon: { id: -1 }, board: [] }, {}, {}], 0);
     // numBlue=1; groupH = 2*87.75 + 10 = 185.5; livesCY = 540 + 92.75 - 67.5 = 565.25
     // displayIdx 0 → y = 565.25 - 97.75 = 467.5
     assert.deepEqual(getDeadRoleCardPos(1), { x: 180, y: 467.5 });
@@ -150,7 +162,7 @@ test('getDeadRoleCardPos: slot 0 skupiny mrtvého (hned vedle jeho postavy)', ()
 test('getDeadRoleCardPos: sedí na místo, kde roli kreslí deska (slot před modrými)', () => {
     // Kdyby mrtvý ještě něco na stole měl, role je pořád první – logický boardIdx 0
     // (první modrá) musí ležet až ZA ní.
-    setWorld([{}, { health: 0, weapon: { id: -1 }, board: [{ id: 7 }] }, {}], 0);
+    setWorld([{}, { health: 0, weapon: { id: -1 }, board: [{ id: 7 }] }, {}, {}], 0);
     const role = getDeadRoleCardPos(1);
     const firstBlue = getBoardCardPos(1, 0);
     assert.notDeepEqual(role, firstBlue);
@@ -178,7 +190,7 @@ function withMobile(vw, vh, fn) {
 
 test('široké jeviště: krajní soupeři se přilepí na okraj', () => {
     withStage(1600, 800, (st) => {
-        const [left, right] = getOpponentAnchors(3);
+        const [left, , right] = getOpponentAnchors(4);
         assert.equal(left.x, st.left + 180);      // stejné odsazení od okraje jako dnes od kraje plátna
         assert.equal(right.x, st.right - 180);
         assert.equal(left.y, 540);                // svisle se nic nemění
@@ -188,7 +200,7 @@ test('široké jeviště: krajní soupeři se přilepí na okraj', () => {
 
 test('široké jeviště: ruka soupeře jde s kotvou, takže nezůstane v pruhu uprostřed', () => {
     withStage(1600, 800, (st) => {
-        setWorld([{}, {}, {}], 0);
+        setWorld([{}, {}, {}, {}], 0);
         assert.deepEqual(getPlayerHandPos(1), { x: st.left + 180 - 148.5, y: 540 });
     });
 });
@@ -376,5 +388,31 @@ test('pás vyložených karet soupeře se s počtem karet nerozšíří', () => 
             assert.ok(s.w <= full.w + 1e-9 && s.h <= full.h + 1e-9,
                 `${total} hráčů, ${k} karet: pás se rozšířil`);
         }
+    }
+});
+
+test('vyložené karty sousedních soupeřů se nepřekrývají', () => {
+    for (let total = 2; total <= 8; total++) {
+        const anchors = getOpponentAnchors(total);
+        if (!anchors.length) continue;
+        const scl = oppScale(DSK, total - 1);
+        // Plná výzbroj: 3 karty v řadě u každého (víc už se jen zhustí, pás se nerozšíří).
+        const players = Array.from({ length: total }, () => ({
+            health: 4, hand: [], board: [{ id: 1 }, { id: 2 }], weapon: { id: 3 },
+        }));
+        setWorld(players, 0);
+        const rects = [];
+        for (let opp = 1; opp < total; opp++) {
+            const side = anchors[opp - 1].side;
+            for (let b = 0; b < 3; b++) rects.push({ opp, r: cardRect(getBoardCardPos(opp, b), side, scl) });
+        }
+        for (let i = 0; i < rects.length; i++) {
+            for (let j = i + 1; j < rects.length; j++) {
+                if (rects[i].opp === rects[j].opp) continue;   // vlastní pás se překrývat smí (zhuštění)
+                assert.ok(!overlaps(rects[i].r, rects[j].r),
+                    `${total} hráčů: karty soupeřů ${rects[i].opp} a ${rects[j].opp} se překrývají`);
+            }
+        }
+        global.state = null; global.myIndex = null;
     }
 });

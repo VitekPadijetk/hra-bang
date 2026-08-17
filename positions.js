@@ -14,17 +14,28 @@ function _myHandSlotX(L, i, k)  { return (_layoutMod ? _layoutMod.myHandSlotX : 
 // Pás vyložených karet (pevný počet slotů, od přeplnění se zmenšuje rozestup v řadě).
 function _boardBand(k, rows, perRow, ext, gap) { return (_layoutMod ? _layoutMod.boardBand : boardBand)(k, rows, perRow, ext, gap); }
 function _boardSlot(i, band)    { return (_layoutMod ? _layoutMod.boardSlot : boardSlot)(i, band); }
+// Měřítko karet soupeře. U okruhu závisí na POČTU soupeřů (oppScaleByCount), u kompaktní
+// řady se dopočítává ze šířky sloupce – ptát se proto přes tohle, ne na L.scaleOpp.
+function _oppScale(L, n)        { return (_layoutMod ? _layoutMod.oppScale : oppScale)(L, n); }
 
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
 // (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
 // si přináší vlastní tabulku (L.anchors), tahle je základní/desktopová.
 const OPPONENT_ANCHORS = {
     1: [{x:960,y:150,side:'top'}],
-    2: [{x:180,y:540,side:'left'},{x:1740,y:540,side:'right'}],
+    // Hra pro 3 (Město duchů): oba soupeři sedí NAPROTI vedle sebe, ne po bocích –
+    // rozteč je z řádku pro 4 soupeře, takže je odzkoušená.
+    2: [{x:600,y:150,side:'top'},{x:1320,y:150,side:'top'}],
     3: [{x:180,y:540,side:'left'},{x:960,y:150,side:'top'},{x:1740,y:540,side:'right'}],
     4: [{x:180,y:640,side:'left'},{x:600,y:150,side:'top'},{x:1320,y:150,side:'top'},{x:1740,y:587,side:'right'}],
     5: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},{x:960,y:150,side:'top'},{x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
     6: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},{x:715,y:150,side:'top'},{x:1205,y:150,side:'top'},{x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
+    // Hra pro 8 (Město duchů): 2 vlevo, 3 nahoře, 2 vpravo. Boky mají y jako u 6 soupeřů,
+    // nahoře se rozteč zmenší na 430 – proto se při 7 soupeřích zmenší i karty
+    // (oppScaleByCount v core/layout.js), aby na sebe skupiny nedosáhly.
+    7: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},
+        {x:530,y:150,side:'top'},{x:960,y:150,side:'top'},{x:1390,y:150,side:'top'},
+        {x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
 };
 // Kotvy roztažené na skutečnou šířku jeviště: krajní soupeři zůstávají stejně daleko
 // od OKRAJE jako dnes od kraje plátna, takže na širším displeji sedí u kraje a ne
@@ -53,7 +64,7 @@ function getPlayerHandPos(playerIdx) {
     const view = myIndex === null ? 0 : myIndex;
     const total = state.players.length;
     const L = _L();
-    const cardH = 500 * L.scaleOpp;
+    const cardH = 500 * _oppScale(L, total - 1);
     if (playerIdx === view) {
         // Spodní hráč: u diváka vykreslen vystředěně dole (drawSpectatorPlayer), u hráče vpravo dole.
         return myIndex === null ? { x: L.centerX, y: L.specHandY } : { x: L.myHandAnchorX, y: L.handY };
@@ -96,7 +107,7 @@ function getHandSlotPos(playerIdx, slotIndex, totalCards) {
     if (!anchor) return getPlayerHandPos(playerIdx);
     if (anchor.side === 'compact') return _compactHandPos(anchor, slotIndex, len, _compactMetrics(total - 1, L));
     // Zrcadlí fan ruky soupeřů v drawOpponents (left/right svisle, top vodorovně).
-    const scaleOpp = L.scaleOpp;
+    const scaleOpp = _oppScale(L, total - 1);
     const cardW = 325 * scaleOpp, cardH = 500 * scaleOpp;
     const maxHand = cardH * L.oppFanSpan;
     const rawSpacing = len > 1 ? Math.min(cardW * L.oppFanFrac, L.oppFanMax) : 0;
@@ -112,8 +123,9 @@ function getBoardCardPos(playerIdx, boardIdx) {
     if (!state) return { x: 960, y: 540 };
     const player = state.players[playerIdx];
     const view = myIndex === null ? 0 : myIndex;
+    const total = state.players.length;
     const L = _L();
-    const scaleOpp = L.scaleOpp;
+    const scaleOpp = _oppScale(L, total - 1);
     const scaleMe = L.scaleMe;
 
     if (playerIdx === view) {
@@ -132,7 +144,6 @@ function getBoardCardPos(playerIdx, boardIdx) {
         return { x: bx, y: by };
     }
 
-    const total = state.players.length;
     const cardW = 325 * scaleOpp;
     const cardH = 500 * scaleOpp;
     const gap = L.oppGap;
