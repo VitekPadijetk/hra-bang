@@ -391,6 +391,9 @@ function _getIntroPlayerPos(targetPlayerIdx, myIdx, total) {
     if (state && state.players) return getPlayerHandPos(targetPlayerIdx);
     const others = total - 1;
     const diff = (targetPlayerIdx - myIdx + total) % total - 1;
+    // Záložní sedačky, dokud nedorazí stav (pak se bere getPlayerHandPos). Musí jich být
+    // aspoň tolik jako soupeřů – při 8 hráčích je jich 7, jinak by se modulo vrátilo na
+    // sedačku 0 a dvě karty by letěly na jedno místo.
     const positions = [
         { x: 200,  y: 540 },
         { x: 960,  y: 140 },
@@ -398,6 +401,7 @@ function _getIntroPlayerPos(targetPlayerIdx, myIdx, total) {
         { x: 400,  y: 200 },
         { x: 1520, y: 200 },
         { x: 960,  y: 870 },
+        { x: 200,  y: 260 },
     ];
     return positions[diff % positions.length] || { x: 960, y: 300 };
 }

@@ -397,6 +397,16 @@ function renderMenuScreen(screen) {
             gameScene.cardsSprites.add(bg); gameScene.cardsSprites.add(numTxt);
         });
 
+        // Hra pro 3 má z rozšíření Město duchů jiná pravidla, než se dá z čísla poznat.
+        if (App.createPlayerCount === 3) {
+            // Jeden řádek – pod ním (y 678) už je tlačítko „Pokročilé možnosti".
+            const hint3 = gameScene.add.text(960, 622,
+                'Město duchů: bez šerifa, role lícem nahoru, cíle v kruhu.',
+                { fontFamily: THEME.fontUI, fontSize: '17px', color: THEME.color.textMuted,
+                  align: 'center' }).setOrigin(0.5, 0);
+            gameScene.cardsSprites.add(hint3);
+        }
+
         // Pokročilé volby. „Přibalené karty" dávají smysl jen se zapnutým High Noon –
         // jinak řádek vůbec nekresli (a tlačítko VYTVOŘIT se o něj neposune).
         const advChecks = [
