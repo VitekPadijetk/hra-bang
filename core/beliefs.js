@@ -19,6 +19,9 @@ if (typeof require === 'function') {
     if (typeof rolesForPlayerCount === 'undefined') {
         globalThis.rolesForPlayerCount = require('./roles.js').rolesForPlayerCount;
     }
+    if (typeof TARGET_3P === 'undefined') {
+        globalThis.TARGET_3P = require('./roles.js').TARGET_3P;
+    }
 }
 
 const ROLES = ['Sheriff', 'Deputy', 'Outlaw', 'Renegade'];
@@ -26,6 +29,11 @@ const ROLES = ['Sheriff', 'Deputy', 'Outlaw', 'Renegade'];
 // ── Nepřátelskost dvojice rolí (>0 = chci útočit, <=0 = spojenec/nestřílet) ────
 // Čistá tabulka rolí BEZ čtení stavu. Renegade timing přes opts.outlawsAlive.
 function roleHostility(myRole, targetRole, opts = {}) {
+    // Hra pro 3 (Město duchů): cíle jsou v kruhu a vyhrává jen jeden, takže nepřítelem je
+    // KAŽDÝ. Můj určený nepřítel má prioritu – jeho vyřazením hru rovnou vyhraju; třetí
+    // hráč musí umřít taky (novým cílem je pak zůstat naživu jako poslední), ale výhru
+    // sám nepřinese.
+    if (opts.mode3p) return TARGET_3P[myRole] === targetRole ? 3 : 1;
     if (myRole === 'Outlaw') {
         if (targetRole === 'Sheriff')  return 3;
         if (targetRole === 'Deputy')   return 2;
@@ -44,14 +52,16 @@ function roleHostility(myRole, targetRole, opts = {}) {
     }
     if (myRole === 'Renegade') {
         // Vyhraje jen jako POSLEDNÍ žijící, tedy až v souboji 1v1 se šerifem. Dokud žije
-        // kdokoli další – bandita NEBO pomocník – je zabití šerifa prohra (vyhráli by
-        // bandité), takže na něj nestřílí. Pořadí: nejdřív bandité a pomocníci, šerif úplně
-        // nakonec. (Dřív se hlídali jen bandité a bot šerifa zabil s živým pomocníkem.)
-        const othersAlive = !!opts.outlawsAlive || !!opts.deputiesAlive;
+        // kdokoli další – bandita, pomocník NEBO druhý odpadlík – je zabití šerifa prohra
+        // (vyhráli by bandité), takže na něj nestřílí. Pořadí: nejdřív bandité, pomocníci
+        // a druhý odpadlík, šerif úplně nakonec.
+        const othersAlive = !!opts.outlawsAlive || !!opts.deputiesAlive || !!opts.renegadesAlive;
         if (targetRole === 'Sheriff')  return othersAlive ? -50 : 5;
         if (targetRole === 'Outlaw')   return 3;
         if (targetRole === 'Deputy')   return 2;
-        return -1; // jiný odpadlík (vzácné / prakticky nenastane)
+        // Při 8 hráčích jsou odpadlíci DVA a každý hraje sám za sebe – druhý odpadlík je
+        // tedy rival, ne spojenec (vyhrát můžou jen jednotlivě, jako poslední žijící).
+        return 2;
     }
     return 1;
 }
@@ -113,6 +123,8 @@ function computeBeliefs(state, ledger, myIndex) {
     known[myIndex] = players[myIndex] && players[myIndex].role;
     if (sheriffIdx !== -1) known[sheriffIdx] = 'Sheriff';
     players.forEach((p, i) => { if (p.health <= 0) known[i] = p.role; }); // mrtví = veřejní
+    // Hra pro 3 (Město duchů): všechny tři role leží lícem nahoru, takže se nic nededukuje.
+    if (state.mode3p) players.forEach((p, i) => { known[i] = p.role; });
 
     // Zbývající „pool" rolí po odečtení jistot.
     const pool = { ...comp };
@@ -214,9 +226,19 @@ function estimateRoleAlive(state, beliefs, role) {
 }
 
 function estimateOutlawsAlive(state, beliefs) { return estimateRoleAlive(state, beliefs, 'Outlaw'); }
+// Kolik ŽIJÍCÍCH odpadlíků kromě mě – při 8 hráčích jsou dva a druhý je rival, kvůli
+// kterému odpadlík ještě nesmí sáhnout na šerifa (roleHostility, opts.renegadesAlive).
+function estimateOtherRenegadesAlive(state, beliefs, myIndex) {
+    let sum = 0;
+    (state.players || []).forEach((p, i) => {
+        if (i !== myIndex && p.health > 0 && beliefs[i]) sum += beliefs[i].Renegade || 0;
+    });
+    return sum;
+}
 function estimateDeputiesAlive(state, beliefs) { return estimateRoleAlive(state, beliefs, 'Deputy'); }
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { roleHostility, expectedHostility, enemyProbability, computeBeliefs,
-                       estimateOutlawsAlive, estimateDeputiesAlive, estimateRoleAlive, ROLES };
+                       estimateOutlawsAlive, estimateDeputiesAlive, estimateOtherRenegadesAlive,
+                       estimateRoleAlive, ROLES };
 }

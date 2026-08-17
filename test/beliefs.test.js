@@ -99,3 +99,59 @@ test('estimateOutlawsAlive: součet P(Outlaw) žijících', () => {
     // 3 neznámí, každý P(Outlaw)=2/3 → součet 2.0.
     assert.ok(Math.abs(estimateOutlawsAlive(s, b) - 2) < 1e-9);
 });
+
+// ── Hra pro 3 (Město duchů): nepřátelskost je cyklická, role veřejné ─────────
+test('roleHostility 3P: můj určený nepřítel má prioritu, třetí hráč je taky nepřítel', () => {
+    const o = { mode3p: true };
+    // pomocník loví odpadlíka, odpadlík banditu, bandita pomocníka
+    assert.equal(roleHostility('Deputy', 'Renegade', o), 3);
+    assert.equal(roleHostility('Deputy', 'Outlaw', o), 1);
+    assert.equal(roleHostility('Renegade', 'Outlaw', o), 3);
+    assert.equal(roleHostility('Renegade', 'Deputy', o), 1);
+    assert.equal(roleHostility('Outlaw', 'Deputy', o), 3);
+    assert.equal(roleHostility('Outlaw', 'Renegade', o), 1);
+    // nikdo není spojenec – vyhrát může jen jeden
+    for (const me of ['Deputy', 'Outlaw', 'Renegade']) {
+        for (const t of ['Deputy', 'Outlaw', 'Renegade']) {
+            if (me === t) continue;
+            assert.ok(roleHostility(me, t, o) > 0, `${me} vs ${t}`);
+        }
+    }
+});
+
+test('computeBeliefs 3P: všechny role jsou jisté (leží lícem nahoru)', () => {
+    const state = {
+        mode3p: true,
+        players: [
+            { role: 'Deputy', health: 4, hand: [] },
+            { role: 'Outlaw', health: 4, hand: [] },
+            { role: 'Renegade', health: 4, hand: [] },
+        ],
+    };
+    const b = computeBeliefs(state, null, 0);
+    assert.equal(b[0].Deputy, 1);
+    assert.equal(b[1].Outlaw, 1);
+    assert.equal(b[2].Renegade, 1);
+});
+
+// ── Hra pro 8: dva odpadlíci jsou rivalové, ne spojenci ─────────────────────
+test('roleHostility 8P: druhý odpadlík je rival a drží šerifa při životě', () => {
+    // dva odpadlíci: druhý je nepřítel (vyhrát můžou jen jednotlivě)
+    assert.ok(roleHostility('Renegade', 'Renegade', {}) > 0);
+    // dokud žije druhý odpadlík, na šerifa se nesahá – stejně jako u banditů/pomocníků
+    assert.ok(roleHostility('Renegade', 'Sheriff', { renegadesAlive: true }) < 0);
+    assert.ok(roleHostility('Renegade', 'Sheriff', {}) > 0);
+});
+
+test('computeBeliefs 8P: složení rolí je 1/2/3/2', () => {
+    const players = Array.from({ length: 8 }, (_, i) => ({
+        role: i === 0 ? 'Sheriff' : 'Outlaw', health: 4, hand: [],
+    }));
+    const b = computeBeliefs({ players }, null, 1);
+    assert.equal(b[0].Sheriff, 1, 'šerif je veřejný');
+    // pro neznámé se rozdělí zbytek poolu (2 pomocníci, 2 bandité, 2 odpadlíci na 6 hráčů)
+    const unknown = b[2];
+    assert.ok(Math.abs(unknown.Deputy + unknown.Outlaw + unknown.Renegade - 1) < 1e-9);
+    assert.ok(unknown.Renegade > 0, 'odpadlík je v poolu');
+    assert.equal(unknown.Sheriff, 0);
+});

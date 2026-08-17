@@ -60,6 +60,7 @@ if (typeof require === 'function') {
         globalThis.roleHostility = __b.roleHostility;
         globalThis.estimateOutlawsAlive = __b.estimateOutlawsAlive;
         globalThis.estimateDeputiesAlive = __b.estimateDeputiesAlive;
+        globalThis.estimateOtherRenegadesAlive = __b.estimateOtherRenegadesAlive;
     }
 }
 
@@ -94,17 +95,22 @@ const DESPERATE_ENEMY_P = 0.25;
 // Kontext pro roleHostility (renegade timing) odvozený z beliefů. Odpadlík smí na šerifa
 // teprve, když nežije NIKDO další – ani bandita, ani pomocník (jinak by zabitím šerifa
 // vyhráli bandité, ne on). Viz roleHostility v core/beliefs.js.
-function hostOpts(state, beliefs) {
+function hostOpts(state, beliefs, myIndex) {
     return {
         outlawsAlive: estimateOutlawsAlive(state, beliefs) > 0.5,
         deputiesAlive: estimateDeputiesAlive(state, beliefs) > 0.5,
+        // Při 8 hráčích jsou odpadlíci dva – druhý je rival, kvůli kterému se na šerifa
+        // ještě nesahá (stejný důvod jako u banditů a pomocníků).
+        renegadesAlive: estimateOtherRenegadesAlive(state, beliefs, myIndex) > 0.5,
+        // Hra pro 3 (Město duchů): nepřátelskost je cyklická, ne po stranách.
+        mode3p: !!state.mode3p,
     };
 }
 
 // Očekávaná nepřátelskost bota (myIndex) vůči cíli podle beliefů.
 function hostilityOf(state, myIndex, targetIdx, beliefs) {
     const me = state.players[myIndex];
-    return expectedHostility(me.role, beliefs[targetIdx], hostOpts(state, beliefs));
+    return expectedHostility(me.role, beliefs[targetIdx], hostOpts(state, beliefs, myIndex));
 }
 
 // Seřazení nepřátel podle beliefů: nejvíc nepřátelský → nejnižší HP → nejmíň karet v ruce.
@@ -113,7 +119,7 @@ function hostilityOf(state, myIndex, targetIdx, beliefs) {
 // nepřátelskost – kromě hráčů, kteří nepřítelem prakticky být nemůžou.
 function rankEnemies(state, myIndex, beliefs, requireReach) {
     const me = state.players[myIndex];
-    const opts = hostOpts(state, beliefs);
+    const opts = hostOpts(state, beliefs, myIndex);
     const all = [];
     state.players.forEach((p, idx) => {
         if (idx === myIndex || p.health <= 0) return;
