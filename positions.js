@@ -151,10 +151,13 @@ function getBoardCardPos(playerIdx, boardIdx) {
     const anchor = getOpponentAnchors(total)[diff - 1];
     if (!anchor) return { x: 960, y: 540 };
 
-    const isDead = player.health <= 0;
-    const numBoardCards = Math.max(boardIdx, (isDead ? 1 : 0) + (player.weapon?.id !== -1 ? 1 : 0) + (player.board?.length || 0));
+    // Karta role zabírá první slot skupiny: u vyřazeného hráče (odhalí se při smrti) a ve
+    // hře pro 3 (Město duchů) u každého od začátku hry. MUSÍ zrcadlit `_roleSlot`
+    // v drawOpponents (view/board.js), jinak by animace mířily o kartu vedle.
+    const hasRoleCard = !!state.mode3p || player.health <= 0;
+    const numBoardCards = Math.max(boardIdx, (hasRoleCard ? 1 : 0) + (player.weapon?.id !== -1 ? 1 : 0) + (player.board?.length || 0));
     const numBlue = Math.min(numBoardCards, L.oppBoardPerRow);
-    const displayIdx = isDead ? boardIdx + 1 : boardIdx;
+    const displayIdx = hasRoleCard ? boardIdx + 1 : boardIdx;
     const count = Math.max(displayIdx + 1, numBoardCards);
 
     if (anchor.side === 'compact') {

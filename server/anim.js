@@ -91,7 +91,8 @@ module.exports = function installAnimService(ctx) {
         // jedna) + ruka.
         // Šerif svou roli neodhaluje (zná ji celý stůl) → jeho sekvence končí odhozením
         // karet a je o odhalovací část kratší (core/deathAnim.js, klient počítá stejně).
-        const skipReveal = gs.players[deadIdx]?.role === 'Sheriff';
+        // Ve hře pro 3 (Město duchů) jsou lícem nahoru role všech, takže se neodhaluje nikdo.
+        const skipReveal = !!gs.mode3p || gs.players[deadIdx]?.role === 'Sheriff';
         room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
             Date.now() + deathSequenceMs(blue.length + 1 + hand.length, skipReveal));
         emitSheriffPenalty();
@@ -107,7 +108,7 @@ module.exports = function installAnimService(ctx) {
         // Role s animací – ve stavu je do konce cinematiky schovaná (viz emitDeathAnim).
         emitAnim(room, { type: 'player_death_reveal', playerIdx: di, role: gs.players[di]?.role || null });
         room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
-            Date.now() + deathRevealMs(gs.players[di]?.role === 'Sheriff'));
+            Date.now() + deathRevealMs(!!gs.mode3p || gs.players[di]?.role === 'Sheriff'));
     }
 
     function handleAutoEndTurn(room, gs) {

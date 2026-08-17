@@ -59,7 +59,8 @@ module.exports = function installRoomService(ctx) {
             if (i === viewerIdx) return p;
             // Duch (Město duchů) má roli odkrytou od svého vyřazení – i ve chvíli, kdy si
             // během svého tahu naléčil životy (a `health <= 0` tedy neplatí).
-            const roleVisible = p.role === 'Sheriff' || p.health <= 0 || !!p._ghost;
+            // Hra pro 3 (Město duchů): všechny tři role leží od začátku lícem nahoru.
+            const roleVisible = gs.mode3p || p.role === 'Sheriff' || p.health <= 0 || !!p._ghost;
             return {
                 ...p,
                 role: roleVisible ? p.role : null,

@@ -167,6 +167,25 @@ test('redakce: hráč vidí svoji roli a šerifovu, ostatní ne', () => {
     assert.equal(gsA.players[2].role, null, 'roli soupeře nevidí');
 });
 
+// Hra pro 3 (Město duchů): všechny tři role leží lícem nahoru, redakce je tedy neschovává.
+test('redakce: ve hře pro 3 jsou role veřejné', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.mode3p = true;
+    room.gameState.players = [
+        { name: 'Alice', role: 'Deputy',   health: 4, hand: [{ id: 1, name: 'Bang!' }] },
+        { name: 'Bob',   role: 'Outlaw',   health: 4, hand: [{ id: 3, name: 'Vedle!' }] },
+        { name: 'Cyril', role: 'Renegade', health: 4, hand: [{ id: 4, name: 'Barel' }] },
+    ];
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');
+    assert.deepEqual(gsA.players.map(p => p.role), ['Deputy', 'Outlaw', 'Renegade']);
+    // ruce zůstávají skryté i tak – odkryté jsou jen role
+    assert.equal(gsA.players[1].hand[0].name, undefined);
+    assert.equal(gsA.players[1].hand[0]._placeholder, true);
+});
+
 test('redakce: ruce soupeřů jsou zástupné karty se správným počtem', () => {
     const { ctx, addSocket, emits } = setup();
     ['s1', 's2', 's3'].forEach(addSocket);

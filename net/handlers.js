@@ -829,8 +829,9 @@ function playDeathSequence(data) {
     // Pozice/orientace zachyť TEĎ, dokud je stav ještě „živý" (viz komentář výše).
     const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || []);
     // Šerifovu roli zná celý stůl od začátku → neodhaluje se. Sekvence končí odhozením
-    // karet (pak už jen doběhne hra). Server počítá stejně (server/anim.js).
-    const skipReveal = (data.role || p.role) === 'Sheriff';
+    // karet (pak už jen doběhne hra). Ve hře pro 3 (Město duchů) leží lícem nahoru role
+    // všech, takže se neodhaluje nikdo. Server počítá stejně (server/anim.js).
+    const skipReveal = !!state?.mode3p || (data.role || p.role) === 'Sheriff';
     const T = deathAnimTimeline(seq.length, skipReveal);
     // Vulture Sam: karty míří na FINÁLNÍ sloty jeho vějíře, takže potřebujeme, kolik jich
     // v ruce má teď (baseLen) a kolik jich přiletí (incoming – Colt .45 se nepřenáší).
@@ -940,7 +941,7 @@ function playDeathRoleReveal(data) {
     const p = state?.players?.[pid];
     App.vultureSplitIdx = null;
     if (!gameScene || !p) return;
-    const skipReveal = (data.role || p.role) === 'Sheriff';
+    const skipReveal = !!state?.mode3p || (data.role || p.role) === 'Sheriff';
     const isMine = pid === myIndex;   // umírám já → odhalení role nevidím, jen čekám
     App.blockInput = true;
     p.hand = [];
@@ -1868,7 +1869,7 @@ function _animDurationMs(data) {
     // stejný vzorec počítá server (server/anim.js), aby o tu dobu podržel boty.
     if (data.type === 'player_death_discard' || data.type === 'vulture_sam_steal') {
         const dIdx = data.type === 'vulture_sam_steal' ? data.fromPlayerIdx : data.playerIdx;
-        const skipReveal = (data.role || state?.players?.[dIdx]?.role) === 'Sheriff';
+        const skipReveal = !!state?.mode3p || (data.role || state?.players?.[dIdx]?.role) === 'Sheriff';
         return deathSequenceMs((data.blue?.length || 0) + 1 + (data.hand?.length || 0), skipReveal);
     }
     // Šerifova ztráta karet za zabití pomocníka (bez Coltu → bez „+1" jako u smrti).
@@ -1882,7 +1883,7 @@ function _animDurationMs(data) {
     // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
     if (data.type === 'vulture_split_death') return deathFallMs();
     if (data.type === 'player_death_reveal') {
-        return deathRevealMs(state?.players?.[data.playerIdx]?.role === 'Sheriff');
+        return deathRevealMs(!!state?.mode3p || state?.players?.[data.playerIdx]?.role === 'Sheriff');
     }
     return ANIM_MS[data.type] ?? 400;
 }

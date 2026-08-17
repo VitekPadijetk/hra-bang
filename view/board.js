@@ -412,7 +412,10 @@ function drawOpponents(ctx) {
         // nakonec. Ve fázi 'settled' je slot role rezervovaný (postava se k němu posune),
         // ale karta se nekreslí: zrovna letí doprostřed obrazovky a teprve doletí sem.
         const _deathStage = App.deathSeq[actualIdx] || null;
-        const _roleSlot = isDead && !deathCardsStillShown(actualIdx);
+        // Hra pro 3 (Město duchů): karta role leží lícem nahoru u každého od začátku hry –
+        // je to týž slot, jaký dostane vyřazený hráč (MUSÍ zrcadlit getBoardCardPos
+        // v positions.js, jinak by animace mířily o kartu vedle).
+        const _roleSlot = !!state.mode3p || (isDead && !deathCardsStillShown(actualIdx));
         const displayCards = _roleSlot
             ? [{ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' }, ...allBoardCards]
             : allBoardCards;
@@ -1891,7 +1894,8 @@ function drawSpectatorPlayer(ctx) {
         // Cinematika vyřazení – viz shodné gate v drawOpponents: karta role se objeví
         // teprve po odhalení uprostřed obrazovky, ve fázi 'settled' jen drží slot.
         const _deathStage = App.deathSeq[0] || null;
-        const _roleSlot = isDead && !deathCardsStillShown(0);
+        // Hra pro 3 (Město duchů): role jsou odkryté u všech, viz drawOpponents.
+        const _roleSlot = !!state.mode3p || (isDead && !deathCardsStillShown(0));
         const allBoard = [];
         if (_roleSlot) allBoard.push({ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_001' });
         if (player.weapon && player.weapon.id !== -1) allBoard.push(player.weapon);

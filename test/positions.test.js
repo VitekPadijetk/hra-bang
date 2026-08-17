@@ -416,3 +416,37 @@ test('vyložené karty sousedních soupeřů se nepřekrývají', () => {
         global.state = null; global.myIndex = null;
     }
 });
+
+// ── Hra pro 3 (Město duchů): karta role leží lícem nahoru u každého ──────────
+// Je to týž slot, jaký dostane vyřazený hráč, takže logická karta 0 (zbraň) musí ležet
+// až ZA ní. Bez toho by animace mířily o kartu vedle, než dorazí stav.
+test('3P: role zabírá první slot skupiny a modré se posunou za ni', () => {
+    const mk = (mode3p) => ({
+        players: [
+            { health: 4, hand: [], board: [], weapon: { id: -1 } },
+            { health: 4, hand: [], board: [{ id: 7 }], weapon: { id: 3 } },
+            { health: 4, hand: [], board: [], weapon: { id: -1 } },
+        ],
+        mode3p,
+    });
+    const step = 325 * DSK.scaleOpp + DSK.oppGap;
+
+    global.state = mk(true); global.myIndex = 0;
+    const role = getDeadRoleCardPos(1);           // display slot 0
+    const weapon = getBoardCardPos(1, 0);         // display slot 1
+    const blue = getBoardCardPos(1, 1);           // display slot 2
+    // Oba soupeři sedí nahoře → řada roste doprava od karty životů, o jeden krok na kartu.
+    assert.ok(Math.abs(weapon.x - role.x - step) < 1e-9, 'role je krok PŘED zbraní');
+    assert.ok(Math.abs(blue.x - weapon.x - step) < 1e-9, 'modrá je krok za zbraní');
+    assert.equal(role.y, weapon.y, 'jedna řada');
+
+    // 3P recykluje slot, který dostane vyřazený hráč → rozložení musí být totožné
+    // s tím, jaké má tentýž hráč po vyřazení (stejný počet zobrazených karet).
+    const dead = mk(false);
+    dead.players[1].health = 0;
+    global.state = dead;
+    assert.deepEqual(getDeadRoleCardPos(1), role);
+    assert.deepEqual(getBoardCardPos(1, 0), weapon);
+    assert.deepEqual(getBoardCardPos(1, 1), blue);
+    global.state = null; global.myIndex = null;
+});
