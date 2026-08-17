@@ -129,7 +129,12 @@ socket.on('intro_phase', (data) => {
         const isMine = toIdx === myIdx;
         // Moje karta role se nerozdává malá na sedačku – přiletí rovnou jako reveal
         // (letí z balíčku, překlopí se a zvětší doprostřed), spouští se v intro_role.
-        if (!isMine) {
+        // Hra pro 3 (Město duchů): server posílá roli i v broadcastu, protože leží lícem
+        // nahoru – cizí karta se proto za letu překlopí a ZŮSTANE ležet na stole svého
+        // hráče (placedCards), přesně na slotu, kde ji pak kreslí deska.
+        if (!isMine && data.role) {
+            _introPlacePublicRole(toIdx, data.role);
+        } else if (!isMine) {
             const toPos = _getIntroPlayerPos(toIdx, myIdx, _introState.playerCount);
             _introAnimCard(INTRO_ROLE_DECK.x, INTRO_ROLE_DECK.y, toPos.x, toPos.y, 'role_card_back', 380);
         }

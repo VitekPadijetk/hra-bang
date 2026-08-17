@@ -131,7 +131,12 @@ module.exports = function installIntroService(ctx) {
                 setTimeout(() => {
                     const role = gs.players[pidx]?.role;
                     if (!role) return;
-                    emitIntro(room, { sub: 'role_card_fly', toPlayerIdx: pidx, step });
+                    // Hra pro 3 (Město duchů): role leží lícem nahoru, takže smí jít
+                    // i do BROADCASTU – karta se pak každému překlopí přímo na stole.
+                    // U ostatních počtů je role tajná a chodí jen soukromě (emitIntroRole).
+                    emitIntro(room, gs.mode3p
+                        ? { sub: 'role_card_fly', toPlayerIdx: pidx, step, role }
+                        : { sub: 'role_card_fly', toPlayerIdx: pidx, step });
                     emitIntroRole(room, pidx, role);
                 }, step * 500);
             });

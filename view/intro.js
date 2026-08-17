@@ -363,6 +363,28 @@ function _introOppSlots(idx, health) {
     };
 }
 
+// Hra pro 3 (Město duchů): role leží lícem nahoru, takže cizí karta role neletí na
+// sedačku rubem – za letu se překlopí a ZŮSTANE ležet na stole svého hráče, přesně na
+// slotu, kam ji pak kreslí deska (getDeadRoleCardPos = display slot 0, viz `_roleSlot`
+// v drawOpponents). Drží ji `placedCards`, takže ji přežije i přechod do fáze postav
+// (_clearIntroSprites maže sprity, ne umístěné karty). Textury rolí = RoleImages (game.js).
+function _introPlacePublicRole(idx, role) {
+    if (!gameScene || !_introState || !role) return;
+    if (_introFindPlaced('role:' + idx)) return;   // pojistka proti dvojímu rozdání
+    const tex = RoleImages[role] || 'role_001';
+    const sl = _introOppSlots(idx, 4);             // jen kvůli straně/úhlu a měřítku
+    const pos = getDeadRoleCardPos(idx);
+    _introAnimCardFlip(INTRO_ROLE_DECK.x, INTRO_ROLE_DECK.y, pos.x, pos.y,
+        'role_card_back', tex, 520, () => {
+            if (!_introState) return;
+            _introState.placedCards.push({
+                tex, x: pos.x, y: pos.y, scale: sl.scale, angle: sl.angle,
+                depth: 20, key: 'role:' + idx,
+            });
+            renderUI();
+        }, sl.angle, null, { startScale: 0.30, endScale: sl.scale });
+}
+
 function _getIntroPlayerPos(targetPlayerIdx, myIdx, total) {
     if (myIdx === null || myIdx === undefined) return { x: 960, y: 540 };
     if (targetPlayerIdx === myIdx) return { x: 960, y: 900 };

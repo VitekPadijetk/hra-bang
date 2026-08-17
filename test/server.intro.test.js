@@ -227,3 +227,49 @@ test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', 
     assert.ok(!subs.includes('shuffle_highnoon'));
     assert.ok(subs.includes('deal_cards'));
 });
+
+// ── Hra pro 3 (Město duchů): role jsou veřejné už během intra ────────────────
+// Role smí jít do BROADCASTU jen ve hře pro 3; u ostatních počtů je tajná a chodí
+// výhradně soukromým intro_role svému hráči.
+function mkRoom3p(mode3p) {
+    return {
+        id: 'game3',
+        players: [
+            { socketId: 's0', playerIdx: 0, name: 'A' },
+            { socketId: 's1', playerIdx: 1, name: 'B' },
+            { socketId: 's2', playerIdx: 2, name: 'C' },
+        ],
+        gameState: {
+            mode3p,
+            players: [{ role: 'Deputy' }, { role: 'Outlaw' }, { role: 'Renegade' }],
+            deck: { cards: [] },
+        },
+    };
+}
+
+function rolesInBroadcast(mode3p) {
+    const { io, addSocket, emits } = mkIo();
+    ['s0', 's1', 's2'].forEach(addSocket);
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    const room = mkRoom3p(mode3p);
+    const origTimeout = global.setTimeout;
+    global.setTimeout = (fn) => { fn(); return 0; };   // sekvence proběhne synchronně
+    try { ctx.runIntroSequence(room); } finally { global.setTimeout = origTimeout; }
+    return emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase' &&
+                             e.payload.sub === 'role_card_fly');
+}
+
+test('runIntroSequence pro 3 hráče posílá roli i v broadcastu (role jsou odkryté)', () => {
+    const flies = rolesInBroadcast(true);
+    assert.equal(flies.length, 3);
+    assert.deepEqual(flies.map(e => e.payload.role).sort(),
+        ['Deputy', 'Outlaw', 'Renegade']);
+});
+
+test('runIntroSequence mimo hru pro 3 roli v broadcastu NEposílá (je tajná)', () => {
+    const flies = rolesInBroadcast(false);
+    assert.equal(flies.length, 3);
+    assert.ok(flies.every(e => e.payload.role === undefined),
+        'role unikla do broadcastu: ' + JSON.stringify(flies.map(e => e.payload)));
+});
