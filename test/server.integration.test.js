@@ -80,6 +80,19 @@ test('create_room handler skutečně vytvoří místnost (resolved všechny ctx 
     assert.equal(room.players[0].name, 'Alice');
 });
 
+// Počet hráčů z klienta se ořezává na 3–8. Bez toho by šlo socketem vyrobit místnost
+// s počtem, pro který rolesForPlayerCount vrací prázdné pole (role undefined → hra by
+// hned vyhlásila „Bandité vyhráli").
+test('create_room ořeže nesmyslný počet hráčů na povolený rozsah', () => {
+    const cases = [[99, 8], [1, 3], [0, 3], [-5, 3], [8, 8], [3, 3], ['x', 4], [undefined, 4]];
+    for (const [asked, want] of cases) {
+        const { ctx, mkSocket } = mkEnv();
+        mkSocket('s1').fire('create_room', { name: 'Stůl', maxPlayers: asked, playerName: 'Alice', options: {} });
+        const room = [...ctx.rooms.values()][0];
+        assert.equal(room.maxPlayers, want, `maxPlayers ${asked} → ${want}`);
+    }
+});
+
 test('join_room handler přidá druhého hráče', () => {
     const { ctx, mkSocket } = mkEnv();
     const s1 = mkSocket('s1');

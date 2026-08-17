@@ -380,9 +380,11 @@ function renderMenuScreen(screen) {
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(playerCountLabel);
 
-        const counts = [4, 5, 6, 7];
+        // 3 a 8 hráčů přidává rozšíření Město duchů: hra pro 3 má zvláštní pravidla
+        // (odkryté role, cíle v kruhu), 8 hráčů jen jinou sadu rolí.
+        const counts = [3, 4, 5, 6, 7, 8];
         counts.forEach((n, i) => {
-            const x = 700 + i * 175;
+            const x = 522 + i * 175;
             const isSelected = App.createPlayerCount === n;
             const bg = gameScene.add.rectangle(x, 578, 140, 70,
                 isSelected ? 0x4a3a12 : 0x333333)
@@ -484,9 +486,9 @@ function renderMenuScreen(screen) {
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(playerCountLabel);
 
-        const counts = [4, 5, 6, 7];
+        const counts = [3, 4, 5, 6, 7, 8];
         counts.forEach((n, i) => {
-            const x = 700 + i * 175;
+            const x = 522 + i * 175;
             const isSelected = App.botGameCount === n;
             const bg = gameScene.add.rectangle(x, 380, 140, 70,
                 isSelected ? 0x4a3a12 : 0x333333)
@@ -942,11 +944,20 @@ function showStats(players) {
     const existing = document.getElementById('stats-overlay');
     if (existing) { existing.remove(); return; }
 
-    const groups = {
-        'Zákon (Šerif + Pomocníci)': players.filter(p => p.role === 'Sheriff' || p.role === 'Deputy'),
-        'Bandité': players.filter(p => p.role === 'Outlaw'),
-        'Odpadlík': players.filter(p => p.role === 'Renegade'),
-    };
+    // Hra pro 3 (Město duchů): žádné strany – každá role hraje sama za sebe (cíle jsou
+    // v kruhu), takže se seskupuje po jedné roli.
+    const is3p = players.length === 3 && !players.some(p => p.role === 'Sheriff');
+    const groups = is3p
+        ? {
+            'Pomocník': players.filter(p => p.role === 'Deputy'),
+            'Bandita': players.filter(p => p.role === 'Outlaw'),
+            'Odpadlík': players.filter(p => p.role === 'Renegade'),
+        }
+        : {
+            'Zákon (Šerif + Pomocníci)': players.filter(p => p.role === 'Sheriff' || p.role === 'Deputy'),
+            'Bandité': players.filter(p => p.role === 'Outlaw'),
+            'Odpadlíci': players.filter(p => p.role === 'Renegade'),
+        };
 
     const renderPlayer = (p) => {
         const s = p.stats;

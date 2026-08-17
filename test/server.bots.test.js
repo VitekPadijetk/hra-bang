@@ -221,6 +221,21 @@ test('create_bot_game vytvoří hru N botů a diváka', () => {
     assert.ok(sock.emits.some(e => e.ev === 'room_update' && e.payload.myIndex === null));
 });
 
+// Počet botů se ořezává na povolený rozsah 3–8 (3 a 8 přidává Město duchů). Bez ořezu
+// by pro počet mimo tabulku vrátilo rolesForPlayerCount prázdné pole a role by byly
+// undefined.
+test('create_bot_game ořeže počet botů na 3–8', () => {
+    for (const [asked, want] of [[99, 8], [1, 3], [8, 8], [3, 3], [undefined, 4]]) {
+        const ctx = buildCtx();
+        const sock = mkRealSocket('W' + asked);
+        registerLobbyHandlers(sock, ctx, () => {});
+        sock._fire('create_bot_game', { count: asked });
+        const room = [...ctx.rooms.values()].find(r => r.options?.botGame);
+        assert.equal(room.maxPlayers, want, `count ${asked} → ${want}`);
+        assert.equal(room.players.length, want);
+    }
+});
+
 test('create_bot_game: bot select-char doběhne k vítězi a go_to_menu rozpustí místnost', () => {
     const ctx = buildCtx();
     const sock = mkRealSocket('W');

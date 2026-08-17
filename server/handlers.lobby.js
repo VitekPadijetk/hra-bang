@@ -6,6 +6,17 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
             findRoomBySocket, leaveRoom, leaveSpectate, disbandRoom, getGameList, startGame, io,
             createBot, removeBot, botSockets, botControl, botRelease } = ctx;
 
+    // Povolený počet hráčů: 3 až 8 (3 a 8 přidává rozšíření Město duchů). Pro počet
+    // mimo tabulku vrací rolesForPlayerCount prázdné pole – hra by se rozjela s
+    // role === undefined a checkWinCondition by hned vyhlásil „Bandité vyhráli".
+    // Klient nabízí jen povolené počty, ale socketem sem může přijít cokoli.
+    const MIN_PLAYERS = 3, MAX_PLAYERS = 8;
+    function clampPlayerCount(n) {
+        const v = Math.floor(Number(n));
+        if (!Number.isFinite(v)) return 4;
+        return Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, v));
+    }
+
     // Hra jen botů: tvůrce je pouze divák (není mezi players). Po jeho odchodu
     // nemá smysl pokračovat → rozpustíme místnost a uklidíme fake sockety botů.
     function disbandBotGameWatchedBy(socketId) {
@@ -24,7 +35,9 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         const existing = findRoomBySocket(socket.id);
         if (existing) return;
         leaveSpectate(socket);   // hráč nesmí zůstat divákem jinde (stavy dvou her by se praly)
-        const room = makeRoom(name, maxPlayers, socket.id, playerName, options || {}, token || null);
+        // Počet hráčů MUSÍ projít ořezem: pro počet mimo tabulku vrátí rolesForPlayerCount
+        // prázdné pole a hra by se rozjela s role === undefined (a hned vyhlásila vítěze).
+        const room = makeRoom(name, clampPlayerCount(maxPlayers), socket.id, playerName, options || {}, token || null);
         socket.join(room.id);
         socket.emit('room_joined', { roomId: room.id, myIndex: 0 });
         broadcastRoom(room);
@@ -184,7 +197,7 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     socket.on('create_bot_game', ({ count, options } = {}) => {
         if (findRoomBySocket(socket.id)) return;                 // už hraje jako hráč
         for (const [, r] of rooms) if (r._watcherSocketId === socket.id) return; // už kouká
-        const n = Math.max(4, Math.min(7, Number(count) || 4));
+        const n = clampPlayerCount(count);
         const room = makeRoom('🤖 Hra botů', n, socket.id, '🤖 Pozorovatel', { ...(options || {}), botGame: true });
         room.players = [];                  // hra je jen botů – žádný člověk mezi hráči
         room._watcherSocketId = socket.id;  // tvůrce = divák
