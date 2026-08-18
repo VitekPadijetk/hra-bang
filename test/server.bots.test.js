@@ -13,6 +13,7 @@ const registerLobbyHandlers = require('../server/handlers.lobby.js');
 const cardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.json', 'utf8'));
 const dodgeCityCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.dodge_city.json', 'utf8'));
 const highNoonCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.high_noon.json', 'utf8'));
+const fistfulCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.fistful.json', 'utf8'));
 
 before(() => { console.log = () => {}; console.warn = () => {}; });
 
@@ -324,6 +325,36 @@ test('20 her jen botů se zapnutým High Noon vždy doběhne (události v každ�
         }
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s High Noon');
+});
+
+test('20 her jen botů se všemi rozšířeními (vč. Fistfulu) vždy doběhne', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: true, fistful: true },
+                           highNoonExtra: true };
+            const room = { id: 'ff' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `FF hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 6000, `FF hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            // Obě řady událostí se opravdu odkrývaly (ne že by rozšíření bylo tiše vypnuté).
+            assert.ok(gs.ffPile.length > 0 || gs.ffDeck.length === 15,
+                'balíček Fistfulu se buď odkrýval, nebo hra skončila v prvním kole');
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s Fistfulem');
 });
 
 test('20 her jen botů s High Noon + Dodge City zároveň vždy doběhne', () => {

@@ -60,6 +60,12 @@ const DODGE_CITY_CHARACTERS = [
     "Pat Brennan", "Pixie Pete", "Sean Mallory", "Tequila Joe", "Vera Custer"
 ];
 
+// Postavy rozšíření A Fistful of Cards (všechny 4 životy). Do výběru se přidají
+// jen se zapnutým rozšířením (options.expansions.fistful → _characterPool).
+const FISTFUL_CHARACTERS = [
+    "Claus the Saint", "Uncle Will", "Johnny Kisch"
+];
+
 class Card {
     constructor(id, name, type, suit, value, props = {}) {
         this.id = id;
@@ -196,5 +202,5 @@ class Deck {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, Card, Player, Deck };
+    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, Card, Player, Deck };
 }

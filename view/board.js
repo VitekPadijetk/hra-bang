@@ -106,7 +106,8 @@ function renderGameBoard() {
 
     // --- 1. BALÍČKY ---
     const isMyDraw = drawDrawPiles({ getTex, scaleDeck, me, L });
-    drawHighNoonPile({ scaleDeck, L });
+    drawEventPile({ scaleDeck }, 'hn');
+    drawEventPile({ scaleDeck }, 'ff');
 
     const handlePanicCBClick = (targetIdx, area, boardIdx = null) => {
         // Zelená karta se steal/discard efektem ze stolu (Krytý vůz / Kankán): klik na
@@ -2212,30 +2213,37 @@ function drawPhaseOverlays(ctx) {
 
 
 // ── Balíčky: dobírací + odhazovací hromádka, zvýraznění lízání/check (vrací isMyDraw) ─
-// Rozšíření High Noon: balíček událostí rubem nahoru a vedle něj hromádka už odkrytých
-// karet lícem nahoru (nová vždy překryje předchozí, hromádka roste do výšky – stejně jako
-// odhoz). Leží napravo od odhozu a zvedá se s ním při hokynářství (řada karet hokynářství
-// sahá při 7 hráčích až na x=1320, takže bez zvednutí by přes ně ležela).
+// Rozšíření High Noon / A Fistful of Cards: balíček událostí rubem nahoru a vedle něj
+// hromádka už odkrytých karet lícem nahoru (nová vždy překryje předchozí, hromádka roste
+// do výšky – stejně jako odhoz). Kreslí se pro OBA balíčky; kde který leží, rozhoduje
+// eventSlot (game.js) podle toho, která rozšíření se hrají. Balíčky se zvedají při
+// hokynářství (řada rozdaných karet sahá při 7 hráčích až na x=1320, takže bez zvednutí
+// by přes ně ležela).
 // Vrchní (platná) karta jde zvětšit najetím kurzoru – stejná cesta jako u vrchní karty odhozu.
-function drawHighNoonPile(ctx) {
+function drawEventPile(ctx, which) {
     const { scaleDeck } = ctx;
     if (!state) return;
-    // App.hnDeckLeft: po dobu cinematiky odkrytí kreslíme balíček podle animace, ne podle
-    // stavu (ten dorazí až po ní). Karta z balíčku odchází HNED, takže při odkrytí poslední
-    // (Pravé poledne) musí balíček zmizet se startem letu, ne až na jeho konci.
-    const left = App.hnDeckLeft ?? (state.eventDeck?.length || 0);
-    const pile = state.eventPile || [];
-    if (!left && !pile.length) return;   // rozšíření se nehraje
+    const isFf = which === 'ff';
+    // App.hnDeckLeft / ffDeckLeft: po dobu cinematiky odkrytí kreslíme balíček podle
+    // animace, ne podle stavu (ten dorazí až po ní). Karta z balíčku odchází HNED, takže
+    // při odkrytí poslední musí balíček zmizet se startem letu, ne až na jeho konci.
+    const left = (isFf ? App.ffDeckLeft : App.hnDeckLeft)
+        ?? ((isFf ? state.ffDeck : state.eventDeck)?.length || 0);
+    const pile = (isFf ? state.ffPile : state.eventPile) || [];
+    if (!left && !pile.length) return;   // tohle rozšíření se nehraje
 
-    const lift = App.storePileLiftY || 0;
+    const slot = eventSlot(which);
+    if (!slot) return;
     const pxPerCard = 0.25;
-    const baseY = HN_PILE_Y - lift;
+    const baseY = slot.y;
+    const prefix = eventTexPrefix(which);
 
     if (left > 0) {
-        const backTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
+        const backKey = prefix + 'back';
+        const backTex = gameScene.textures.exists(backKey) ? backKey : 'card_back';
         const topY = baseY - (left - 1) * pxPerCard / 2;
         for (let k = left - 1; k >= 0; k--) {
-            const layer = gameScene.add.image(HN_PILE_X, topY + k * pxPerCard, backTex).setScale(scaleDeck);
+            const layer = gameScene.add.image(slot.deckX, topY + k * pxPerCard, backTex).setScale(scaleDeck);
             gameScene.cardsSprites.add(layer);
         }
     }
@@ -2248,15 +2256,15 @@ function drawHighNoonPile(ctx) {
     const topY = baseY - (pile.length - 1) * pxPerCard / 2;
     for (let i = 0; i < pile.length; i++) {
         const card = pile[i];
-        const tex = 'hn_' + card.art;
+        const tex = prefix + card.art;
         if (!gameScene.textures.exists(tex)) continue;
         const isTop = i === pile.length - 1;
         const angle = isTop ? 0 : (((card.id * 2654435761) >>> 0) % 700) / 100 - 3.5;
-        const spr = gameScene.add.image(HN_ACTIVE_X, topY + (pile.length - 1 - i) * pxPerCard, tex)
+        const spr = gameScene.add.image(slot.activeX, topY + (pile.length - 1 - i) * pxPerCard, tex)
             .setScale(scaleDeck).setAngle(angle).setDepth(i);
         gameScene.cardsSprites.add(spr);
         if (!isTop) continue;
-        const zoomKey = 'hn:' + card.id;
+        const zoomKey = prefix + card.id;
         spr.setInteractive();
         spr._zoomKey = zoomKey;
         spr.on('pointerover', () => startCardZoom(tex, zoomKey));

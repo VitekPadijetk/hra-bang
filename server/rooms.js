@@ -72,7 +72,12 @@ module.exports = function installRoomService(ctx) {
         const deck = gs.deck
             ? { ...gs.deck, cards: (gs.deck.cards || []).map(() => HIDDEN_CARD) }
             : gs.deck;
-        return { ...gs, players, deck };
+        // Totéž platí pro balíčky událostí (High Noon, Fistful of Cards): klient z nich
+        // kreslí jen výšku hromádky, pořadí je pořadí příštích kol. Odkryté karty
+        // (eventPile / ffPile) jsou naopak veřejné a zůstávají.
+        const hideAll = (arr) => (arr || []).map(() => HIDDEN_CARD);
+        return { ...gs, players, deck,
+                 eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck) };
     }
 
     function roomPayload(room, viewerIdx = null, revealAll = false) {

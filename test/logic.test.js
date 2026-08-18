@@ -64,7 +64,8 @@ test('setupGame se singleChar dá rovnou jednu postavu', () => {
 // 8 hráčů × 2 nabídky = PŘESNĚ 16 základních postav, tedy nulová rezerva. Kdyby se pool
 // zmenšil (nebo se začaly brát postavy jinam), vylezlo by z chars.pop() undefined.
 for (const opts of [{}, { singleChar: true }, { highNoonExtra: true },
-                    { singleChar: true, highNoonExtra: true }]) {
+                    { singleChar: true, highNoonExtra: true },
+                    { expansions: { fistful: true } }]) {
     test(`setupGame(8) rozdá postavy všem – options ${JSON.stringify(opts)}`, () => {
         const g = newGame();
         const names = Array.from({ length: 8 }, (_, i) => `H${i}`);

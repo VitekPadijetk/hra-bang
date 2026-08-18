@@ -359,24 +359,27 @@ function renderMenuScreen(screen) {
 
         const nameValid = (App.createGameName || '').trim().length > 0;
 
-        const extLabel = gameScene.add.text(960, 340, 'Rozšíření',
+        const extLabel = gameScene.add.text(960, 330, 'Rozšíření',
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(extLabel);
         {
-            if (!App.createOptions.expansions) App.createOptions.expansions = { dodge_city: false, high_noon: false };
+            if (!App.createOptions.expansions) App.createOptions.expansions = { dodge_city: false, high_noon: false, fistful: false };
             const exps = App.createOptions.expansions;
-            expansionRow(384, exps, 'dodge_city', 'Dodge City',
+            expansionRow(368, exps, 'dodge_city', 'Dodge City',
                 '(+40 karet a +15 postav; karty se symbolem býka)',
                 () => loadExpansionAssets(gameScene, 'dodge_city'));
-            expansionRow(440, exps, 'high_noon', 'High Noon',
+            expansionRow(418, exps, 'high_noon', 'High Noon',
                 '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
                 () => {
                     loadExpansionAssets(gameScene, 'high_noon');
                     App.createOptions.highNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
                 });
+            expansionRow(468, exps, 'fistful', 'A Fistful of Cards',
+                '(15 karet událostí a 3 postavy; hraje se i vedle High Noonu)',
+                () => loadExpansionAssets(gameScene, 'fistful'));
         }
 
-        const playerCountLabel = gameScene.add.text(960, 508, 'Počet hráčů',
+        const playerCountLabel = gameScene.add.text(960, 512, 'Počet hráčů',
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(playerCountLabel);
 
@@ -516,31 +519,34 @@ function renderMenuScreen(screen) {
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(extLabel);
         {
-            if (!App.botGameExpansions) App.botGameExpansions = { dodge_city: false, high_noon: false };
+            if (!App.botGameExpansions) App.botGameExpansions = { dodge_city: false, high_noon: false, fistful: false };
             const bexps = App.botGameExpansions;
-            expansionRow(510, bexps, 'dodge_city', 'Dodge City',
+            expansionRow(500, bexps, 'dodge_city', 'Dodge City',
                 '(+40 karet a +15 postav; karty se symbolem býka)',
                 () => loadExpansionAssets(gameScene, 'dodge_city'));
-            expansionRow(566, bexps, 'high_noon', 'High Noon',
+            expansionRow(550, bexps, 'high_noon', 'High Noon',
                 '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
                 () => {
                     loadExpansionAssets(gameScene, 'high_noon');
                     App.botGameHighNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
                 });
+            expansionRow(600, bexps, 'fistful', 'A Fistful of Cards',
+                '(15 karet událostí a 3 postavy; hraje se i vedle High Noonu)',
+                () => loadExpansionAssets(gameScene, 'fistful'));
         }
 
         // Přibalené karty (Nová identita, Želízka) – jen když je High Noon zapnuté.
         const bHnExtraOn = !!(App.botGameExpansions && App.botGameExpansions.high_noon);
         if (bHnExtraOn) {
             const on = !!App.botGameHighNoonExtra;
-            themeButton(gameScene, 960, 620, 560, 44,
+            themeButton(gameScene, 960, 652, 560, 44,
                 (on ? '☑' : '☐') + '  + přibalené karty (Nová identita, Želízka)', {
                 ...themeToggleStyle(on), fontSize: '17px',
                 onClick: () => { App.botGameHighNoonExtra = !App.botGameHighNoonExtra; renderUI(); },
             });
         }
 
-        themeButton(gameScene, 960, bHnExtraOn ? 700 : 664, 420, 72, '▶  SPUSTIT A SLEDOVAT', {
+        themeButton(gameScene, 960, bHnExtraOn ? 728 : 692, 420, 72, '▶  SPUSTIT A SLEDOVAT', {
             fill: 0x2a1a33, fillHover: 0x3d2749, fontSize: '26px',
             onClick: () => {
                 const hn = !!(App.botGameExpansions && App.botGameExpansions.high_noon);
@@ -551,6 +557,7 @@ function renderMenuScreen(screen) {
                         expansions: {
                             dodge_city: !!(App.botGameExpansions && App.botGameExpansions.dodge_city),
                             high_noon: hn,
+                            fistful: !!(App.botGameExpansions && App.botGameExpansions.fistful),
                         },
                         highNoonExtra: hn && !!App.botGameHighNoonExtra,
                     },
@@ -761,16 +768,26 @@ function renderMenuScreen(screen) {
                     onClick: () => { App.debugHighNoonExtra = !App.debugHighNoonExtra; renderUI(); },
                 });
             }
+            const ffOn = !!App.debugFistful;
+            themeButton(gameScene, 960, hnOn ? 408 : 356, 480, 46,
+                (ffOn ? '☑' : '☐') + '  Rozšíření Fistful (15 událostí, 3 postavy)', {
+                ...themeToggleStyle(ffOn), fontSize: '18px',
+                onClick: () => {
+                    App.debugFistful = !App.debugFistful;
+                    if (App.debugFistful) loadExpansionAssets(gameScene, 'fistful');
+                    renderUI();
+                },
+            });
         }
 
-        const dbgStartY = App.debugHighNoon ? 424 : 372;
+        const dbgStartY = App.debugHighNoon ? 476 : 424;
         [2, 3, 4, 5].forEach((n, i) => {
             themeButton(gameScene, 720 + i * 160, dbgStartY, 132, 58, `▶  ${n}P`, {
                 fill: THEME.color.goldDarkNum, fillHover: 0xa8842a,
                 stroke: THEME.color.goldNum, textColor: '#ffffff', fontSize: '24px',
                 onClick: () => socket.emit('debug_start', { playerCount: n, roles: App.debugRoles || [],
                     dodgeCity: !!App.debugDodgeCity, highNoon: !!App.debugHighNoon,
-                    highNoonExtra: !!App.debugHighNoonExtra }),
+                    highNoonExtra: !!App.debugHighNoonExtra, fistful: !!App.debugFistful }),
             });
         });
     }

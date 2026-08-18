@@ -10,8 +10,12 @@ const SetupMixin = {
     // Pool postav pro výběr: základ + postavy Dodge City, když je rozšíření zapnuté.
     _characterPool(options = {}) {
         const base = [...ALL_CHARACTERS];
-        if (options.expansions && options.expansions.dodge_city && typeof DODGE_CITY_CHARACTERS !== 'undefined') {
-            return base.concat(DODGE_CITY_CHARACTERS);
+        const exps = options.expansions || {};
+        if (exps.dodge_city && typeof DODGE_CITY_CHARACTERS !== 'undefined') {
+            base.push(...DODGE_CITY_CHARACTERS);
+        }
+        if (exps.fistful && typeof FISTFUL_CHARACTERS !== 'undefined') {
+            base.push(...FISTFUL_CHARACTERS);
         }
         return base;
     },
@@ -41,6 +45,7 @@ const SetupMixin = {
         this.deck.initializeStandardDeck(this._deckDataFor(options));
         this.options = options;
         this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
+        this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {
@@ -81,6 +86,7 @@ const SetupMixin = {
         this.options = options;
         this.deck.initializeStandardDeck(this._deckDataFor(options));
         this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
+        this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
 
         let roles = [...debugRoles];
         const allRoles = ["Sheriff", "Deputy", "Outlaw", "Renegade"];
@@ -205,6 +211,7 @@ const SetupMixin = {
         this.deck.initializeStandardDeck(this._deckDataFor(options));
         this.options = options;
         this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
+        this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {

@@ -41,6 +41,7 @@ const App = {
     debugDodgeCity: false,
     debugHighNoon: false,
     debugHighNoonExtra: false,
+    debugFistful: false,
     // High Noon (přibalené) – Nová identita: stav cinematiky nabídky (net/handlers.js).
     // { ready, decided } – ready = karta doletěla doprostřed a je překlopená lícem nahoru.
     niReveal: null,
@@ -52,7 +53,7 @@ const App = {
     createGameName: null,
     createGameNameOwner: null,
     createPlayerCount: null,
-    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false } },
+    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false, fistful: false } },
     botGameCount: 4,
     // ID karet, které právě letí do MOJÍ ruky (animace líznutí/krádeže). Dokud je
     // karta tady, board.js ji v ruce nevykreslí – slot je rezervovaný a karta se
@@ -132,10 +133,11 @@ const App = {
     luckyDealIds: new Set(),
     luckyRevealCards: null,
     discardFlyHideIds: new Set(),
-    // High Noon: po dobu cinematiky odkrytí karty události kreslíme balíček událostí
-    // podle animace, ne podle stavu (ten dorazí až po ní) – karta z balíčku odchází
-    // hned se startem letu. null = kresli podle stavu (viz drawHighNoonPile).
+    // High Noon / Fistful of Cards: po dobu cinematiky odkrytí karty události kreslíme
+    // balíček událostí podle animace, ne podle stavu (ten dorazí až po ní) – karta
+    // z balíčku odchází hned se startem letu. null = kresli podle stavu (drawEventPile).
     hnDeckLeft: null,
+    ffDeckLeft: null,
     // Hokynářství na stole: balíčky se zvednou (storePileLiftY), karty se rozdají do
     // řady pod nimi (storeDealIds = ještě nedoletělé sloty, gated), výběr může být
     // dočasně zamčený (storeLocked, případ nedostatku) a u proaktivního míchání čeká

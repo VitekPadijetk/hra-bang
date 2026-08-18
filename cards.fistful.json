@@ -1,0 +1,18 @@
+[
+  { "id": 401, "key": "SOUDCE", "name": "Soudce", "art": "soudce", "text": "Hráči nesmí vykládat karty před sebe ani před ostatní hráče." },
+  { "id": 402, "key": "VENDETA", "name": "Vendeta", "art": "vendeta", "text": "Na konci svého tahu hráč sejme kartu: při ♥ hraje ještě jeden tah. V jednom tahu jen jednou." },
+  { "id": 403, "key": "ODRAZENA_STRELA", "name": "Odražená střela", "art": "odrazena_strela", "text": "Hráči smí hrát karty BANG! proti kartám vyloženým před ostatními hráči. Zasažený hráč smí kartu zachránit kartou Vedle!, jinak je karta odhozena." },
+  { "id": 404, "key": "ODSTRELOVAC", "name": "Odstřelovač", "art": "odstrelovac", "text": "Hráč smí ve svém tahu odhodit 2 karty BANG! najednou proti jinému hráči: ten se ubrání jen dvěma kartami Vedle!." },
+  { "id": 405, "key": "RUSKA_RULETA", "name": "Ruská ruleta", "art": "ruska_ruleta", "text": "Když přijde tato karta do hry, počínaje šerifem každý hráč odhodí kartu Vedle!. První, kdo nemůže, ztrácí 2 životy a efekt končí." },
+  { "id": 406, "key": "LASO", "name": "Laso", "art": "laso", "text": "Karty vyložené před hráči nemají žádný efekt." },
+  { "id": 407, "key": "OPUSTENY_DUL", "name": "Opuštěný důl", "art": "opusteny_dul", "text": "Ve fázi lízání si hráč líže z odhazovacího balíčku; odhazované karty se pokládají lícem dolů na dobírací balíček." },
+  { "id": 408, "key": "RANC", "name": "Ranč", "art": "ranc", "text": "Po fázi lízání smí hráč odhodit libovolný počet karet z ruky a líznout si stejný počet nových." },
+  { "id": 409, "key": "PEYOTE", "name": "Peyote", "art": "peyote", "text": "Místo klasického lízání hráč hádá barvu vrchní karty balíčku a odkryje ji. Uhodl → bere si ji a hádá znovu. Neuhodl → fáze lízání končí." },
+  { "id": 410, "key": "MRTVY_MUZ", "name": "Mrtvý muž", "art": "mrtvy_muz", "text": "Hráč, který byl vyřazen jako první, se ve svém tahu vrací do hry se 2 životy a 2 kartami." },
+  { "id": 411, "key": "LECKA", "name": "Léčka", "art": "lecka", "text": "Vzdálenost mezi kterýmikoli dvěma hráči je 1." },
+  { "id": 412, "key": "POKREVNI_BRATRI", "name": "Pokrevní bratři", "art": "pokrevni_bratri", "text": "Na začátku svého tahu, před lízáním, smí hráč ztratit 1 život a dát ho jinému hráči. Nesmí se tím zabít." },
+  { "id": 413, "key": "PRAVO_ZAPADU", "name": "Právo západu", "art": "pravo_zapadu", "text": "Ve fázi lízání se druhá lízaná karta odkryje a hráč ji musí v tomto tahu zahrát, pokud to jde." },
+  { "id": 414, "key": "PALENKA", "name": "Pálenka", "art": "palenka", "text": "Hráč smí vynechat fázi lízání a získat za to 1 život." },
+
+  { "id": 400, "key": "FISTFUL_OF_CARDS", "name": "Fistful of Cards", "art": "fistful_of_cards", "text": "Na začátku svého tahu je hráč zasažen tolika kartami BANG!, kolik má karet v ruce." }
+]

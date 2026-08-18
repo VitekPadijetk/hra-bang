@@ -124,6 +124,11 @@ const LAYOUT_DESKTOP = {
     // balíčky uprostřed stolu + řada hokynářství
     deckOffX: 90, pileY: 540, hnPileX: 1170, hnActiveX: 1280,
     storeRowOffY: 188, storeSpacing: 120, storeLift: 120,
+    // Kam s DRUHÝM balíčkem událostí (Fistful of Cards), když se hrají obě rozšíření:
+    // 'vertical' = nad High Noon (ten se o půl rozteče posune dolů), 'horizontal' =
+    // zrcadlově vlevo od dobíracího balíčku. Viz eventPileSlots níže.
+    eventStack: 'vertical', eventRowGap: 170,
+    ffPileX: 750, ffActiveX: 640,
 };
 const LAYOUT_MOBILE = {
     ...LAYOUT_DESKTOP, name: 'mobile',
@@ -155,6 +160,10 @@ const LAYOUT_MOBILE = {
     btnEndX: 1740, btnEndY: 690, btnAbilX: 1740, btnAbilY: 786, btnMargin: 180, btnH: 76,
     // Řada hokynářství o kus výš, ať nesahá na můj stůl (ten je na mobilu vejš).
     storeRowOffY: 150,
+    // Dva balíčky událostí nad sebou se na mobil nevejdou: mezi spodkem kompaktní řady
+    // soupeřů (440) a vrchem mojí zóny (660) je pásmo 220 px a dvě řady karet potřebují
+    // 320. Fistful proto leží zrcadlově vlevo od dobíracího balíčku.
+    eventStack: 'horizontal',
 };
 
 const LAYOUT_PROFILES = { desktop: LAYOUT_DESKTOP, mobile: LAYOUT_MOBILE };
@@ -393,6 +402,47 @@ function resolveLayout(profile, stage) {
     if (L.btnMargin != null) { out.btnEndX = st.right - L.btnMargin; out.btnAbilX = st.right - L.btnMargin; }
     return out;
 }
+// ── Balíčky událostí (High Noon, A Fistful of Cards) ─────────────────────────
+// Kde na stole leží rub balíčku a hromádka odkrytých karet. Pozice ZÁVISÍ na tom, která
+// rozšíření se zrovna hrají, takže to nejsou konstanty: hraje-li se jen jedno, sedí na
+// klasickém místě vpravo od odhozu (dnešní stav High Noonu). Hrají-li se obě, srovnají
+// se na desktopu nad sebe (Fistful nahoře, High Noon o půl rozteče níž), na mobilu se
+// místo toho Fistful zrcadlí doleva od dobíracího balíčku – svislé pásmo mezi kompaktní
+// řadou soupeřů a mojí zónou má jen 220 px a dvě řady karet potřebují 320.
+// Vrací i `stacked`, podle kterého se při hokynářství sloupce zvednou o řadu víc
+// (jinak by na spodku platné karty ležela řada rozdaných karet).
+function eventPileSlots(L, hnOn, ffOn) {
+    const classic = { deckX: L.hnPileX, activeX: L.hnActiveX, y: L.pileY };
+    if (!hnOn || !ffOn) {
+        return { hn: hnOn ? classic : null, ff: ffOn ? classic : null, stacked: false };
+    }
+    if (L.eventStack === 'horizontal') {
+        return { hn: classic, ff: { deckX: L.ffPileX, activeX: L.ffActiveX, y: L.pileY }, stacked: false };
+    }
+    const half = L.eventRowGap / 2;
+    return {
+        hn: { ...classic, y: L.pileY + half },
+        ff: { ...classic, y: L.pileY - half },
+        stacked: true,
+    };
+}
+
+// O kolik se sloupce událostí zvednou při cinematice hokynářství. Řada rozdaných karet
+// leží `storeRowOffY` pod balíčky, takže při svislém srovnání nad sebe by na spodní
+// sloupec dosáhla – zvedají se proto o kus víc než balíčky.
+//
+// Přirozená hodnota je „o půl rozteče víc" – spodní sloupec pak skončí přesně tam, kde
+// je zvednutý balíček dnes. Jenže tím vyjede horní sloupec na karty vyložené před horním
+// soupeřem, takže se z posunu kus ubere (EVENT_STORE_SLACK). Obě omezení se totiž o 5 px
+// kříží a nejde jim vyhovět naráz; takhle zůstane na každé straně necelý 3px překryv,
+// tedy pod hranicí viditelnosti. Platí to jen po dobu cinematiky hokynářství – v klidu
+// mají sloupce místa dost (hlídá test/positions.test.js).
+const EVENT_STORE_SLACK = 40;
+function eventPileLift(L, storeLift, stacked) {
+    if (!storeLift) return 0;
+    return storeLift + (stacked ? L.eventRowGap / 2 - EVENT_STORE_SLACK : 0);
+}
+
 // Profil, který právě platí. Mimo prohlížeč (testy, server) vždy desktopový.
 function currentLayout() {
     return (typeof App !== 'undefined' && App && App.layout) || LAYOUT_DESKTOP;
@@ -425,5 +475,6 @@ if (typeof module !== 'undefined' && module.exports) {
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
         compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
         oppScale, handCardScale,
+        eventPileSlots, eventPileLift,
     };
 }

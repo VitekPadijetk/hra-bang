@@ -199,22 +199,32 @@ module.exports = function installAnimService(ctx) {
     // řeší tenhle hook volaný z broadcastRoom PŘED odesláním stavu. Důvod: nextTurn()
     // se volá z pěti různých cest (end_turn, odhoz, vězení, smrt na dynamit, auto-tah),
     // ale všechny končí broadcastem – jeden hook je pokryje všechny.
+    // Hrají-li se obě rozšíření, odkryjí se v jednom okamžiku DVĚ karty (nejdřív High Noon,
+    // pak Fistful of Cards). Emitují se za sebou – fronta animací na klientu je přehraje
+    // v pořadí a boti se podrží o obě cinematiky.
     function flushHighNoonReveal(room) {
         const gs = room.gameState;
-        const ev = gs && gs._pendingHighNoonReveal;
-        if (!ev) return;
+        if (!gs) return;
+        const pending = [gs._pendingHighNoonReveal, gs._pendingFistfulReveal].filter(Boolean);
+        if (!pending.length) return;
         gs._pendingHighNoonReveal = null;
-        emitAnim(room, {
-            type: 'high_noon_reveal',
-            id: ev.id, key: ev.key, name: ev.name, art: ev.art, remaining: ev.remaining,
-            // Kartu odkrývá šerif na začátku SVÉHO tahu, jenže stav (s novým hráčem na
-            // tahu) dorazí až po celé cinematice – klient by po celou dobu ukazoval jako
-            // hráče na tahu toho předchozího. Posíláme ho tedy s animací.
-            playerIdx: gs.currentPlayerIndex,
+        gs._pendingFistfulReveal = null;
+        pending.forEach(ev => {
+            emitAnim(room, {
+                type: 'high_noon_reveal',
+                // deck: ze kterého balíčku karta vzlétá a kam dosedne ('hn' | 'ff').
+                deck: ev.deck || 'hn',
+                id: ev.id, key: ev.key, name: ev.name, art: ev.art, remaining: ev.remaining,
+                // Kartu odkrývá šerif na začátku SVÉHO tahu, jenže stav (s novým hráčem na
+                // tahu) dorazí až po celé cinematice – klient by po celou dobu ukazoval jako
+                // hráče na tahu toho předchozího. Posíláme ho tedy s animací.
+                playerIdx: gs.currentPlayerIndex,
+            });
         });
         // Boti po tu dobu nehrají – klient drží stav ve frontě a divák by jinak koukal
         // na odkrytou kartu, zatímco se hra pod ní posouvá dál.
-        room._hnBlockUntil = Math.max(room._hnBlockUntil || 0, Date.now() + hnRevealMs());
+        room._hnBlockUntil = Math.max(room._hnBlockUntil || 0,
+                                      Date.now() + pending.length * hnRevealMs());
     }
 
     // ── Město duchů: duch odchází ze hry a odkládá, co mu zbylo na stole ─────

@@ -57,6 +57,9 @@ function snapshotState(gs) {
         // High Noon: platná událost a zbytek balíčku (jen když se rozšíření hraje).
         event: gs.activeEvent ? gs.activeEvent.name : null,
         eventsLeft: gs.eventDeck?.length || 0,
+        // Fistful of Cards: druhý balíček událostí, platí souběžně s High Noonem.
+        eventFf: gs.activeFistful ? gs.activeFistful.name : null,
+        ffLeft: gs.ffDeck?.length || 0,
     };
 }
 

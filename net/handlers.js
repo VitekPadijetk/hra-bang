@@ -70,6 +70,12 @@ socket.on('intro_phase', (data) => {
             hnTotal: data.hnCount || 0,   // plný počet karet balíčku událostí
             hnAsideTex: null,    // odložené Pravé poledne lícem nahoru
             hnMoving: false,     // závěrečný přesun hromádky na herní pozici
+            // Totéž pro druhý balíček událostí (A Fistful of Cards) – stejné beaty,
+            // jen na druhé straně stolu a s odloženou kartou Fistful of Cards.
+            ffCount: data.ffCount || 0,
+            ffTotal: data.ffCount || 0,
+            ffAsideTex: null,
+            ffMoving: false,
         };
         // Navazující hra: přeživší mají svou postavu na stole hned (s tolika životy,
         // kolik jim zbylo z minulé hry) – ještě bez šerifovy hvězdy, role se teprve rozdají.
@@ -334,48 +340,55 @@ socket.on('intro_phase', (data) => {
         renderUI();
     }
 
-    // Rozšíření High Noon, 1. beat: balíček leží kompletní (13, s přibalenými 15) a šerif
-    // z něj sejme vrchní kartu – Pravé poledne. Ta jen kousek přelétne vedle, otočí se
-    // lícem nahoru a zůstane ležet ve stejné velikosti jako balíčky, ať je vidět, která
-    // karta se míchat nebude.
-    else if (sub === 'highnoon_top') {
-        const hn = gameScene?.cache.json.get('cards_high_noon_data') || [];
-        const noon = hn.find(c => c.key === 'PRAVE_POLEDNE');
-        const tex = noon ? 'hn_' + noon.art : null;
-        _introState.hnTotal = data.hnCount;
+    // Rozšíření High Noon / A Fistful of Cards, 1. beat: balíček leží kompletní a šerif
+    // z něj sejme vrchní kartu (Pravé poledne / Fistful of Cards). Ta jen kousek přelétne
+    // vedle, otočí se lícem nahoru a zůstane ležet ve stejné velikosti jako balíčky, ať
+    // je vidět, která karta se míchat nebude.
+    // Oba balíčky mají STEJNÉ beaty a jedou za sebou (server/intro.js) – `which` říká,
+    // o který jde, zbytek popisuje introEventCfg (view/intro.js).
+    else if (sub === 'highnoon_top' || sub === 'fistful_top') {
+        const which = sub === 'fistful_top' ? 'ff' : 'hn';
+        const C = introEventCfg(which);
+        const count = data.ffCount ?? data.hnCount ?? 0;
+        const cards = gameScene?.cache.json.get(C.json) || [];
+        const last = cards.find(c => c.key === C.lastKey);
+        const tex = last ? C.pre + last.art : null;
+        _introState[which + 'Total'] = count;
         if (!gameScene || !tex) {
-            _introState.hnCount = Math.max(0, data.hnCount - 1);
-            _introState.hnAsideTex = tex;
+            _introState[which + 'Count'] = Math.max(0, count - 1);
+            _introState[which + 'AsideTex'] = tex;
             renderUI();
         } else {
             // Karta z balíčku odchází HNED se startem letu (jinak by rub zůstal ležet pod ní).
-            _introState.hnCount = Math.max(0, data.hnCount - 1);
+            _introState[which + 'Count'] = Math.max(0, count - 1);
             renderUI();
-            _introAnimCardFlip(INTRO_HN_DECK.x, INTRO_HN_DECK.y, INTRO_HN_ASIDE.x, INTRO_HN_ASIDE.y,
-                'hn_back', tex, 620,
-                () => { if (_introState) { _introState.hnAsideTex = tex; renderUI(); } },
+            _introAnimCardFlip(C.deck.x, C.deck.y, C.aside.x, C.aside.y,
+                C.back, tex, 620,
+                () => { if (_introState) { _introState[which + 'AsideTex'] = tex; renderUI(); } },
                 0, 0.30);
         }
     }
 
-    // Rozšíření High Noon, 2. beat: šerif zamíchá zbytek balíčku událostí odděleně od
-    // hracích karet. Pravé poledne leží po celou dobu odložené vedle (aby bylo vidět,
-    // že se nemíchá), zbylých 12 karet se zamíchá.
-    else if (sub === 'shuffle_highnoon') {
-        _introState.hnCount = 0;                 // hromádku zastupuje míchací animace
-        _introState.hnTotal = data.hnCount;
+    // 2. beat: šerif zamíchá zbytek balíčku událostí odděleně od hracích karet. Odložená
+    // karta leží po celou dobu vedle (aby bylo vidět, že se nemíchá).
+    else if (sub === 'shuffle_highnoon' || sub === 'shuffle_fistful') {
+        const which = sub === 'shuffle_fistful' ? 'ff' : 'hn';
+        const C = introEventCfg(which);
+        const count = data.ffCount ?? data.hnCount ?? 0;
+        _introState[which + 'Count'] = 0;        // hromádku zastupuje míchací animace
+        _introState[which + 'Total'] = count;
         _introState.shuffleAnimDone = false;
         _clearIntroSprites();
         if (gameScene) {
             _animateIntroShuffle(
-                INTRO_HN_DECK.x, INTRO_HN_DECK.y,
-                'hn_back', 0.30,
-                Math.max(1, data.hnCount - 1), true,   // bez Pravého poledne
+                C.deck.x, C.deck.y,
+                C.back, 0.30,
+                Math.max(1, count - 1), true,   // bez odložené karty
                 null,
                 () => {
                     if (!_introState) return;
                     _introState.shuffleAnimDone = true;
-                    _introState.hnCount = Math.max(0, (_introState.hnTotal || 1) - 1);
+                    _introState[which + 'Count'] = Math.max(0, (_introState[which + 'Total'] || 1) - 1);
                     renderUI();
                 }
             );
@@ -383,14 +396,16 @@ socket.on('intro_phase', (data) => {
         renderUI();
     }
 
-    // Pravé poledne se překlopí na rub a sjede pod zamíchanou hromádku (bude se líznout
-    // jako poslední). Od téhle chvíle má balíček plný počet karet.
-    else if (sub === 'highnoon_bottom') {
-        const tex = _introState?.hnAsideTex;
-        _introState.hnAsideTex = null;
+    // 3. beat: odložená karta se překlopí na rub a sjede pod zamíchanou hromádku (bude se
+    // líznout jako poslední). Od téhle chvíle má balíček plný počet karet.
+    else if (sub === 'highnoon_bottom' || sub === 'fistful_bottom') {
+        const which = sub === 'fistful_bottom' ? 'ff' : 'hn';
+        const C = introEventCfg(which);
+        const tex = _introState?.[which + 'AsideTex'];
+        _introState[which + 'AsideTex'] = null;
         const _hnBottomDone = () => {
             if (!_introState) return;
-            _introState.hnCount = _introState.hnTotal || 0;
+            _introState[which + 'Count'] = _introState[which + 'Total'] || 0;
             renderUI();
         };
         if (gameScene && tex) {
@@ -402,24 +417,24 @@ socket.on('intro_phase', (data) => {
             // Doletí ÚPLNĚ pod balíček – karta je 150 px vysoká (0,30 × 500), takže se
             // s hromádkou nesmí krýt ani horním okrajem, jinak to vypadá, že ji šerif
             // dává doprostřed. Teprve odtud se do balíčku zespodu zasune.
-            const underY = INTRO_HN_DECK.y + 500 * 0.30 + 24;
-            _introAnimCardFlip(INTRO_HN_ASIDE.x, INTRO_HN_ASIDE.y, INTRO_HN_DECK.x, underY,
-                tex, 'hn_back', 560,
+            const underY = C.deck.y + 500 * 0.30 + 24;
+            _introAnimCardFlip(C.aside.x, C.aside.y, C.deck.x, underY,
+                tex, C.back, 560,
                 () => {
                     if (!gameScene) { _hnBottomDone(); return; }
-                    const hnTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
+                    const hnTex = gameScene.textures.exists(C.back) ? C.back : 'card_back';
                     // depth 5 = pod statickou hromádkou (_drawIntroStack kreslí od depth 10).
-                    const sp = gameScene.add.image(INTRO_HN_DECK.x, underY, hnTex)
+                    const sp = gameScene.add.image(C.deck.x, underY, hnTex)
                         .setScale(0.30).setDepth(5);
                     if (gameScene.introSprites) gameScene.introSprites.add(sp);
                     gameScene.tweens.add({
-                        targets: sp, y: INTRO_HN_DECK.y + 1.5, duration: 540, ease: 'Cubic.easeInOut',
+                        targets: sp, y: C.deck.y + 1.5, duration: 540, ease: 'Cubic.easeInOut',
                         onComplete: () => { if (sp.active) sp.destroy(); _hnBottomDone(); }
                     });
                 },
                 0, 0.30);   // odložená karta už je ve velikosti balíčku – žádné zmenšování
         } else if (_introState) {
-            _introState.hnCount = _introState.hnTotal || 0;
+            _introState[which + 'Count'] = _introState[which + 'Total'] || 0;
         }
         renderUI();
     }
@@ -515,34 +530,40 @@ socket.on('intro_phase', (data) => {
                             if (gameScene.introSprites) gameScene.introSprites.add(img);
                             movers.push(img);
                         }
-                        // Balíček událostí High Noon jede na svou herní pozici zároveň
-                        // (oba se posouvají doleva, takže se nekříží).
-                        const hnMovers = [];
-                        const _hnN = _introState.hnCount || 0;
-                        const hnLayers = _hnN > 0 ? shuffleLayers(_hnN) : 0;
-                        if (hnLayers > 0) {
-                            _introState.hnMoving = true;
-                            const hnTopY = _introStackTopY(INTRO_HN_DECK.y, _hnN);
-                            const hnTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
-                            for (let k = hnLayers - 1; k >= 0; k--) {
-                                const img = gameScene.add.image(
-                                    INTRO_HN_DECK.x, hnTopY + k * pxPerCard, hnTex)
-                                    .setScale(0.30).setDepth(100 + (hnLayers - 1 - k));
+                        // Balíčky událostí (High Noon, Fistful of Cards) jedou na své herní
+                        // pozice zároveň s hracím balíčkem. Při obou zapnutých rozšířeních
+                        // se srovnají nad sebe, takže se mění i y (eventSlot v game.js).
+                        // `on` se bere z intro počtů: stav hry ještě žádné karty nemá.
+                        const _evOn = { hn: (_introState.hnCount || 0) > 0,
+                                        ff: (_introState.ffCount || 0) > 0 };
+                        const evMovers = (which, from, count, texKey) => {
+                            const n = count || 0;
+                            const layers = n > 0 ? shuffleLayers(n) : 0;
+                            const slot = layers > 0 ? eventSlot(which, _evOn) : null;
+                            if (!slot) return;
+                            _introState[which + 'Moving'] = true;
+                            const topY = _introStackTopY(from.y, n);
+                            const tex = gameScene.textures.exists(texKey) ? texKey : 'card_back';
+                            const sprites = [];
+                            for (let k = layers - 1; k >= 0; k--) {
+                                const img = gameScene.add.image(from.x, topY + k * pxPerCard, tex)
+                                    .setScale(0.30).setDepth(100 + (layers - 1 - k));
                                 if (gameScene.introSprites) gameScene.introSprites.add(img);
-                                hnMovers.push(img);
+                                sprites.push(img);
                             }
-                        }
+                            // y relativně: každá vrstva hromádky má vlastní výšku.
+                            gameScene.tweens.add({
+                                targets: sprites, x: slot.deckX, y: `+=${slot.y - from.y}`,
+                                duration: 600, ease: 'Power2.easeInOut'
+                            });
+                        };
+                        evMovers('hn', INTRO_HN_DECK, _introState.hnCount, 'hn_back');
+                        evMovers('ff', INTRO_FF_DECK, _introState.ffCount, 'ff_back');
                         renderUI(); // skryje statický intro balíček
                         gameScene.tweens.add({
                             targets: movers, x: DECK_X,
                             duration: 600, ease: 'Power2.easeInOut'
                         });
-                        if (hnMovers.length) {
-                            gameScene.tweens.add({
-                                targets: hnMovers, x: HN_PILE_X,
-                                duration: 600, ease: 'Power2.easeInOut'
-                            });
-                        }
                     }, 350);
                 }
             }, i * 200);
@@ -1320,9 +1341,14 @@ function _playCardAnim(data) {
         case 'high_noon_reveal': {
             const A = HN_ANIM;
             const BIG = 0.8, CX = 960, CY = 540;
-            const lift = App.storePileLiftY || 0;
-            const faceTex = 'hn_' + data.art;
-            const backTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
+            // Stejná cinematika pro oba balíčky událostí – liší se jen místem na stole
+            // a prefixem textur (data.deck: 'hn' | 'ff', viz server/anim.js).
+            const which = data.deck === 'ff' ? 'ff' : 'hn';
+            const prefix = eventTexPrefix(which);
+            const slot = eventSlot(which);
+            const faceTex = prefix + data.art;
+            const backKey = prefix + 'back';
+            const backTex = gameScene.textures.exists(backKey) ? backKey : 'card_back';
             // Kartu odkrývá šerif na začátku svého tahu; stav s ním na tahu dorazí až po
             // celé cinematice (fronta), takže hráče na tahu přepneme rovnou teď – jinak
             // po celou dobu odkrývání svítí ten předchozí.
@@ -1334,14 +1360,18 @@ function _playCardAnim(data) {
                 if (state.phase === 'DISCARD') state.phase = 'PLAY';
                 App.blockInput = true;
             }
-            if (!gameScene.textures.exists(faceTex)) { renderUI(); break; }   // art se ještě nedotáhl
+            if (!gameScene.textures.exists(faceTex) || !slot) { renderUI(); break; }   // art se ještě nedotáhl
             // Balíček událostí musí ubýt HNED se startem animace (karta z něj odchází),
-            // ne až se stavem na konci – u poslední karty (Pravé poledne) by jinak zůstal
-            // ležet prázdný „poslední rub" po celou cinematiku. Uklidí se po dojezdu.
-            if (data.remaining !== undefined) App.hnDeckLeft = data.remaining;
+            // ne až se stavem na konci – u poslední karty (Pravé poledne / Fistful of Cards)
+            // by jinak zůstal ležet prázdný „poslední rub" po celou cinematiku. Uklidí se
+            // po dojezdu.
+            if (data.remaining !== undefined) {
+                if (which === 'ff') App.ffDeckLeft = data.remaining;
+                else App.hnDeckLeft = data.remaining;
+            }
             renderUI();
 
-            const spr = gameScene.add.image(HN_PILE_X, HN_PILE_Y - lift, backTex)
+            const spr = gameScene.add.image(slot.deckX, slot.y, backTex)
                 .setScale(0.3).setDepth(880);
 
             // preMs: karta chvíli jen leží (je vidět, kdo je na tahu), teprve pak vyletí.
@@ -1364,22 +1394,31 @@ function _playCardAnim(data) {
             // card_<id> se proto přepečou. Děje se to hned po překlopení, uvnitř výdrže
             // karty uprostřed obrazovky: nic jiného se v tu chvíli neanimuje (boti jsou
             // blokovaní, stav čeká ve frontě), takže případné škubnutí není vidět.
-            gameScene.time.delayedCall(A.preMs + A.flyMs + A.holdBackMs + A.flipMs + 120, () => {
-                applySuitOverride(gameScene, suitOverrideForEvent(data.key));
-            });
+            // Jen pro balíček High Noon: odkrytí karty Fistfulu s přebarvením nic nedělá
+            // a volání s null by právě platné Požehnání/Prokletí zrušilo.
+            if (which === 'hn') {
+                gameScene.time.delayedCall(A.preMs + A.flyMs + A.holdBackMs + A.flipMs + 120, () => {
+                    applySuitOverride(gameScene, suitOverrideForEvent(data.key));
+                });
+            }
 
             gameScene.time.delayedCall(A.preMs + A.flyMs + A.holdBackMs + A.flipMs + A.holdFaceMs, () => {
                 if (!spr.active) return;
-                const toY = HN_PILE_Y - (App.storePileLiftY || 0);
+                // Zvednutí při hokynářství se mohlo mezitím změnit → spočítat slot znovu.
+                const to = eventSlot(which) || slot;
                 gameScene.tweens.add({
-                    targets: spr, x: HN_ACTIVE_X, y: toY, scaleX: 0.3, scaleY: 0.3,
+                    targets: spr, x: to.activeX, y: to.y, scaleX: 0.3, scaleY: 0.3,
                     duration: A.toSlotMs, ease: 'Power2',
                     // Karta na cílovém místě PARKUJE, dokud ji stav nemá na hromádce –
                     // stav dorazí až po dojezdu animace (fronta), takže bez parkování by
                     // na okamžik zmizela úplně.
                     onComplete: () => holdThenFinish(spr,
-                        () => state?.activeEvent?.id === data.id,
-                        () => { if (spr.active) spr.destroy(); App.hnDeckLeft = null; renderUI(); })
+                        () => (which === 'ff' ? state?.activeFistful?.id : state?.activeEvent?.id) === data.id,
+                        () => {
+                            if (spr.active) spr.destroy();
+                            if (which === 'ff') App.ffDeckLeft = null; else App.hnDeckLeft = null;
+                            renderUI();
+                        })
                 });
             });
             break;
@@ -2127,7 +2166,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Jen u
     // živého hráče v běžící hře (smrt řeší vlastní odhozová animace → vyžadujeme health>0).

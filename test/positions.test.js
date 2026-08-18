@@ -4,7 +4,7 @@ const {
     getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
 const {
-    computeStage, resolveLayout, LAYOUT_PROFILES, oppScale,
+    computeStage, resolveLayout, LAYOUT_PROFILES, oppScale, eventPileSlots, eventPileLift,
     compactMetrics, compactAnchors, compactBoardPos, compactHandPos,
 } = require('../core/layout.js');
 
@@ -345,6 +345,100 @@ test('vyložené karty soupeřů nedosáhnou na balíčky (žádný počet hrá�
             global.state = null; global.myIndex = null;
         }
     }
+});
+
+// Se dvěma balíčky událostí (High Noon + Fistful) se sloupce srovnají nad sebe, takže
+// horní řada leze výš než dnes – nesmí ale dosáhnout na karty vyložené před soupeři.
+// Je to nejtěsnější místo celého rozložení (18 px), proto vlastní test.
+function eventRects(L) {
+    const w = 325 * L.scaleDeck, h = 500 * L.scaleDeck;
+    const slots = eventPileSlots(L, true, true);
+    const stack = 14 * 0.125;   // balíček událostí má nejvýš 15 karet
+    return ['hn', 'ff'].map(k => slots[k]).filter(Boolean).map(s => ({
+        x0: Math.min(s.deckX, s.activeX) - w / 2, x1: Math.max(s.deckX, s.activeX) + w / 2,
+        y0: s.y - h / 2 - stack, y1: s.y + h / 2,
+    }));
+}
+
+test('sloupce událostí (obě rozšíření) nedosáhnou na vyložené karty soupeřů', () => {
+    const rects = eventRects(DSK);
+    for (let total = 2; total <= 8; total++) {
+        const anchors = getOpponentAnchors(total);
+        if (!anchors.length) continue;
+        for (let k = 1; k <= 14; k++) {
+            const players = Array.from({ length: total }, () => ({
+                health: 4, hand: [], board: Array.from({ length: k - 1 }, (_, i) => ({ id: i })),
+                weapon: { id: 1 },
+            }));
+            setWorld(players, 0);
+            for (let opp = 1; opp < total; opp++) {
+                const side = anchors[opp - 1].side;
+                for (let b = 0; b < k; b++) {
+                    const r = cardRect(getBoardCardPos(opp, b), side, DSK.scaleOpp);
+                    rects.forEach(pile => assert.ok(!overlaps(r, pile),
+                        `${total} hráčů, soupeř ${opp} (${side}), ${k} karet, karta ${b}: leze na sloupce událostí`));
+                }
+            }
+            global.state = null; global.myIndex = null;
+        }
+    }
+});
+
+test('sloupce událostí nedosáhnou ani na moje vyložené karty', () => {
+    const rects = eventRects(DSK);
+    for (let k = 1; k <= 20; k++) {
+        const players = [{
+            health: 4, hand: [], board: Array.from({ length: k - 1 }, (_, i) => ({ id: i })),
+            weapon: { id: 1 },
+        }, { health: 4, hand: [], board: [], weapon: { id: -1 } }];
+        setWorld(players, 0);
+        for (let b = 0; b < k; b++) {
+            const r = cardRect(getBoardCardPos(0, b), 'bottom', DSK.scaleMe);
+            rects.forEach(pile => assert.ok(!overlaps(r, pile),
+                `${k} karet, karta ${b}: leze na sloupce událostí`));
+        }
+        global.state = null; global.myIndex = null;
+    }
+});
+
+test('jeden balíček událostí sedí na klasickém místě, dva se srovnají nad sebe', () => {
+    const one = eventPileSlots(DSK, true, false);
+    assert.deepEqual(one.hn, { deckX: DSK.hnPileX, activeX: DSK.hnActiveX, y: DSK.pileY });
+    assert.equal(one.ff, null);
+    assert.equal(eventPileSlots(DSK, false, true).ff.y, DSK.pileY, 'samotný Fistful bere místo High Noonu');
+
+    const both = eventPileSlots(DSK, true, true);
+    assert.equal(both.stacked, true);
+    assert.equal(both.ff.y + DSK.eventRowGap, both.hn.y, 'rozteč řad');
+    assert.equal(both.ff.y + both.hn.y, 2 * DSK.pileY, 'skupina zůstává vystředěná na pileY');
+    assert.ok(DSK.eventRowGap >= 500 * DSK.scaleDeck, 'řady se nepřekrývají');
+
+    // Mobil na dvě řady místo nemá → Fistful se zrcadlí doleva od balíčku.
+    const mob = eventPileSlots(LAYOUT_PROFILES.mobile, true, true);
+    assert.equal(mob.stacked, false);
+    assert.equal(mob.hn.y, mob.ff.y);
+    assert.ok(mob.ff.activeX < mob.ff.deckX && mob.ff.deckX < LAYOUT_PROFILES.mobile.centerX);
+});
+
+test('hokynářství zvedne srovnané sloupce mezi řadu karet a horního soupeře', () => {
+    const both = eventPileSlots(DSK, true, true);
+    const lift = eventPileLift(DSK, DSK.storeLift, both.stacked);
+    const h = 500 * DSK.scaleDeck;
+    // Zdola tlačí řada rozdaných karet hokynářství, shora karty vyložené před horním
+    // soupeřem. Obojí najednou nevyjde (omezení se o 5 px kříží), takže se rozdíl dělí
+    // na půl – na obou stranách smí zůstat pár pixelů překryvu, ne víc.
+    const TOL = 3;
+    const rowTop = DSK.pileY - DSK.storeLift + DSK.storeRowOffY - h / 2;
+    const hnBottom = both.hn.y - lift + h / 2;
+    assert.ok(hnBottom - rowTop <= TOL,
+        `spodní sloupec zasahuje do řady hokynářství o ${hnBottom - rowTop} px`);
+    const oppBottom = 150 + 500 * DSK.scaleOpp / 2;   // první řada karet horního soupeře
+    const ffTop = both.ff.y - lift - h / 2;
+    assert.ok(oppBottom - ffTop <= TOL,
+        `horní sloupec zasahuje do karet horního soupeře o ${oppBottom - ffTop} px`);
+    // Bez srovnání nad sebe se zvedá přesně jako balíčky (dnešní chování).
+    assert.equal(eventPileLift(DSK, DSK.storeLift, false), DSK.storeLift);
+    assert.equal(eventPileLift(DSK, 0, true), 0, 'bez hokynářství se nezvedá nic');
 });
 
 test('moje vyložené karty nedosáhnou na balíčky', () => {

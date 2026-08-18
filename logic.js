@@ -22,6 +22,7 @@ if (typeof CardType === 'undefined' && typeof require === 'function') {
     globalThis.Suits = __ent.Suits;
     globalThis.ALL_CHARACTERS = __ent.ALL_CHARACTERS;
     globalThis.DODGE_CITY_CHARACTERS = __ent.DODGE_CITY_CHARACTERS;
+    globalThis.FISTFUL_CHARACTERS = __ent.FISTFUL_CHARACTERS;
     globalThis.Card = __ent.Card;
     globalThis.Player = __ent.Player;
     globalThis.Deck = __ent.Deck;
@@ -108,6 +109,13 @@ class GameState {
         this.pendingNewIdentity = null;  // Nová identita: nabídka výměny postavy na začátku tahu
         this._sheriffTurns = 0;          // kolikátý tah šerifa běží (událost až od 2.)
         this._beginTurnStep = 0;         // krokovač startu tahu (viz logic/highNoon.js)
+        // Rozšíření A Fistful of Cards – DRUHÝ balíček událostí, hraje se současně
+        // s High Noonem. Otáčí se ve stejný okamžik (společné `_sheriffTurns`) a `hasEvent`
+        // se ptá obou balíčků najednou. Viz logic/fistful.js.
+        this.ffDeck = [];
+        this.ffPile = [];               // už odkryté karty Fistfulu (nejstarší → nejnovější)
+        this.activeFistful = null;
+        this._ffEntering = null;
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do
         // klienta (řídí zobrazení karet rolí i redakci stavu), _winClaim3p drží seat, který
         // osobně vyřadil svého určeného nepřítele, a tím hru vyhrál.
@@ -349,7 +357,8 @@ if (typeof module !== 'undefined' && typeof require === 'function') {
         require('./logic/characters.js'),
         require('./logic/checks.js'),
         require('./logic/dodgeCity.js'),
-        require('./logic/highNoon.js')
+        require('./logic/highNoon.js'),
+        require('./logic/fistful.js')
     );
 }
 

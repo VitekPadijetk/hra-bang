@@ -76,6 +76,7 @@ module.exports = function installIntroService(ctx) {
             charCount: Math.max((n - survivors.length) * 2, charPoolCount(gs) - survivors.length),
             deckCount: gs.deck.cards.length,
             hnCount: gs.eventDeck?.length || 0,
+            ffCount: gs.ffDeck?.length || 0,
             survivors,
         });
 
@@ -242,6 +243,21 @@ module.exports = function installIntroService(ctx) {
     // Pravé poledne leží odložené vedle, míchá se zbytek (hnCount − 1).
     const hnShuffleMs = (hnCount) => shuffleDurationMs(Math.max(1, hnCount - 1)) + SHUFFLE_PAD_MS;
 
+    // Rozšíření A Fistful of Cards má úplně stejnou choreografii jako High Noon, jen jiné
+    // místo na stole a jinou odkládanou kartu (Fistful of Cards místo Pravého poledne).
+    // Beaty obou balíčků jdou ZA SEBOU, ne současně: _animateIntroShuffle (view/intro.js)
+    // si na začátku uklidí předchozí intro sprity a `shuffling()` porovnává jediný `sub`,
+    // takže dvě míchání naráz by si navzájem smazala karty.
+    function eventDeckBeats(room, deck, count, at) {
+        if (!count) return 0;
+        const name = deck === 'ff' ? 'fistful' : 'highnoon';
+        const payload = deck === 'ff' ? { ffCount: count } : { hnCount: count };
+        setTimeout(() => emitIntro(room, { sub: `${name}_top`, ...payload }), at);
+        setTimeout(() => emitIntro(room, { sub: `shuffle_${name}`, ...payload }), at + HN_TOP_MS);
+        setTimeout(() => emitIntro(room, { sub: `${name}_bottom` }), at + HN_TOP_MS + hnShuffleMs(count));
+        return HN_TOP_MS + hnShuffleMs(count) + HN_BOTTOM_MS;
+    }
+
     function introStartDeckPhase(room) {
         const gs = room.gameState;
         const n = room.players.length;
@@ -273,13 +289,11 @@ module.exports = function installIntroService(ctx) {
                 // Rozšíření High Noon: šerif sejme z kompletního balíčku vrchní kartu
                 // (Pravé poledne, ukáže se vedle), zbytek zamíchá a odloženou kartu dá
                 // vespod. Bez rozšíření je hnCount 0 a beaty se úplně přeskočí.
+                // Fistful of Cards má stejnou trojici beatů a jede AŽ ZA High Noonem.
                 const hnCount = gs.eventDeck?.length || 0;
-                const hnDelay = hnCount ? (HN_TOP_MS + hnShuffleMs(hnCount) + HN_BOTTOM_MS) : 0;
-                if (hnCount) {
-                    emitIntro(room, { sub: 'highnoon_top', hnCount });
-                    setTimeout(() => emitIntro(room, { sub: 'shuffle_highnoon', hnCount }), HN_TOP_MS);
-                    setTimeout(() => emitIntro(room, { sub: 'highnoon_bottom' }), HN_TOP_MS + hnShuffleMs(hnCount));
-                }
+                const ffCount = gs.ffDeck?.length || 0;
+                const hnDelay = eventDeckBeats(room, 'hn', hnCount, 0);
+                const ffDelay = eventDeckBeats(room, 'ff', ffCount, hnDelay);
                 setTimeout(() => {
                 emitIntro(room, { sub: 'deal_cards', order: cardOrder });
 
@@ -310,7 +324,7 @@ module.exports = function installIntroService(ctx) {
                     emitIntro(room, { sub: 'done' });
                     broadcastRoom(room); // phase=DRAW
                 }, doneDelay);
-                }, hnDelay);
+                }, hnDelay + ffDelay);
 
             }, deckShuffleDelay);
         }, slideInStart + slideInDur);

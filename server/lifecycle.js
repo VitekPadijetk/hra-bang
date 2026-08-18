@@ -3,7 +3,7 @@
 // Factory installLifecycle(ctx): bere { cardData, GameState, broadcastRoom,
 // broadcastLobbyList, emitIntro, runIntroSequence } z ctx. Bez listenu.
 module.exports = function installLifecycle(ctx) {
-    const { cardData, dodgeCityCardData, highNoonCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
+    const { cardData, dodgeCityCardData, highNoonCardData, fistfulCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
 
     // ── Čekání na assety rozšíření ──────────────────────────────────────────
     // Art rozšíření se stahuje líně (game.js loadExpansionAssets), takže hráč, který
@@ -65,6 +65,7 @@ module.exports = function installLifecycle(ctx) {
         gs.cardData = cardData;
         gs.dodgeCityCardData = dodgeCityCardData;
         gs.highNoonCardData = highNoonCardData;
+        gs.fistfulCardData = fistfulCardData;
         // Log hry otevři a napoj sink JEŠTĚ PŘED setupem, ať se zachytí i výběr rolí/postav.
         ctx.glog.openGame(room);
         gs._onEvent = (evt) => ctx.glog.rule(room, evt);
@@ -106,7 +107,8 @@ module.exports = function installLifecycle(ctx) {
             try { _charCount = gs._characterPool(gs.options || {}).length || _charCount; } catch (e) {}
             emitIntro(room, { sub: 'init', playerCount: room.players.length,
                               charCount: _charCount,
-                              hnCount: gs.eventDeck?.length || 0 });
+                              hnCount: gs.eventDeck?.length || 0,
+                              ffCount: gs.ffDeck?.length || 0 });
             runIntroSequence(room);
         }, 50);
     }
@@ -157,6 +159,7 @@ module.exports = function installLifecycle(ctx) {
         room.gameState.cardData = cardData;
         room.gameState.dodgeCityCardData = dodgeCityCardData;
         room.gameState.highNoonCardData = highNoonCardData;
+        room.gameState.fistfulCardData = fistfulCardData;
         // Nová hra ve stejné místnosti → nový log (openGame zavře předchozí) + sink před setupem.
         ctx.glog.openGame(room);
         room.gameState._onEvent = (evt) => ctx.glog.rule(room, evt);

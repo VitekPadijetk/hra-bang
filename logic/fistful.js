@@ -1,0 +1,72 @@
+// logic/fistful.js — mixin GameState: rozšíření A Fistful of Cards (druhý balíček událostí).
+// Funguje úplně stejně jako High Noon a hraje se s ním SOUČASNĚ: na začátku tahu prvního
+// hráče se odkryje karta z obou balíčků, nejdřív z High Noonu a hned za ní z Fistfulu.
+// Karta „Fistful of Cards" leží vespod balíčku (jako Pravé poledne v HN) – přijde poslední
+// a platí do konce hry.
+//
+// Stav je záměrně vedle High Noonu, ne místo něj:
+//   High Noon → eventDeck / eventPile / activeEvent / _eventEntering
+//   Fistful   → ffDeck    / ffPile    / activeFistful / _ffEntering
+// Slévají se jen v `hasEvent` (logic/highNoon.js) a `eventActive` (core/highNoon.js), takže
+// se všechna pravidla ptají pořád stejně a klíče karet jsou napříč balíčky unikátní.
+//
+// Připojuje se na GameState.prototype. Viz „Mixin pattern" v CLAUDE.md.
+(function () {
+
+// Karta, která se při přípravě dává vespod balíčku → odkryje se jako poslední.
+const LAST_FF_KEY = 'FISTFUL_OF_CARDS';
+
+const FistfulMixin = {
+    // ── Příprava balíčku (setupGame / setupDebugGame / setupNextGame) ──────────
+    // Bez zapnutého rozšíření zůstane balíček prázdný a `hasEvent` vrací pro jeho klíče
+    // vždy false, takže jsou všechny háky v pravidlech no-op.
+    _setupFistfulDeck(options = {}) {
+        this.ffDeck = [];
+        this.ffPile = [];
+        this.activeFistful = null;
+        this._ffEntering = null;
+        const on = options.expansions && options.expansions.fistful;
+        if (!on || !Array.isArray(this.fistfulCardData)) return;
+
+        const pool = this.fistfulCardData
+            .map(c => ({ id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null }));
+        const last = pool.filter(c => c.key === LAST_FF_KEY);
+        const rest = pool.filter(c => c.key !== LAST_FF_KEY);
+        this.deck.shuffleArray(rest);
+        // Líže se přes pop() z konce pole → Fistful of Cards musí ležet na indexu 0.
+        this.ffDeck = last.concat(rest);
+        this.logEvent('system', { msg: `Fistful: balíček událostí (${this.ffDeck.length} karet)` });
+    },
+
+    // Odkrytí karty z balíčku Fistful. Volá se z `_flipEvent` (logic/highNoon.js) hned
+    // za odkrytím karty High Noonu – počítadlo kol (`_sheriffTurns`) i podmínka „jen na
+    // tahu prvního hráče a až od 2. kola" jsou tím pádem společné pro oba balíčky.
+    _flipFistfulEvent() {
+        if (!this.ffDeck || !this.ffDeck.length) return;
+        this.activeFistful = this.ffDeck.pop();
+        // Odkryté karty zůstávají ležet na sobě (nová překryje předchozí) – klient z nich
+        // kreslí hromádku lícem nahoru. `activeFistful` je vrchní karta hromádky.
+        this.ffPile.push(this.activeFistful);
+        this._ffEntering = this.activeFistful.key;
+        this._pendingFistfulReveal = Object.assign({}, this.activeFistful,
+            { deck: 'ff', remaining: this.ffDeck.length });
+        this.logEvent('event', { card: this.activeFistful.name, left: this.ffDeck.length });
+    },
+
+    // Efekty, které se vyhodnotí JEDNOU při příchodu karty do hry (zatím žádné – Ruská
+    // ruleta přibude ve své fázi). Vrací true, když se čeká na rozhodnutí hráče, a start
+    // tahu se tím pádem pozastaví (viz `_runBeginTurn` v logic/highNoon.js).
+    _applyFfEventOnEnter() {
+        const key = this._ffEntering;
+        this._ffEntering = null;
+        if (!key) return false;
+        return false;
+    },
+};
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = FistfulMixin;
+} else {
+    Object.assign(GameState.prototype, FistfulMixin);
+}
+})();

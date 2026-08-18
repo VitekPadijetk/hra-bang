@@ -41,8 +41,12 @@ const HighNoonMixin = {
     },
 
     // Je právě aktivní tahle událost? Jediný dotaz, kterým se ptají všechna pravidla.
+    // Ptá se OBOU balíčků (High Noon i Fistful of Cards) – hrají se současně a klíče karet
+    // jsou napříč nimi unikátní, takže se volající nemusí starat, ze kterého karta je.
+    // Klientské zrcadlo: `eventActive` v core/highNoon.js.
     hasEvent(key) {
-        return !!this.activeEvent && this.activeEvent.key === key;
+        return (!!this.activeEvent && this.activeEvent.key === key) ||
+               (!!this.activeFistful && this.activeFistful.key === key);
     },
 
     // Požehnání / Prokletí: po celé kolo se VŠECHNY karty počítají jako srdcové / pikové.
@@ -63,7 +67,8 @@ const HighNoonMixin = {
     // do handleStartOfTurnChecks(), o to se postará _resumeBeginTurn().
     //
     // Kroky jsou očíslované (`_beginTurnStep`), aby se dalo kdykoli pauznout a vrátit
-    // se přesně sem: 0 = odkrytí události, 1 = její okamžitý efekt, 2 = Pravé poledne.
+    // se přesně sem: 0 = odkrytí událostí (obou balíčků), 1 = okamžitý efekt karty
+    // High Noon, 2 = okamžitý efekt karty Fistful, 3 = Pravé poledne, 4 = Nová identita.
     _beginTurn() {
         this._beginTurnStep = 0;
         // Želízka (High Noon) platí přesně jeden tah. Barvu je nutné zahodit hned na
@@ -80,7 +85,11 @@ const HighNoonMixin = {
     },
 
     _runBeginTurn() {
-        const steps = [this._flipEvent, this._applyEventOnEnter, this._noonDamage, this._newIdentityOffer];
+        // Pořadí vyhodnocení: nejdřív High Noon, pak Fistful of Cards (viz logic/fistful.js).
+        // Okamžité efekty obou karet jsou proto DVA kroky – když si ten první vyžádá
+        // rozhodnutí hráče (Daltonové), musí se druhý spustit až po jeho dokončení.
+        const steps = [this._flipEvent, this._applyEventOnEnter, this._applyFfEventOnEnter,
+                       this._noonDamage, this._newIdentityOffer];
         while (this._beginTurnStep < steps.length) {
             const step = steps[this._beginTurnStep++];
             if (step.call(this)) return true;
@@ -97,15 +106,20 @@ const HighNoonMixin = {
         if (!p || this.currentPlayerIndex !== this._firstPlayerIndex()) return false;
         this._sheriffTurns = (this._sheriffTurns || 0) + 1;
         if (this._sheriffTurns < 2) return false;
-        if (!this.eventDeck || !this.eventDeck.length) return false;
 
-        this.activeEvent = this.eventDeck.pop();
-        // Odkryté karty zůstávají ležet na sobě (nová překryje předchozí) – klient z nich
-        // kreslí hromádku lícem nahoru. `activeEvent` je vrchní karta hromádky.
-        this.eventPile.push(this.activeEvent);
-        this._eventEntering = this.activeEvent.key;
-        this._pendingHighNoonReveal = Object.assign({}, this.activeEvent, { remaining: this.eventDeck.length });
-        this.logEvent('event', { card: this.activeEvent.name, left: this.eventDeck.length });
+        if (this.eventDeck && this.eventDeck.length) {
+            this.activeEvent = this.eventDeck.pop();
+            // Odkryté karty zůstávají ležet na sobě (nová překryje předchozí) – klient z nich
+            // kreslí hromádku lícem nahoru. `activeEvent` je vrchní karta hromádky.
+            this.eventPile.push(this.activeEvent);
+            this._eventEntering = this.activeEvent.key;
+            this._pendingHighNoonReveal = Object.assign({}, this.activeEvent,
+                { deck: 'hn', remaining: this.eventDeck.length });
+            this.logEvent('event', { card: this.activeEvent.name, left: this.eventDeck.length });
+        }
+        // Balíček Fistful of Cards se otáčí ve stejný okamžik, hned za High Noonem – i když
+        // High Noon už došel (proto se sem nesmí vracet dřív). Viz logic/fistful.js.
+        this._flipFistfulEvent();
         return false;
     },
 

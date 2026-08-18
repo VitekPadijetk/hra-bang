@@ -39,11 +39,13 @@ const cardData = JSON.parse(fs.readFileSync('cards.json', 'utf8'));
 const dodgeCityCardData = JSON.parse(fs.readFileSync('cards.dodge_city.json', 'utf8'));
 // Karty událostí rozšíření High Noon (samostatný balíček vedle hracího, ne do balíčku).
 const highNoonCardData = JSON.parse(fs.readFileSync('cards.high_noon.json', 'utf8'));
+// Karty událostí rozšíření A Fistful of Cards (druhý balíček událostí vedle High Noonu).
+const fistfulCardData = JSON.parse(fs.readFileSync('cards.fistful.json', 'utf8'));
 
 // ── Multi-game state & room service ─────────────────────────────────────────
 // Sdílený kontext serveru. Room service (server/rooms.js) vlastní rooms Map
 // a vystaví room helpery zpět na ctx; ostatní moduly/handlery je berou z ctx.
-const ctx = { io, cardData, dodgeCityCardData, highNoonCardData, GameState };
+const ctx = { io, cardData, dodgeCityCardData, highNoonCardData, fistfulCardData, GameState };
 require('./server/version.js')(ctx);  // otisk nasazeného kódu (ctx.buildId) – klient podle něj pozná aktualizaci
 require('./server/rooms.js')(ctx);
 require('./server/gamelog.js')(ctx);  // strukturovaný herní log (JSONL na hru + konzole) – před vším ostatním

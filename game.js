@@ -97,9 +97,29 @@ const DISCARD_X = GAME_CENTER_X + _L0.deckOffX, DISCARD_Y = _L0.pileY;
 // Karta letící do/z hromádky musí mířit na tento vrch, ne na základnu – jinak u vysoké
 // hromádky dosedne viditelně „pod ni" a po překreslení poskočí. Hodnota i vzorec musí
 // sedět s board.js (stackTop / topY). App.storePileLiftY zvedá obě hromádky (Hokynářství).
-// Rozšíření High Noon: balíček událostí (rub) a platná karta (líc) napravo od odhozu.
-// Stejné měřítko jako balíček/odhoz; při hokynářství se zvedají spolu s nimi.
-const HN_PILE_X = _L0.hnPileX, HN_ACTIVE_X = _L0.hnActiveX, HN_PILE_Y = _L0.pileY;
+// Rozšíření High Noon / A Fistful of Cards: balíček událostí (rub) a hromádka odkrytých
+// karet (líc). Stejné měřítko jako balíček/odhoz; při hokynářství se zvedají spolu s nimi.
+// NEJSOU to konstanty jako DECK_X/DISCARD_X: pozice závisí na tom, KTERÁ rozšíření se
+// v téhle hře hrají (jedno = klasické místo vpravo od odhozu, obě = nad sebou), a to se
+// ustaví až se hrou. Geometrii řeší eventPileSlots/eventPileLift v core/layout.js.
+function eventDecksOn(on) {
+    if (on) return on;
+    const has = (deck, pile) => ((state?.[deck]?.length || 0) + (state?.[pile]?.length || 0)) > 0;
+    return { hn: has('eventDeck', 'eventPile'), ff: has('ffDeck', 'ffPile') };
+}
+// which = 'hn' | 'ff' → { deckX, activeX, y } se započítaným zvednutím při hokynářství,
+// nebo null, když se ten balíček nehraje. `on` umí přebít intro (má vlastní počty karet).
+function eventSlot(which, on) {
+    const L = currentLayout();
+    const d = eventDecksOn(on);
+    const slots = eventPileSlots(L, d.hn, d.ff);
+    const s = slots[which];
+    if (!s) return null;
+    return { deckX: s.deckX, activeX: s.activeX,
+             y: s.y - eventPileLift(L, App.storePileLiftY || 0, slots.stacked) };
+}
+// Textury balíčku událostí: 'hn_<art>' / 'ff_<art>', rub 'hn_back' / 'ff_back'.
+function eventTexPrefix(which) { return which === 'ff' ? 'ff_' : 'hn_'; }
 
 const PILE_PX_PER_CARD = 0.25;
 // Velikost karty ležící v balíčku / odhozu. MUSÍ sedět s board.js (scaleDeck) – karta,
@@ -1737,6 +1757,7 @@ function preload() {
     // viz loadExpansionAssets). Bez dat by nešla postavit debug galerie ani zapéct textury.
     loadAsset(this, 'json', 'cards_dodge_city_data', 'cards.dodge_city.json');
     loadAsset(this, 'json', 'cards_high_noon_data', 'cards.high_noon.json');
+    loadAsset(this, 'json', 'cards_fistful_data', 'cards.fistful.json');
 
     loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
@@ -1837,6 +1858,30 @@ const EXPANSION_LOADERS = {
                 // jako u ostatních karet na stole.
                 normalizeTexture(scene, 'hn_back');
                 data.forEach(c => normalizeTexture(scene, 'hn_' + c.art));
+            },
+        };
+    },
+
+    fistful(scene) {
+        // Druhý balíček událostí – všechno stejně jako u High Noonu, jen s prefixem ff_.
+        // Navíc má rozšíření 3 postavy (portréty 031–033), které se dotahují taky až tady.
+        const data = scene.cache.json.get('cards_fistful_data') || [];
+        loadAsset(scene, 'image', 'ff_back', 'assets/other_cards/fistful/fistful_back.webp');
+        // Karta Fistful of Cards se ukazuje hned v intru (odložená vedle balíčku), takže
+        // musí být ve frontě loaderu první; zbytek se stihne, než šerif první událost odkryje.
+        const first = data.find(c => c.key === 'FISTFUL_OF_CARDS');
+        if (first) loadAsset(scene, 'image', 'ff_' + first.art, `assets/fistful_cards/${first.art}.webp`);
+        data.forEach(c => loadAsset(scene, 'image', 'ff_' + c.art, `assets/fistful_cards/${c.art}.webp`));
+        for (let i = 31; i <= 33; i++) {
+            loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.webp`);
+        }
+        return {
+            critical: ['ff_back'].concat(first ? ['ff_' + first.art] : []),
+            done: () => {
+                // Dodané ve 2× (650×1000) → srovnat na 325×500 jako ostatní karty.
+                normalizeTexture(scene, 'ff_back');
+                data.forEach(c => normalizeTexture(scene, 'ff_' + c.art));
+                normalizeCharTextures(scene, 31, 33);
             },
         };
     },
