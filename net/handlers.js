@@ -190,6 +190,13 @@ socket.on('intro_phase', (data) => {
         }
         _introState.charCount = Math.max(0, _introState.charCount - 2);
         renderUI();
+        // Poslednímu hráči je rozdáno → nerozdaný zbytek balíčku postav odletí ze stolu
+        // (ne až si všichni vyberou). Čeká se na dolet poslední dvojice: moje karty letí
+        // nejdél (překlopení 560 ms + rozestup mezi levou a pravou).
+        const _dealOrder = _introState.dealCharOrder || [];
+        if (_dealOrder.length && data.step === _dealOrder.length - 1) {
+            setTimeout(() => _introFlyAwayCharDeck(), INTRO_CHAR_DEAL_GAP + 560 + 140);
+        }
     }
 
     else if (sub === 'chars_slide_in') {
@@ -198,8 +205,9 @@ socket.on('intro_phase', (data) => {
         _introState.myCharChoices = null;
         _introState.myCharSelected = null;
         _introState.myCharPreselect = null;
-        // Nerozdané postavy odletí jako celek pryč ze stolu (při 8 hráčích bez
-        // rozšíření balíček došel a neodlétá nic). renderUI zavolá sama.
+        // Pojistka: zbytek balíčku postav už normálně odletěl po rozdání poslední
+        // dvojice (char_cards_fly). Když se ten beat ztratil, odletí aspoň teď –
+        // s prázdným balíčkem (8 hráčů bez rozšíření) je to jen renderUI().
         _introFlyAwayCharDeck();
         // Slide-in bloku lives+char pro ostatni hrace
         if (gameScene && state && state.players) {

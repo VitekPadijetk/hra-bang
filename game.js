@@ -902,7 +902,7 @@ function playReshuffleCinematic(cardCount, opts = {}) {
     // doprava, spodní doleva, pak karty střídavě padají doprostřed a hromádka se
     // skládá odspodu nahoru. Index 0 = SPODNÍ karta, proto se pořadí obrací.
     const top = (k) => sprites[N - 1 - k];        // k = 0 je vrchní karta hromádky
-    const half = Math.ceil(N / 2);
+    const half = shuffleCutHalf(N);
     const cutX = CARD_W * 0.6;
     const topCenter = gatherTop + (half - 1) * px / 2;
     const botCenter = gatherTop + (half + N - 1) * px / 2;
@@ -922,15 +922,7 @@ function playReshuffleCinematic(cardCount, opts = {}) {
         }
     });
 
-    const leftPile = [];
-    for (let k = N - 1; k >= half; k--) leftPile.push(k);     // spodní půlka, odspodu
-    const rightPile = [];
-    for (let k = half - 1; k >= 0; k--) rightPile.push(k);    // odebraná horní půlka
-    const interleaved = [];
-    for (let k = 0; k < Math.max(leftPile.length, rightPile.length); k++) {
-        if (k < leftPile.length) interleaved.push(leftPile[k]);
-        if (k < rightPile.length) interleaved.push(rightPile[k]);
-    }
+    const interleaved = shuffleRiffleOrder(N);
     // Kam která karta v hotové hromádce dosedla – podle toho pak odlétá na balíček.
     // Bez toho by se cestou přeskládala zpátky do původního pořadí (a bylo by to vidět).
     const finalSlot = new Array(N);

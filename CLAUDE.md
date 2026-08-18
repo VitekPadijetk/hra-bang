@@ -77,7 +77,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `core/gameLog.js` | `snapshotState`, `formatEvent`, `LogEvent` | čistý formát strukturovaného herního logu: `snapshotState(gs)` = kompaktní stav (role/ruce/board/HP/phase/pendingActor), `formatEvent(evt)` = jednořádkový český popis pro konzoli. Persistenci do souboru řeší `server/gamelog.js`; není v index.html (server-only). |
 | `core/highNoon.js` | `eventActive`, `bangLimitFor`, `bangBlockedFor`, `beerBlockedFor`, `effSuit`, `suitBlockedFor` | **zrcadlo dotazů na aktivní událost High Noon nad prostým JSON stavem** – server se ptá přes `GameState.hasEvent`/`_effSuit`, klient (`core/playability.js`, `view/*`) a bot (`core/botPolicy.js`) přes tenhle helper. `effSuit(state, card)` = barva, která PLATÍ (Požehnání srdce / Prokletí piky). `suitBlockedFor(state, i, card)` zrcadlí Želízka (`GameState._suitBlocked`). |
 | `core/highNoonAnim.js` | `HN_ANIM`, `hnRevealMs`, `NI_ANIM`, `niResultMs` | **časování odkrytí karty události High Noon** + dojezdu Nové identity (`niResultMs(take)`; drží ho `room._niBlockUntil` a fronta animací) (pauza `preMs` → let z balíčku doprostřed → výdrž na rubu → překlopení → výdrž lícem → zmenšení na místo platné karty). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `high_noon_reveal`), server o stejnou dobu drží boty (`room._hnBlockUntil`) a fronta si podle `hnRevealMs()` spočítá zdržení stavu. Animace nese i `playerIdx` (šerif je na tahu už během odkrývání – stav dorazí až po ní) a `remaining` (balíček ubývá se startem letu → `App.hnDeckLeft`, ne až se stavem; jinak by u poslední karty zůstal ležet prázdný rub). |
-| `core/shuffleAnim.js` | `SHUFFLE_ANIM`, `shuffleLayers`, `shufflePerCard`, `shuffleSettleMs`, `shuffleDurationMs` | **časování riffle míchání balíčku** (klid → horní polovina se jako celek oddělí stranou → riffle, kdy karty střídavě zleva/zprava padají doprostřed a hromádka se skládá ODSPODU NAHORU → doznění). Jediný zdroj pravdy: klient ji přehrává (`view/intro.js` `_animateIntroShuffle` pro všechny čtyři balíčky intra, `game.js` `playReshuffleCinematic` pro domíchání ve hře), server podle STEJNÉHO vzorce odkládá další beat intra (`server/intro.js`, `shuffleDurationMs(n) + SHUFFLE_PAD_MS`). Bez sdíleného vzorce se rozdávání rozjelo dřív, než míchání doběhlo (8 hráčů = 16 karet postav). `shuffleLayers(n)` = kolik vrstev se vůbec kreslí – **stejný strop (80) jako statická hromádka**, takže se hotový balíček s tím statickým pixelově kryje a nic „nenaroste o xy karet". |
+| `core/shuffleAnim.js` | `SHUFFLE_ANIM`, `shuffleLayers`, **`shuffleCutHalf`/`shuffleRiffleOrder`**, `shufflePerCard`, `shuffleSettleMs`, `shuffleDurationMs` | **časování riffle míchání balíčku** (klid → horní polovina se jako celek oddělí stranou → riffle, kdy karty střídavě zleva/zprava padají doprostřed a hromádka se skládá ODSPODU NAHORU → doznění). Jediný zdroj pravdy: klient ji přehrává (`view/intro.js` `_animateIntroShuffle` pro všechny čtyři balíčky intra, `game.js` `playReshuffleCinematic` pro domíchání ve hře), server podle STEJNÉHO vzorce odkládá další beat intra (`server/intro.js`, `shuffleDurationMs(n) + SHUFFLE_PAD_MS`). Bez sdíleného vzorce se rozdávání rozjelo dřív, než míchání doběhlo (8 hráčů = 16 karet postav). `shuffleLayers(n)` = kolik vrstev se vůbec kreslí – **stejný strop (80) jako statická hromádka**, takže se hotový balíček s tím statickým pixelově kryje a nic „nenaroste o xy karet". **`shuffleRiffleOrder(n)`** = pořadí, ve kterém karty padají doprostřed (indexy do hromádky, 0 = vrchní karta, výstup odspodu nahoru) – **u lichého počtu začíná ta VĚTŠÍ půlka**, jinak na konci spadnou dvě karty z jedné strany za sebou (A B A B … A A). Používá ho intro i domíchání ve hře, aby se choreografie nerozešly. |
 
 **`core/` je vzor, kam patří nová čistá logika** — jde testovat v Node bez prohlížeče.
 
@@ -244,6 +244,10 @@ podmínky se proto neupravovaly – jen se testem ověřilo, že platí.**
   ([positions.js](positions.js)) – **ty se musí měnit spolu**, jinak animace míří o kartu
   vedle. Cinematika vyřazení proto **odhalování role přeskakuje** (`skipReveal`), stejně
   jako u šerifa; server i klient to počítají shodně, aby se boti podrželi na správnou dobu.
+  Slot je obsazený **od začátku hry**, takže se skupina „životy + postava" středí jinak
+  (`numBluePrimary` v `drawOpponents`) – **`_introOppSlots` ([view/intro.js](view/intro.js))
+  to musí počítat taky** (`numBlue = state.mode3p ? 1 : 0`), jinak karty postav soupeřů
+  v intru dosednou na kartu role.
 - **Intro** – `runIntroSequence` posílá roli **i v broadcastu** `role_card_fly`, ale JEN
   v 3P (u ostatních počtů je tajná a chodí výhradně soukromým `intro_role`; hlídá to test).
   Klient cizí kartu za letu překlopí a nechá ji ležet přes `placedCards` (`role:<idx>`) na
@@ -541,12 +545,18 @@ animací. Úklid je odložený (`App.introDoneToken` ho zruší, kdyby mezitím 
 
 - **Balíček postav je CELÝ pool** (základ 16, s Dodge City 31) – zamíchá se celý,
   rozdají se z něj dvě karty na hráče a **nerozdaný zbytek odletí jako celek ze stolu**
-  (`_introFlyAwayCharDeck` na beatu `chars_slide_in`). Speciální případ: **8 hráčů bez
-  rozšíření** – 16 postav, 8×2 rozdáno, balíček dojde a neodlétá nic. Počet posílá
-  server (`charPoolCount` v [server/intro.js](server/intro.js), `startGame`
-  v [server/lifecycle.js](server/lifecycle.js)).
+  (`_introFlyAwayCharDeck`). Odlétá **hned po rozdání poslední dvojice** (větev
+  `char_cards_fly` s `step === order.length − 1`), ne až si všichni vyberou – na
+  `chars_slide_in` zůstává jen pojistka pro případ, že se ten beat ztratil. Speciální
+  případ: **8 hráčů bez rozšíření** – 16 postav, 8×2 rozdáno, balíček dojde a neodlétá
+  nic. Počet posílá server (`charPoolCount` v [server/intro.js](server/intro.js),
+  `startGame` v [server/lifecycle.js](server/lifecycle.js)).
 - **Obě moje karty postav přiletí ve stejném rytmu jako soupeřům** – nejdřív levá,
-  po `INTRO_CHAR_DEAL_GAP` pravá (dřív se mi objevily naráz).
+  po `INTRO_CHAR_DEAL_GAP` pravá (dřív se mi objevily naráz). Každá se **ukáže hned, jak
+  doletí ta její** (`_introState.charRevealed[idx]`, kreslí `_renderIntroCharSelect`);
+  dřív gate `charChoicesRevealed` čekal na obě, takže levá po dokončení překlopení
+  zmizela a naskočila znovu až s pravou. **Klikací** jsou obě až po obou – výběr se
+  nesmí potvrdit dřív, než je vidět celá nabídka.
 - **Cizí karta role letí k sedačce a pokračuje ZA okraj jeviště** (`_introDealRoleAway`),
   cestou se natočí do orientace toho hráče – roli si bere do ruky, nikdo ji nesmí vidět
   ležet. Ve hře pro 3 (role lícem nahoru) platí dál `_introPlacePublicRole`.

@@ -43,6 +43,33 @@ function shufflePerCard(n, opts) {
     return Math.min(hi, Math.max(lo, target / k));
 }
 
+// Kde se balíček rozdělí: horní půlka (indexy 0..half−1, 0 = vrchní karta) jde
+// doprava, zbytek zůstane vlevo. Při lichém počtu je větší ta HORNÍ.
+function shuffleCutHalf(n, opts) {
+    return Math.ceil(shuffleLayers(n, opts) / 2);
+}
+
+// Pořadí, v jakém karty padají doprostřed – indexy do hromádky (0 = vrchní karta),
+// od SPODKU nové hromádky nahoru. Střídá se horní a spodní půlka; při lichém počtu
+// začíná ta VĚTŠÍ, jinak by na konci spadly dvě karty z jedné strany za sebou
+// (A B A B … A A místo A B A B … B A).
+function shuffleRiffleOrder(n, opts) {
+    const k = shuffleLayers(n, opts);
+    const half = shuffleCutHalf(k, opts);
+    const bottom = [];                       // spodní půlka (zůstala vlevo), odspodu nahoru
+    for (let i = k - 1; i >= half; i--) bottom.push(i);
+    const top = [];                          // odebraná horní půlka (vpravo), odspodu nahoru
+    for (let i = half - 1; i >= 0; i--) top.push(i);
+    const first  = top.length > bottom.length ? top : bottom;
+    const second = first === top ? bottom : top;
+    const order = [];
+    for (let j = 0; j < Math.max(first.length, second.length); j++) {
+        if (j < first.length)  order.push(first[j]);
+        if (j < second.length) order.push(second[j]);
+    }
+    return order;
+}
+
 // Kdy dosedne poslední karta (= od kdy smí hromádku vystřídat statický balíček).
 function shuffleSettleMs(n, opts) {
     const o = opts || {};
@@ -62,5 +89,6 @@ function shuffleDurationMs(n, opts) {
 
 // Izomorfní: v prohlížeči globály, v Node/testech require('./core/shuffleAnim.js').
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SHUFFLE_ANIM, shuffleLayers, shufflePerCard, shuffleSettleMs, shuffleDurationMs };
+    module.exports = { SHUFFLE_ANIM, shuffleLayers, shuffleCutHalf, shuffleRiffleOrder,
+                       shufflePerCard, shuffleSettleMs, shuffleDurationMs };
 }

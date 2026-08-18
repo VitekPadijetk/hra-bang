@@ -180,7 +180,7 @@ function _animateIntroShuffle(cx, cy, tex, scale, N, tiltDeck, onComplete, onSet
 
     // Fáze 1: horní polovina (indexy 0..half−1) se JAKO CELEK oddělí doprava,
     // spodní zůstane vlevo. Každá půlka se přitom vystředí na cy, aby ležela rovně.
-    const half      = Math.ceil(layers / 2);
+    const half      = shuffleCutHalf(layers);
     const topCenter = topY + (half - 1) * INTRO_PILE_PX / 2;
     const botCenter = topY + (half + layers - 1) * INTRO_PILE_PX / 2;
     gameScene.time.delayedCall(SHUFFLE_ANIM.preMs, () => {
@@ -200,15 +200,7 @@ function _animateIntroShuffle(cx, cy, tex, scale, N, tiltDeck, onComplete, onSet
 
     // Fáze 2: riffle. Z obou půlek se bere ODSPODU a střídavě – první spadlá karta
     // je spodkem nové hromádky, poslední jejím vrchem.
-    const order = [];
-    const leftPile  = [];                                  // spodní půlka, odspodu nahoru
-    for (let i = layers - 1; i >= half; i--) leftPile.push(i);
-    const rightPile = [];                                  // odebraná horní půlka, odspodu nahoru
-    for (let i = half - 1; i >= 0; i--) rightPile.push(i);
-    for (let k = 0; k < Math.max(leftPile.length, rightPile.length); k++) {
-        if (k < leftPile.length)  order.push(leftPile[k]);
-        if (k < rightPile.length) order.push(rightPile[k]);
-    }
+    const order = shuffleRiffleOrder(layers);
 
     const riffleStart = SHUFFLE_ANIM.preMs + SHUFFLE_ANIM.cutMs + SHUFFLE_ANIM.gapMs;
     order.forEach((i, j) => {
@@ -279,9 +271,20 @@ function _introOppSlots(idx, health) {
     // y = anchor.y + offset dle strany. Offset se MUSÍ počítat z rozměru karty, ne
     // z konstant pro měřítko 0,27: při 8 hráčích je měřítko 0,25 (oppScaleByCount) a
     // jmenovka se s přechodem do hry posunula o 5 px.
-    const _oppCardW = 325 * oppScl;
+    const cardW  = 325 * oppScl;                // 97.5
+    const gap    = L.oppGap;
+    // numBlue = kolik karet leží ve vyloženém pásu (drawOpponents numBluePrimary):
+    // na začátku hry nemá nikdo nic, JEN ve hře pro 3 leží u každého karta role lícem
+    // nahoru – ta slot zabírá, takže se skupina „životy + postava" středí jinak.
+    // Bez toho karty postav v intru pro 3 dosedly na kartu role.
+    const numBlue = (state && state.mode3p) ? 1 : 0;
+    const groupH  = (1 + numBlue) * cardW + numBlue * gap;
     const nameOffY = side === 'left'
-        ? _oppCardW - oppCardH / 2 + 18    // livesCY + cardW/2 + 18 (viz drawOpponents)
+        // livesCY + cardW/2 + 18 (viz drawOpponents)
+        ? groupH / 2 - oppCardH / 2 + cardW / 2 + 18
+        : side === 'right'
+        // groupBottom + 18 = livesCY + numBlue*(cardW+gap) + cardW/2 + 18
+        ? -groupH / 2 + oppCardH / 2 + numBlue * (cardW + gap) + cardW / 2 + 18
         : oppCardH / 2 + 18;
     const NAME_X = cm ? compactColCenter(anchor, cm) : ax;
     const NAME_Y = cm ? compactNameY(anchor, cm) : ay + nameOffY;
@@ -289,11 +292,7 @@ function _introOppSlots(idx, health) {
         backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } };
 
     // Cílové pozice lives + postavy – PŘESNĚ podle herního renderu
-    // (renderUI: anchor.side větve). numBlue=0, protože na začátku hry
-    // nemá nikdo karty na stole. (ax,ay) == herní anchor.
-    const cardW  = 325 * oppScl;                // 97.5
-    const numBlue = 0;
-    const groupH = (1 + numBlue) * cardW;       // == cardW
+    // (renderUI: anchor.side větve). (ax,ay) == herní anchor.
     let livesEndX, livesEndY, charEndX, charEndY;
     if (side === 'compact') {
         // Kotva JE střed karty životů, portrét jede po nábojích doprava (jako 'left').
@@ -305,7 +304,7 @@ function _introOppSlots(idx, health) {
         charEndX  = livesEndX + oppBulletH * health;
         charEndY  = livesEndY;
     } else if (side === 'top') {
-        livesEndX = ax;                          // groupStartX + cardW/2 == ax při numBlue=0
+        livesEndX = ax - groupH / 2 + cardW / 2; // groupStartX + cardW/2 (groupW === groupH)
         livesEndY = ay;
         charEndX  = livesEndX;
         charEndY  = livesEndY + oppBulletH * health;
@@ -575,6 +574,10 @@ function _startCharChoicesFlip() {
     if (choices.length < 2) { s.charChoicesRevealed = true; s.myCharShowUI = true; renderUI(); return; }
     const charData = gameScene.cache.json.get('characters_data');
     s.charChoicesRevealed = false;
+    // Která karta už doletěla – statický render ji pak kreslí i před doletem té druhé.
+    // Bez toho levá karta po dokončení překlopení zmizela (sprite se ničí) a objevila
+    // se až s pravou, tedy viditelně bliknula.
+    s.charRevealed = [false, false];
     let done = 0;
     choices.forEach((charName, idx) => {
         const info = charData && charData.find(c => c.name === charName);
@@ -585,11 +588,13 @@ function _startCharChoicesFlip() {
         // chvilku po ní pravá) – dřív se mi obě objevily naráz. Klikací jsou až po obou.
         _introAnimCardFlip(INTRO_CHAR_DECK.x, INTRO_CHAR_DECK.y, cardX, 510, 'lives', tex, 560, () => {
             done++;
-            if (done >= 2 && _introState) {
+            if (!_introState) return;
+            if (_introState.charRevealed) _introState.charRevealed[idx] = true;
+            if (done >= 2) {
                 _introState.charChoicesRevealed = true;
                 _introState.myCharShowUI = true;
-                renderUI();
             }
+            renderUI();
         }, 0, null, { startScale: 0.30, endScale: 0.72, delay: idx * INTRO_CHAR_DEAL_GAP });
     });
     renderUI(); // během letu běží normální scéna (balíček postav vidět), výběr až po doletu
@@ -1193,8 +1198,13 @@ function _renderIntroCharSelect() {
     // (charChoicesRevealed) – během flipu běží sprite v introSprites. Výběr je
     // dvoukrokový: 1. klik na postavu ji jen PŘEDVYBERE (zvětší jako při najetí) a
     // odemkne tlačítko Potvrdit; teprve potvrzení spustí animaci usazení postavy.
-    const choices = s.charChoicesRevealed ? (s.myCharChoices || []) : [];
+    // Karta, která už doletěla, se kreslí hned (charRevealed) – jinak by po dokončení
+    // svého překlopení zmizela a čekala na tu druhou. KLIKACÍ jsou obě až po obou
+    // (charChoicesRevealed), aby se nedalo vybrat dřív, než je vidět nabídka celá.
+    const revealed = s.charRevealed || [];
+    const choices = (s.charChoicesRevealed || revealed.some(Boolean)) ? (s.myCharChoices || []) : [];
     choices.forEach((charName, idx) => {
+        if (!s.charChoicesRevealed && !revealed[idx]) return;
         const charInfo = charData && charData.find(c => c.name === charName);
         const texKey   = charInfo && gameScene.textures.exists('char_' + charInfo.id)
             ? 'char_' + charInfo.id : 'placeholder';
@@ -1202,20 +1212,24 @@ function _renderIntroCharSelect() {
         const isPre    = s.myCharPreselect === charName;
 
         const cs = gameScene.add.image(cardX, 510, texKey)
-            .setScale(isPre ? 0.80 : 0.72).setDepth(61).setInteractive({ useHandCursor: true });
+            .setScale(isPre ? 0.80 : 0.72).setDepth(61);
         if (isPre) cs.setTint(0xddffdd);
-        cs.on('pointerover', () => { cs.setScale(0.80); cs.setTint(0xddffdd); });
-        cs.on('pointerout',  () => { if (s.myCharPreselect !== charName) { cs.setScale(0.72); cs.clearTint(); } });
-        cs.on('pointerdown', () => {
-            if (s.myCharSelected) return;
-            s.myCharPreselect = charName;   // jen předvýběr – potvrzuje se tlačítkem
-            renderUI();
-        });
+        if (s.charChoicesRevealed) {
+            cs.setInteractive({ useHandCursor: true });
+            cs.on('pointerover', () => { cs.setScale(0.80); cs.setTint(0xddffdd); });
+            cs.on('pointerout',  () => { if (s.myCharPreselect !== charName) { cs.setScale(0.72); cs.clearTint(); } });
+            cs.on('pointerdown', () => {
+                if (s.myCharSelected) return;
+                s.myCharPreselect = charName;   // jen předvýběr – potvrzuje se tlačítkem
+                renderUI();
+            });
+        }
         _iAdd(cs);
     });
 
     // Tlačítko Potvrdit – neaktivní (zašedlé), dokud hráč na nějakou postavu neklikne.
-    if (choices.length) {
+    // Ukáže se až s celou nabídkou (obě karty doletěly), ne už po první.
+    if (choices.length && s.charChoicesRevealed) {
         const active = !!s.myCharPreselect && !s.myCharSelected;
         const btn = gameScene.add.text(960, 900, 'Potvrdit',
             { fontFamily: THEME.fontUI, fontSize: '32px', fontStyle: 'bold', color: active ? '#ffffff' : '#888',

@@ -1,7 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    SHUFFLE_ANIM, shuffleLayers, shufflePerCard, shuffleSettleMs, shuffleDurationMs,
+    SHUFFLE_ANIM, shuffleLayers, shuffleCutHalf, shuffleRiffleOrder,
+    shufflePerCard, shuffleSettleMs, shuffleDurationMs,
 } = require('../core/shuffleAnim.js');
 
 // Reálné počty karet, se kterými se intro potká: role (3–8), balíček událostí High Noon
@@ -46,5 +47,34 @@ test('doskládání předchází konci animace a celek zůstává v rozumné dé
         assert.ok(settle > SHUFFLE_ANIM.preMs + SHUFFLE_ANIM.cutMs, `n=${n}`);
         // Intro nesmí kvůli jednomu balíčku stát půl minuty.
         assert.ok(total <= 6000, `n=${n}: ${total}`);
+    }
+});
+
+test('shuffleRiffleOrder: každou kartu právě jednou, odspodu nahoru', () => {
+    for (const n of [2, 3, 7, 16, 31, 80, 120]) {
+        const k = shuffleLayers(n);
+        const order = shuffleRiffleOrder(n);
+        assert.equal(order.length, k, `n=${n}`);
+        assert.deepEqual([...order].sort((a, b) => a - b),
+            Array.from({ length: k }, (_, i) => i), `n=${n}`);
+    }
+});
+
+test('shuffleRiffleOrder: karty se z půlek berou střídavě, u lichého počtu začíná ta větší', () => {
+    for (let n = 2; n <= 41; n++) {
+        const half = shuffleCutHalf(n);
+        const side = (i) => (i < half ? 'top' : 'bottom');   // horní půlka jde doprava
+        const order = shuffleRiffleOrder(n);
+        // Nikde nesmí spadnout dvě karty ze stejné půlky za sebou – právě to bylo vidět
+        // na konci míchání lichého balíčku (dvě karty z jedné strany).
+        for (let j = 1; j < order.length; j++) {
+            assert.notEqual(side(order[j]), side(order[j - 1]),
+                `n=${n}: dvě karty ze stejné půlky za sebou na pozici ${j}`);
+        }
+        // Uvnitř každé půlky se bere odspodu nahoru (klesající index).
+        const tops = order.filter(i => side(i) === 'top');
+        const bots = order.filter(i => side(i) === 'bottom');
+        assert.deepEqual(tops, [...tops].sort((a, b) => b - a), `n=${n} horní`);
+        assert.deepEqual(bots, [...bots].sort((a, b) => b - a), `n=${n} spodní`);
     }
 });
