@@ -1514,6 +1514,12 @@ function drawMyArea(ctx) {
                 // Sida Ketchuma, hráč pak klikne na jinou kartu (cenu). Ostatní se zvýrazní.
                 const isDiscardAnother = state.phase === "DISCARD_ANOTHER" && state.pendingDiscardAnother?.playerIdx === myIndex;
                 const isDAmain = isDiscardAnother && card.id === state.pendingDiscardAnother.mainCardId;
+                // Claus "The Saint" (Fistful): rozdává po jedné kartě ostatním – klikatelná
+                // je celá ruka. Uncle Will: nabitá schopnost čeká na kartu, kterou zahraje
+                // jako Hokynářství (stejný režim jako José/Doc).
+                const isClausGive = state.phase === "CLAUS_GIVE" && !!state.clausState &&
+                                    state.currentPlayerIndex === myIndex;
+                const isWillActive = !!selectedState.will;
                 // Doc Holyday: jako Sid – v aktivním režimu jsou všechny karty červené,
                 // vybrané (2) se zmenší a zašednou. José: modré karty se zvýrazní.
                 const isDocActive = !!selectedState.doc;
@@ -1540,6 +1546,8 @@ function drawMyArea(ctx) {
                 if (state.phase === "DISCARD" && state.currentPlayerIndex === myIndex) cSprite.setTint(0xff6666);
                 if (isMySidActive) cSprite.setTint(0xff6666);
                 if (isDocActive) cSprite.setTint(0xff6666);   // Doc: všechny karty červené (jako Sid)
+                if (isWillActive) cSprite.setTint(0xff6666);  // Uncle Will: vyber kartu za hokynářství
+                if (isClausGive) cSprite.setTint(0xffff44);   // Claus: vyber kartu, kterou dáš
                 if (isStagedCard) cSprite.setTint(0xbbbbbb);
 
                 // „Odhoď další kartu": hlavní (zmenšená) karta zašedne, ostatní červeně
@@ -1591,7 +1599,8 @@ function drawMyArea(ctx) {
                     if (pointer?.wasTouch) return;
                     startCardZoom(getTex(card.id), card.id);
                     isHovered = true;
-                    if (isMySidActive || isDocActive || state.phase === "DISCARD") return;
+                    if (isMySidActive || isDocActive || isWillActive || state.phase === "DISCARD") return;
+                    if (isClausGive) { cSprite.setScale(baseScale * 1.05); return; }
                     // „Odhoď další kartu": drž červené zvýraznění ceny i při hoveru (jako Sid).
                     if (isDiscardAnother) { if (!isDAmain) cSprite.setScale(baseScale * 1.05); return; }
                     if (selectedState.cardIndex === index) return;
@@ -1615,6 +1624,8 @@ function drawMyArea(ctx) {
                     cSprite.setScale((isDAmain || isDocStaged) ? baseScale * 0.88 : baseScale);
                     if (isDiscardAnother) { cSprite.setTint(isDAmain ? 0xbbbbbb : 0xff6666); return; }
                     if (isDocActive) { cSprite.setTint(isDocStaged ? 0xbbbbbb : 0xff6666); return; }
+                    if (isWillActive) { cSprite.setTint(0xff6666); return; }
+                    if (isClausGive) { cSprite.setTint(0xffff44); return; }
                     if (state.phase === "DISCARD" && state.currentPlayerIndex === myIndex) { cSprite.setTint(0xff6666); return; }
                     if (isMySidActive) { cSprite.setTint(0xff6666); return; }
                     if (_keepHighlight) { cSprite.setTint(0xffff44); return; }
@@ -1636,6 +1647,21 @@ function drawMyArea(ctx) {
                             return;
                         }
                         socket.emit('discard_another_card', { playerIdx: myIndex, extraCardIdx: index });
+                        App.blockInput = true;
+                        renderUI();
+                        return;
+                    }
+                    // Claus "The Saint": klik = dej tuhle kartu hráči, který je na řadě.
+                    if (isClausGive) {
+                        socket.emit('claus_give', { cardIdx: index });
+                        App.blockInput = true;
+                        renderUI();
+                        return;
+                    }
+                    // Uncle Will: klik = zahraj tuhle kartu jako Hokynářství (1×/tah).
+                    if (isWillActive) {
+                        socket.emit('uncle_will', { cardIdx: index });
+                        selectedState = { cardIndex: null, action: null };
                         App.blockInput = true;
                         renderUI();
                         return;
@@ -1905,6 +1931,16 @@ function drawMyArea(ctx) {
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, doc: { staged: [] } }; renderUI(); },
+                });
+            }
+            // Uncle Will (Fistful): 1× za tah zahraj libovolnou kartu jako Hokynářství.
+            // Aktivní režim pak čeká na klik na kartu v ruce (stejně jako José/Doc).
+            if (myPlayTurn && effectiveCharacter(me) === "Uncle Will" &&
+                me._willUsedTurn !== state.turnId && (selectedState.will || me.hand.length > 0)) {
+                const active = !!selectedState.will;
+                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'WILL: zrušit ↩' : 'WILL: karta → 🏪', {
+                    ...themeToggleStyle(active), fontSize: '21px',
+                    onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, will: true }; renderUI(); },
                 });
             }
         }
@@ -2181,6 +2217,19 @@ function drawPhaseOverlays(ctx) {
             }
             mAdd(cSprite, 58);
         });
+    }
+
+    // Claus "The Saint" (Fistful): banner s tím, KOMU se právě dává karta. Ostatní vidí,
+    // na koho se čeká, přes běžný štítek stavu (waitingStatus).
+    if (state.phase === "CLAUS_GIVE" && state.clausState?.queue?.length) {
+        const toIdx = state.clausState.queue[0];
+        const toName = state.players[toIdx]?.name || '?';
+        const mine = state.currentPlayerIndex === myIndex;
+        const l1 = gameScene.add.text(960, 70,
+            mine ? `Claus the Saint – dej kartu hráči ${toName} (zbývá ${state.clausState.queue.length})`
+                 : `Claus the Saint rozdává karty…`,
+            { fontSize: '26px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+        mAdd(l1, 206);
     }
 
     // „Odhoď další kartu" (Dodge City): banner. Zrušení = klik zpět na hlavní (hranou) kartu.

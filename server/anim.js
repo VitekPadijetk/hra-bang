@@ -29,8 +29,28 @@ module.exports = function installAnimService(ctx) {
     // Animace, kde majitel karty vidí jiný payload než ostatní (reveal vlastní
     // líznuté karty): majiteli `ownerData` (s cardId pro flip rub→líc), ostatním
     // hráčům i divákům `othersData` (jen rub, identita karty zůstává skrytá).
+    // ownerPlayerIdx smí být i POLE seatů (Claus rozdává kartu: líc vidí obdarovaný
+    // i dárce, ostatní rub).
     function emitAnimPrivate(room, ownerPlayerIdx, ownerData, othersData) {
         if (!roomAlive(room)) return;
+        if (Array.isArray(ownerPlayerIdx)) {
+            const owners = new Set(ownerPlayerIdx);
+            const seenIds = new Set();
+            room.players.forEach(rp => {
+                if (!owners.has(rp.playerIdx) || seenIds.has(rp.socketId)) return;
+                seenIds.add(rp.socketId);
+                const s = io.sockets.sockets.get(rp.socketId);
+                if (s) s.emit('card_animation', ownerData);
+            });
+            room.players.forEach(rp => {
+                if (seenIds.has(rp.socketId)) return;
+                seenIds.add(rp.socketId);
+                const s = io.sockets.sockets.get(rp.socketId);
+                if (s) s.emit('card_animation', othersData);
+            });
+            io.to(room.id + '_spectators').emit('card_animation', othersData);
+            return;
+        }
         const ownerSocketId = room.players.find(rp => rp.playerIdx === ownerPlayerIdx)?.socketId;
         // Majitelovu socketu pošli reveal payload jako PRVNÍ a označ ho za vyřízený –
         // v DEBUG hře sdílí jeden socket víc hráčů, takže by ho jinak „ostatní" varianta
@@ -242,10 +262,26 @@ module.exports = function installAnimService(ctx) {
             (gl.blue?.length || 0) + (gl.weapon ? 1 : 0) + (gl.hand?.length || 0)));
     }
 
+    // ── Johnny Kisch: stejnojmenné karty odcházejí ze stolu do odhozu ────────
+    // Pravidla jen označí, co se odhodilo (gs._johnnyPurgeAnim); emit řeší tenhle hák,
+    // protože karta může na stůl přijít třemi cestami (zbraň, modrá/zelená, Vězení).
+    // Emituje se PŘED odesláním stavu, takže klient ještě má karty na starých místech.
+    function flushJohnnyPurge(room) {
+        const gs = room.gameState;
+        const list = gs && gs._johnnyPurgeAnim;
+        if (!list || !list.length) return;
+        gs._johnnyPurgeAnim = null;
+        list.forEach(it => {
+            emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: it.playerIdx,
+                             cardId: it.cardId, boardIdx: it.boardIdx });
+        });
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
     // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost.
     function beforeBroadcast(room) {
         flushGhostLeave(room);
+        flushJohnnyPurge(room);
         flushHighNoonReveal(room);
     }
 

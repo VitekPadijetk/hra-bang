@@ -69,6 +69,8 @@ const PlayMixin = {
                     player.stats.weaponsCycled++;
                 }
                 player.weapon = player.hand.splice(cardIndex, 1)[0];
+                // Johnny Kisch (Fistful): stejnojmenné zbraně u ostatních jdou do odhozu.
+                this._johnnyKischPurge(this.currentPlayerIndex, player.weapon.name, player.weapon);
                 // Orazítkuj tah položení (stejně jako u zelených karet). Pravidla to
                 // neomezuje – slouží botovi, aby si v jednom tahu nepřevykládal víc
                 // zbraní za sebou a lepší si nechal „v zásobě" (core/botPolicy.js).
@@ -236,6 +238,8 @@ const PlayMixin = {
                 return;
             }
             target.board.push(card);
+            // Johnny Kisch (Fistful): vyložením Vězení odhodí všechna ostatní Vězení ve hře.
+            this._johnnyKischPurge(attIdx, card.name, card);
             this.checkSuzyLafayette(attacker);
             this._processSpecialQueue();
             return;
@@ -309,7 +313,10 @@ const PlayMixin = {
             return false;
         }
         if (card.green) card._playedTurn = this.turnId;
-        player.board.push(player.hand.splice(cardIndex, 1)[0]);
+        const placed = player.hand.splice(cardIndex, 1)[0];
+        player.board.push(placed);
+        // Johnny Kisch (Fistful): stejnojmenné karty vyložené kdekoli u stolu se odhodí.
+        this._johnnyKischPurge(this.players.indexOf(player), placed.name, placed);
         return false;
     },
 

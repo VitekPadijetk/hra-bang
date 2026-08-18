@@ -19,6 +19,8 @@ function pendingActor(state) {
         case 'DISCARD': return { idx: state.currentPlayerIndex, kind: 'DISCARD' };
         case 'DRAW':    return state.drawPhaseState?.active ? { idx: state.drawPhaseState.playerIdx, kind: 'DRAW' } : null;
         case 'KIT_CARLSON':      return { idx: state.currentPlayerIndex, kind: 'KIT_CARLSON' };
+        // Fistful – Claus "The Saint": rozdává po jedné kartě ostatním hráčům.
+        case 'CLAUS_GIVE':       return state.clausState ? { idx: state.currentPlayerIndex, kind: 'CLAUS_GIVE' } : null;
         case 'BLACK_JACK_CHECK': return { idx: state.drawPhaseState?.playerIdx ?? state.currentPlayerIndex, kind: 'BLACK_JACK_CHECK' };
         case 'RESPOND':          return state.pendingResponse?.active ? { idx: state.pendingResponse.targetIdx, kind: 'RESPOND' } : null;
         case 'STORE':            return { idx: state.storePickerIndex, kind: 'STORE' };
@@ -54,6 +56,7 @@ const _WAIT_LABELS = {
     DISCARD:               'odhazuje karty',
     DRAW:                  'líže si karty',
     KIT_CARLSON:           'Kit Carlson – vybírá karty',
+    CLAUS_GIVE:            'Claus the Saint – rozdává karty',
     BLACK_JACK_CHECK:      'Black Jack – druhá karta',
     RESPOND:               'brání se',
     STORE:                 'vybírá v hokynářství',

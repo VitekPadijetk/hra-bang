@@ -144,6 +144,43 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Uncle Will (Fistful): 1× za tah zahraje libovolnou kartu z ruky jako Hokynářství.
+    on('uncle_will', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const card = gs.players[idx]?.hand[d?.cardIdx];
+            const ok = gs.useUncleWill(idx, d?.cardIdx);
+            if (!ok) return;
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: card?.id });
+            // Hokynářství: míchání si přebírá klientská cinematika (stejně jako po zahrání
+            // opravdové karty Hokynářství, viz play_card).
+            if (gs.phase === 'STORE') {
+                const t = ctx.storeCinematicMs?.(gs);
+                room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;
+            }
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    // Claus "The Saint" (Fistful): po líznutí rozdá po jedné kartě každému ostatnímu.
+    // Karta letí z jeho ruky do ruky obdarovaného – líc vidí oba, ostatní jen rub
+    // (stejná cesta jako u krádeže, jen obráceným směrem).
+    on('claus_give', (d) => {
+        withRoom((room, p, gs) => {
+            const giverIdx = gs.currentPlayerIndex;
+            const toIdx = gs.clausState?.queue?.[0];
+            const card = gs.players[giverIdx]?.hand[d?.cardIdx];
+            if (toIdx == null || !card) return;
+            const stolenIndex = d.cardIdx;
+            if (!gs.clausGive(d.cardIdx)) return;
+            const base = { type: 'ragtime_steal', attackerIdx: toIdx, targetIdx: giverIdx,
+                           area: 'hand', stolenIndex };
+            emitAnimPrivate(room, [toIdx, giverIdx], { ...base, stolenCardId: card.id },
+                                                     { ...base, stolenCardId: null });
+            broadcastRoomDelayed(room, 420);
+        });
+    });
+
     // Vera Custer: na začátku svého tahu si zvolí kopírovanou postavu (VERA_COPY → DRAW).
     on('vera_copy', (d) => {
         withRoom((room, p, gs) => {

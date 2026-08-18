@@ -36,6 +36,11 @@ const DrawMixin = {
             return;
         }
 
+        if (effectiveCharacter(player) === "Claus the Saint") {
+            this.startClausDraw();
+            return;
+        }
+
         const cardsNeeded = this._drawCountFor(player);
 
         this.drawPhaseState = { active: true, playerIdx: this.currentPlayerIndex, cardsNeeded, cardsDrawn: 0, options: this._getDrawOptions(player), isStartOfTurn: true };
@@ -168,6 +173,28 @@ const DrawMixin = {
                 return;
             }
 
+            // Claus "The Saint": líznutí celé fáze naráz (jedním klikem na balíček) –
+            // při 8 hráčích by jinak klikal devětkrát. Karty jdou rovnou do ruky a hráč
+            // pak z ní každému ostatnímu jednu dá (fáze CLAUS_GIVE).
+            if (ds.isClaus && effectiveCharacter(player) === "Claus the Saint") {
+                const drawn = [card];
+                for (let i = 1; i < ds.cardsNeeded; i++) {
+                    const c = this.deck.draw();
+                    if (c) drawn.push(c);
+                }
+                drawn.forEach(c => { player.hand.push(c); player.stats.cardsDrawn++; });
+                ds.cardsDrawn = drawn.length;
+                this.logEvent('draw', { who: player.name, source: 'deck (Claus)', cards: drawn.map(c => c.name) });
+                this.drawPhaseState.active = false;
+                // Rozdává po směru hodinových ručiček od sebe; kdo je mimo hru, ten nic
+                // nedostane. Když u stolu nikdo jiný nezbyl, fáze lízání rovnou končí.
+                const queue = (ds.clausOrder || []).filter(i => isInPlay(this.players[i]));
+                if (!queue.length) { this._finishDraw(); return; }
+                this.clausState = { queue };
+                this.phase = "CLAUS_GIVE";
+                return;
+            }
+
             if (effectiveCharacter(player) === "Black Jack" && ds.cardsDrawn === 1 && ds.isStartOfTurn && !ds.blackJackWaitingForThird) {
                 ds.blackJackCard = card;
                 this.phase = "BLACK_JACK_CHECK";
@@ -209,6 +236,35 @@ const DrawMixin = {
             // vzala, zůstane hráč pro tenhle tah bez omezení – nikdy ne zaseknutý.
             if (wasStartOfTurn && this.phase === "PLAY") this._startHandcuffs();
         }
+    },
+
+    // Claus "The Saint" (A Fistful of Cards): ve fázi 1 si lízne o kartu víc, než je
+    // hráčů ve hře, pak dá po jedné kartě každému ostatnímu a zbytek si nechá.
+    // Kolik si NECHÁ, řídí _drawCountFor (Žízeň 1, Příjezd vlaku 3, duch 3) – stejná
+    // dohoda jako u Kita Carlsona. Počet rozdaných je dán počtem spoluhráčů ve hře,
+    // takže si celkem lízne `rozdané + ponechané` (u čtyř hráčů a bez událostí 5).
+    startClausDraw() {
+        const player = this.getCurrentPlayer();
+        player.bangsPlayedThisTurn = 0;
+        const keep = this._drawCountFor(player);
+        const n = this.players.length;
+        const order = [];
+        for (let k = 1; k < n; k++) {
+            const i = (this.currentPlayerIndex + k) % n;
+            if (isInPlay(this.players[i])) order.push(i);
+        }
+        this.drawPhaseState = {
+            active: true,
+            playerIdx: this.currentPlayerIndex,
+            cardsNeeded: order.length + keep,
+            cardsDrawn: 0,
+            options: ['deck'],
+            // Pořád je to lízání na začátku tahu – Želízka (High Noon) se ptají až za ním.
+            isStartOfTurn: true,
+            isClaus: true,
+            clausOrder: order,
+        };
+        this.phase = "DRAW";
     },
 
     startKitCarlsonDraw() {

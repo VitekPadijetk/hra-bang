@@ -25,6 +25,84 @@ const CharactersMixin = {
         this._resumeAfterSpecial();
     },
 
+    // ── Uncle Will (A Fistful of Cards) ─────────────────────────────────────────
+    // „Jednou za svůj tah smí zahrát libovolnou kartu z ruky jako Hokynářství."
+    // Karta se odhodí a z balíčku se rozdá každému ve hře, přesně jako po zahrání
+    // opravdového Hokynářství (openStore). Soudce (Fistful) to neomezuje – nic se
+    // nevykládá před hráče; Želízka (High Noon) ano, karta jde z ruky.
+    useUncleWill(playerIdx, cardIdx) {
+        if (this.phase !== "PLAY" || playerIdx !== this.currentPlayerIndex) return false;
+        const p = this.players[playerIdx];
+        if (!p || effectiveCharacter(p) !== "Uncle Will") return false;
+        if (p._willUsedTurn === this.turnId) return false;
+        const card = p.hand[cardIdx];
+        if (!card) return false;
+        if (this._suitBlocked(playerIdx, card)) return false;
+        p._willUsedTurn = this.turnId;
+        this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+        this._trackCard(playerIdx, CardType.STORE);
+        this.logEvent('special', { who: p.name, card: 'Uncle Will – hokynářství', taken: card.name });
+        this.openStore();
+        return true;
+    },
+
+    // ── Johnny Kisch (A Fistful of Cards) ───────────────────────────────────────
+    // „Kdykoli vyloží kartu do hry, všechny ostatní vyložené karty se stejným jménem
+    // se odhodí." Platí to u všech hráčů (i u něj samotného) a na výzbroj stejně jako
+    // na modré/zelené karty. Volá se ze všech tří cest, kudy karta jde na stůl:
+    // playBoardCard, větev WEAPON v playCard a Vězení v playSpecialCard (logic/play.js).
+    //
+    // `justPlayed` = právě položená karta, která se odhodit NESMÍ. Odhozený Dynamit
+    // nevybuchne a odhozené Vězení hráče osvobodí – obojí je záměr (karta prostě
+    // opouští hru). Animaci dohraje server podle `_johnnyPurgeAnim` (server/anim.js).
+    _johnnyKischPurge(ownerIdx, cardName, justPlayed) {
+        const owner = this.players[ownerIdx];
+        if (!owner || effectiveCharacter(owner) !== "Johnny Kisch" || !cardName) return;
+        const removed = [];
+        this.players.forEach((p, i) => {
+            if (p.weapon && p.weapon.id !== -1 && p.weapon.name === cardName && p.weapon !== justPlayed) {
+                removed.push({ playerIdx: i, boardIdx: 0, cardId: p.weapon.id });
+                this.deck.discardPile.push(p.weapon);
+                p.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+            }
+            for (let k = (p.board || []).length - 1; k >= 0; k--) {
+                const c = p.board[k];
+                if (c.name !== cardName || c === justPlayed) continue;
+                // Vizuální slot: 0 = výzbroj, 1+k = k-tá karta na stole (stejná konvence
+                // jako u Rvačky/Paniky – klient podle ní najde, odkud karta letí).
+                removed.push({ playerIdx: i, boardIdx: 1 + k, cardId: c.id });
+                p.board.splice(k, 1);
+                this.deck.discardPile.push(c);
+            }
+        });
+        if (!removed.length) return;
+        this._johnnyPurgeAnim = (this._johnnyPurgeAnim || []).concat(removed);
+        this.logEvent('special', { who: owner.name, card: 'Johnny Kisch', taken: cardName, count: removed.length });
+    },
+
+    // ── Claus "The Saint" (A Fistful of Cards) ──────────────────────────────────
+    // Rozdá jednu kartu dalšímu hráči ve frontě (po směru od sebe). Karty už má v ruce
+    // (lízl si je najednou, viz startClausDraw v logic/draw.js), takže dává KTEROUKOLI –
+    // stejně jako u stolu, kde je po líznutí nikdo nerozezná.
+    clausGive(cardIdx) {
+        if (this.phase !== "CLAUS_GIVE" || !this.clausState) return false;
+        const giver = this.getCurrentPlayer();
+        const toIdx = this.clausState.queue[0];
+        const to = this.players[toIdx];
+        const card = giver?.hand[cardIdx];
+        if (!card || !to) return false;
+        giver.hand.splice(cardIdx, 1);
+        to.hand.push(card);
+        this.clausState.queue.shift();
+        this.logEvent('special', { who: giver.name, card: 'Claus the Saint – dává kartu', target: to.name });
+        if (this.clausState.queue.length > 0) return true;
+        // Rozdáno – zbytek si nechává a fáze lízání končí klasickou cestou (fronta
+        // odložených akcí, volba barvy pro Želízka).
+        this.clausState = null;
+        this._finishDraw();
+        return true;
+    },
+
     // ── Pravidlo „nejdřív doběhne efekt zahrané karty" ──────────────────────────
     // FAQ: „Musíte počkat na dokončení efektu naposledy zahrané karty, než budete moci
     // použít speciální schopnost své postavy nebo zahrát další kartu." U Suzy Lafayette

@@ -465,6 +465,18 @@ function decidePlay(state, myIndex, beliefs) {
         me.hand.forEach((c, i) => { if (isBlueCard(c) && keepScore(c) < blueScore) { blueScore = keepScore(c); blueIdx = i; } });
         if (blueIdx !== -1) consider(18, { event: 'jose_delgado', payload: { cardIdx: blueIdx } });
     }
+    // Uncle Will (Fistful): 1× za tah zahraje libovolnou kartu jako Hokynářství. Vyplatí
+    // se to hlavně z přebytku – karta, kterou by stejně odhodil na konci tahu, se změní
+    // v novou z balíčku (a vybírá si první). Podmínky musí sedět se serverem
+    // (useUncleWill), jinak by server akci odmítl a bot ji zkoušel donekonečna.
+    if (ch === 'Uncle Will' && me._willUsedTurn !== state.turnId && me.hand.length > me.health) {
+        let idx = -1, low = Infinity;
+        me.hand.forEach((c, i) => {
+            if (suitBlockedFor(state, myIndex, c)) return;   // Želízka
+            if (keepScore(c) < low) { low = keepScore(c); idx = i; }
+        });
+        if (idx !== -1) consider(16, { event: 'uncle_will', payload: { cardIdx: idx } });
+    }
     if (ch === 'Doc Holyday' && !me._docUsed && me.hand.length >= 3) {
         const reach = weaponRange(me.weapon);
         const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => computeDistance(state, myIndex, e.idx) <= reach);
@@ -597,6 +609,14 @@ function decideBotAction(state, myIndex, beliefs) {
 
         case 'BLACK_JACK_CHECK':
             return { event: 'resolve_black_jack', payload: true };
+
+        // Fistful – Claus "The Saint": rozdává po jedné kartě každému ostatnímu hráči.
+        // Vybírat se dá jen KTEROU kartu dá, ne komu – dává tedy vždy tu nejméně cennou.
+        case 'CLAUS_GIVE': {
+            let worst = 0;
+            me.hand.forEach((c, i) => { if (keepScore(c) < keepScore(me.hand[worst])) worst = i; });
+            return { event: 'claus_give', payload: { cardIdx: worst } };
+        }
 
         case 'STORE': {
             let bestIdx = -1, bestVal = -1;
