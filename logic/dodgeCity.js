@@ -189,7 +189,8 @@ const DodgeCityMixin = {
         if (!card.green) return;
         if (card._playedTurn === this.turnId) return;   // nelze ve stejném tahu, kdy byla položena
         if (card.activate === 'miss') return;            // Vedle!-zelené jen jako reakce
-        if (this._suitBlocked(playerIdx, card)) return;  // High Noon – Želízka
+        // High Noon – Želízka omezují jen karty hrané Z RUKY. Zelená karta už leží
+        // ve hře (byla zahraná dřív), takže se její aktivace barvou neomezuje.
 
         const discardAndTrack = () => {
             player.board.splice(idx, 1);

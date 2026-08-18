@@ -418,8 +418,7 @@ function decidePlay(state, myIndex, beliefs) {
     // ── Aktivace zelených karet už ležících na stole (z minulých tahů) ──────────
     (me.board || []).forEach(card => {
         if (!card.green || card._playedTurn === state.turnId || card.activate === 'miss') return;
-        // Želízka (High Noon): jiná barva než zvolená → server by aktivaci odmítl.
-        if (suitBlockedFor(state, myIndex, card)) return;
+        // Želízka (High Noon) aktivaci neomezují – karta už leží ve hře (viz _suitBlocked).
         const cardId = card.id;
         if (card.bangEffect) {
             if (card.range === 'mass') {           // Houfnice = útok na všechny (jako Kulomet)
@@ -531,7 +530,7 @@ function decideBotAction(state, myIndex, beliefs) {
                 && effectiveCharacter(attacker) === 'Belle Star';
             if (req === T.MISSED && !belleIgnores) {
                 const greenMiss = (me.board || []).find(c => c.green && c.activate === 'miss'
-                    && c._playedTurn !== state.turnId && !suitBlockedFor(state, myIndex, c));
+                    && c._playedTurn !== state.turnId);
                 if (greenMiss) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null, boardCardId: greenMiss.id } };
             }
 

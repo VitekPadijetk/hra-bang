@@ -240,8 +240,9 @@ const ResponseMixin = {
             }
 
             // High Noon – Želízka: hráč na tahu smí i jako reakci zahrát jen kartu
-            // zvolené barvy (stejný výklad jako u Kazatele, FAQ H2).
-            if (isValid && this._suitBlocked(playerIdx, card)) isValid = false;
+            // zvolené barvy (stejný výklad jako u Kazatele, FAQ H2). Platí to ale jen na
+            // karty Z RUKY – zelená Vedle!-karta už leží ve hře a barvou se neomezuje.
+            if (isValid && !fromBoard && this._suitBlocked(playerIdx, card)) isValid = false;
 
             if (!isValid) return;
 

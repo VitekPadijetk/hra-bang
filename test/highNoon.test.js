@@ -1238,6 +1238,42 @@ test('Želízka: cardPlayability zrcadlí pravidlo (klient i bot)', () => {
     assert.equal(cardPlayability(g, g.players[1], 1, bad), null);
 });
 
+// Želízka omezují jen karty hrané Z RUKY – co už leží na stole, je ve hře (viz
+// _suitBlocked). Platí to pro aktivaci zelené karty i pro zelené Vedle! ze stolu.
+test('Želízka neomezují aktivaci zelené karty ze stolu', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.currentPlayerIndex = 0;
+    g.phase = 'PLAY';
+    g.turnId = 7;
+    g.players[0]._handcuffsSuit = Suits.DIAMONDS;
+    const pep = board(g, 0, CardType.PEPPERBOX, {
+        suit: Suits.HEARTS, props: { green: true, bangEffect: true, range: 'weapon' },
+    });
+    pep._playedTurn = 0;    // položená v některém z minulých tahů
+    g.activateGreenCard(0, pep.id, { targetIdx: 1 });
+    assert.equal(g.phase, 'RESPOND', 'srdcový Pepperbox jde aktivovat i při kárových Želízkách');
+    assert.equal(g.players[0].board.length, 0, 'karta se odhodila');
+});
+
+test('Želízka neomezují zelenou Vedle!-kartu ze stolu (obrana ve vlastním tahu)', () => {
+    const g = mkExtraGame([{ role: 'Sheriff' }, {}, {}, {}], { event: 'ZELIZKA' });
+    g.currentPlayerIndex = 0;
+    g.phase = 'PLAY';
+    g.turnId = 7;
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    const plate = board(g, 0, CardType.IRON_PLATE, {
+        suit: Suits.SPADES, props: { green: true, activate: 'miss' },
+    });
+    plate._playedTurn = 0;
+    // Vystřelím srdcovým Bangem sám na sebe (pravidla to umožňují) → musím se bránit.
+    const bang = give(g, 0, CardType.BANG, { suit: Suits.HEARTS });
+    g.playBang(0, 0, bang);
+    assert.equal(g.phase, 'RESPOND');
+    g.handleResponse(0, null, plate.id);
+    assert.equal(g.players[0].health, 4, 'pikový Železný plát ze stolu uhnul');
+    assert.equal(g.players[0].board.length, 0, 'a odhodil se');
+});
+
 // ── Nová identita ───────────────────────────────────────────────────────────
 
 test('Nová identita: druhá postava se rozdá jen se zapnutými přibalenými kartami', () => {

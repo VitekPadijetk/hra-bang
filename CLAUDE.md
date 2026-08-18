@@ -435,7 +435,9 @@ Dvě karty, které se do balíčku High Noon přibalují. Zapínají se zvláš�
 High Noon; `_setupEventDeck` pak vezme i karty s `extra: true` a balíček má 15 karet).
 
 **Želízka** — po fázi lízání si hráč na tahu zvolí barvu a v tomhle tahu smí hrát jen
-karty té barvy.
+karty té barvy **z ruky**. Co už leží na stole, je ve hře (bylo zahráno dřív), takže
+Želízka neomezují ani aktivaci zelené karty (Pepperbox/Nůž/…), ani zelené Vedle!
+(Železný plát/Sombrero/Bible) použité jako obrana.
 
 - Ptá se `_finishDraw` (logic/draw.js) přes `_startHandcuffs()` → fáze `HANDCUFFS_SUIT`
   + `pendingHandcuffs`. Ptá se **až po frontě odložených akcí** a jen když je fáze pořád
@@ -449,16 +451,20 @@ karty té barvy.
   barva se řeší až za ním.
 - Jediný dotaz pravidel je **`_suitBlocked(playerIdx, card)`**; barvu bere přes `_effSuit`,
   a omezuje **jen hráče na tahu** – včetně karet zahraných jako reakce v jeho VLASTNÍM
-  tahu (duel, záchrana Pivem), stejný výklad jako u Kazatele (FAQ H2). Gate je v
-  `playCard`, `playBang`, `playSpecialCard`, `startDiscardExtra`, `activateGreenCard`,
-  `handleResponse` a `beerLastLifeSave`.
+  tahu (duel, záchrana Pivem), stejný výklad jako u Kazatele (FAQ H2). Gate je jen na
+  cestách karty **z ruky**: `playCard`, `playBang`, `playSpecialCard`, `startDiscardExtra`,
+  `beerLastLifeSave` a `handleResponse` (tam pod podmínkou `!fromBoard`).
+  **`activateGreenCard` gate NEMÁ** – karta na stole už je ve hře. Bez toho se hra tiše
+  zasekla: klient cíl korektně svítil zeleně (dostřel sedí), server aktivaci mlčky
+  zahodil a karta „se vrátila".
 - `_handcuffsSuit` se nuluje **na začátku tahu v `_beginTurn`**, ne až ve fázi lízání:
   kontroly na Dynamit/Vězení (a s nimi záchrana Pivem) běží dřív a jely by ještě podle
   barvy z minulého tahu téhož hráče.
 - Zrcadla: `core/highNoon.js` `suitBlockedFor` → `core/playability.js` (jeden gate hned
-  na začátku `cardPlayability`) a `core/botPolicy.js` (zelené karty ze stolu + větev
-  RESPOND, kterou playability neřeší). **Bez zrcadel by bot vybíral akci, kterou server
-  odmítne, a hra by se zasekla.**
+  na začátku `cardPlayability`, tedy jen karty z ruky) a `core/botPolicy.js` (větev
+  RESPOND s kartou z ruky, kterou playability neřeší). **Bez zrcadel by bot vybíral akci,
+  kterou server odmítne, a hra by se zasekla.** Naopak zrcadlo navíc (bot si zakázal
+  zelené karty ze stolu) by mu bralo tahy, které pravidla dovolují.
 
 **Nová identita** — každý hráč má druhou postavu lícem dolů; na začátku svého tahu si ji
 smí vzít místo současné a klesnout na 2 životy (odložená se vymění, příště se smí vrátit).

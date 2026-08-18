@@ -407,6 +407,9 @@ const HighNoonMixin = {
 
     // Smí hráč TUHLE kartu teď zahrát? Želízka omezují jen hráče na tahu – včetně karet
     // zahraných jako reakce v jeho VLASTNÍM tahu (stejný výklad jako u Kazatele, FAQ H2).
+    // Týká se to VÝHRADNĚ karet hraných z RUKY: co už leží na stole, je ve hře, takže
+    // aktivace zelené karty ani zelené Vedle! ze stolu barvou omezené nejsou (volající
+    // se proto ptá jen u karet z ruky – tenhle helper to sám nepozná).
     // Barvu bere přes _effSuit, takže se to skládá s Požehnáním/Prokletím (i když se ty
     // s Želízky nikdy nepotkají – platná událost je vždy jen jedna).
     _suitBlocked(playerIdx, card) {

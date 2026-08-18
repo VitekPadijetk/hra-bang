@@ -35,7 +35,8 @@ function effSuit(state, card) {
 }
 
 // Želízka (přibalená karta): hráč na tahu si po lízání zvolil barvu a v tomhle tahu
-// smí hrát jen karty té barvy – včetně karet zahraných jako reakce ve vlastním tahu.
+// smí hrát jen karty té barvy Z RUKY – včetně karet zahraných jako reakce ve vlastním
+// tahu. Karty už ležící na stole (aktivace zelených, zelené Vedle!) omezené nejsou.
 // Zrcadlí GameState._suitBlocked (logic/highNoon.js).
 function suitBlockedFor(state, playerIdx, card) {
     if (!eventActive(state, 'ZELIZKA') || !card) return false;
