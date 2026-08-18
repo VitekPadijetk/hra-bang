@@ -56,19 +56,26 @@ s tvojí sadou** – u pár karet jsou v oběhu různé překlady.
 | R2 | Odražená střela – limit 1× Bang!/tah | **Nepočítá se do něj.** |
 | R3 | Odražená střela – Barel / Jourdonnais / Slab / Apache Kid | **Chová se jako normální Bang!** → Barel i Jourdonnais mohou kartu zachránit, Slab vyžaduje 2× Vedle!, kárová střela na Apache Kida nemá efekt. |
 | R4 | Odstřelovač – limit a Kazatel | **Počítá se jako zahrání Bang!** (limit i zákaz Kazatele platí). Ubránit se lze **jen 2× Vedle!** – Barel ani Jourdonnais nepomůžou. |
-| R5 | Ruská ruleta – výběr karty | **Hráč si vybírá sám.** Platí **jakákoli karta s efektem Vedle!** – z ruky (Vedle!, Úhyb, u Calamity Janet i Bang!) **i zelená karta ze stolu** (Železný plát, Sombrero, Bible…). Odhod je **povinný**, dobrovolně životy ztratit nejde: klikatelné jsou jen karty Vedle!. Kdo žádnou nemá, má zvýrazněné jen životy (klikne a schytá 2 zásahy). |
+| R5 | Ruská ruleta – výběr karty | **Hráč si vybírá sám.** Platí **jakákoli karta s efektem Vedle!** – z ruky (Vedle!, Úhyb, u Calamity Janet i Bang!, **u Eleny Fuente libovolná karta**) **i zelená karta ze stolu** (Železný plát, Sombrero, Bible…). Odhod je **povinný**, dobrovolně životy ztratit nejde: klikatelné jsou jen karty Vedle!. Kdo žádnou nemá, má zvýrazněné jen životy (klikne a schytá 2 zásahy). |
 | R6 | Vendeta – nová událost na tahu navíc | **Neodkrývá se.** Všechno ostatní na začátku tahu proběhne znovu – **včetně sejmutí na dynamit, který si hráč vyložil v první půlce svého tahu**. |
-| R7 | Opuštěný důl – co jde na balíček | **Všechno, co během kola odejde od hráče** (zahrané karty, odhozy na konci tahu, zaplacené ceny, zničené karty), jde **lícem dolů na dobírací balíček**. Do odhozu dál padají jen karty **odkryté z balíčku** (sejmutí, Lucky Duke, špatně hádaná karta Peyote) a karty vyřazeného hráče. Aby hráči věděli, co bylo zahráno, karta při letu **dosedne lícem nahoru, chvíli vydrží a teprve pak se překlopí na rub** – přesně jako u stolu. |
+| R7 | Opuštěný důl – co jde na balíček | **Úplně všechno, co během kola odejde od hráče**, jde **lícem dolů na dobírací balíček**: zahrané karty, odhozy na konci tahu, zaplacené ceny, zničené karty, šerifova pokuta **i celá pozůstalost vyřazeného hráče a ducha**. Jedinou výjimkou jsou karty **odkryté z balíčku** – viz 2.1. Aby hráči věděli, co bylo zahráno, karta při letu **dosedne lícem nahoru, chvíli vydrží a teprve pak se překlopí na rub** – přesně jako u stolu. |
 | R8 | Peyote vs. postavy měnící lízání | **Peyote přebíjí všechny** (Kit Carlson, Jesse Jones, Pedro Ramirez, Pat Brennan, Black Jack, Claus). |
 | R9 | Pokrevní bratři – dát život hráči na plných životech | **Nelze.** Cílem je jen hráč ve hře se zraněním. |
 | R10 | Duch (Město duchů) vs. FF karty | **Vendeta ano** – duch odhodí celou ruku a začne nový tah zase jako duch (znovu si líže 3). **Fistful of Cards ne** a **Ruská ruleta ne** – duch se jich neúčastní. |
 
-### 2.1 Drobnosti, které z toho vyplynuly (rozhodnu takhle, pokud neřekneš jinak)
+### 2.1 Doplňky (odsouhlaseno)
 
-- **Elena Fuente v Ruské ruletě:** ne. Její schopnost mluví o *zahrání* libovolné karty jako Vedle!; tady se karta odhazuje. Jinak by nikdy neselhala, dokud drží aspoň jednu kartu. (Calamity Janet ano – její Bang! **je** Vedle!.)
-- **Šerifova pokuta za zabití pomocníka** (odhodí celou ruku i stůl) při Opuštěném dole: karty jdou **na balíček** (odcházejí od hráče). Karty **vyřazeného** hráče jdou do odhozu.
-- **Právo západu vs. Kit Carlson:** vynucená je druhá karta, kterou si **nechá**.
-- **Karty odkryté z balíčku se nikdy nevracejí na balíček** – jinak by kontrolní sejmutí táhlo pořád tutéž kartu a dynamit by se stal deterministickým.
+- **Elena Fuente v Ruské ruletě: ano** – smí odhodit libovolnou kartu z ruky. Znamená to, že neselže, dokud drží aspoň jednu kartu.
+- **Právo západu vs. Kit Carlson: ano** – vynucená je druhá karta, kterou si **nechá**.
+- **Opuštěný důl bere úplně všechno od hráčů** – včetně pozůstalosti vyřazeného hráče a odcházejícího ducha. Cinematika vyřazení tím míří na balíček (klient to má na jednom místě, `discardTopPos()`).
+
+**Jediná výjimka, kterou navrhuju ponechat: karty odkryté z balíčku.** Kontrolní sejmutí
+(Dynamit, Vězení, Barel, Vendeta), obě karty Lucky Duka a špatně hádaná karta Peyote by se
+vracely na vrch balíčku, odkud byly právě líznuté – a další kontrola by táhla **tutéž
+kartu**. Během kola s Opuštěným dolem by tak dynamit buď nikdy nevybuchl, nebo vybuchl
+každému (ve fázi lízání se líže z odhozu, takže by se vrch balíčku neprostřídal). Je to
+i praktická pojistka: odhoz se během kola jen vyprazdňuje a tohle je jediné, co ho doplňuje.
+**Tohle je to „dokud je to možné" – když to chceš jinak, řekni a pošlu je na balíček taky.**
 
 ---
 
@@ -335,16 +342,16 @@ vypnuté rozšíření = prázdný balíček. `test/layout.test.js` – `eventPi
 Kvůli R7 je to nejinvazivnější karta rozšíření – má proto vlastní fázi.
 
 **Pravidlo:** ve fázi 1 se líže z odhozu; **všechno, co během kola odejde od hráče, jde
-lícem dolů na dobírací balíček**.
+lícem dolů na dobírací balíček** – včetně pozůstalosti vyřazeného hráče a ducha.
 
-**Server – jeden trychtýř místo 30 volání**
+**Server – jeden trychtýř místo 35 volání**
 - Nový `GameState._discard(...cards)` v `logic.js`: při aktivním dole `deck.cards.push(...)` (vrch balíčku, protože `draw()` popuje z konce), jinak `deck.discardPile.push(...)`.
-- Mechanicky nahradit **~30 z 45** dnešních `deck.discardPile.push(...)`: `logic/play.js` (9), `logic/characters.js` (6 z 9), `logic/response.js` (6), `logic/dodgeCity.js` (3), `logic/combat.js` (1 – Sidova záchrana), `logic.js` (odhoz na konci tahu), `server/handlers.game.js` (3).
-- **Beze změny zůstává** (dál do odhozu): kontrolní karty v `logic/checks.js` (4) a `logic/play.js:326`, obě karty Lucky Duka, špatně hádaná karta Peyote, karty vyřazeného hráče a ducha, vnitřek `logic/entities.js` (míchání).
+- Mechanicky nahradit **~35 z 45** dnešních `deck.discardPile.push(...)`: `logic/play.js` (8 z 9), `logic/characters.js` (7 z 9), `logic/response.js` (6), `logic/dodgeCity.js` (3), `logic/combat.js` (3 – Sidova záchrana, pozůstalost, šerifova pokuta), `logic/highNoon.js` (1 – odchod ducha), `logic.js` (odhoz na konci tahu), `server/handlers.game.js` (3).
+- **Beze změny zůstává** (dál do odhozu, viz 2.1): kontrolní karty v `logic/checks.js` (4) a `logic/play.js:326`, obě karty Lucky Duka (`logic/characters.js`), špatně hádaná karta Peyote a vnitřek `logic/entities.js` (míchání).
 - Lízání: `_getDrawOptions` vrátí `['discard']` a větev `'discard'` v `drawCard` se uvolní i mimo Pedra Ramireze a i pro druhou/třetí kartu (dnes je vázaná na `cardsDrawn === 0`). Prázdný odhoz → **fallback na balíček** (jinak stall).
 
 **Klient – „aby hráči věděli, co bylo zahráno"**
-- `discardTopPos()` v `game.js` je už dnes **jediný cíl všech animací do odhozu** – při aktivním dole vrátí vrch dobíracího balíčku. Tím se přesměrují všechny cesty naráz.
+- `discardTopPos()` v `game.js` je už dnes **jediný cíl všech animací do odhozu** (včetně cinematiky vyřazení) – při aktivním dole vrátí vrch dobíracího balíčku. Tím se přesměrují všechny cesty naráz.
 - Nový doběh letu: karta **dosedne lícem nahoru, vydrží ~900 ms a pak se překlopí na rub** a splyne s hromádkou (`animateCardFlip` už umí obojí). Odpovídá to i fyzické hře: kartu zahraješ lícem nahoru a teprve pak ji dáš lícem dolů na balíček.
 - Fronta animací (`core/animQueue.js`) tím pádem drží stav o ~900 ms déle – doplnit do `ANIM_MS`.
 
@@ -389,7 +396,7 @@ taky; kontrolní karta zůstane v odhozu; prázdný odhoz → líže se z balí�
 #### Ruská ruleta (`RUSKA_RULETA`)
 - **Pravidlo:** při příchodu karty do hry každý od šerifa po směru odhodí kartu s efektem Vedle!; první, kdo nemůže, ztrácí 2 životy a efekt končí. **Kolečko se opakuje**, dokud někdo neselže.
 - **Interaktivní (R5):** nová fáze `ROULETTE_DISCARD`, `pendingRoulette = { queueIdx }`, akce `roulette_discard { fromBoard, cardId | cardIdx }`.
-  - Klikatelné: karty z ruky (`MISSED`, `UHYB`, u Calamity Janet i `BANG`) **a zelené karty na stole s `activate === 'miss'`**.
+  - Klikatelné: karty z ruky (`MISSED`, `UHYB`, u Calamity Janet i `BANG`, **u Eleny Fuente cokoli**) **a zelené karty na stole s `activate === 'miss'`**.
   - Odhod je **povinný** – nic jiného se nezvýrazní, „přeskočit" neexistuje.
   - Kdo nemá žádnou, dostane zvýrazněné **jen životy** → klik = 2 zásahy.
 - **Zásahy:** recykluje se klikací fáze dynamitu – `pendingDynamiteDamage = { playerIdx, hitsLeft: 2, source: 'ROULETTE', resume: 'BEGIN_TURN' }`. Tím zdarma funguje záchrana Pivem i Sidem, guard, klient i bot; mění se jen popisek a to, kam se po dobrání pokračuje.
