@@ -3,7 +3,15 @@
 Druhý balíček událostí vedle High Noon. Pracovní plán – až bude hotovo, podstatné části
 se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 
-**Stav:** výklady pravidel odsouhlaseny (verze 2), čeká se na start implementace.
+**Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · další na řadě je
+Fáze 2 (Léčka, Laso, Soudce). Výklady pravidel viz sekce 2.
+
+Odchylky od plánu, které vyplynuly z implementace:
+- **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
+  (řada rozdaných karet zdola, karty horního soupeře shora) – omezení se kříží o 5 px.
+  Rozdíl se dělí na půl, takže na obou stranách zůstává necelý 3px překryv (`EVENT_STORE_SLACK`).
+- **Claus si líže celou fázi jedním klikem** na balíček (při 8 hráčích by jinak klikal
+  devětkrát) a rozdává pak z ruky – u stolu je to totéž, karty už nikdo nerozezná.
 
 ---
 
