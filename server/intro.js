@@ -3,6 +3,11 @@
 // Factory installIntroService(ctx): bere { io, broadcastRoom } z ctx a vystaví
 // emit*/runIntroSequence/introStart*Phase zpět na ctx. Bez listenu.
 const { firstPlayerIndex } = require('../core/roles.js');
+// Délka míchací animace na klientu (view/intro.js _animateIntroShuffle). Sdílený
+// vzorec – bez něj se rozdávání rozjelo dřív, než míchání doběhlo (8 hráčů = 16 karet).
+const { shuffleDurationMs } = require('../core/shuffleAnim.js');
+// Rezerva na síť a dojezd posledního tweenu, než se rozjede další beat.
+const SHUFFLE_PAD_MS = 350;
 
 module.exports = function installIntroService(ctx) {
     const { io, broadcastRoom } = ctx;
@@ -66,8 +71,9 @@ module.exports = function installIntroService(ctx) {
         emitIntro(room, {
             sub: 'init', playerCount: n, nextGame: true,
             roleCount: n,
-            // Balíček postav bez postav přeživších (ti si je drží na stole).
-            charCount: Math.max(0, (n - survivors.length) * 2),
+            // Na stole leží celý balíček postav bez těch, které si drží přeživší.
+            // (Fallback na „dvě na hráče" pro stavy bez poolu – testy s fake GameState.)
+            charCount: Math.max((n - survivors.length) * 2, charPoolCount(gs) - survivors.length),
             deckCount: gs.deck.cards.length,
             hnCount: gs.eventDeck?.length || 0,
             survivors,
@@ -128,7 +134,7 @@ module.exports = function installIntroService(ctx) {
         // Fáze 1: míchání rolí
         emitIntro(room, { sub: 'shuffle_roles', roleCount });
 
-        const roleShuffleDelay = Math.max(2400, 1200 + roleCount * 180);
+        const roleShuffleDelay = shuffleDurationMs(roleCount) + SHUFFLE_PAD_MS;
         setTimeout(() => {
             // Fáze 2: rozdávání rolí
             emitIntro(room, { sub: 'deal_roles', order: roleOrder });
@@ -166,6 +172,13 @@ module.exports = function installIntroService(ctx) {
         }, roleShuffleDelay);
     }
 
+    // Kolik postav je vůbec k dispozici (základ 16, s Dodge City 31). Míchá se CELÝ
+    // balíček postav, ne jen tolik karet, kolik se rozdá – zbytek pak jako celek odletí
+    // ze stolu (view/intro.js _introFlyAwayCharDeck).
+    function charPoolCount(gs) {
+        try { return gs._characterPool(gs.options || {}).length || 0; } catch (e) { return 0; }
+    }
+
     function introStartCharPhase(room) {
         const gs = room.gameState;
         const n = room.players.length;
@@ -176,7 +189,9 @@ module.exports = function installIntroService(ctx) {
         const keepers = room._introKeepers || new Set();
         const charOrder = Array.from({ length: n }, (_, k) => (sheriffIdx + k) % n)
             .filter(idx => !keepers.has(idx));
-        const charCount = charOrder.length * 2;
+        // Míchá se celý balíček postav (bez těch, které si přeživší nechali). Rozdají se
+        // z něj dvě na hráče; při 8 hráčích bez rozšíření vyjde přesně 16 a nezbude nic.
+        const charCount = Math.max(charOrder.length * 2, charPoolCount(gs) - keepers.size);
 
         ctx.glog.system(`[INTRO] Char phase (${charOrder.length}/${n} hráčů vybírá)`);
 
@@ -191,7 +206,7 @@ module.exports = function installIntroService(ctx) {
 
         emitIntro(room, { sub: 'shuffle_chars', charCount });
 
-        const charShuffleDelay = Math.max(3100, 1500 + charCount * 115);
+        const charShuffleDelay = shuffleDurationMs(charCount) + SHUFFLE_PAD_MS;
         setTimeout(() => {
             emitIntro(room, { sub: 'deal_chars', order: charOrder });
 
@@ -223,8 +238,9 @@ module.exports = function installIntroService(ctx) {
     // vrchní karta a ukáže se (Pravé poledne), pak se zbytek zamíchá vedle ní (~4,0 s pro
     // N=12) a nakonec se odložená karta zasune zespodu pod hromádku.
     const HN_TOP_MS = 2100;      // let 620 ms + výdrž, ať si ji stůl přečte
-    const HN_SHUFFLE_MS = 4300;
-    const HN_BOTTOM_MS = 1300;
+    const HN_BOTTOM_MS = 1500;   // překlopení + dolet POD balíček + zasunutí zespodu
+    // Pravé poledne leží odložené vedle, míchá se zbytek (hnCount − 1).
+    const hnShuffleMs = (hnCount) => shuffleDurationMs(Math.max(1, hnCount - 1)) + SHUFFLE_PAD_MS;
 
     function introStartDeckPhase(room) {
         const gs = room.gameState;
@@ -250,19 +266,19 @@ module.exports = function installIntroService(ctx) {
         setTimeout(() => {
             emitIntro(room, { sub: 'shuffle_deck', deckCount });
 
-            // Délka míchací animace balíčku na klientu (_animateIntroShuffle, N=80 ~5.4s).
+            // Délka míchací animace balíčku na klientu (_animateIntroShuffle).
             // Rozdávat se začne AŽ PO zamíchání, ne během něj.
-            const deckShuffleDelay = 5400;
+            const deckShuffleDelay = shuffleDurationMs(deckCount) + SHUFFLE_PAD_MS;
             setTimeout(() => {
                 // Rozšíření High Noon: šerif sejme z kompletního balíčku vrchní kartu
                 // (Pravé poledne, ukáže se vedle), zbytek zamíchá a odloženou kartu dá
                 // vespod. Bez rozšíření je hnCount 0 a beaty se úplně přeskočí.
                 const hnCount = gs.eventDeck?.length || 0;
-                const hnDelay = hnCount ? (HN_TOP_MS + HN_SHUFFLE_MS + HN_BOTTOM_MS) : 0;
+                const hnDelay = hnCount ? (HN_TOP_MS + hnShuffleMs(hnCount) + HN_BOTTOM_MS) : 0;
                 if (hnCount) {
                     emitIntro(room, { sub: 'highnoon_top', hnCount });
                     setTimeout(() => emitIntro(room, { sub: 'shuffle_highnoon', hnCount }), HN_TOP_MS);
-                    setTimeout(() => emitIntro(room, { sub: 'highnoon_bottom' }), HN_TOP_MS + HN_SHUFFLE_MS);
+                    setTimeout(() => emitIntro(room, { sub: 'highnoon_bottom' }), HN_TOP_MS + hnShuffleMs(hnCount));
                 }
                 setTimeout(() => {
                 emitIntro(room, { sub: 'deal_cards', order: cardOrder });

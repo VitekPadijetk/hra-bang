@@ -26,6 +26,7 @@ socket.on('intro_phase', (data) => {
     App.myIntroIndex = data.myIndex;
 
     if (sub === 'init') {
+        App.introDoneToken++;          // zruš odložený úklid spritů z minulého intra
         App.introRoleOkSent = false;
         App.introExpected = false;
         App.discardBorderShown = false;   // ohraničení odhozu se příště plynule objeví
@@ -135,8 +136,9 @@ socket.on('intro_phase', (data) => {
         if (!isMine && data.role) {
             _introPlacePublicRole(toIdx, data.role);
         } else if (!isMine) {
-            const toPos = _getIntroPlayerPos(toIdx, myIdx, _introState.playerCount);
-            _introAnimCard(INTRO_ROLE_DECK.x, INTRO_ROLE_DECK.y, toPos.x, toPos.y, 'role_card_back', 380);
+            // Karta se cestou natočí do orientace hráče a hned pokračuje ZA okraj
+            // jeviště (bere si ji do ruky) – dřív se bez otočení rozplynula na sedačce.
+            _introDealRoleAway(toIdx, myIdx, _introState.playerCount);
         }
         _introState.roleCount = Math.max(0, _introState.roleCount - 1);
         renderUI();
@@ -184,7 +186,7 @@ socket.on('intro_phase', (data) => {
             _introAnimCard(INTRO_CHAR_DECK.x, INTRO_CHAR_DECK.y, toPos.x, toPos.y, 'lives', 380);
             setTimeout(() => {
                 _introAnimCard(INTRO_CHAR_DECK.x, INTRO_CHAR_DECK.y, toPos.x, toPos.y, 'lives', 380);
-            }, 200);
+            }, INTRO_CHAR_DEAL_GAP);
         }
         _introState.charCount = Math.max(0, _introState.charCount - 2);
         renderUI();
@@ -196,7 +198,9 @@ socket.on('intro_phase', (data) => {
         _introState.myCharChoices = null;
         _introState.myCharSelected = null;
         _introState.myCharPreselect = null;
-        renderUI();
+        // Nerozdané postavy odletí jako celek pryč ze stolu (při 8 hráčích bez
+        // rozšíření balíček došel a neodlétá nic). renderUI zavolá sama.
+        _introFlyAwayCharDeck();
         // Slide-in bloku lives+char pro ostatni hrace
         if (gameScene && state && state.players) {
             state.players.forEach((p, idx) => {
@@ -232,7 +236,8 @@ socket.on('intro_phase', (data) => {
                         if (livesSp?.active) livesSp.destroy();
                         // Ulož jako trvalou kartu, ať po doletu nezmizí
                         if (_introState) _introState.placedCards.push(
-                            { tex: 'lives', x: livesEndX, y: livesEndY, scale: oppScale, angle, depth: 21, key: 'lives:' + idx }
+                            { tex: 'lives', x: livesEndX, y: livesEndY, scale: oppScale, angle, depth: 21,
+                              key: 'lives:' + idx, rl: { kind: 'oppLives', idx, hp: health } }
                         );
                         renderUI();
                     }
@@ -250,10 +255,12 @@ socket.on('intro_phase', (data) => {
                         // Ulož jako trvalou kartu + jmenovku, ať po doletu nezmizí.
                         if (_introState) {
                             _introState.placedCards.push(
-                                { tex: charTex, x: charEndX, y: charEndY, scale: oppScale, angle, depth: 23, key: 'char:' + idx }
+                                { tex: charTex, x: charEndX, y: charEndY, scale: oppScale, angle, depth: 23,
+                                  key: 'char:' + idx, rl: { kind: 'oppChar', idx, hp: health } }
                             );
                             _introState.placedCards.push(
-                                { text: p.name, x: NAME_X, y: NAME_Y, style: OPP_NAME_STYLE, depth: 50, key: 'name:' + idx }
+                                { text: p.name, x: NAME_X, y: NAME_Y, style: OPP_NAME_STYLE, depth: 50,
+                                  key: 'name:' + idx, rl: { kind: 'oppName', idx, hp: health } }
                             );
                         }
                         renderUI();
@@ -275,7 +282,8 @@ socket.on('intro_phase', (data) => {
                         onComplete: () => {
                             if (starSp?.active) starSp.destroy();
                             if (_introState) _introState.placedCards.push(
-                                { tex: 'sheriff_star', x: starEndX, y: starEndY, scale: starScale, angle, depth: 24, key: 'star:' + idx }
+                                { tex: 'sheriff_star', x: starEndX, y: starEndY, scale: starScale, angle, depth: 24,
+                                  key: 'star:' + idx, rl: { kind: 'oppStar', idx, hp: health } }
                             );
                             renderUI();
                         }
@@ -290,8 +298,9 @@ socket.on('intro_phase', (data) => {
                 && !_introState.myNamePlaced) {
                 _introState.myNamePlaced = true;
                 _introState.placedCards.push({
-                    text: state.players[myIndex].name, x: 850, y: 1115, depth: 50,
-                    key: 'name:' + myIndex,
+                    text: state.players[myIndex].name,
+                    x: MY_ROLE_X(), y: MY_ROLE_Y() + currentLayout().myNameOffY, depth: 50,
+                    key: 'name:' + myIndex, rl: { kind: 'myName' },
                     style: { fontSize: '20px', color: '#cccccc',
                         backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 7, y: 4 } },
                 });
@@ -382,9 +391,10 @@ socket.on('intro_phase', (data) => {
             // zasune s hloubkou POD statickými vrstvami. Bez druhého kroku dosedala
             // rovnou na místo balíčku s depth 800 (tj. nad hromádkou) a vypadalo to,
             // že ji šerif dává navrch.
-            // Doletí VÝRAZNĚ pod balíček (karta je 150 px vysoká, takže se s ním kryje
-            // jen posledními ~30 px) – teprve odtud se do něj zespodu zasune.
-            const underY = INTRO_HN_DECK.y + 120;
+            // Doletí ÚPLNĚ pod balíček – karta je 150 px vysoká (0,30 × 500), takže se
+            // s hromádkou nesmí krýt ani horním okrajem, jinak to vypadá, že ji šerif
+            // dává doprostřed. Teprve odtud se do balíčku zespodu zasune.
+            const underY = INTRO_HN_DECK.y + 500 * 0.30 + 24;
             _introAnimCardFlip(INTRO_HN_ASIDE.x, INTRO_HN_ASIDE.y, INTRO_HN_DECK.x, underY,
                 tex, 'hn_back', 560,
                 () => {
@@ -395,7 +405,7 @@ socket.on('intro_phase', (data) => {
                         .setScale(0.30).setDepth(5);
                     if (gameScene.introSprites) gameScene.introSprites.add(sp);
                     gameScene.tweens.add({
-                        targets: sp, y: INTRO_HN_DECK.y + 1.5, duration: 420, ease: 'Cubic.easeInOut',
+                        targets: sp, y: INTRO_HN_DECK.y + 1.5, duration: 540, ease: 'Cubic.easeInOut',
                         onComplete: () => { if (sp.active) sp.destroy(); _hnBottomDone(); }
                     });
                 },
@@ -422,10 +432,10 @@ socket.on('intro_phase', (data) => {
             && gameScene && gameScene.textures.exists('colt_.45')) {
             _introState.coltShown = true;
             // Shodné s herním renderem (drawMyArea): první slot stolu = roleX − boardCardW.
-            const _cl = currentLayout();
-            const coltScale = _cl.scaleMe;
-            const coltX = _cl.livesX + _cl.roleOffX - (325 * coltScale + _cl.boardGap);   // 723
-            const coltY = _cl.myBaseY;                                                    // 970
+            const _cp = _introColtPos();
+            const coltScale = _cp.scale;
+            const coltX = _cp.x;   // 723
+            const coltY = _cp.y;   // 970
             const colt = gameScene.add.image(coltX, coltY, 'colt_.45')
                 .setScale(coltScale).setAlpha(0).setDepth(24);
             if (gameScene.introSprites) gameScene.introSprites.add(colt);
@@ -434,7 +444,8 @@ socket.on('intro_phase', (data) => {
                 onComplete: () => {
                     if (colt?.active) colt.destroy();
                     if (_introState) _introState.placedCards.push(
-                        { tex: 'colt_.45', x: coltX, y: coltY, scale: coltScale, depth: 24 }
+                        { tex: 'colt_.45', x: coltX, y: coltY, scale: coltScale, depth: 24,
+                          key: 'colt', rl: { kind: 'colt' } }
                     );
                     renderUI();
                 }
@@ -450,7 +461,8 @@ socket.on('intro_phase', (data) => {
                 // ve správném pořadí); ostatním zůstávají rubem (tajná ruka).
                 const place = (tex) => () => {
                     if (_introState) _introState.placedCards.push(
-                        { tex, x: rest.x, y: rest.y, scale: rest.scale, angle: rest.angle, depth: 24 }
+                        { tex, x: rest.x, y: rest.y, scale: rest.scale, angle: rest.angle, depth: 24,
+                          rl: { kind: 'hand', idx: toIdx, slot: i, count: data.count } }
                     );
                     renderUI();
                 };
@@ -480,9 +492,12 @@ socket.on('intro_phase', (data) => {
                         // (nedestruujeme ho → žádné prázdné místo). INTRO_PLAY_DECK i
                         // herní balíček mají y=540, takže jde jen o vodorovný posun.
                         _introState.deckMoving = true;
-                        const layers = Math.max(1, Math.min(_introState.deckCount || 0, 80));
-                        const pxPerCard = 0.25;   // tenčí hromádka jako herní/intro balíček
-                        const topY = INTRO_PLAY_DECK.y - (layers - 1) * pxPerCard / 2;
+                        const _deckN = _introState.deckCount || 0;
+                        const layers = shuffleLayers(_deckN);
+                        const pxPerCard = INTRO_PILE_PX;   // tenčí hromádka jako herní/intro balíček
+                        // Vrch se počítá ze SKUTEČNÉHO počtu (jako drawDrawPiles) – jinak
+                        // by balíček s rozšířeními (>80 karet) po přechodu do hry poskočil.
+                        const topY = _introStackTopY(INTRO_PLAY_DECK.y, _deckN);
                         const movers = [];
                         for (let k = layers - 1; k >= 0; k--) {
                             // Nejvyšší karta (k=0) navrchu – shodně se statickým balíčkem.
@@ -495,10 +510,11 @@ socket.on('intro_phase', (data) => {
                         // Balíček událostí High Noon jede na svou herní pozici zároveň
                         // (oba se posouvají doleva, takže se nekříží).
                         const hnMovers = [];
-                        const hnLayers = Math.max(0, Math.min(_introState.hnCount || 0, 80));
+                        const _hnN = _introState.hnCount || 0;
+                        const hnLayers = _hnN > 0 ? shuffleLayers(_hnN) : 0;
                         if (hnLayers > 0) {
                             _introState.hnMoving = true;
-                            const hnTopY = INTRO_HN_DECK.y - (hnLayers - 1) * pxPerCard / 2;
+                            const hnTopY = _introStackTopY(INTRO_HN_DECK.y, _hnN);
                             const hnTex = gameScene.textures.exists('hn_back') ? 'hn_back' : 'card_back';
                             for (let k = hnLayers - 1; k >= 0; k--) {
                                 const img = gameScene.add.image(
@@ -526,8 +542,13 @@ socket.on('intro_phase', (data) => {
     }
 
     else if (sub === 'done') {
-        _clearIntroSprites();
+        // Deska se vykreslí až s room_update, který jde frontou animací – kdyby se
+        // zaparkované intro sprity (balíčky na herní pozici) uklidily hned, byla by
+        // mezi tím na jejich místě díra a přechod do hry viditelně blikl. Leží přesně
+        // tam, kam je kreslí deska, takže se o pár set ms navíc nic nepozná.
         _introState = null;
+        const _tok = ++App.introDoneToken;
+        setTimeout(() => { if (App.introDoneToken === _tok) _clearIntroSprites(); }, 600);
     }
 });
 
@@ -1941,6 +1962,11 @@ socket.on('reshuffle_anim', ({ cardCount, proactive, topCardId }) => {
     App.blockInput = true;
     App.reshuffleIsProactive = proactive === true;
 
+    // Karty, které se do balíčku vracejí – odspodu nahoru, jak leží v odhozu. Cinematika
+    // je posbírá LÍCEM NAHORU (odhoz je lícem nahoru) a přetočí celou hromádku najednou;
+    // bez nich by se sbíraly rubem a přetočení by nebylo poznat. Musí se sejmout DŘÍV,
+    // než se odhoz ořízne na vrchní kartu.
+    let faceIds = null;
     if (state?.deck) {
         let topCard = null;
         if (topCardId !== null && topCardId !== undefined) {
@@ -1948,6 +1974,9 @@ socket.on('reshuffle_anim', ({ cardCount, proactive, topCardId }) => {
         } else if (state.deck.discardPile.length > 0) {
             topCard = state.deck.discardPile[state.deck.discardPile.length - 1];
         }
+        faceIds = state.deck.discardPile
+            .filter(c => !topCard || c.id !== topCard.id)
+            .map(c => c.id);
         state.deck.discardPile = topCard ? [topCard] : [];
     }
     renderUI();
@@ -1956,6 +1985,7 @@ socket.on('reshuffle_anim', ({ cardCount, proactive, topCardId }) => {
     // aby to bylo v obou případech vizuálně i délkou totéž míchání. onDone odemkne UI
     // u proaktivního zamíchání, kde broadcast dorazil hned na začátku animace.
     playReshuffleCinematic(cardCount, {
+        faceIds,
         onDone: () => {
             if (App.reshuffleIsProactive) {
                 App.blockInput = false;

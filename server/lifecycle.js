@@ -100,7 +100,12 @@ module.exports = function installLifecycle(ctx) {
         // intro_phase 'init' musi prijet AZ PO room_update (jinak roomPhase stale 'lobby')
         setTimeout(() => {
             // hnCount: balíček událostí (High Noon) leží na stole od začátku intra.
+            // charCount: na stole leží CELÝ balíček postav (základ 16, s Dodge City 31) –
+            // zamíchá se celý a nerozdaný zbytek pak odletí (view/intro.js).
+            let _charCount = room.players.length * 2;
+            try { _charCount = gs._characterPool(gs.options || {}).length || _charCount; } catch (e) {}
             emitIntro(room, { sub: 'init', playerCount: room.players.length,
+                              charCount: _charCount,
                               hnCount: gs.eventDeck?.length || 0 });
             runIntroSequence(room);
         }, 50);

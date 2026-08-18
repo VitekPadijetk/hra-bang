@@ -158,6 +158,61 @@ test('introStartCharPhase v klasické hře rozdá postavy všem (keepers prázdn
     assert.equal(sh.payload.charCount, 6);
 });
 
+// Míchá se CELÝ balíček postav (základ 16, s Dodge City 31), ne jen tolik karet,
+// kolik se rozdá – zbytek pak na klientu odletí ze stolu jako celek.
+test('introStartCharPhase zamíchá celý balíček postav, ne jen rozdávané karty', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0'); addSocket('s1'); addSocket('s2');
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    const room = mkNextGameRoom();
+    room.gameState.players[0]._awaitingKeepChoice = false;
+    room.gameState.options = {};
+    room.gameState._characterPool = () => new Array(16).fill('X');
+
+    ctx.introStartCharPhase(room);
+    const sh = emits.find(e => e.scope === 'socket:s0' && e.payload?.sub === 'shuffle_chars');
+    assert.equal(sh.payload.charCount, 16);
+});
+
+test('introStartCharPhase: balíček postav je bez těch, které si přeživší nechali', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0'); addSocket('s1'); addSocket('s2');
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    const room = mkNextGameRoom();
+    room.gameState.players[0].character = 'Willy the Kid';
+    room.gameState.options = { expansions: { dodge_city: true } };
+    room.gameState._characterPool = () => new Array(31).fill('X');
+    room._introKeepers = new Set([0]);
+
+    ctx.introStartCharPhase(room);
+    const sh = emits.find(e => e.scope === 'socket:s0' && e.payload?.sub === 'shuffle_chars');
+    assert.equal(sh.payload.charCount, 30);
+});
+
+// 8 hráčů bez rozšíření: 16 postav, 8×2 rozdáno – balíček dojde a nezbude nic, co by
+// mělo odletět. Klient na to spoléhá (_introFlyAwayCharDeck).
+test('introStartCharPhase: 8 hráčů bez rozšíření vyčerpá balíček postav beze zbytku', () => {
+    const { io, addSocket, emits } = mkIo();
+    const players = [];
+    const gsPlayers = [];
+    for (let i = 0; i < 8; i++) {
+        addSocket('s' + i);
+        players.push({ socketId: 's' + i, playerIdx: i, name: 'P' + i });
+        gsPlayers.push({ role: i === 0 ? 'Sheriff' : 'Outlaw', charChoices: ['A', 'B'] });
+    }
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    const room = {
+        id: 'game1', players,
+        gameState: { players: gsPlayers, options: {}, _characterPool: () => new Array(16).fill('X') },
+    };
+    ctx.introStartCharPhase(room);
+    const sh = emits.find(e => e.scope === 'socket:s0' && e.payload?.sub === 'shuffle_chars');
+    assert.equal(sh.payload.charCount, 16);   // 8 × 2 = přesně celý balíček
+});
+
 test('emitIntroRole pošle roli soukromě jen danému hráči', () => {
     const { io, addSocket, emits } = mkIo();
     addSocket('s0'); addSocket('s1');

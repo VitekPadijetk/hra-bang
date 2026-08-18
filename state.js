@@ -81,8 +81,15 @@ const App = {
     discardAnimHideId: null,
     // Colt .45 na mém stole: kreslí se právě teď? + kdy začal jeho fade-in (0 = nefaduje).
     // Slouží k plynulému objevení Coltu na místě sebrané/zničené zbraně (view/board.js).
-    coltVisible: false,
+    // null = deska se ještě nekreslila (Colt se pak neobjevuje fade-inem, viz board.js)
+    coltVisible: null,
     coltFadeStart: 0,
+    // Rozsvícení postavy hráče na tahu se plynule nafaduje; drží se čas změny tahu.
+    lastCurrentIdx: null,
+    turnTintStart: 0,
+    // Odložený úklid intro spritů po 'done' (net/handlers.js) – token proti tomu, aby
+    // vyprchal do už rozjetého NOVÉHO intra.
+    introDoneToken: 0,
     // Posun postavy po kartě životů při zásahu/vyléčení (playerIdx -> { fromHealth,
     // sprite }). board.js rozjede plovoucí postavu ze staré pozice na novou.
     healthAnims: {},

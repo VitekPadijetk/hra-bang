@@ -28,8 +28,43 @@ function registerVeraPortrait(sprite, player, getCharTex) {
     });
 }
 
+// ── Rozsvícení hráče na tahu ─────────────────────────────────────────────────
+// Postava hráče, který je na tahu, je zeleně obarvená. Naskočit naráz vypadalo tvrdě
+// (nejvíc na startu hry, kdy se šerif rozsvítil ve stejný okamžik, jako se objevila
+// deska), takže se obarvení plynule nafaduje z neobarvené karty. Fade je vázaný na
+// ČAS změny tahu (App.turnTintStart), ne na sprite – renderUI karty vytváří znovu při
+// každém překreslení, takže by tween jinak pokaždé začínal od nuly.
+const TURN_TINT = 0x88ff88;
+const TURN_TINT_MS = 420;
+
+function _turnTintAt(t) {
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.IntegerToColor(0xffffff),
+        Phaser.Display.Color.IntegerToColor(TURN_TINT),
+        100, Math.max(0, Math.min(100, Math.round(t * 100))));
+    return Phaser.Display.Color.GetColor(c.r, c.g, c.b);
+}
+
+function applyTurnTint(sprite) {
+    if (!sprite) return;
+    const t0 = App.turnTintStart || 0;
+    const el = t0 ? Date.now() - t0 : TURN_TINT_MS;
+    if (el >= TURN_TINT_MS) { sprite.setTint(TURN_TINT); return; }
+    sprite.setTint(_turnTintAt(el / TURN_TINT_MS));
+    gameScene.tweens.addCounter({
+        from: el, to: TURN_TINT_MS, duration: TURN_TINT_MS - el, ease: 'Sine.easeOut',
+        onUpdate: (tw) => { if (sprite.active) sprite.setTint(_turnTintAt(tw.getValue() / TURN_TINT_MS)); },
+    });
+}
+
 function renderGameBoard() {
     const isSpectator = myIndex === null && !!state;
+
+    // Změna hráče na tahu → jeho postava se rozsvítí plynule (applyTurnTint).
+    if (state && App.lastCurrentIdx !== state.currentPlayerIndex) {
+        App.lastCurrentIdx = state.currentPlayerIndex;
+        App.turnTintStart = Date.now();
+    }
 
     // Reflow slide: v tomto renderu si značíme, které karty jsme viděli (App._cardSeen),
     // po dokreslení desky (pruneCardSlides) se nepoužité klíče uklidí.
@@ -320,6 +355,12 @@ function resetBoardSlides() {
     }
     App.cardSlides = {};
     App.cardHome = {};
+    // Deska začíná „od nuly": Colt .45 ani zvýraznění hráče na tahu nesmí naskočit
+    // fade-inem/rozsvícením – z intra už oboje na svém místě je.
+    App.coltVisible = null;
+    App.coltFadeStart = 0;
+    App.lastCurrentIdx = null;
+    App.turnTintStart = 0;
     for (const idx in App.healthAnims) {
         const spr = App.healthAnims[idx]?.sprite;
         if (spr?.active) spr.destroy();
@@ -698,7 +739,7 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isCurrent) charOpp.setTint(0x88ff88);
+            if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
@@ -769,7 +810,7 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX, livesCY + bulletH * player.health, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isCurrent) charOpp.setTint(0x88ff88);
+            if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
@@ -839,7 +880,7 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX - bulletH * player.health, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isCurrent) charOpp.setTint(0x88ff88);
+            if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
@@ -923,7 +964,7 @@ function drawCompactOpponent(ctx) {
 
     let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
         .setScale(scaleOpp).setAngle(angle);
-    if (isCurrent) charOpp.setTint(0x88ff88);
+    if (isCurrent) applyTurnTint(charOpp);
     else if (isWaiting) charOpp.setTint(waitTint);
     addCharInteraction(charOpp);
     gameScene.cardsSprites.add(charOpp);
@@ -1182,8 +1223,10 @@ function drawMyArea(ctx) {
         // nebo jsem ji vyměnil) – bez fade-inu na tom místě jen problikne. Fázi fade-inu
         // počítáme z času, protože renderUI kreslí sprite znovu při každém snímku (tween od
         // nuly by se tak pořád restartoval a Colt by blikal dál).
+        // `null` = deska se kreslí poprvé (start hry po intru) – Colt na ní už leží
+        // z intra, takže se NEfaduje. Fade patří jen skutečné výměně zbraň → Colt.
         const _coltNow = myBoardCards.some(c => c._isColt);
-        if (_coltNow && !App.coltVisible) App.coltFadeStart = Date.now();
+        if (_coltNow && App.coltVisible === false) App.coltFadeStart = Date.now();
         App.coltVisible = _coltNow;
 
         const myCardW = 325 * scaleMe;

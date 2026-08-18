@@ -279,7 +279,13 @@ if (typeof window !== 'undefined') {
     let _resizeTimer = null;
     const onViewportChange = () => {
         clearTimeout(_resizeTimer);
-        _resizeTimer = setTimeout(() => { applyStage(); if (gameScene) renderUI(); }, 120);
+        _resizeTimer = setTimeout(() => {
+            applyStage();
+            // Intro si umístěné karty drží jako hotové souřadnice (placedCards), takže
+            // se na nový profil musí přepočítat – ve hře to renderGameBoard dělá samo.
+            if (typeof _introRelayoutPlaced === 'function') _introRelayoutPlaced();
+            if (gameScene) renderUI();
+        }, 120);
     };
     window.addEventListener('resize', onViewportChange);
     window.addEventListener('orientationchange', onViewportChange);
@@ -800,17 +806,24 @@ function getCardTex(cardId) {
 }
 
 // ── MÍCHACÍ CINEMATIKA BALÍČKU ───────────────────────────────────────────────
-// Karty se slijí z odhozu doprostřed, rozdělí se na dvě hromádky, prostřídají (riffle),
-// srovnají a odletí na balíček (+ záblesk). SDÍLENÁ: klasické domíchání (reshuffle_anim
-// v net/handlers.js) i hokynářství, kde běží ve zvednuté poloze (opts.liftY) – jinak
-// naprosto stejná animace i délka, ať to hráč pozná jako totéž míchání.
-// opts.liftY   – o kolik pixelů výš (Hokynářství zvedá oba balíčky, App.storePileLiftY).
+// Odhoz se posbírá doprostřed stolu, CELÁ hromádka se přetočí lícem dolů, zarovná
+// se, prostřídá (riffle – přesně to samé míchání jako v intru, core/shuffleAnim.js)
+// a odletí na balíček. SDÍLENÁ: klasické domíchání (reshuffle_anim v net/handlers.js)
+// i hokynářství, kde běží ve zvednuté poloze (opts.liftY) – jinak naprosto stejná
+// animace i délka, ať to hráč pozná jako totéž míchání.
+// opts.liftY     – o kolik pixelů výš (Hokynářství zvedá oba balíčky, App.storePileLiftY).
 // opts.depthBase – základ depth letících karet (řadí se i mezi sebou při riffle).
-// opts.onDone  – zavolá se po RESHUFFLE_ANIM_MS, kdy je míchání vizuálně hotové.
+// opts.faceIds   – ID karet odhozu odspodu nahoru; hromádka se pak sbírá LÍCEM NAHORU
+//                  a přetočení je vidět. Bez nich se sbírá rubem (hokynářství, kde už
+//                  je odhoz ve stavu zamíchaný).
+// opts.onDone    – zavolá se po RESHUFFLE_ANIM_MS, kdy je míchání vizuálně hotové.
 // Stav (blockInput, skrytí balíčku, ořez odhozu) si řídí volající – tohle je jen animace.
 // RESHUFFLE_ANIM_MS MUSÍ sedět se serverem (server/anim.js _reshuffleBlockUntil = 5700),
 // který o stejnou dobu odkládá boty i broadcast.
 const RESHUFFLE_ANIM_MS = 5700;
+// Riffle se musí vejít mezi sběr a odlet na balíček, takže je hutnější než v intru
+// (kde má balíček celou scénu pro sebe). Délka vyjde skoro stejná pro 5 i 80 karet.
+const RESHUFFLE_RIFFLE = { riffleMs: 1700, perCardMin: 12, perCardMax: 400 };
 function playReshuffleCinematic(cardCount, opts = {}) {
     const finish = () => { if (opts.onDone) opts.onDone(); };
     if (!gameScene) { setTimeout(finish, 0); return; }
@@ -820,117 +833,144 @@ function playReshuffleCinematic(cardCount, opts = {}) {
     const cx = GAME_W / 2, cy = GAME_H / 2 - 60 - lift;
     const srcX = DISCARD_X, srcY = DISCARD_Y - lift;
     const dstX = DECK_X,    dstY = DECK_Y - lift;
-    const N = Math.min(cardCount, 24);
-    const SCALE = 0.28;
-    const CARD_W = 325 * SCALE, CARD_H = 500 * SCALE;
-    const allSprites = [];
+    const N = shuffleLayers(cardCount);
+    const SCALE = PILE_SCALE;
+    const CARD_W = 325 * SCALE;
+    const px = PILE_PX_PER_CARD;
+    const faceIds = opts.faceIds || null;
 
+    // Časová osa: sběr → přetočení → zarovnání → riffle → odlet na balíček.
+    const GATHER_MS  = 1150, GATHER_FLY = 420;
+    const FLIP_AT    = 1330, FLIP_MS = 200;      // 200 dovnitř + 200 ven
+    const SQUARE_AT  = 1850, SQUARE_MS = 300;
+    const RIFFLE_AT  = 2200;
+    const FLY_MS     = 560;
+    const riffleSettle = shuffleSettleMs(N, RESHUFFLE_RIFFLE);
+    const flyAt = Math.min(RIFFLE_AT + riffleSettle + 120, RESHUFFLE_ANIM_MS - FLY_MS - 60);
+
+    // Sběr: karty leží na odhozu jako hromádka a po jedné se přenesou doprostřed.
+    // Dosednou lehce rozházené – teprve zarovnání z nich udělá srovnaný balíček.
+    const srcTop = srcY - (N - 1) * px / 2;
+    const gatherTop = cy - (N - 1) * px / 2;
+    const sprites = [];
+    const gatherStagger = N > 1 ? (GATHER_MS - GATHER_FLY) / (N - 1) : 0;
     for (let i = 0; i < N; i++) {
-        const sp = gameScene.add.image(srcX, srcY, 'card_back')
-            .setScale(SCALE * 0.01).setDepth(D0 + i).setAlpha(0);
-        allSprites.push(sp);
+        // i = 0 je spodní karta hromádky (leží na odhozu nejníž a bere se první).
+        const tex = faceIds ? getCardTex(faceIds[i]) : 'card_back';
+        const sp = gameScene.add.image(srcX, srcTop + (N - 1 - i) * px, tex)
+            .setScale(SCALE).setDepth(D0 + i);
+        sprites.push(sp);
         gameScene.tweens.add({
             targets: sp,
-            x: cx, y: cy,
-            scaleX: SCALE, scaleY: SCALE,
-            alpha: 1,
-            duration: 480,
-            delay: i * 18,
-            ease: 'Power2'
+            x: cx + (Math.random() - 0.5) * 14,
+            y: gatherTop + (N - 1 - i) * px + (Math.random() - 0.5) * 8,
+            angle: (Math.random() - 0.5) * 7,
+            duration: GATHER_FLY,
+            delay: i * gatherStagger,
+            ease: 'Power2',
         });
     }
 
-    const half = Math.ceil(N / 2);
-    const leftX = cx - CARD_W * 1.6, rightX = cx + CARD_W * 1.6;
-
-    gameScene.time.delayedCall(600, () => {
-        allSprites.forEach((sp, i) => {
-            const isLeft = i < half;
-            const stackIdx = isLeft ? i : i - half;
-            gameScene.tweens.add({
-                targets: sp,
-                x: isLeft ? leftX : rightX,
-                y: cy + stackIdx * 1.2,
-                duration: 420,
-                delay: i * 12,
-                ease: 'Back.Out'
-            });
-        });
-    });
-
-    const RIFFLE_START = 1200;
-    const PER_CARD = (2600) / N;
-
-    allSprites.forEach((sp, i) => {
-        const isLeft = i < half;
-        const stackIdx = isLeft ? i : i - half;
-        const riffleSlot = isLeft ? stackIdx * 2 : stackIdx * 2 + 1;
-        const delay = RIFFLE_START + riffleSlot * PER_CARD;
-
-        gameScene.time.delayedCall(delay, () => {
+    // Přetočení CELÉ hromádky lícem dolů – všechny karty naráz (je to jeden blok).
+    gameScene.time.delayedCall(FLIP_AT, () => {
+        sprites.forEach(sp => {
             if (!sp.active) return;
             gameScene.tweens.add({
-                targets: sp,
-                x: cx + (isLeft ? -CARD_W * 0.5 : CARD_W * 0.5),
-                y: cy - 30,
-                scaleX: SCALE * 1.05, scaleY: SCALE * 1.05,
-                duration: 110, ease: 'Power1',
+                targets: sp, scaleX: 0, duration: FLIP_MS, ease: 'Sine.easeIn',
                 onComplete: () => {
                     if (!sp.active) return;
-                    const finalY = cy + (riffleSlot - N / 2) * 0.5;
-                    gameScene.tweens.add({
-                        targets: sp,
-                        x: cx, y: finalY,
-                        duration: 130, ease: 'Power2',
-                        onComplete: () => {
-                            sp.setDepth(D0 + riffleSlot);
-                        }
-                    });
+                    sp.setTexture('card_back');
+                    gameScene.tweens.add({ targets: sp, scaleX: SCALE, duration: FLIP_MS, ease: 'Sine.easeOut' });
                 }
             });
         });
     });
 
-    gameScene.time.delayedCall(3900, () => {
-        allSprites.forEach((sp, i) => {
+    // Zarovnání: z rozházené hromádky srovnaný balíček (přesně tak, jak pak vyletí
+    // půlka do riffle).
+    gameScene.time.delayedCall(SQUARE_AT, () => {
+        sprites.forEach((sp, i) => {
             if (!sp.active) return;
             gameScene.tweens.add({
-                targets: sp,
-                x: cx, y: cy + i * 0.4,
-                duration: 380,
-                delay: i * 8,
-                ease: 'Power3'
+                targets: sp, x: cx, y: gatherTop + (N - 1 - i) * px, angle: 0,
+                duration: SQUARE_MS, ease: 'Cubic.easeOut',
             });
         });
     });
 
-    gameScene.time.delayedCall(4700, () => {
-        allSprites.forEach((sp, i) => {
-            if (!sp.active) return;
-            gameScene.tweens.add({
-                targets: sp,
-                x: dstX, y: dstY,
-                duration: 520,
-                delay: i * 6,
-                ease: 'Power2.inOut',
-                onComplete: () => {
-                    if (sp.active) sp.destroy();
-                }
-            });
-        });
+    // Riffle – stejná choreografie jako v intru: horní půlka se jako celek oddělí
+    // doprava, spodní doleva, pak karty střídavě padají doprostřed a hromádka se
+    // skládá odspodu nahoru. Index 0 = SPODNÍ karta, proto se pořadí obrací.
+    const top = (k) => sprites[N - 1 - k];        // k = 0 je vrchní karta hromádky
+    const half = Math.ceil(N / 2);
+    const cutX = CARD_W * 0.6;
+    const topCenter = gatherTop + (half - 1) * px / 2;
+    const botCenter = gatherTop + (half + N - 1) * px / 2;
 
-        gameScene.time.delayedCall(560, () => {
-            const flash = gameScene.add.rectangle(dstX, dstY, CARD_W * 1.3, CARD_H * 1.3, 0xffdd44, 0.55)
-                .setDepth(D0 + 10);
+    gameScene.time.delayedCall(RIFFLE_AT + SHUFFLE_ANIM.preMs, () => {
+        for (let k = 0; k < N; k++) {
+            const sp = top(k);
+            if (!sp?.active) continue;
+            const isTop = k < half;
             gameScene.tweens.add({
-                targets: flash, alpha: 0, scaleX: 1.6, scaleY: 1.6,
-                duration: 420, ease: 'Power2',
-                onComplete: () => { if (flash.active) flash.destroy(); }
+                targets:  sp,
+                x:     cx + (isTop ? cutX : -cutX),
+                y:     sp.y + (isTop ? cy - topCenter : cy - botCenter),
+                angle: isTop ? 6 : -6,
+                duration: SHUFFLE_ANIM.cutMs, ease: 'Cubic.easeInOut',
+            });
+        }
+    });
+
+    const leftPile = [];
+    for (let k = N - 1; k >= half; k--) leftPile.push(k);     // spodní půlka, odspodu
+    const rightPile = [];
+    for (let k = half - 1; k >= 0; k--) rightPile.push(k);    // odebraná horní půlka
+    const interleaved = [];
+    for (let k = 0; k < Math.max(leftPile.length, rightPile.length); k++) {
+        if (k < leftPile.length) interleaved.push(leftPile[k]);
+        if (k < rightPile.length) interleaved.push(rightPile[k]);
+    }
+    // Kam která karta v hotové hromádce dosedla – podle toho pak odlétá na balíček.
+    // Bez toho by se cestou přeskládala zpátky do původního pořadí (a bylo by to vidět).
+    const finalSlot = new Array(N);
+    const perCard = shufflePerCard(N, RESHUFFLE_RIFFLE);
+    const riffleStart = RIFFLE_AT + SHUFFLE_ANIM.preMs + SHUFFLE_ANIM.cutMs + SHUFFLE_ANIM.gapMs;
+    interleaved.forEach((k, j) => {
+        const sp = top(k);
+        const slot = N - 1 - j;    // 0 = vrch hotové hromádky
+        finalSlot[N - 1 - k] = slot;
+        gameScene.time.delayedCall(riffleStart + j * perCard, () => {
+            if (!sp?.active) return;
+            sp.setDepth(D0 + N + j);   // za letu nad hromádkou, po dosednutí do vrstev
+            gameScene.tweens.add({
+                targets: sp, x: cx, y: gatherTop + slot * px, angle: 0,
+                duration: SHUFFLE_ANIM.cardMs, ease: 'Cubic.easeIn',
+                onComplete: () => { if (sp.active) sp.setDepth(D0 + j); },
             });
         });
     });
 
-    gameScene.time.delayedCall(RESHUFFLE_ANIM_MS, finish);
+    // Hotový balíček odletí na svou herní pozici jako celek – každá karta si drží
+    // vrstvu, ve které po zamíchání skončila.
+    gameScene.time.delayedCall(flyAt, () => {
+        const dstTop = dstY - (N - 1) * px / 2;
+        sprites.forEach((sp, i) => {
+            if (!sp.active) return;
+            // Na balíčku PARKUJE až do konce animace (uklidí ho závěrečný delayedCall) –
+            // deska ho po tu dobu ještě nekreslí (App.reshuffleAnimating), takže by po
+            // zničení zůstalo místo balíčku prázdno.
+            gameScene.tweens.add({
+                targets: sp, x: dstX, y: dstTop + (finalSlot[i] ?? (N - 1 - i)) * px,
+                duration: FLY_MS, ease: 'Power2.easeInOut',
+            });
+        });
+    });
+
+    gameScene.time.delayedCall(RESHUFFLE_ANIM_MS, () => {
+        sprites.forEach(sp => { if (sp?.active) sp.destroy(); });
+        finish();
+    });
 }
 
 // ── HOKYNÁŘSTVÍ: cinematika na stole ──────────────────────────────────────────
