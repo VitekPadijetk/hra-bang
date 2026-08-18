@@ -58,7 +58,7 @@ s tvojí sadou** – u pár karet jsou v oběhu různé překlady.
 | R4 | Odstřelovač – limit a Kazatel | **Počítá se jako zahrání Bang!** (limit i zákaz Kazatele platí). Ubránit se lze **jen 2× Vedle!** – Barel ani Jourdonnais nepomůžou. |
 | R5 | Ruská ruleta – výběr karty | **Hráč si vybírá sám.** Platí **jakákoli karta s efektem Vedle!** – z ruky (Vedle!, Úhyb, u Calamity Janet i Bang!, **u Eleny Fuente libovolná karta**) **i zelená karta ze stolu** (Železný plát, Sombrero, Bible…). Odhod je **povinný**, dobrovolně životy ztratit nejde: klikatelné jsou jen karty Vedle!. Kdo žádnou nemá, má zvýrazněné jen životy (klikne a schytá 2 zásahy). |
 | R6 | Vendeta – nová událost na tahu navíc | **Neodkrývá se.** Všechno ostatní na začátku tahu proběhne znovu – **včetně sejmutí na dynamit, který si hráč vyložil v první půlce svého tahu**. |
-| R7 | Opuštěný důl – co jde na balíček | **Úplně všechno, co během kola odejde od hráče**, jde **lícem dolů na dobírací balíček**: zahrané karty, odhozy na konci tahu, zaplacené ceny, zničené karty, šerifova pokuta **i celá pozůstalost vyřazeného hráče a ducha**. Jedinou výjimkou jsou karty **odkryté z balíčku** – viz 2.1. Aby hráči věděli, co bylo zahráno, karta při letu **dosedne lícem nahoru, chvíli vydrží a teprve pak se překlopí na rub** – přesně jako u stolu. |
+| R7 | Opuštěný důl | **Hromádky si po celé kolo vymění role.** Líže se **výhradně z odhozu** (fáze 1, kontrolní sejmutí, Dostavník, odměny, hokynářství – prostě všechno) a odhazuje se **výhradně na dobírací balíček**, lícem dolů (zahrané karty, odhoz na konci tahu, zaplacené ceny, zničené karty, šerifova pokuta i celá pozůstalost vyřazeného hráče a ducha). Platí to, **dokud odhoz nedojde**; pak se pro zbytek kola hraje normálně. Aby hráči věděli, co bylo zahráno, karta při letu **dosedne lícem nahoru, chvíli vydrží a teprve pak se překlopí na rub** – přesně jako u stolu. |
 | R8 | Peyote vs. postavy měnící lízání | **Peyote přebíjí všechny** (Kit Carlson, Jesse Jones, Pedro Ramirez, Pat Brennan, Black Jack, Claus). |
 | R9 | Pokrevní bratři – dát život hráči na plných životech | **Nelze.** Cílem je jen hráč ve hře se zraněním. |
 | R10 | Duch (Město duchů) vs. FF karty | **Vendeta ano** – duch odhodí celou ruku a začne nový tah zase jako duch (znovu si líže 3). **Fistful of Cards ne** a **Ruská ruleta ne** – duch se jich neúčastní. |
@@ -67,15 +67,8 @@ s tvojí sadou** – u pár karet jsou v oběhu různé překlady.
 
 - **Elena Fuente v Ruské ruletě: ano** – smí odhodit libovolnou kartu z ruky. Znamená to, že neselže, dokud drží aspoň jednu kartu.
 - **Právo západu vs. Kit Carlson: ano** – vynucená je druhá karta, kterou si **nechá**.
-- **Opuštěný důl bere úplně všechno od hráčů** – včetně pozůstalosti vyřazeného hráče a odcházejícího ducha. Cinematika vyřazení tím míří na balíček (klient to má na jednom místě, `discardTopPos()`).
-
-**Jediná výjimka, kterou navrhuju ponechat: karty odkryté z balíčku.** Kontrolní sejmutí
-(Dynamit, Vězení, Barel, Vendeta), obě karty Lucky Duka a špatně hádaná karta Peyote by se
-vracely na vrch balíčku, odkud byly právě líznuté – a další kontrola by táhla **tutéž
-kartu**. Během kola s Opuštěným dolem by tak dynamit buď nikdy nevybuchl, nebo vybuchl
-každému (ve fázi lízání se líže z odhozu, takže by se vrch balíčku neprostřídal). Je to
-i praktická pojistka: odhoz se během kola jen vyprazdňuje a tohle je jediné, co ho doplňuje.
-**Tohle je to „dokud je to možné" – když to chceš jinak, řekni a pošlu je na balíček taky.**
+- **Opuštěný důl nemá výjimky** – prohozené jsou obě hromádky pro všechny operace včetně kontrolních sejmutí a karet Lucky Duka. Kontrolní karta se tedy líže z odhozu a odchází na balíček, takže se pořadí normálně prostřídá (žádný deterministický dynamit).
+- **„Dokud je to možné" = dokud odhoz nedojde.** Jakmile si někdo sáhne na prázdný odhoz, důl se pro **zbytek kola vypne** (příznak `_mineOff`) a hraje se normálně. Bez toho by to blikalo: první odhozená karta by se ocitla v odhozu a hned ji sebral další líznutí.
 
 ---
 
@@ -337,31 +330,48 @@ vypnuté rozšíření = prázdný balíček. `test/layout.test.js` – `eventPi
 
 ---
 
-### FÁZE 5 — Opuštěný důl · L
+### FÁZE 5 — Opuštěný důl · M
 
-Kvůli R7 je to nejinvazivnější karta rozšíření – má proto vlastní fázi.
+**Pravidlo (R7):** po celé kolo si obě hromádky **vymění role** – líže se z odhozu,
+odhazuje se lícem dolů na dobírací balíček. Bez výjimek: fáze lízání, kontrolní sejmutí,
+Lucky Duke, Dostavník, hokynářství, odměny, pozůstalost vyřazeného. Končí to ve chvíli,
+kdy odhoz dojde.
 
-**Pravidlo:** ve fázi 1 se líže z odhozu; **všechno, co během kola odejde od hráče, jde
-lícem dolů na dobírací balíček** – včetně pozůstalosti vyřazeného hráče a ducha.
+**Server – prohození patří do `Deck`, ne do pravidel**
 
-**Server – jeden trychtýř místo 35 volání**
-- Nový `GameState._discard(...cards)` v `logic.js`: při aktivním dole `deck.cards.push(...)` (vrch balíčku, protože `draw()` popuje z konce), jinak `deck.discardPile.push(...)`.
-- Mechanicky nahradit **~35 z 45** dnešních `deck.discardPile.push(...)`: `logic/play.js` (8 z 9), `logic/characters.js` (7 z 9), `logic/response.js` (6), `logic/dodgeCity.js` (3), `logic/combat.js` (3 – Sidova záchrana, pozůstalost, šerifova pokuta), `logic/highNoon.js` (1 – odchod ducha), `logic.js` (odhoz na konci tahu), `server/handlers.game.js` (3).
-- **Beze změny zůstává** (dál do odhozu, viz 2.1): kontrolní karty v `logic/checks.js` (4) a `logic/play.js:326`, obě karty Lucky Duka (`logic/characters.js`), špatně hádaná karta Peyote a vnitřek `logic/entities.js` (míchání).
-- Lízání: `_getDrawOptions` vrátí `['discard']` a větev `'discard'` v `drawCard` se uvolní i mimo Pedra Ramireze a i pro druhou/třetí kartu (dnes je vázaná na `cardsDrawn === 0`). Prázdný odhoz → **fallback na balíček** (jinak stall).
+`logic/entities.js` `Deck` je už dnes jediná cesta, kudy se líže (`draw()`); odhazování
+je rozsypané po `deck.discardPile.push(...)`. Dostane proto tři metody a příznak:
 
-**Klient – „aby hráči věděli, co bylo zahráno"**
-- `discardTopPos()` v `game.js` je už dnes **jediný cíl všech animací do odhozu** (včetně cinematiky vyřazení) – při aktivním dole vrátí vrch dobíracího balíčku. Tím se přesměrují všechny cesty naráz.
-- Nový doběh letu: karta **dosedne lícem nahoru, vydrží ~900 ms a pak se překlopí na rub** a splyne s hromádkou (`animateCardFlip` už umí obojí). Odpovídá to i fyzické hře: kartu zahraješ lícem nahoru a teprve pak ji dáš lícem dolů na balíček.
-- Fronta animací (`core/animQueue.js`) tím pádem drží stav o ~900 ms déle – doplnit do `ANIM_MS`.
+```js
+deck.mineMode                 // zapíná GameState podle aktivní události
+get _drawPile()    { return this.mineMode ? this.discardPile : this.cards; }
+get _discardPile() { return this.mineMode ? this.cards : this.discardPile; }
+draw()             // popuje z _drawPile; prázdný odhoz v mineMode → nahlásí vyčerpání
+discard(card)      // push na _discardPile
+returnToTop(card)  // push na _drawPile (Kit Carlson vrací nevybrané karty)
+```
+
+- **Lízání je tím hotové jedním místem** – `draw()` používají úplně všechny cesty.
+- **Odhazování:** mechanicky nahradit **42 ze 45** `deck.discardPile.push(x)` → `deck.discard(x)`. Vynechají se jen 3 uvnitř `Deck` (míchací mechanika).
+- **`logic/draw.js:260`** (Kit vrací nevybrané karty na balíček) → `deck.returnToTop(...)`, aby je vracel na tu hromádku, ze které je vzal.
+- **`openStore`** čte `deck.cards.length` jako „kolik karet měl balíček před rozdáním" (řídí cinematiku hokynářství) – musí se ptát délky **dobírané** hromádky, jinak se rozdávání spočítá špatně.
+- **Vypnutí:** `GameState._mineOff` se nastaví, jakmile `draw()` nahlásí prázdný odhoz; drží se do konce kola (nuluje se při výměně události). `deck.mineMode` se přepočítá na začátku každého tahu.
+- `drawForCheck` v `Deck` je mrtvý kód (nikdo ho nevolá) – buď smazat, nebo taky převést.
+
+**Klient – dvě funkce a jeden nový doběh**
+- `deckTopPos()` a `discardTopPos()` (game.js) jsou **jediné dva body**, odkud/kam všechny animace míří (včetně cinematiky vyřazení a odkrývání kontrolní karty). Při aktivním dole se prostě prohodí.
+- **Klikatelná je hromádka, ze které se líže** – zvýraznění „lízni si" ve `view/board.js` se musí ptát přes stejný přepínač. Klikání na odhoz už existuje (Pedro Ramirez), takže se jen rozšíří podmínka.
+- Nový doběh letu do „odhozu": karta **dosedne lícem nahoru, vydrží ~900 ms a pak se překlopí na rub** (`animateCardFlip` umí obojí) – jako u stolu. Doplnit do `ANIM_MS`, fronta animací tím drží stav o tu chvíli déle.
 
 **Hrany**
-- Balíček během kola roste, takže k domíchání nedojde; odhoz se naopak vyprazdňuje.
-- Karty na vrchu balíčku jsou „veřejně známé" – kdo si je pamatuje, ví, co si líznou ostatní z kontrolních sejmutí, Dostavníku nebo odměny za banditu. Je to záměr karty.
-- **Bot:** větev `DRAW` musí umět „ber z odhozu, ať je nahoře cokoli" (dnes bere jen Bang!/Pivo/Vedle!) – jinak stall.
+- Balíček během kola jen roste (žádné domíchání), odhoz se vyprazdňuje.
+- **Líže se z veřejné hromádky** – všichni vidí dopředu, co si kdo lízne, včetně kontrolního sejmutí. To je pointa karty, ne chyba.
+- Peyote je z téhož balíčku, takže se s dolem nikdy nepotká.
+- **Bot:** větev `DRAW` musí umět „ber z hromádky, ze které se líže, ať je nahoře cokoli" (dnes bere z odhozu jen Bang!/Pivo/Vedle!) – jinak stall.
 
-**Testy:** zahraná karta skončí na balíčku a lízne si ji další hráč; odhoz na konci tahu
-taky; kontrolní karta zůstane v odhozu; prázdný odhoz → líže se z balíčku.
+**Testy:** zahraná karta skončí na balíčku a nelze si ji líznout; kontrolní sejmutí bere
+z odhozu a odchází na balíček; Kit vrací nevybrané do odhozu; prázdný odhoz vypne důl na
+zbytek kola; hokynářství rozdá správný počet.
 
 ---
 
@@ -449,8 +459,9 @@ taky; kontrolní karta zůstane v odhozu; prázdný odhoz → líže se z balí�
    server akci odmítne, bot ji pošle znovu, stav se nezmění → nekonečno. Každé nové
    pravidlo, které něco *zakazuje* (Soudce, Laso, Právo západu, Želízka × cokoli), musí
    mít zrcadlo v `core/playability.js` **i** v `core/botPolicy.js`.
-2. **Trychtýř odhozu (fáze 5)** sahá na ~30 míst v pravidlech. Riziko je nízké (mechanická
-   záměna), ale musí projít celý `npm test` a zátěž botů; dělám ho proto samostatným commitem.
+2. **Trychtýř odhozu (fáze 5)** sahá na 42 míst v pravidlech. Riziko je nízké (mechanická
+   záměna `discardPile.push(x)` → `discard(x)`), ale musí projít celý `npm test` a zátěž
+   botů; dělám ho proto samostatným commitem.
 3. **Render neumím ověřit** – po fázích 0, 4, 5, 6, 7 a 8 tě požádám o kontrolu v prohlížeči.
 4. **Delší intro** při obou rozšířeních (~+7,6 s).
 5. **Rozpočet postav:** 8 hráčů × 2 nabídky = 16; základ má přesně 16, s Fistfulem 19,
