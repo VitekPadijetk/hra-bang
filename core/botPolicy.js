@@ -55,6 +55,9 @@ if (typeof require === 'function') {
     if (typeof suitBlockedFor === 'undefined') {
         globalThis.suitBlockedFor = require('./highNoon.js').suitBlockedFor;
     }
+    if (typeof boardDeadFor === 'undefined') {
+        globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
+    }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
         globalThis.computeBeliefs = __b.computeBeliefs;
@@ -138,6 +141,11 @@ function rankEnemies(state, myIndex, beliefs, requireReach) {
 }
 
 function weaponRange(w) { return (w && (w.range || w.props?.range)) || 1; }
+
+// Dostřel, který zbraň PRÁVĚ dává. Laso (Fistful) ruší karty na stole, takže se střílí
+// na 1 jako s Coltem – bez tohohle by bot mířil dál, server by výstřel odmítl a bot by
+// stejnou akci posílal donekonečna (= zaseknutá hra).
+function weaponReach(state, w) { return boardDeadFor(state) ? 1 : weaponRange(w); }
 
 // Hodnota zbraně pro bota. Volcanic má dostřel 1, zato dovolí neomezené Bang! za tah –
 // v praxi je silnější než Schofield (2), takže se nesmí porovnávat jen podle dostřelu
@@ -416,7 +424,8 @@ function decidePlay(state, myIndex, beliefs) {
     });
 
     // ── Aktivace zelených karet už ležících na stole (z minulých tahů) ──────────
-    (me.board || []).forEach(card => {
+    // Laso (Fistful): karty na stole nemají efekt → server aktivaci odmítne (stall).
+    if (!boardDeadFor(state)) (me.board || []).forEach(card => {
         if (!card.green || card._playedTurn === state.turnId || card.activate === 'miss') return;
         // Želízka (High Noon) aktivaci neomezují – karta už leží ve hře (viz _suitBlocked).
         const cardId = card.id;
@@ -429,7 +438,7 @@ function decidePlay(state, myIndex, beliefs) {
             let reach;
             if (card.range === 'any') reach = Infinity;
             else if (typeof card.range === 'number') reach = card.range;
-            else reach = weaponRange(me.weapon);   // 'weapon' = dostřel zbraně
+            else reach = weaponReach(state, me.weapon);   // 'weapon' = dostřel zbraně
             const tgt = rankEnemies(state, myIndex, beliefs, false)
                 .find(e => computeDistance(state, myIndex, e.idx) <= reach);
             if (tgt) consider(46, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId, target: { targetIdx: tgt.idx } } });
@@ -478,7 +487,7 @@ function decidePlay(state, myIndex, beliefs) {
         if (idx !== -1) consider(16, { event: 'uncle_will', payload: { cardIdx: idx } });
     }
     if (ch === 'Doc Holyday' && !me._docUsed && me.hand.length >= 3) {
-        const reach = weaponRange(me.weapon);
+        const reach = weaponReach(state, me.weapon);
         const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => computeDistance(state, myIndex, e.idx) <= reach);
         if (tgt) {
             // Zaplať dvěma nejméně cennými kartami.
@@ -540,7 +549,8 @@ function decideBotAction(state, myIndex, beliefs) {
             const attacker = state.players[state.pendingResponse.originatorIdx];
             const belleIgnores = state.pendingResponse.originatorIdx === state.currentPlayerIndex
                 && effectiveCharacter(attacker) === 'Belle Star';
-            if (req === T.MISSED && !belleIgnores) {
+            // Laso (Fistful) ruší karty na stole úplně stejně – a ze stejného důvodu.
+            if (req === T.MISSED && !belleIgnores && !boardDeadFor(state)) {
                 const greenMiss = (me.board || []).find(c => c.green && c.activate === 'miss'
                     && c._playedTurn !== state.turnId);
                 if (greenMiss) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null, boardCardId: greenMiss.id } };

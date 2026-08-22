@@ -189,6 +189,7 @@ const DodgeCityMixin = {
         if (!card.green) return;
         if (card._playedTurn === this.turnId) return;   // nelze ve stejném tahu, kdy byla položena
         if (card.activate === 'miss') return;            // Vedle!-zelené jen jako reakce
+        if (this._boardDead()) return;                   // Fistful – Laso: karta na stole nemá efekt
         // High Noon – Želízka omezují jen karty hrané Z RUKY. Zelená karta už leží
         // ve hře (byla zahraná dřív), takže se její aktivace barvou neomezuje.
 
@@ -215,7 +216,7 @@ const DodgeCityMixin = {
             let reach;
             if (card.range === 'any') reach = Infinity;
             else if (typeof card.range === 'number') reach = card.range;
-            else reach = player.weapon?.range || player.weapon?.props?.range || 1;   // 'weapon' = dostřel zbraně
+            else reach = this._boardDead() ? 1 : (player.weapon?.range || player.weapon?.props?.range || 1);   // 'weapon' = dostřel zbraně
             // Pravidla umožňují vystřelit i sám na sebe (nelogické, ale legální) → na sebe
             // neplatí kontrola vzdálenosti. Na cizí cíl standardní dostřel.
             if (!t || t.health <= 0) return;

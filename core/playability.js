@@ -32,6 +32,13 @@ if (typeof require === 'function') {
     if (typeof suitBlockedFor === 'undefined') {
         globalThis.suitBlockedFor = require('./highNoon.js').suitBlockedFor;
     }
+    // A Fistful of Cards – Laso a Soudce (stejný důvod pro samostatné guardy).
+    if (typeof boardDeadFor === 'undefined') {
+        globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
+    }
+    if (typeof judgeBlocksFor === 'undefined') {
+        globalThis.judgeBlocksFor = require('./highNoon.js').judgeBlocksFor;
+    }
 }
 
 function cardPlayability(state, me, myIndex, card) {
@@ -54,6 +61,8 @@ function cardPlayability(state, me, myIndex, card) {
         return false;
     }
     if (isMyPlayTurn) {
+        // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené, Vězení).
+        if (judgeBlocksFor(state, card)) return false;
         // Karta s bang-efektem (Úder, …) mimo zelené: nepočítá se do limitu Bang!.
         // Vystřelit lze i sám na sebe (pravidla to umožňují), takže je hratelná vždy –
         // i když není v dostřelu žádný soupeř (na sebe se klikne přes vlastní postavu).
@@ -63,7 +72,8 @@ function cardPlayability(state, me, myIndex, card) {
         if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
             if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
             const isWilly = effectiveCharacter(me) === "Willy the Kid";
-            const hasVolcanic = me.weapon?.name?.includes("Volcanic");
+            // Laso (Fistful): zbraň na stole nemá efekt → ani Volcanic nedovolí Bang! bez limitu.
+            const hasVolcanic = !boardDeadFor(state) && me.weapon?.name?.includes("Volcanic");
             return isWilly || hasVolcanic || me.bangsPlayedThisTurn < bangLimitFor(state);
         }
         if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu

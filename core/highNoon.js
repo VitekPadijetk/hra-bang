@@ -52,6 +52,23 @@ function suitBlockedFor(state, playerIdx, card) {
     return effSuit(state, card) !== p._handcuffsSuit;
 }
 
+// A Fistful of Cards – Laso: karty vyložené před hráči nemají žádný efekt (dostřel
+// zbraně, Mustang/Skrýš, Dalekohled/Hledí, Barel, Dynamit, Vězení i zelené karty).
+// Zrcadlí GameState._boardDead (logic/fistful.js).
+function boardDeadFor(state) {
+    return eventActive(state, 'LASO');
+}
+
+// A Fistful of Cards – Soudce: karta z ruky se nesmí vyložit před žádného hráče.
+// Zrcadlí GameState._judgeBlocks (logic/fistful.js); typy jsou tytéž řetězce jako
+// CardType v logic/entities.js (core je bez závislostí, viz effSuit výš).
+const JUDGE_BLOCKED_TYPES = ['Zbraň', 'Vybavení', 'Barel', 'Dynamit', 'Vězení'];
+function judgeBlocksFor(state, card) {
+    if (!card || !eventActive(state, 'SOUDCE')) return false;
+    return !!card.green || JUDGE_BLOCKED_TYPES.includes(card.type);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { eventActive, bangLimitFor, bangBlockedFor, beerBlockedFor, effSuit, suitBlockedFor };
+    module.exports = { eventActive, bangLimitFor, bangBlockedFor, beerBlockedFor, effSuit, suitBlockedFor,
+                       boardDeadFor, judgeBlocksFor };
 }

@@ -3,8 +3,9 @@
 Druhý balíček událostí vedle High Noon. Pracovní plán – až bude hotovo, podstatné části
 se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 
-**Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · další na řadě je
-Fáze 2 (Léčka, Laso, Soudce). Výklady pravidel viz sekce 2.
+**Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · ✅ Fáze 2 (Léčka,
+Laso, Soudce) · další na řadě je Fáze 3 (Pálenka, Právo západu). Výklady pravidel viz
+sekce 2.
 
 Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
@@ -17,6 +18,9 @@ Odchylky od plánu, které vyplynuly z implementace:
 - **Přibalené karty (Nová identita, Želízka)** se se zapnutým Fistfulem přidávají samy
   (`_hnExtraOn`), takže zaškrtávátko v „Pokročilých možnostech" v tom případě zmizí –
   obě karty jsou z tohohle rozšíření.
+- **Laso vypíná i Volcanic.** „Karty vyložené před hráči nemají žádný efekt" se týká
+  i zbraně, takže kromě dostřelu (→ 1 jako s Coltem) padá i její schopnost hrát Bang!
+  bez limitu. Willy the Kid je postava, ta platí dál.
 
 ---
 
@@ -286,23 +290,26 @@ vypnuté rozšíření = prázdný balíček. `test/layout.test.js` – `eventPi
 
 ### FÁZE 2 — Pasivní události: Léčka, Laso, Soudce · M
 
+✅ **Hotovo.** Testy: `test/fistful.events.test.js` (22) + cílená zátěž botů
+„balíček samých Léček/Las/Soudců" v `test/server.bots.test.js`.
+
 #### Léčka (`LECKA`)
 - **Kde:** `core/distance.js` `computeDistance` – základ 1 místo výpočtu ze sedadel, **modifikátory platí dál** (Paul Regret, Rose Doolan, Mustang, Dalekohled) → `max(1, 1 + modifikátory)`.
-- **Zrcadla:** žádná – funkce je sdílená serverem, klientem i botem. Do `core/distance.js` přibude standardní shim na `core/highNoon.js`; cyklus nevzniká.
+- **Zrcadla:** žádná – funkce je sdílená serverem, klientem i botem. `core/distance.js` má standardní shim na `core/highNoon.js`; cyklus nevzniká (highNoon.js na distance.js nesahá).
 
 #### Laso (`LASO`)
-- **Kde:** `_boardDead()` v `logic/fistful.js`, zapojené přesně tam, kde už existuje analogický vypínač karet na stole u **Belle Star** (`_belleIgnoresBoard`):
-  - dostřel zbraně → 1 (Colt);
+- **Kde:** `_boardDead()` v `logic/fistful.js`, zapojené přesně tam, kde už existuje analogický vypínač karet na stole u **Belle Star** (`_belleIgnoresBoard`) – jen platí pro všechny hráče a i na karty vlastní:
+  - dostřel zbraně → 1 (Colt) v `computeCanHit`, `activateGreenCard` i `useDocHolyday`; **Volcanic tím ztrácí i neomezené Bang!** (`playBang`);
   - Mustang/Skrýš/Dalekohled/Hledí → `computeDistance` je ignoruje;
   - Barel → `_beginBangResolution` i `_advanceMassAttack` ho nepočítají (**Jourdonnaisova vrozená schopnost platí dál** – není to karta);
   - Dynamit a Vězení → `handleStartOfTurnChecks` je přeskočí (žádné sejmutí, dynamit se neposouvá, vězení tah nebere);
   - zelené karty → `activateGreenCard` odmítne, zelené Vedle! ze stolu v `handleResponse` neprojde.
-- **Zrcadla:** `core/playability.js` + `core/botPolicy.js` – **bez nich se hra zasekne**.
+- **Zrcadla:** `boardDeadFor` v `core/highNoon.js` → `core/playability.js` (Volcanic), `core/botPolicy.js` (`weaponReach`, aktivace zelené, zelená obrana) a `view/board.js` (`greenTurn`, `isRespondMiss`). **Bez nich se hra zasekne.**
 - **Hrany:** karty zůstávají ležet, po kole zase fungují.
 
 #### Soudce (`SOUDCE`)
-- **Kde:** `logic/play.js` – gate v `playCard` pro `WEAPON`/`EQUIPMENT`/`BARREL`/`DYNAMITE` a zelené karty; v `playSpecialCard` pro `JAIL`.
-- **Zrcadlo:** jeden gate v `core/playability.js` (pokryje klienta i bota).
+- **Kde:** `_judgeBlocks(card)` v `logic/fistful.js`; gate v `playCard` (`WEAPON`/`EQUIPMENT`/`BARREL`/`DYNAMITE` + zelené) a v `playSpecialCard` (`JAIL`, ještě než karta opustí ruku).
+- **Zrcadlo:** `judgeBlocksFor` v `core/highNoon.js` → jeden gate na začátku větve „můj tah" v `core/playability.js` (pokryje klienta i bota – oba jím prochází).
 - **Hrany:** už vyložené karty fungují; aktivace zelené ze stolu i Hokynářství Uncle Willa jsou povolené.
 
 ---

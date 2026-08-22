@@ -224,6 +224,7 @@ const ResponseMixin = {
                 // Belle Star útočí → cizí karty na stole (i zelené) na jejím tahu neplatí.
                 isValid = card.green && card.activate === 'miss' &&
                         this.pendingResponse.requiredCard === CardType.MISSED &&
+                        !this._boardDead() &&   // Fistful – Laso: karty na stole nemají efekt
                         !this._belleIgnoresBoard(this.pendingResponse.originatorIdx);
             } else if (this.pendingResponse.requiredCard === CardType.MISSED) {
                 // Elena Fuente (Dodge City): smí použít jako Vedle! LIBOVOLNOU kartu z ruky.

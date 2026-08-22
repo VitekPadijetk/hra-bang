@@ -1275,13 +1275,14 @@ function drawMyArea(ctx) {
         // handleResponse s boardCardId) → taková karta se nešediví, jde o ni.
         // Belle Star útočí (na svém tahu) → cizí karty na stole (i zelené Vedle!) neplatí,
         // server je odmítne. Nenabízej je pak jako reakci (zrcadlí server _belleIgnoresBoard).
+        // Fistful – Laso ruší karty na stole úplně stejně, jen všem naráz (_boardDead).
         const _origIdx = state.pendingResponse?.originatorIdx;
         const _belleIgnoresBoard = _origIdx != null &&
             state.currentPlayerIndex === _origIdx &&
             effectiveCharacter(state.players[_origIdx]) === "Belle Star";
         const isRespondMiss = state.phase === 'RESPOND' && state.pendingResponse?.active &&
             state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
-            !_belleIgnoresBoard;
+            !_belleIgnoresBoard && !boardDeadFor(state);
         const myBoardSprites = [];
         myBoardCards.forEach((card, i) => {
             // Karta právě ukradená Panikou/Cat Balou: po dobu letu ji nekresli (slot
@@ -1396,8 +1397,10 @@ function drawMyArea(ctx) {
         // (a) aktivace ve svém tahu (klik → efekt / míření), (b) Vedle!-zelené jako
         // reakce v RESPOND. Vzhled zeleného okraje je součástí artu karty.
         {
+            // Fistful – Laso: zelenou kartu na stole nejde aktivovat (server ji odmítne).
             const greenTurn = state.phase === 'PLAY' && state.currentPlayerIndex === myIndex &&
-                selectedState.cardIndex === null && !App.blockInput && !isPanicCBMyTurn;
+                selectedState.cardIndex === null && !App.blockInput && !isPanicCBMyTurn &&
+                !boardDeadFor(state);
             // isRespondMiss / _belleIgnoresBoard viz výše (počítá se před kreslením desky,
             // rozhoduje i o tom, jestli se zelená Vedle!-karta smí šedivit).
 

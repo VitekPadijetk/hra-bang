@@ -419,7 +419,8 @@ const CharactersMixin = {
         if (!p.hand[cardIndices[0]] || !p.hand[cardIndices[1]]) return false;
         const target = this.players[targetIdx];
         if (!target || target.health <= 0 || targetIdx === playerIdx) return false;
-        const reach = p.weapon?.range || p.weapon?.props?.range || 1;
+        // Fistful – Laso: zbraň na stole nemá efekt → dostřel 1 jako s Coltem.
+        const reach = this._boardDead() ? 1 : (p.weapon?.range || p.weapon?.props?.range || 1);
         if (this.getDistance(playerIdx, targetIdx) > reach) return false;
 
         // Apache Kid: Docovy odhozené karty jsou „zahrané jiným hráčem" → jsou-li OBĚ kárové,

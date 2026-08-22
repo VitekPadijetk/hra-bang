@@ -14,8 +14,12 @@ const ChecksMixin = {
         // (viz startDrawPhase) – checky na Dynamit/Vězení tedy ještě běží s kopií z minulého
         // tahu. Když jí Vězení tah sebere, k volbě se nedostane a kopie vyprší (_veraExpireCopy).
 
-        const dynamiteIdx = p.board.findIndex(c => c.type === CardType.DYNAMITE);
-        const jailIdx = p.board.findIndex(c => c.type === CardType.JAIL);
+        // Fistful – Laso: karty na stole nemají efekt → nesnímá se, dynamit se neposouvá
+        // ani nevybuchne a Vězení tah nebere. Obě karty zůstávají ležet a příští kolo
+        // (až Laso vystřídá jiná událost) fungují zase normálně.
+        const boardDead = this._boardDead();
+        const dynamiteIdx = boardDead ? -1 : p.board.findIndex(c => c.type === CardType.DYNAMITE);
+        const jailIdx = boardDead ? -1 : p.board.findIndex(c => c.type === CardType.JAIL);
 
         if (dynamiteIdx !== -1 || jailIdx !== -1) {
             this.pendingCheckDraw = {

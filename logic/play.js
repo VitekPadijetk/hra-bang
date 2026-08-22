@@ -16,6 +16,8 @@ const PlayMixin = {
 
         // High Noon – Želízka: v tomhle tahu jen karty zvolené barvy.
         if (this._suitBlocked(this.currentPlayerIndex, card)) return;
+        // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené).
+        if (this._judgeBlocks(card)) return;
 
         this.logEvent('play', { who: player.name, card: card.name });
 
@@ -118,7 +120,8 @@ const PlayMixin = {
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
         const isEffect = !!card.bangEffect;
         const isWilly = effectiveCharacter(attacker) === "Willy the Kid";
-        const hasVolcanic = attacker.weapon && attacker.weapon.name.includes("Volcanic");
+        // Fistful – Laso: zbraň je karta na stole, takže Volcanic nedovolí Bang! bez limitu.
+        const hasVolcanic = !this._boardDead() && attacker.weapon && attacker.weapon.name.includes("Volcanic");
 
         // High Noon – Kazatel: ve svém tahu nesmí hráč zahrát kartu Bang! (ani Willy,
         // ani s Volcanicem, ani Calamity Janet s kartou Vedle! – FAQ H5). Karty
@@ -159,9 +162,10 @@ const PlayMixin = {
         let barrelChecksLeft = 0;
         let barrelReason = "BARREL";
 
-        // Belle Star útočí → cizí Barel (karta na stole) neplatí; Jourdonnaisova vrozená
-        // schopnost (ne karta) zůstává.
-        const hasBarrelCard = !this._belleIgnoresBoard(attackerIdx) && target.board.some(c => c.type === CardType.BARREL);
+        // Belle Star útočí (nebo je ve hře Laso) → Barel jako karta na stole neplatí;
+        // Jourdonnaisova vrozená schopnost (ne karta) zůstává.
+        const hasBarrelCard = !this._boardDead() && !this._belleIgnoresBoard(attackerIdx) &&
+                              target.board.some(c => c.type === CardType.BARREL);
 
         if (effectiveCharacter(target) === "Jourdonnais" && hasBarrelCard) {
             barrelChecksLeft = 2;
@@ -210,6 +214,8 @@ const PlayMixin = {
         if (!attacker || !attacker.hand[cardIdx]) return;
 
         if (this._suitBlocked(attIdx, attacker.hand[cardIdx])) return;   // High Noon – Želízka
+        // Fistful – Soudce: Vězení se vykládá před hráče (ostatní speciálky ne).
+        if (this._judgeBlocks(attacker.hand[cardIdx])) return;
 
         const cardType = attacker.hand[cardIdx].type;
 
@@ -439,8 +445,9 @@ const PlayMixin = {
         let barrelReason = "BARREL";
 
         if (sourceCard === CardType.GATLING) {
-            // Belle Star útočí (originator) → cizí Barel neplatí; Jourdonnaisova vrozená ano.
-            const hasBarrelCard = !this._belleIgnoresBoard(originatorIdx) && target.board.some(c => c.type === CardType.BARREL);
+            // Belle Star útočí (originator) / Laso → Barel neplatí; Jourdonnaisova vrozená ano.
+            const hasBarrelCard = !this._boardDead() && !this._belleIgnoresBoard(originatorIdx) &&
+                                  target.board.some(c => c.type === CardType.BARREL);
             if (effectiveCharacter(target) === "Jourdonnais" && hasBarrelCard) {
                 barrelChecksLeft = 2;
                 barrelReason = "JOURDONNAIS";

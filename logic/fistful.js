@@ -16,6 +16,11 @@
 // Karta, která se při přípravě dává vespod balíčku → odkryje se jako poslední.
 const LAST_FF_KEY = 'FISTFUL_OF_CARDS';
 
+// Soudce: karty, které se z ruky vykládají PŘED hráče (vlastního i cizího). Zelené karty
+// (Dodge City) mají vlastní typy, poznají se přes `card.green`.
+const JUDGE_BLOCKED_TYPES = [CardType.WEAPON, CardType.EQUIPMENT, CardType.BARREL,
+                             CardType.DYNAMITE, CardType.JAIL];
+
 const FistfulMixin = {
     // ── Příprava balíčku (setupGame / setupDebugGame / setupNextGame) ──────────
     // Bez zapnutého rozšíření zůstane balíček prázdný a `hasEvent` vrací pro jeho klíče
@@ -61,6 +66,28 @@ const FistfulMixin = {
         this._ffEntering = null;
         if (!key) return false;
         return false;
+    },
+
+    // ── Laso: „Karty vyložené před hráči nemají žádný efekt." ──────────────────
+    // Jediný dotaz pravidel. Je to totéž, co už umí vypínač karet na stole u Belle Star
+    // (`_belleIgnoresBoard` v logic.js), jen platí pro VŠECHNY hráče a i na karty vlastní.
+    // Vypnuté jsou:
+    //   • dostřel zbraně → 1 jako s Coltem (a Volcanic nedovolí Bang! bez limitu),
+    //   • Mustang/Skrýš i Dalekohled/Hledí (computeDistance v core/distance.js),
+    //   • Barel – Jourdonnaisova VROZENÁ schopnost platí dál, není to karta,
+    //   • Dynamit i Vězení – žádné sejmutí, dynamit se neposouvá, vězení tah nebere,
+    //   • zelené karty – aktivace i zelené Vedle! ze stolu.
+    // Karty přitom zůstávají ležet, takže po skončení kola zase fungují.
+    _boardDead() {
+        return this.hasEvent('LASO');
+    },
+
+    // ── Soudce: „Hráči nesmí vykládat karty před sebe ani před ostatní hráče." ──
+    // Blokuje jen cestu karty Z RUKY na stůl (výzbroj, modré, zelené a Vězení). Co už
+    // leží, funguje dál – aktivace zelené karty i Hokynářství Uncle Willa jsou povolené.
+    _judgeBlocks(card) {
+        return this.hasEvent('SOUDCE') && !!card &&
+               (!!card.green || JUDGE_BLOCKED_TYPES.includes(card.type));
     },
 };
 
