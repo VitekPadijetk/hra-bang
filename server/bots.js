@@ -142,12 +142,20 @@ module.exports = function installBotService(ctx) {
             gs.players.filter(p => p.character).length, // pokrok char-selectu
             gs.deck?.discardPile?.length || 0,
             gs.kitCarlsonState?.pendingAdd?.length || 0,
+            gs.clausState?.picked?.length || 0,
             gs.drawPhaseState?.cardsDrawn || 0,
             gs.pendingResponse?.targetIdx ?? -1,
             gs.pendingResponse?.responded?.length || 0,
             (gs.storeCards || []).filter(c => c).length,
             gs.pendingDynamiteDamage?.hitsLeft ?? -1,
         ].join('|');
+    }
+
+    // Claus "The Saint" (Fistful): jak dlouho trvá, než se odkrytá řada rozdá z balíčku
+    // na stůl (klient ji staví po jedné kartě, viz startClausDeal v game.js).
+    function clausDealMs(gs) {
+        const n = gs?.clausState?.revealed?.length || 3;
+        return 600 + (n - 1) * 110 + 420;
     }
 
     // Nouzová, vždy postupující akce (záchrana proti zaseknutí hry jen botů).
@@ -229,12 +237,15 @@ module.exports = function installBotService(ctx) {
         } else if (room._storeOpenSettled) {
             room._storeOpenSettled = false;
         }
-        // Kit Carlson / Lucky Duke: PRVNÍ výběr počká na klientskou cinematiku rozdání
-        // karet z balíčku (reveal), teprve pak bot vybere; další výběry normální tempo.
-        if (pa && (pa.kind === 'KIT_CARLSON' || pa.kind === 'LUCKY_DUKE')) {
+        // Kit Carlson / Lucky Duke / Claus: PRVNÍ výběr počká na klientskou cinematiku
+        // rozdání karet z balíčku (reveal), teprve pak bot vybere; další výběry normální
+        // tempo. Clausova řada je až devět karet, takže se čeká podle jejího počtu.
+        if (pa && (pa.kind === 'KIT_CARLSON' || pa.kind === 'LUCKY_DUKE' || pa.kind === 'CLAUS_GIVE')) {
             if (!room._charPickSettled) {
                 room._charPickSettled = true;
-                delay = pa.kind === 'LUCKY_DUKE' ? 1700 : 1300;
+                delay = pa.kind === 'LUCKY_DUKE' ? 1700
+                      : pa.kind === 'CLAUS_GIVE' ? clausDealMs(room.gameState)
+                      : 1300;
             }
         } else if (room._charPickSettled) {
             room._charPickSettled = false;

@@ -119,7 +119,8 @@ test('oba balíčky se otáčejí ve stejný okamžik', () => {
     g._sheriffTurns = 1;
     startTurn(g);
     assert.ok(g.activeEvent && g.activeFistful, 'odkryly se obě karty');
-    assert.equal(g.eventDeck.length, 12);
+    // 15 karet: 13 High Noonu + obě přibalené, které Fistful zapíná (viz _hnExtraOn).
+    assert.equal(g.eventDeck.length, 14);
     assert.equal(g.ffDeck.length, 14);
 });
 
@@ -139,6 +140,22 @@ test('Kocovina z High Noonu se s otáčením Fistfulu nerozbije', () => {
     assert.equal(g.hasEvent('KOCOVINA'), true);
     assert.equal(g.players[0]._noAbility, true);
     assert.ok(g.activeFistful);
+});
+
+// Nová identita a Želízka jsou karty z A Fistful of Cards, takže se zapnutým Fistfulem
+// patří do balíčku High Noonu vždy – zaškrtávátko je jen pro hru se samotným High Noonem.
+test('Fistful přibalí Novou identitu a Želízka i bez zaškrtávátka', () => {
+    const g = mkGame([{ role: 'Sheriff' }, {}]);
+    g.highNoonCardData = hnData;
+    g.fistfulCardData = ffData;
+
+    g._setupEventDeck({ expansions: { high_noon: true } });
+    assert.equal(g.eventDeck.length, 13, 'samotný High Noon má 13 karet');
+
+    g._setupEventDeck({ expansions: { high_noon: true, fistful: true } });
+    assert.equal(g.eventDeck.length, 15, 'se zapnutým Fistfulem přibudou obě karty');
+    const keys = g.eventDeck.map(c => c.key);
+    assert.ok(keys.includes('NOVA_IDENTITA') && keys.includes('ZELIZKA'));
 });
 
 // ── Postavy ─────────────────────────────────────────────────────────────────

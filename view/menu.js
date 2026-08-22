@@ -411,13 +411,15 @@ function renderMenuScreen(screen) {
         }
 
         // Pokročilé volby. „Přibalené karty" dávají smysl jen se zapnutým High Noon –
-        // jinak řádek vůbec nekresli (a tlačítko VYTVOŘIT se o něj neposune).
+        // jinak řádek vůbec nekresli (a tlačítko VYTVOŘIT se o něj neposune). Se zapnutým
+        // Fistfulem taky ne: obě karty jsou z něj, takže se přidávají samy (_hnExtraOn).
         const advChecks = [
             { key: 'noAdvancedCards', label: 'Zakázat pokročilé karty', hint: '(bez Duelu, Hokynářství, Indiánů, Vězení, Dynamitu)' },
             { key: 'singleChar',      label: 'Přiřadit postavu náhodně', hint: '(hráči si nevybírají ze dvou postav)' },
             { key: 'rotatingSheriff', label: 'Rotující šerif', hint: '(šerif se po každé hře posouvá doleva)' },
         ];
-        if (App.createOptions.expansions && App.createOptions.expansions.high_noon) {
+        const _exps = App.createOptions.expansions || {};
+        if (_exps.high_noon && !_exps.fistful) {
             advChecks.push({ key: 'highNoonExtra', label: 'High Noon: přibalené karty',
                 hint: '(+ Nová identita a Želízka z A Fistful of Cards)' });
         }
@@ -535,8 +537,10 @@ function renderMenuScreen(screen) {
                 () => loadExpansionAssets(gameScene, 'fistful'));
         }
 
-        // Přibalené karty (Nová identita, Želízka) – jen když je High Noon zapnuté.
-        const bHnExtraOn = !!(App.botGameExpansions && App.botGameExpansions.high_noon);
+        // Přibalené karty (Nová identita, Želízka) – jen když je High Noon zapnuté a
+        // Fistful ne (s ním jdou do balíčku samy, viz _hnExtraOn v logic/highNoon.js).
+        const bHnExtraOn = !!(App.botGameExpansions && App.botGameExpansions.high_noon)
+                        && !(App.botGameExpansions && App.botGameExpansions.fistful);
         if (bHnExtraOn) {
             const on = !!App.botGameHighNoonExtra;
             themeButton(gameScene, 960, 652, 560, 44,
@@ -760,16 +764,8 @@ function renderMenuScreen(screen) {
                     renderUI();
                 },
             });
-            if (hnOn) {
-                const exOn = !!App.debugHighNoonExtra;
-                themeButton(gameScene, 960, 356, 480, 46,
-                    (exOn ? '☑' : '☐') + '  + přibalené (Nová identita, Želízka)', {
-                    ...themeToggleStyle(exOn), fontSize: '18px',
-                    onClick: () => { App.debugHighNoonExtra = !App.debugHighNoonExtra; renderUI(); },
-                });
-            }
             const ffOn = !!App.debugFistful;
-            themeButton(gameScene, 960, hnOn ? 408 : 356, 480, 46,
+            themeButton(gameScene, 960, 356, 480, 46,
                 (ffOn ? '☑' : '☐') + '  Rozšíření Fistful (15 událostí, 3 postavy)', {
                 ...themeToggleStyle(ffOn), fontSize: '18px',
                 onClick: () => {
@@ -778,9 +774,19 @@ function renderMenuScreen(screen) {
                     renderUI();
                 },
             });
+            // Přibalené karty se se zapnutým Fistfulem přidávají samy (_hnExtraOn), takže
+            // se řádek kreslí jen pro hru se samotným High Noonem.
+            if (hnOn && !ffOn) {
+                const exOn = !!App.debugHighNoonExtra;
+                themeButton(gameScene, 960, 408, 480, 46,
+                    (exOn ? '☑' : '☐') + '  + přibalené (Nová identita, Želízka)', {
+                    ...themeToggleStyle(exOn), fontSize: '18px',
+                    onClick: () => { App.debugHighNoonExtra = !App.debugHighNoonExtra; renderUI(); },
+                });
+            }
         }
 
-        const dbgStartY = App.debugHighNoon ? 476 : 424;
+        const dbgStartY = (App.debugHighNoon && !App.debugFistful) ? 476 : 424;
         [2, 3, 4, 5].forEach((n, i) => {
             themeButton(gameScene, 720 + i * 160, dbgStartY, 132, 58, `▶  ${n}P`, {
                 fill: THEME.color.goldDarkNum, fillHover: 0xa8842a,

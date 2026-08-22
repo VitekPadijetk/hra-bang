@@ -30,7 +30,7 @@ const HighNoonMixin = {
 
         // Karty z přibaleného rozšíření (Nová identita, Želízka) jen na vyžádání.
         const pool = this.highNoonCardData
-            .filter(c => !c.extra || options.highNoonExtra)
+            .filter(c => !c.extra || this._hnExtraOn(options))
             .map(c => ({ id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null }));
         const last = pool.filter(c => c.key === LAST_EVENT_KEY);
         const rest = pool.filter(c => c.key !== LAST_EVENT_KEY);
@@ -38,6 +38,15 @@ const HighNoonMixin = {
         // Líže se přes pop() z konce pole → Pravé poledne musí ležet na indexu 0.
         this.eventDeck = last.concat(rest);
         this.logEvent('system', { msg: `High Noon: balíček událostí (${this.eventDeck.length} karet)` });
+    },
+
+    // Patří do balíčku i dvě přibalené karty (Nová identita, Želízka)? Obě jsou původem
+    // z A Fistful of Cards, takže se zapnutým Fistfulem se do hry přidávají samy –
+    // zaškrtávátko v „Pokročilých možnostech" je jen pro hru se samotným High Noonem
+    // (klient ho pak vůbec nekreslí, viz view/menu.js).
+    _hnExtraOn(options) {
+        const o = options || {};
+        return !!o.highNoonExtra || !!(o.expansions && o.expansions.fistful);
     },
 
     // Je právě aktivní tahle událost? Jediný dotaz, kterým se ptají všechna pravidla.
@@ -344,7 +353,7 @@ const HighNoonMixin = {
     // se totiž vracejí do balíčku, jinak by jich pro 7 hráčů bez Dodge City nezbylo dost.
     _dealSecondIdentities() {
         const o = this.options || {};
-        if (!o.highNoonExtra || !(o.expansions && o.expansions.high_noon)) return;
+        if (!this._hnExtraOn(o) || !(o.expansions && o.expansions.high_noon)) return;
         // Odložená identita = ta z dvojice, kterou si hráč na začátku hry NEvybral.
         // Kde žádná volba nebyla – náhodné přiřazení (singleChar), debug hra (nabídka
         // je celý pool) nebo přeživší z minulé hry – se sáhne do zbytku balíčku postav.

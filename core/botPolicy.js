@@ -610,12 +610,19 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'BLACK_JACK_CHECK':
             return { event: 'resolve_black_jack', payload: true };
 
-        // Fistful – Claus "The Saint": rozdává po jedné kartě každému ostatnímu hráči.
-        // Vybírat se dá jen KTEROU kartu dá, ne komu – dává tedy vždy tu nejméně cennou.
+        // Fistful – Claus "The Saint": z odkryté řady si nejdřív bere karty pro sebe,
+        // pak dává po jedné ostatním. Komu, to je dané pořadím (cs.toIdx) – vybírá se
+        // jen KTEROU kartu: sobě tu nejcennější, ostatním tu nejméně cennou.
         case 'CLAUS_GIVE': {
-            let worst = 0;
-            me.hand.forEach((c, i) => { if (keepScore(c) < keepScore(me.hand[worst])) worst = i; });
-            return { event: 'claus_give', payload: { cardIdx: worst } };
+            const cs = state.clausState;
+            const mine = cs.toIdx === state.currentPlayerIndex;
+            let bestIdx = -1, bestVal = 0;
+            (cs.revealed || []).forEach((c, i) => {
+                if (!c || cs.picked.includes(i)) return;
+                const v = keepScore(c);
+                if (bestIdx === -1 || (mine ? v > bestVal : v < bestVal)) { bestIdx = i; bestVal = v; }
+            });
+            return { event: 'claus_give', payload: { cardIdx: bestIdx } };
         }
 
         case 'STORE': {

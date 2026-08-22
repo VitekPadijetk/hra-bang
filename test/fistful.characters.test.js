@@ -17,39 +17,63 @@ function fillDeck(g, n = 20) {
 
 // ── Claus "The Saint" ───────────────────────────────────────────────────────
 
-test('Claus si lízne o kartu víc, než je hráčů, a rozdá po jedné ostatním', () => {
+test('Claus odkryje řadu naráz a rozdělí ji – nejdřív sobě, pak po směru', () => {
     const g = mkGame([{ character: 'Claus the Saint' }, {}, {}, {}]);
     fillDeck(g);
     g.startDrawPhase();
     assert.equal(g.phase, 'DRAW');
-    assert.equal(g.drawPhaseState.cardsNeeded, 5, '4 hráči → líže 5 karet (3 rozdá, 2 si nechá)');
+    assert.equal(g.drawPhaseState.cardsNeeded, 1, 'celá řada se odkryje jedním klikem');
+    assert.equal(g.drawPhaseState.clausKeep, 2);
 
     g.drawCard('deck');
     assert.equal(g.phase, 'CLAUS_GIVE');
-    assert.equal(g.players[0].hand.length, 5, 'všech 5 karet je rovnou v ruce');
-    assert.deepEqual(g.clausState.queue, [1, 2, 3], 'rozdává po směru od sebe');
+    assert.equal(g.clausState.revealed.length, 5, '4 hráči → 3 rozdané + 2 ponechané');
+    assert.equal(g.players[0].hand.length, 0, 'karty leží na stole, ne v ruce');
+    assert.equal(g.clausState.toIdx, 0, 'nejdřív si bere pro sebe');
+    assert.deepEqual(g.clausState.queue, [1, 2, 3], 'pak rozdává po směru od sebe');
 
-    g.clausGive(0);
+    g.clausPick(0);
+    assert.equal(g.players[0].hand.length, 1);
+    assert.equal(g.clausState.toIdx, 0, 'druhá karta je pořád pro něj');
+    g.clausPick(1);
+    assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.clausState.toIdx, 1, 'teď je na řadě soused po směru');
+
+    g.clausPick(2);
     assert.equal(g.players[1].hand.length, 1);
-    g.clausGive(0);
-    g.clausGive(0);
+    assert.equal(g.clausState.toIdx, 2);
+    g.clausPick(3);
+    g.clausPick(4);
     assert.equal(g.players[2].hand.length, 1);
     assert.equal(g.players[3].hand.length, 1);
-    assert.equal(g.players[0].hand.length, 2, 'zbylé dvě karty si nechává');
     assert.equal(g.phase, 'PLAY');
     assert.equal(g.clausState, null);
+});
+
+test('Claus nemůže vzít tutéž kartu dvakrát', () => {
+    const g = mkGame([{ character: 'Claus the Saint' }, {}, {}]);
+    fillDeck(g);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.equal(g.clausPick(0), true);
+    assert.equal(g.clausPick(0), false, 'slot je už rozdaný');
+    assert.equal(g.clausPick(99), false, 'mimo řadu');
+    assert.equal(g.players[0].hand.length, 1);
 });
 
 test('Claus rozdává jen hráčům ve hře (vyřazené přeskočí)', () => {
     const g = mkGame([{ character: 'Claus the Saint' }, { health: 0 }, {}, { health: 0 }]);
     fillDeck(g);
     g.startDrawPhase();
-    assert.equal(g.drawPhaseState.cardsNeeded, 3, '1 živý soupeř + 2 ponechané');
     g.drawCard('deck');
+    assert.equal(g.clausState.revealed.length, 3, '1 živý soupeř + 2 ponechané');
     assert.deepEqual(g.clausState.queue, [2]);
-    g.clausGive(0);
+    g.clausPick(0); g.clausPick(1);
+    assert.equal(g.clausState.toIdx, 2);
+    g.clausPick(2);
     assert.equal(g.phase, 'PLAY');
     assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.players[2].hand.length, 1);
 });
 
 test('Žízeň (High Noon) mění jen kolik si Claus nechá', () => {
@@ -57,20 +81,40 @@ test('Žízeň (High Noon) mění jen kolik si Claus nechá', () => {
     g.activeEvent = ev('ZIZEN');
     fillDeck(g);
     g.startDrawPhase();
-    assert.equal(g.drawPhaseState.cardsNeeded, 3, '2 rozdané + 1 ponechaná');
     g.drawCard('deck');
-    g.clausGive(0);
-    g.clausGive(0);
+    assert.equal(g.clausState.revealed.length, 3, '2 rozdané + 1 ponechaná');
+    assert.equal(g.clausState.keep, 1);
+    g.clausPick(0);
+    assert.equal(g.clausState.toIdx, 1, 'po jedné kartě pro sebe už rozdává');
+    g.clausPick(1); g.clausPick(2);
     assert.equal(g.players[0].hand.length, 1);
 });
 
-test('bez jediného spoluhráče ve hře fáze lízání rovnou skončí', () => {
+test('bez jediného spoluhráče ve hře si Claus vezme jen svoje karty', () => {
     const g = mkGame([{ character: 'Claus the Saint' }, { health: 0 }]);
     fillDeck(g);
     g.startDrawPhase();
     g.drawCard('deck');
+    assert.equal(g.clausState.revealed.length, 2);
+    assert.deepEqual(g.clausState.queue, []);
+    g.clausPick(0); g.clausPick(1);
     assert.equal(g.phase, 'PLAY');
     assert.equal(g.players[0].hand.length, 2);
+});
+
+test('došlý balíček: přednost mají karty, které si Claus nechává', () => {
+    const g = mkGame([{ character: 'Claus the Saint' }, {}, {}, {}]);
+    // Jen 3 karty celkem (a nic v odhozu k domíchání) – z 5 se odkryjí tři.
+    for (let i = 0; i < 3; i++) g.deck.cards.push(mkCard(CardType.BANG));
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.equal(g.clausState.revealed.length, 3);
+    assert.equal(g.clausState.keep, 2, 'dvě si nechá');
+    assert.deepEqual(g.clausState.queue, [1], 'na jednoho souseda zbyla jedna karta');
+    g.clausPick(0); g.clausPick(1); g.clausPick(2);
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.players[1].hand.length, 1);
 });
 
 test('Kocovina Clausovi schopnost vypne (líže klasicky 2)', () => {

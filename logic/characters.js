@@ -81,23 +81,39 @@ const CharactersMixin = {
     },
 
     // ── Claus "The Saint" (A Fistful of Cards) ──────────────────────────────────
-    // Rozdá jednu kartu dalšímu hráči ve frontě (po směru od sebe). Karty už má v ruce
-    // (lízl si je najednou, viz startClausDraw v logic/draw.js), takže dává KTEROUKOLI –
-    // stejně jako u stolu, kde je po líznutí nikdo nerozezná.
-    clausGive(cardIdx) {
+    // Odkryté karty leží v řadě uprostřed stolu (viz startClausDraw v logic/draw.js)
+    // a rozdělují se klikáním: nejdřív si Claus vezme `keep` karet pro sebe, pak dá po
+    // jedné každému dalšímu hráči ve frontě (po směru od sebe).
+    //
+    // Kdo je zrovna na řadě, drží `clausState.toIdx` – přímo ve stavu, aby si to klient
+    // (zvýrazněná postava příjemce) ani bot nemuseli dopočítávat. `null` = rozděleno.
+    _clausAdvance() {
+        const cs = this.clausState;
+        if (!cs) return;
+        cs.toIdx = cs.taken < cs.keep ? this.currentPlayerIndex
+                 : (cs.queue.length ? cs.queue[0] : null);
+    },
+
+    // Klik na jednu z odkrytých karet: putuje tomu, kdo je právě na řadě (cs.toIdx).
+    clausPick(revealIdx) {
         if (this.phase !== "CLAUS_GIVE" || !this.clausState) return false;
-        const giver = this.getCurrentPlayer();
-        const toIdx = this.clausState.queue[0];
-        const to = this.players[toIdx];
-        const card = giver?.hand[cardIdx];
-        if (!card || !to) return false;
-        giver.hand.splice(cardIdx, 1);
+        const cs = this.clausState;
+        const card = cs.revealed[revealIdx];
+        if (!card || cs.picked.includes(revealIdx)) return false;
+        const to = this.players[cs.toIdx];
+        if (!to) return false;
+        cs.picked.push(revealIdx);
         to.hand.push(card);
-        this.clausState.queue.shift();
-        this.logEvent('special', { who: giver.name, card: 'Claus the Saint – dává kartu', target: to.name });
-        if (this.clausState.queue.length > 0) return true;
-        // Rozdáno – zbytek si nechává a fáze lízání končí klasickou cestou (fronta
-        // odložených akcí, volba barvy pro Želízka).
+        if (cs.toIdx === this.currentPlayerIndex) cs.taken++;
+        else {
+            cs.queue.shift();
+            this.logEvent('special', { who: this.getCurrentPlayer().name,
+                                       card: 'Claus the Saint – dává kartu', target: to.name });
+        }
+        this._clausAdvance();
+        if (cs.toIdx !== null) return true;
+        // Rozděleno – fáze lízání končí klasickou cestou (fronta odložených akcí,
+        // volba barvy pro Želízka).
         this.clausState = null;
         this._finishDraw();
         return true;

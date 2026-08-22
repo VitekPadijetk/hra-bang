@@ -10,8 +10,13 @@ Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
   (řada rozdaných karet zdola, karty horního soupeře shora) – omezení se kříží o 5 px.
   Rozdíl se dělí na půl, takže na obou stranách zůstává necelý 3px překryv (`EVENT_STORE_SLACK`).
-- **Claus si líže celou fázi jedním klikem** na balíček (při 8 hráčích by jinak klikal
-  devětkrát) a rozdává pak z ruky – u stolu je to totéž, karty už nikdo nerozezná.
+- **Claus odkrývá celou fázi jedním klikem** na balíček (při 8 hráčích by jinak klikal
+  devětkrát). Karty leží v řadě uprostřed stolu (vzor Kit Carlson, jen měřítko se počítá
+  z jejich počtu) a rozděluje je z ní: nejdřív si vezme svoje, pak po jedné ostatním.
+  Komu se právě vybírá, drží `clausState.toIdx` – tomu hráči svítí postava.
+- **Přibalené karty (Nová identita, Želízka)** se se zapnutým Fistfulem přidávají samy
+  (`_hnExtraOn`), takže zaškrtávátko v „Pokročilých možnostech" v tom případě zmizí –
+  obě karty jsou z tohohle rozšíření.
 
 ---
 
@@ -259,8 +264,8 @@ vypnuté rozšíření = prázdný balíček. `test/layout.test.js` – `eventPi
 
 #### Claus "The Saint" (4 životy)
 - **Pravidlo:** ve fázi 1 si lízne `(počet hráčů ve hře) + 1` karet, pak dá po jedné každému ostatnímu hráči ve hře a zbylé 2 si nechá.
-- **Kde:** `logic/draw.js` – větev v `startDrawPhase` (vzor Kit Carlson), `clausState`, `clausGive(cardIdx)`, socket `claus_give`.
-- **Průběh:** odkryté karty vidí jen Claus (panel jako u Kita), obdarovaní po směru od Clause, za každou rozdanou kartou letí animace.
+- **Kde:** `logic/draw.js` – větev v `startDrawPhase` (vzor Kit Carlson), `clausState`, `logic/characters.js` `clausPick(revealIdx)` + `_clausAdvance()`, socket `claus_give`.
+- **Průběh:** celá řada se odkryje naráz (klik na balíček), líce vidí jen Claus (`redactState`), ostatní ruby. Rozděluje klikáním – nejdřív sobě (`keep`), pak po jedné ostatním po směru; příjemci svítí postava (`clausState.toIdx`) a za každou kartou letí animace `claus_pick`.
 - **Hrany:** kolik si **nechá**, řídí `_drawCountFor` (Žízeň 1, Příjezd vlaku 3) – stejná dohoda jako u Kita; líže vždy `n+1`. Peyote jeho schopnost přebíjí (R8). Suzy a spol. se doberou z fronty až po celém rozdání.
 - **Zrcadla:** `core/pending.js` (`CLAUS_GIVE`), `core/botPolicy.js`, panel ve `view/board.js`.
 

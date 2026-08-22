@@ -173,24 +173,33 @@ const DrawMixin = {
                 return;
             }
 
-            // Claus "The Saint": líznutí celé fáze naráz (jedním klikem na balíček) –
-            // při 8 hráčích by jinak klikal devětkrát. Karty jdou rovnou do ruky a hráč
-            // pak z ní každému ostatnímu jednu dá (fáze CLAUS_GIVE).
+            // Claus "The Saint": celá fáze se odkryje NAJEDNOU (jedním klikem na balíček)
+            // do řady uprostřed stolu – přesně jako u Kita Carlsona, jen karet může být až
+            // devět a vidí je jen on (ostatním leží rubem, viz redactState). Rozdělí je pak
+            // klikáním: nejdřív si vezme svoje, pak po jedné ostatním (fáze CLAUS_GIVE).
             if (ds.isClaus && effectiveCharacter(player) === "Claus the Saint") {
-                const drawn = [card];
-                for (let i = 1; i < ds.cardsNeeded; i++) {
+                // Stejně jako u Kita: JAKÉKOLI domíchání během odkrývání je „emergency" –
+                // karty se nesmí ukázat dřív, než balíček dojede míchací cinematiku.
+                const reshuffledAtC1 = this.deck._reshuffleOccurred;
+                const order = (ds.clausOrder || []).filter(i => isInPlay(this.players[i]));
+                const total = (ds.clausKeep || 2) + order.length;
+                const revealed = [card];
+                for (let i = 1; i < total; i++) {
                     const c = this.deck.draw();
-                    if (c) drawn.push(c);
+                    if (c) revealed.push(c);
                 }
-                drawn.forEach(c => { player.hand.push(c); player.stats.cardsDrawn++; });
-                ds.cardsDrawn = drawn.length;
-                this.logEvent('draw', { who: player.name, source: 'deck (Claus)', cards: drawn.map(c => c.name) });
+                if (reshuffledAtC1 || this.deck._reshuffleOccurred) {
+                    this.deck._reshuffleWasProactive = false;
+                }
+                // Došlý balíček: co si nechává má přednost, teprve zbytek se rozdává –
+                // jinak by na poslední hráče ve frontě nezbylo a výběr by nešel dokončit.
+                const keep = Math.min(ds.clausKeep || 2, revealed.length);
+                const queue = order.slice(0, Math.max(0, revealed.length - keep));
+                ds.cardsDrawn = 1;
+                player.stats.cardsDrawn += keep;
+                this.logEvent('draw', { who: player.name, source: 'deck (Claus)', cards: revealed.map(c => c.name) });
                 this.drawPhaseState.active = false;
-                // Rozdává po směru hodinových ručiček od sebe; kdo je mimo hru, ten nic
-                // nedostane. Když u stolu nikdo jiný nezbyl, fáze lízání rovnou končí.
-                const queue = (ds.clausOrder || []).filter(i => isInPlay(this.players[i]));
-                if (!queue.length) { this._finishDraw(); return; }
-                this.clausState = { queue };
+                this.clausState = { revealed, picked: [], keep, taken: 0, queue, toIdx: this.currentPlayerIndex };
                 this.phase = "CLAUS_GIVE";
                 return;
             }
@@ -243,6 +252,8 @@ const DrawMixin = {
     // Kolik si NECHÁ, řídí _drawCountFor (Žízeň 1, Příjezd vlaku 3, duch 3) – stejná
     // dohoda jako u Kita Carlsona. Počet rozdaných je dán počtem spoluhráčů ve hře,
     // takže si celkem lízne `rozdané + ponechané` (u čtyř hráčů a bez událostí 5).
+    // Odkrývá se to všechno naráz jedním klikem na balíček (cardsNeeded: 1) – při osmi
+    // hráčích by jinak klikal devětkrát a řada by se plnila po jedné kartě.
     startClausDraw() {
         const player = this.getCurrentPlayer();
         player.bangsPlayedThisTurn = 0;
@@ -256,12 +267,13 @@ const DrawMixin = {
         this.drawPhaseState = {
             active: true,
             playerIdx: this.currentPlayerIndex,
-            cardsNeeded: order.length + keep,
+            cardsNeeded: 1,
             cardsDrawn: 0,
             options: ['deck'],
             // Pořád je to lízání na začátku tahu – Želízka (High Noon) se ptají až za ním.
             isStartOfTurn: true,
             isClaus: true,
+            clausKeep: keep,
             clausOrder: order,
         };
         this.phase = "DRAW";

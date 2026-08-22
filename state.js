@@ -133,6 +133,14 @@ const App = {
     luckyDealIds: new Set(),
     luckyRevealCards: null,
     discardFlyHideIds: new Set(),
+    // Claus "The Saint" (Fistful): odkrytá řada uprostřed stolu. clausPanel = geometrie
+    // řady (clausPanelLayout – měřítko podle počtu karet), clausDealSlots = sloty, jejichž
+    // karta ještě letí z balíčku, clausTakenSlots = sloty, ze kterých karta právě odlétá
+    // k příjemci (mizí se startem letu, ne až s příchozím stavem). Klíčem je INDEX slotu,
+    // ne ID karty – ostatní hráči řadu vidí jen rubem (redactState), takže žádná ID nemají.
+    clausPanel: null,
+    clausDealSlots: new Set(),
+    clausTakenSlots: new Set(),
     // High Noon / Fistful of Cards: po dobu cinematiky odkrytí karty události kreslíme
     // balíček událostí podle animace, ne podle stavu (ten dorazí až po ní) – karta
     // z balíčku odchází hned se startem letu. null = kresli podle stavu (drawEventPile).

@@ -56,7 +56,7 @@ const _WAIT_LABELS = {
     DISCARD:               'odhazuje karty',
     DRAW:                  'líže si karty',
     KIT_CARLSON:           'Kit Carlson – vybírá karty',
-    CLAUS_GIVE:            'Claus the Saint – rozdává karty',
+    CLAUS_GIVE:            'Claus the Saint – rozděluje karty',
     BLACK_JACK_CHECK:      'Black Jack – druhá karta',
     RESPOND:               'brání se',
     STORE:                 'vybírá v hokynářství',

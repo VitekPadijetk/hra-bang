@@ -16,7 +16,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const ds = gs.drawPhaseState;
             const playerIdx = ds?.playerIdx;
             const isKitCarlson = ds?.isKitCarlson;
-            const animateDraw = playerIdx !== undefined && playerIdx !== null && !isKitCarlson;
+            // Claus (Fistful) odkrývá celou řadu naráz a rozdává ji z ní – žádná
+            // deck→ruka animace, řadu si klient nakreslí z přechodu fáze (jako u Kita).
+            const isClaus = ds?.isClaus;
+            const animateDraw = playerIdx !== undefined && playerIdx !== null && !isKitCarlson && !isClaus;
             const isDeckDraw = data.source !== 'opponent_hand' && data.source !== 'discard' && data.source !== 'board';
             if (animateDraw && data.source === 'discard') {
                 const topCard = gs.deck.discardPile[gs.deck.discardPile.length - 1];
@@ -86,7 +89,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     { type: 'draw', playerIdx, cardId: drawnId },
                     { type: 'draw', playerIdx });
             }
-            if (isKitCarlson) {
+            if (isKitCarlson || isClaus) {
                 handleReshuffleAndBroadcast(room, gs, 0);
             } else if (gs.deck._reshuffleOccurred) {
                 handleReshuffleAndBroadcast(room, gs, 400);

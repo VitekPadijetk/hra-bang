@@ -1685,6 +1685,34 @@ function _playCardAnim(data) {
             }
             break;
         }
+        case 'claus_pick': {
+            // Claus (Fistful) vybral kartu z odkryté řady pro toho, kdo je na řadě.
+            // Slot zhasne HNED se startem letu (stav dorazí až po něm), karta doletí
+            // do ruky příjemce. Líc znají jen Claus a příjemce (cardId), ostatní rub.
+            const src = clausSlotPos(data.slot);
+            const sc = (App.clausPanel && App.clausPanel.scale) || 0.3;
+            App.clausTakenSlots = App.clausTakenSlots || new Set();
+            App.clausTakenSlots.add(data.slot);
+            renderUI();
+            // Sobě: karta letí na SVŮJ slot ve vějíři (staging jako u líznutí).
+            if (animateDrawToMyHand(data.toIdx, data.cardId, src.x, src.y,
+                    { faceUp: true, duration: 420, startScale: sc })) break;
+            const dLen = state?.players?.[data.toIdx]?.hand?.length ?? 0;
+            const to = getHandSlotPos(data.toIdx, dLen, dLen + 1);
+            const endScale = sideScale(data.toIdx, 'hand');
+            if (data.cardId != null) {
+                // Claus svou kartu zná → vidí ji odletět lícem a cestou se schovat.
+                animateCardFlip(src.x, src.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
+                    { reverse: true, startAngle: 0, endAngle: sideAngle(data.toIdx),
+                      startScale: sc, endScale, duration: 420 });
+            } else {
+                // exactAngle: příjemce naproti (180°) by se bez něj srovnal na 0°.
+                animateCard(src.x, src.y, to.x, to.y, 'card_back', 420, null,
+                    { startAngle: 0, endAngle: sideAngle(data.toIdx), exactAngle: true,
+                      startScale: sc, endScale });
+            }
+            break;
+        }
         case 'discard_to_hand': {
             // Vedle se vrací z odhozu do ruky (Slab the Killer – zrušený částečný odpor).
             // U mě letí na svůj SKUTEČNÝ slot (staging přes pendingDrawIds, jako líznutí),
@@ -1928,6 +1956,7 @@ const ANIM_MS = {
     pedro_draw:        380,
     discard_to_hand:   400,
     ragtime_steal:     360,
+    claus_pick:        420,
     beer_auto_save:    380,
     beer_blocked:      410,   // nahoru 200 + pauza 210 + zpět 200
     jail_sequence:     400,
@@ -2235,6 +2264,14 @@ function _applyRoomUpdate(payload) {
         } else if (typeof finishKitCarlsonSpectator === 'function') {
             finishKitCarlsonSpectator();
         }
+    }
+
+    // Claus "The Saint" (Fistful): vstup do fáze → odkrytá řada přiletí z balíčku
+    // doprostřed stolu (Claus lícem, ostatní rubem); odchod → úklid geometrie.
+    if (state?.phase === 'CLAUS_GIVE' && _prevPhase !== 'CLAUS_GIVE') {
+        if (typeof startClausDeal === 'function') startClausDeal();
+    } else if (_prevPhase === 'CLAUS_GIVE' && state?.phase !== 'CLAUS_GIVE') {
+        if (typeof endClausDeal === 'function') endClausDeal();
     }
 
     // Lucky Duke: vstup → rozdej 2 karty z balíčku do panelu (vidí všichni);

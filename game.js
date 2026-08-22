@@ -304,6 +304,9 @@ if (typeof window !== 'undefined') {
             // Intro si umístěné karty drží jako hotové souřadnice (placedCards), takže
             // se na nový profil musí přepočítat – ve hře to renderGameBoard dělá samo.
             if (typeof _introRelayoutPlaced === 'function') _introRelayoutPlaced();
+            // Clausova odkrytá řada je taky hotová geometrie (měřítko se počítá ze šířky
+            // jeviště), takže se po změně velikosti musí přepočítat.
+            if (App.clausPanel) App.clausPanel = clausPanelLayout(App.clausPanel.n);
             if (gameScene) renderUI();
         }, 120);
     };
@@ -1347,6 +1350,66 @@ function playKitCarlsonResult() {
     });
     App.kitRevealCards = null;
     App.kitPicked = [];
+}
+
+// ── CLAUS "THE SAINT" (Fistful): odkrytá řada uprostřed stolu ─────────────────
+// Karet je až devět (osm hráčů), takže se na rozdíl od Kitova panelu MĚŘÍTKO i rozteč
+// počítají z jejich počtu – řada se musí vejít mezi okraje jeviště. Tahle geometrie je
+// jediný zdroj pravdy pro kreslení (view/board.js), rozdávání z balíčku i následné lety
+// k příjemcům, takže se nikde nesmí dopočítávat „podle sebe".
+const CLAUS_ROW_Y = 470, CLAUS_MAX_SCALE = 0.5, CLAUS_GAP = 14, CLAUS_CARD_W = 650;
+
+function clausPanelLayout(n) {
+    const count = Math.max(1, n || 1);
+    const avail = Math.max(600, (stageRight() - stageLeft()) - 180);
+    const scale = Math.max(0.16, Math.min(CLAUS_MAX_SCALE,
+        (avail - CLAUS_GAP * (count - 1)) / (count * CLAUS_CARD_W)));
+    const spacing = CLAUS_CARD_W * scale + CLAUS_GAP;
+    // Střed jeviště zůstává na 960 i po roztažení plátna (viz computeStage).
+    return { n: count, scale, spacing, y: CLAUS_ROW_Y, startX: 960 - (count - 1) * spacing / 2 };
+}
+
+function clausSlotPos(i) {
+    const P = App.clausPanel || clausPanelLayout(state?.clausState?.revealed?.length || 1);
+    return { x: P.startX + i * P.spacing, y: P.y };
+}
+
+// Vstup do fáze CLAUS_GIVE: karty odletí z balíčku do řady. Claus je vidí lícem
+// (překlopí se za letu), ostatní i divák jen rubem – v jejich stavu je řada zakrytá
+// (redactState), takže se se sloty pracuje přes INDEX, ne přes ID karty.
+function startClausDeal() {
+    if (!gameScene || !state?.clausState) return;
+    const revealed = state.clausState.revealed || [];
+    const P = clausPanelLayout(revealed.length);
+    App.clausPanel = P;
+    // Reconnect uprostřed fáze: co je rozdané, se znovu rozdávat nesmí.
+    const picked = new Set(state.clausState.picked || []);
+    App.clausDealSlots = new Set(revealed.map((_, i) => i).filter(i => !picked.has(i)));
+    App.clausTakenSlots = new Set();
+    const from = deckTopPos();
+    const pileScale = currentLayout().scaleDeck;
+    renderUI();
+    revealed.forEach((card, i) => {
+        if (picked.has(i)) return;
+        const to = clausSlotPos(i);
+        setTimeout(() => {
+            if (!gameScene || !App.clausDealSlots?.has(i)) return;
+            const done = () => { App.clausDealSlots?.delete(i); renderUI(); };
+            if (card?.id != null) {
+                animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(card.id),
+                    { flip: true, startScale: pileScale, endScale: P.scale, duration: 420, onComplete: done });
+            } else {
+                animateCard(from.x, from.y, to.x, to.y, 'card_back', 420, done,
+                    { startScale: pileScale, endScale: P.scale });
+            }
+        }, 100 + i * 110);
+    });
+}
+
+function endClausDeal() {
+    App.clausPanel = null;
+    App.clausDealSlots = new Set();
+    App.clausTakenSlots = new Set();
 }
 
 // ── KIT CARLSON – pohled OSTATNÍCH (ne Kit) ───────────────────────────────────

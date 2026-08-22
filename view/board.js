@@ -45,6 +45,14 @@ function _turnTintAt(t) {
     return Phaser.Display.Color.GetColor(c.r, c.g, c.b);
 }
 
+// Claus "The Saint" (Fistful): komu se právě vybírá karta z odkryté řady – jeho postava
+// se rozsvítí, ať je u stolu vidět, PRO KOHO ta karta je (nejdřív Claus sobě, pak po
+// směru ostatním). Jediný zdroj pravdy je clausState.toIdx ze serveru.
+const CLAUS_TINT = 0xffff44;
+function clausTargetIdx() {
+    return (state?.phase === 'CLAUS_GIVE' && state.clausState) ? state.clausState.toIdx : null;
+}
+
 function applyTurnTint(sprite) {
     if (!sprite) return;
     const t0 = App.turnTintStart || 0;
@@ -433,6 +441,7 @@ function drawOpponents(ctx) {
 
         let isCurrent = state.currentPlayerIndex === actualIdx;
         const isWaiting = !!_waiting && _waiting.idx === actualIdx && actualIdx !== state.currentPlayerIndex;
+        const isClausTarget = clausTargetIdx() === actualIdx;
         const cardW = 325 * scaleOpp;
         const cardH = 500 * scaleOpp;
         const gap = L.oppGap;
@@ -722,7 +731,7 @@ function drawOpponents(ctx) {
             drawCompactOpponent({
                 player, actualIdx, anchor, scaleOpp, getCharTex, L,
                 cardW, cardH, bulletH, displayCards, handFan, handLen,
-                isCurrent, isWaiting, waiting: _waiting, waitTint: WAIT_TINT, starScale,
+                isCurrent, isWaiting, isClausTarget, waiting: _waiting, waitTint: WAIT_TINT, starScale,
                 drawBoardCard, drawHandCard, addCharInteraction,
             });
         }
@@ -740,7 +749,8 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isCurrent) applyTurnTint(charOpp);
+            if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+            else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
@@ -811,7 +821,8 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX, livesCY + bulletH * player.health, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isCurrent) applyTurnTint(charOpp);
+            if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+            else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
@@ -881,7 +892,8 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX - bulletH * player.health, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isCurrent) applyTurnTint(charOpp);
+            if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+            else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
@@ -952,7 +964,7 @@ function drawOpponents(ctx) {
 function drawCompactOpponent(ctx) {
     const { player, actualIdx, anchor, scaleOpp, getCharTex, L,
             cardW, cardH, bulletH, displayCards, handFan, handLen,
-            isCurrent, isWaiting, waiting, waitTint, starScale,
+            isCurrent, isWaiting, isClausTarget, waiting, waitTint, starScale,
             drawBoardCard, drawHandCard, addCharInteraction } = ctx;
 
     const m = compactMetrics(state.players.length - 1, L);
@@ -965,7 +977,8 @@ function drawCompactOpponent(ctx) {
 
     let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
         .setScale(scaleOpp).setAngle(angle);
-    if (isCurrent) applyTurnTint(charOpp);
+    if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+    else if (isCurrent) applyTurnTint(charOpp);
     else if (isWaiting) charOpp.setTint(waitTint);
     addCharInteraction(charOpp);
     gameScene.cardsSprites.add(charOpp);
@@ -1140,6 +1153,9 @@ function drawMyArea(ctx) {
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character))) charImg.setVisible(false);
         registerVeraPortrait(charImg, me, getCharTex);
+        // Claus (Fistful) si právě bere kartu pro sebe → moje postava svítí stejně jako
+        // postava kohokoli jiného, komu zrovna vybírá.
+        if (clausTargetIdx() === myIndex) charImg.setTint(CLAUS_TINT);
 
         // Dodge City: Tequila (DE_HEAL) může vyléčit +1 i sám sebe → moje postava klikatelná
         // (jen když jsem zraněný – léčení na plný život nedává smysl).
@@ -2219,15 +2235,50 @@ function drawPhaseOverlays(ctx) {
         });
     }
 
-    // Claus "The Saint" (Fistful): banner s tím, KOMU se právě dává karta. Ostatní vidí,
-    // na koho se čeká, přes běžný štítek stavu (waitingStatus).
-    if (state.phase === "CLAUS_GIVE" && state.clausState?.queue?.length) {
-        const toIdx = state.clausState.queue[0];
-        const toName = state.players[toIdx]?.name || '?';
-        const mine = state.currentPlayerIndex === myIndex;
-        const l1 = gameScene.add.text(960, 70,
-            mine ? `Claus the Saint – dej kartu hráči ${toName} (zbývá ${state.clausState.queue.length})`
-                 : `Claus the Saint rozdává karty…`,
+    // Claus "The Saint" (Fistful): odkrytá řada uprostřed stolu + banner s tím, PRO KOHO
+    // se právě vybírá. Claus vidí líce a kliká, ostatní i divák vidí ruby (redactState).
+    // Geometrie řady je v clausPanelLayout (game.js) – jediný zdroj pro kreslení i lety.
+    if (state.phase === "CLAUS_GIVE" && state.clausState) {
+        const cs = state.clausState;
+        const revealed = cs.revealed || [];
+        const P = App.clausPanel || clausPanelLayout(revealed.length);
+        const mine = state.currentPlayerIndex === myIndex && myIndex !== null;
+        // Jeden výběr na jedno vykreslení: dokud nedorazí nový stav, zůstávají karty
+        // nakreslené a klik navíc by vybíral už za dalšího příjemce (server ho odmítne,
+        // tady jen zhasneme UI). Stejná dohoda jako u hokynářství.
+        let _clausPickSent = false;
+        revealed.forEach((card, i) => {
+            if (App.clausDealSlots?.has(i)) return;      // ještě letí z balíčku
+            if (cs.picked?.includes(i)) return;          // už rozdaná (stav)
+            if (App.clausTakenSlots?.has(i)) return;     // právě odlétá k příjemci
+            const slot = clausSlotPos(i);
+            const cSprite = gameScene.add.image(slot.x, slot.y, getTex(card?.id)).setScale(P.scale);
+            if (mine && !App.blockInput) {
+                cSprite.setInteractive({ useHandCursor: true });
+                cSprite.setTint(0xddffdd);
+                cSprite.on('pointerover', (pointer) => {
+                    if (pointer?.wasTouch) return;
+                    cSprite.setScale(P.scale * 1.08); cSprite.setTint(0xffff44);
+                });
+                cSprite.on('pointerout', () => { cSprite.setScale(P.scale); cSprite.setTint(0xddffdd); });
+                cSprite.on('pointerdown', () => {
+                    if (_clausPickSent) return;
+                    _clausPickSent = true;
+                    App.blockInput = true;
+                    socket.emit('claus_give', { cardIdx: i });
+                });
+            }
+            mAdd(cSprite);
+        });
+
+        const toIdx = cs.toIdx;
+        const self = toIdx === state.currentPlayerIndex;
+        const left = self ? Math.max(0, (cs.keep || 0) - (cs.taken || 0)) : (cs.queue || []).length;
+        const plural = (n) => n === 1 ? 'kartu' : n < 5 ? 'karty' : 'karet';
+        const txt = !mine ? 'Claus the Saint rozděluje karty…'
+            : self ? `Claus the Saint – vezmi si ${left} ${plural(left)} pro sebe`
+                   : `Claus the Saint – dej kartu hráči ${state.players[toIdx]?.name || '?'} (zbývá ${left})`;
+        const l1 = gameScene.add.text(960, 70, txt,
             { fontSize: '26px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
         mAdd(l1, 206);
     }

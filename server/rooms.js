@@ -76,7 +76,12 @@ module.exports = function installRoomService(ctx) {
         // kreslí jen výšku hromádky, pořadí je pořadí příštích kol. Odkryté karty
         // (eventPile / ffPile) jsou naopak veřejné a zůstávají.
         const hideAll = (arr) => (arr || []).map(() => HIDDEN_CARD);
-        return { ...gs, players, deck,
+        // Claus "The Saint" (Fistful): odkrytou řadu vidí jen on – ostatním z ní zbývá
+        // počet karet (kreslí se rubem) a `picked` (které sloty jsou už rozdané).
+        const clausState = (gs.clausState && viewerIdx !== gs.currentPlayerIndex)
+            ? { ...gs.clausState, revealed: hideAll(gs.clausState.revealed) }
+            : gs.clausState;
+        return { ...gs, players, deck, clausState,
                  eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck) };
     }
 

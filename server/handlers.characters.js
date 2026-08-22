@@ -162,22 +162,22 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
-    // Claus "The Saint" (Fistful): po líznutí rozdá po jedné kartě každému ostatnímu.
-    // Karta letí z jeho ruky do ruky obdarovaného – líc vidí oba, ostatní jen rub
-    // (stejná cesta jako u krádeže, jen obráceným směrem).
+    // Claus "The Saint" (Fistful): odkryté karty leží v řadě uprostřed stolu a on je
+    // rozděluje – nejdřív sobě, pak po jedné ostatním. Vybraná karta letí ze svého slotu
+    // do ruky příjemce; líc vidí Claus (vybíral) i příjemce (má ji v ruce), ostatní rub.
     on('claus_give', (d) => {
         withRoom((room, p, gs) => {
+            const cs = gs.clausState;
+            const slot = d?.cardIdx;
             const giverIdx = gs.currentPlayerIndex;
-            const toIdx = gs.clausState?.queue?.[0];
-            const card = gs.players[giverIdx]?.hand[d?.cardIdx];
+            const toIdx = cs?.toIdx;
+            const card = cs?.revealed?.[slot];
             if (toIdx == null || !card) return;
-            const stolenIndex = d.cardIdx;
-            if (!gs.clausGive(d.cardIdx)) return;
-            const base = { type: 'ragtime_steal', attackerIdx: toIdx, targetIdx: giverIdx,
-                           area: 'hand', stolenIndex };
-            emitAnimPrivate(room, [toIdx, giverIdx], { ...base, stolenCardId: card.id },
-                                                     { ...base, stolenCardId: null });
-            broadcastRoomDelayed(room, 420);
+            if (!gs.clausPick(slot)) return;
+            const base = { type: 'claus_pick', slot, toIdx };
+            emitAnimPrivate(room, [toIdx, giverIdx], { ...base, cardId: card.id },
+                                                     { ...base, cardId: null });
+            broadcastRoomDelayed(room, 380);
         });
     });
 
