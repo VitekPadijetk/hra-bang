@@ -126,7 +126,44 @@ class Player {
 }
 
 class Deck {
-    constructor() { this.cards = []; this.discardPile = []; }
+    constructor() { this.cards = []; this.discardPile = []; this.mineMode = false; }
+
+    // ── Opuštěný důl (A Fistful of Cards) ─────────────────────────────────────
+    // Po celé kolo si obě hromádky vymění role: líže se z ODHOZU a odhazuje se lícem
+    // dolů na DOBÍRACÍ balíček. Prohození sedí tady, a ne v pravidlech, protože
+    // draw()/discard() jsou jediné dvě cesty, kterými karta z hromádek odchází
+    // a přichází – pravidla se tím pádem nemusí ptát vůbec.
+    // Přepínač zapíná GameState (_syncMine v logic/fistful.js) při odkrytí nové
+    // události; mezi koly se s ním nehýbe a draw() si ho sám shodí, až odhoz dojde.
+    // Getery jsou na prototypu, takže je JSON.stringify do room_update nepošle
+    // (klient si aktivní důl pozná z `mineMode`, které vlastní property je).
+    get _drawPile()    { return this.mineMode ? this.discardPile : this.cards; }
+    get _discardPile() { return this.mineMode ? this.cards : this.discardPile; }
+
+    // Jediná cesta, kudy karta jde do odhozu. Bere i víc karet naráz (pozůstalost
+    // vyřazeného hráče). Prázdné/undefined se ignoruje – volající si pak nemusí
+    // hlídat, jestli zbraň nebo karta vůbec existuje.
+    discard(...cards) {
+        const pile = this._discardPile;
+        cards.forEach(c => { if (c) pile.push(c); });
+    }
+
+    // Kit Carlson vrací nevybrané karty navrch TÉ hromádky, ze které si je vzal.
+    returnToTop(card) { if (card) this._drawPile.push(card); }
+
+    // Vrch odhozu = poslední odhozená karta (Pedro Ramirez, Krytý vůz, animace).
+    discardTop() {
+        const pile = this._discardPile;
+        return pile.length ? pile[pile.length - 1] : null;
+    }
+
+    // Vyzvedni z odhozu konkrétní kartu zpátky – vrácené nepoužité Vedle! (Úhyb proti
+    // Slabovi) nebo karta, kterou si server po zahrání drží kvůli animaci.
+    takeFromDiscard(cardId) {
+        const pile = this._discardPile;
+        const i = pile.findIndex(c => c && c.id === cardId);
+        return i === -1 ? null : pile.splice(i, 1)[0];
+    }
 
     initializeStandardDeck(cardData) {
         this.cards = [];
@@ -169,6 +206,16 @@ class Deck {
     }
 
     draw() {
+        // Opuštěný důl: líže se z odhozu a NEMÍCHÁ se – dobírací balíček během kola
+        // jen roste (chodí na něj odhazované karty), odhoz se vyprazdňuje. Jakmile
+        // dojde, důl pro zbytek kola končí („dokud je to možné") a pokračuje se
+        // normálně; zpátky ho zapne až _syncMine při odkrytí další události, takže
+        // se příznak nemusí nikde uklízet.
+        if (this.mineMode) {
+            if (this.discardPile.length > 0) return this.discardPile.pop();
+            this.mineMode = false;
+            if (this._log) this._log('mine_exhausted', { deck: this.cards.length });
+        }
         if (this.cards.length === 0) {
             if (!this._reshuffle()) {
                 if (this._log) this._log('deck_empty', {});
@@ -182,21 +229,6 @@ class Deck {
             this._reshuffle();
             this._reshuffleWasProactive = true; // přepíše false z _reshuffle()
         }
-        return card;
-    }
-
-    drawForCheck(player) {
-        if (player && player.character === "Lucky Duke") {
-            const c1 = this.draw();
-            const c2 = this.draw();
-            const chosen = (c1.suit === Suits.HEARTS || c2.suit === Suits.HEARTS) ?
-                           (c1.suit === Suits.HEARTS ? c1 : c2) : c1;
-            const other = (chosen === c1) ? c2 : c1;
-            this.discardPile.push(other);
-            return chosen;
-        }
-        const card = this.draw();
-        this.discardPile.push(card);
         return card;
     }
 }

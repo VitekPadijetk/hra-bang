@@ -77,8 +77,8 @@ const DodgeCityMixin = {
         const extraCard = player.hand.splice(extraCardIdx, 1)[0];
         const mainIdx2 = player.hand.findIndex(c => c.id === pending.mainCardId);
         const mainCard = mainIdx2 !== -1 ? player.hand.splice(mainIdx2, 1)[0] : null;
-        this.deck.discardPile.push(extraCard);           // 1) odhozená karta
-        if (mainCard) this.deck.discardPile.push(mainCard); // 2) hraná karta navrch
+        this.deck.discard(extraCard);           // 1) odhozená karta
+        if (mainCard) this.deck.discard(mainCard); // 2) hraná karta navrch
 
         this.pendingDiscardAnother = null;
         this.checkSuzyLafayette(player);
@@ -201,7 +201,7 @@ const DodgeCityMixin = {
 
         const discardAndTrack = () => {
             player.board.splice(idx, 1);
-            this.deck.discardPile.push(card);
+            this.deck.discard(card);
             this._trackCard(playerIdx, card.type);
         };
 

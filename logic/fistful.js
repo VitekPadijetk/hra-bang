@@ -181,7 +181,7 @@ const FistfulMixin = {
             this.drawPhaseState.cardsDrawn++;
             this.logEvent('draw', { who: player.name, source: 'Peyote', cards: [card.name] });
         } else {
-            this.deck.discardPile.push(card);
+            this.deck.discard(card);
             this.logEvent('event', { card: 'Peyote', who: player.name, msg: `netrefil (${card.name})` });
             this._endPeyote();
         }
@@ -231,7 +231,7 @@ const FistfulMixin = {
         // Odzadu, ať se indexy během vyndávání neposunou; výsledek pak zleva doprava.
         picked.sort((a, b) => b.i - a.i).forEach(({ i }) => p.hand.splice(i, 1));
         const discarded = picked.slice().reverse().map(x => x.card);
-        discarded.forEach(c => this.deck.discardPile.push(c));
+        discarded.forEach(c => this.deck.discard(c));
         this.pendingRanch = null;
         if (!discarded.length) {
             this.phase = "PLAY";

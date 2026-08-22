@@ -24,7 +24,7 @@ const ResponseMixin = {
             const pdd = this.pendingDynamiteDamage;
             if (!pdd || pdd.playerIdx !== playerIdx) return false;
 
-            this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+            this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
 
             // Dynamit je tu rozložený na 3 zásahy po 1 (klikání), pravidla ho berou jako
@@ -48,7 +48,7 @@ const ResponseMixin = {
             const pnd = this.pendingNoonDamage;
             if (!pnd || pnd.playerIdx !== playerIdx) return false;
 
-            this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+            this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
             if (gain > 1) p.health = Math.min(p.health + gain - 1, p.maxHealth);
 
@@ -61,7 +61,7 @@ const ResponseMixin = {
             const pr = this.pendingResponse;
             if (!pr?.active || pr.targetIdx !== playerIdx) return false;
 
-            this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+            this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
 
             // Zásah se nikdy neaplikuje (hráč zůstává na 1 HP) → přebytek je čisté léčení.
@@ -85,7 +85,7 @@ const ResponseMixin = {
         const indices = [cardIdx1, cardIdx2].sort((a, b) => b - a);
         if (indices[0] >= p.hand.length || indices[1] < 0 || indices[0] === indices[1]) return false;
         indices.forEach(idx => {
-            if (p.hand[idx]) this.deck.discardPile.push(p.hand.splice(idx, 1)[0]);
+            if (p.hand[idx]) this.deck.discard(p.hand.splice(idx, 1)[0]);
         });
         this.checkSuzyLafayette(p);
 
@@ -178,8 +178,7 @@ const ResponseMixin = {
         if (cardIdx === null && boardCardId == null) {
             if (this.pendingResponse.partialMisses?.length > 0) {
                 this.pendingResponse.partialMisses.forEach(pm => {
-                    const di = this.deck.discardPile.findIndex(c => c.id === pm.card.id);
-                    if (di !== -1) this.deck.discardPile.splice(di, 1);
+                    this.deck.takeFromDiscard(pm.card.id);
                     this.players[pm.playerIdx].hand.push(pm.card);
                     // Úhyb (a jiné Vedle!-karty s `draw`) se vrací do ruky NEPOUŽITÁ (např.
                     // proti Slabovi nebyl druhý Vedle!) → zruš i naplánovanou odměnu
@@ -262,7 +261,7 @@ const ResponseMixin = {
             if (this.pendingResponse.requiredCard === CardType.MISSED && this.pendingResponse.sourceCard !== CardType.DUEL) {
                 if (!this.pendingResponse.partialMisses) this.pendingResponse.partialMisses = [];
                 this.pendingResponse.partialMisses.push({ card: playedCard, playerIdx });
-                this.deck.discardPile.push(playedCard);
+                this.deck.discard(playedCard);
                 this.missesPlayed = (this.missesPlayed || 0) + 1;
                 this._mollyPlayedOutOfTurn(playerIdx, false);   // Molly: lízne za každé Vedle! mimo tah
                 const required = this.missesRequired || 1;
@@ -280,7 +279,7 @@ const ResponseMixin = {
                 this.missesRequired = 1;
                 this.checkSuzyLafayette(player);
             } else {
-                this.deck.discardPile.push(playedCard);
+                this.deck.discard(playedCard);
                 if (this.pendingResponse.sourceCard !== CardType.DUEL) {
                     this.checkSuzyLafayette(player);
                 }

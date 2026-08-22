@@ -69,7 +69,7 @@ const PlayMixin = {
             },
             [CardType.WEAPON]: () => {
                 if (player.weapon.id !== -1) {
-                    this.deck.discardPile.push(player.weapon);
+                    this.deck.discard(player.weapon);
                     player.stats.weaponsCycled++;
                 }
                 player.weapon = player.hand.splice(cardIndex, 1)[0];
@@ -98,7 +98,7 @@ const PlayMixin = {
                 this._trackCard(this.currentPlayerIndex, card.type);
             }
             if (shouldDiscard) {
-                this.deck.discardPile.push(player.hand.splice(cardIndex, 1)[0]);
+                this.deck.discard(player.hand.splice(cardIndex, 1)[0]);
             }
             if (this.phase !== "STORE" && this.phase !== "DRAW") {
                 this.checkSuzyLafayette(player);
@@ -140,7 +140,7 @@ const PlayMixin = {
         attacker.stats.bangsFired++;
         this._trackCard(attackerIdx, card?.type || 'Bang!');
         this.logEvent('bang', { who: attacker.name, target: target.name });
-        this.deck.discardPile.push(attacker.hand.splice(cardIdx, 1)[0]);
+        this.deck.discard(attacker.hand.splice(cardIdx, 1)[0]);
         this.currentAttacker = attackerIdx;
         this.checkSuzyLafayette(attacker);
 
@@ -244,7 +244,7 @@ const PlayMixin = {
             }
             // Apache Kid: kárové Vězení na něj nemá efekt (karta se odhodí naprázdno).
             if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
-                this.deck.discardPile.push(card);
+                this.deck.discard(card);
                 this.checkSuzyLafayette(attacker);
                 this._processSpecialQueue();
                 return;
@@ -257,7 +257,7 @@ const PlayMixin = {
             return;
         }
         else if (card.type === CardType.CAT_BALOU || card.type === CardType.PANIC) {
-            this.deck.discardPile.push(card);
+            this.deck.discard(card);
             // Apache Kid: kárová Panika!/Cat Balou na něj nemá efekt (žádný výběr karty).
             if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
                 this.checkSuzyLafayette(attacker);
@@ -273,7 +273,7 @@ const PlayMixin = {
             return;
         }
         else if (card.type === CardType.DUEL) {
-            this.deck.discardPile.push(card);
+            this.deck.discard(card);
             this.checkSuzyLafayette(attacker);
             // Apache Kid: kárový Duel (karta samotná ♦) na něj nemá efekt – odhodí se
             // naprázdno, žádná výměna Bang!. (Bang! zahrané JAKO reakce uvnitř duelu jsou
@@ -296,7 +296,7 @@ const PlayMixin = {
             return;
         }
         else if (card.type === CardType.GATLING || card.type === CardType.INDIANS) {
-            this.deck.discardPile.push(card);
+            this.deck.discard(card);
             this.checkSuzyLafayette(attacker);
             this.missesRequired = 1;
             this.missesPlayed = 0;
@@ -342,7 +342,7 @@ const PlayMixin = {
         }
 
         const checkCard = this.deck.draw();
-        this.deck.discardPile.push(checkCard);
+        this.deck.discard(checkCard);
         this.phase = "CHECKING";
         this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect };
     },
@@ -390,7 +390,7 @@ const PlayMixin = {
             if (sel.sourceCardType === CardType.PANIC) {
                 attacker.hand.push(cardToMove);
             } else {
-                this.deck.discardPile.push(cardToMove);
+                this.deck.discard(cardToMove);
             }
         }
 

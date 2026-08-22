@@ -196,7 +196,7 @@ class GameState {
         const p = this.getCurrentPlayer();
         if (this.phase !== "DISCARD") return;
         const card = p.hand.splice(cardIdx, 1)[0];
-        if (card) this.deck.discardPile.push(card);
+        if (card) this.deck.discard(card);
         p.stats.cardsDiscarded++;
         if (p.hand.length <= this._handLimit(p)) {
             this.nextTurn();
@@ -241,7 +241,7 @@ class GameState {
         // Hokynářství rozdává kartu každému hráči VE HŘE – při Městě duchů (High Noon)
         // tedy i duchovi, který si zrovna odbývá svůj tah.
         const aliveCount = this.players.filter(p => isInPlay(p)).length;
-        const origCount = this.deck.cards.length;
+        const origCount = this.deck._drawPile.length;
         for (let i = 0; i < aliveCount; i++) {
             this.storeCards.push(this.deck.draw());
         }

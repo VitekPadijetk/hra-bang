@@ -275,7 +275,7 @@ const HighNoonMixin = {
                     weapon: weapon.length ? { id: weapon[0].id } : null,
                     hand: g.hand.map(c => ({ id: c.id })),
                 };
-                this.deck.discardPile.push(...g.hand, ...g.board, ...weapon);
+                this.deck.discard(...g.hand, ...g.board, ...weapon);
             }
             g.hand = [];
             g.board = [];

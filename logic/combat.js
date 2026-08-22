@@ -44,7 +44,7 @@ const CombatMixin = {
         const p = this.players[playerIdx];
         if (!p || !p.hand[cardIdx]) return;
 
-        this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+        this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
 
         if (!this.pendingSidSave.firstDiscarded) {
             this.pendingSidSave.firstDiscarded = true;
@@ -103,7 +103,7 @@ const CombatMixin = {
                 vulture.hand.push(...deadPlayer.hand, ...deadPlayer.board, ...deadWeapon);
                 this.checkSuzyLafayette(vulture);
             } else {
-                this.deck.discardPile.push(...deadPlayer.hand, ...deadPlayer.board, ...deadWeapon);
+                this.deck.discard(...deadPlayer.hand, ...deadPlayer.board, ...deadWeapon);
             }
 
             deadPlayer.hand = [];
@@ -154,7 +154,7 @@ const CombatMixin = {
                     hand: killer.hand.map(c => ({ id: c.id })),
                 };
             }
-            this.deck.discardPile.push(...killer.hand, ...killer.board, ...killerWeapon);
+            this.deck.discard(...killer.hand, ...killer.board, ...killerWeapon);
             killer.hand = []; killer.board = [];
             killer.weapon = new Card(-1, "Colt .45", CardType.WEAPON, null, null, { range: 1 });
         }

@@ -145,10 +145,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     gs.playCard(i);
                     // Po gs.playCard() je stará zbraň už v discardPile (logic ji tam přidal).
                     // Dočasně ji vyjmeme aby se nezobrazila v odhozu dřív než animace doletí.
-                    const oldWeaponDiscardIdx = gs.deck.discardPile.findIndex(c => c.id === oldWeaponId);
-                    const removedWeapon = oldWeaponDiscardIdx !== -1
-                        ? gs.deck.discardPile.splice(oldWeaponDiscardIdx, 1)[0]
-                        : null;
+                    const removedWeapon = gs.deck.takeFromDiscard(oldWeaponId);
                     // Animace: nová zbraň letí ruka→stůl (380ms), stará stůl→odhoz (420ms start, 380ms trvání → konec ~800ms)
                     setTimeout(() => {
                         emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: gs.currentPlayerIndex, cardId: oldWeaponId, boardIdx: 0 });
@@ -157,7 +154,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     broadcastRoomDelayed(room, 390);
                     // Za 820ms: vrátíme starou zbraň do odhozu a broadcastujeme finální stav
                     setTimeout(() => {
-                        if (removedWeapon) gs.deck.discardPile.push(removedWeapon);
+                        if (removedWeapon) gs.deck.discard(removedWeapon);
                         broadcastRoom(room);
                     }, 820);
                     return;
@@ -227,8 +224,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // panika přiletí až po dalším ticku bota → viditelná mezera „karta zmizela,
                 // pak nic, pak přiletí". Klient ji z ruky odebere přesně se startem animace
                 // (_liftCardFromHand), server ji vyndá v select_target_card níže.
-                const di = gs.deck.discardPile.findIndex(c => c.id === card.id);
-                const heldCard = di !== -1 ? gs.deck.discardPile.splice(di, 1)[0] : null;
+                const heldCard = gs.deck.takeFromDiscard(card.id);
                 if (heldCard) atk.hand.splice(Math.min(d.cardIdx, atk.hand.length), 0, heldCard);
                 room._pendingPanicCard.held = heldCard ? [heldCard] : [];
                 room._pendingPanicCard.heldInHand = !!heldCard;
@@ -279,7 +275,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // (u soupeře naproti se dřív posílal jen rub → karta se ani neotočila, ani
                 // nepřetočila). Panika z ruky zůstává skrytá (míří do ruky útočníka).
                 if (!isPanic && d.area === 'hand') {
-                    stolenCardId = gs.deck.discardPile[gs.deck.discardPile.length - 1]?.id ?? null;
+                    stolenCardId = gs.deck.discardTop()?.id ?? null;
                 }
                 // Slot ve vějíři cíle (jen z ruky). Posílá se VŠEM – identitu karty to
                 // neprozradí (ostatní vidí pořád jen rub), ale ruka se přeskládá správně.
@@ -303,8 +299,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // Cat Balou: ukradená karta právě skončila navrchu odhozu – taky ji
                 // podržíme, ať se u diváků neobjeví dřív, než ji tam doveze animace.
                 if (!isPanic) {
-                    const top = gs.deck.discardPile[gs.deck.discardPile.length - 1];
-                    if (top) { gs.deck.discardPile.pop(); held.push(top); }
+                    const top = gs.deck.discardTop();
+                    if (top) { gs.deck.takeFromDiscard(top.id); held.push(top); }
                 }
                 // Stav rozešli AŽ po doletu vícedílné animace (panic ~600, catbalou ~670 ms):
                 // ukradená karta se pak objeví v ruce útočníka přesně když tam dosedne (ne hned
@@ -313,7 +309,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // broadcast – dřív šel hned na 400 ms a karta se objevila předčasně.
                 const animEndMs = pending.type === 'catbalou_sequence' ? 670 : 600;
                 setTimeout(() => {
-                    held.forEach(c => gs.deck.discardPile.push(c));
+                    held.forEach(c => gs.deck.discard(c));
                     broadcastRoom(room);
                 }, animEndMs);
                 return;
@@ -377,7 +373,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 if (d.area === 'hand') {
                     // Odhozená karta je navrchu odhozu (veřejná) → klient si její slot v ruce
                     // najde podle ID sám (hand_to_discard, getMyPlayedCardPos).
-                    const top = gs.deck.discardPile[gs.deck.discardPile.length - 1];
+                    const top = gs.deck.discardTop();
                     if (top) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: victimIdx, cardId: top.id });
                 } else if (brawlBoardId != null) {
                     emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: victimIdx, cardId: brawlBoardId, boardIdx: brawlVisBoardIdx });
@@ -481,7 +477,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // je imunní vůči károvému Krytému vozu/Kankánu → karta se odhodí naprázdno, nic se
             // nevezme/neodhodí → nesmí se pak přehrát animace brané/odhozené karty).
             const stealHandBefore = gs.players[playerIdx].hand.length;
-            const discardBefore = gs.deck.discardPile.length;
+            const discardBefore = gs.deck._discardPile.length;
             // Krádež z ruky (Krytý vůz): pořadí ruky oběti PŘED aktivací → slot vzaté karty.
             const victimHandIds = (isSteal && target?.area === 'hand')
                 ? (gs.players[target.targetIdx]?.hand || []).map(c => c.id) : null;
@@ -507,9 +503,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             }
             if (isDiscard) {
                 // > discardBefore + 1 = kromě zelené karty se odhodila i cílová (efekt proběhl).
-                if (gs.deck.discardPile.length > discardBefore + 1) {
+                if (gs.deck._discardPile.length > discardBefore + 1) {
                     if (target.area === 'hand') {
-                        const top = gs.deck.discardPile[gs.deck.discardPile.length - 1];
+                        const top = gs.deck.discardTop();
                         if (top) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: target.targetIdx, cardId: top.id });
                     } else if (victimPublicId != null) {
                         emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: target.targetIdx, cardId: victimPublicId, boardIdx: victimVisIdx });
@@ -706,7 +702,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 const card = player.hand[idx];
                 if (card) {
                     emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.playerIdx, cardId: card.id });
-                    gs.deck.discardPile.push(player.hand.splice(idx, 1)[0]);
+                    gs.deck.discard(player.hand.splice(idx, 1)[0]);
                 }
             });
             if (player.health < player.maxHealth) {
@@ -860,9 +856,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     on('sid_ketchum_cancel', (d) => {
         withRoom((room, p, gs) => {
             if (!gs.sidKetchumPending || gs.sidKetchumPending.playerIdx !== d.playerIdx) return;
-            const lastDiscard = gs.deck.discardPile[gs.deck.discardPile.length - 1];
+            const lastDiscard = gs.deck.discardTop();
             if (lastDiscard) {
-                gs.deck.discardPile.pop();
+                gs.deck.takeFromDiscard(lastDiscard.id);
                 gs.players[d.playerIdx].hand.push(lastDiscard);
                 emitAnim(room, { type: 'discard_to_hand', toPlayerIdx: d.playerIdx, cardId: lastDiscard.id });
             }

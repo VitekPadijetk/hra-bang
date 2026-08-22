@@ -147,13 +147,13 @@ const SetupMixin = {
         if (!p) return;
         if (area === 'hand') {
             const card = p.hand.splice(cardIdx, 1)[0];
-            if (card) this.deck.discardPile.push(card);
+            if (card) this.deck.discard(card);
         } else if (area === 'board') {
             const card = p.board.splice(cardIdx, 1)[0];
-            if (card) this.deck.discardPile.push(card);
+            if (card) this.deck.discard(card);
         } else if (area === 'weapon') {
             if (p.weapon && p.weapon.id !== -1) {
-                this.deck.discardPile.push(p.weapon);
+                this.deck.discard(p.weapon);
                 p.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
             }
         }

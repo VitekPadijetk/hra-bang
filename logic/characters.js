@@ -42,7 +42,7 @@ const CharactersMixin = {
         if (!card) return false;
         if (this._suitBlocked(playerIdx, card)) return false;
         p._willUsedTurn = this.turnId;
-        this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+        this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
         this._trackCard(playerIdx, CardType.STORE);
         this.logEvent('special', { who: p.name, card: 'Uncle Will – hokynářství', taken: card.name });
         this.openStore();
@@ -65,7 +65,7 @@ const CharactersMixin = {
         this.players.forEach((p, i) => {
             if (p.weapon && p.weapon.id !== -1 && p.weapon.name === cardName && p.weapon !== justPlayed) {
                 removed.push({ playerIdx: i, boardIdx: 0, cardId: p.weapon.id });
-                this.deck.discardPile.push(p.weapon);
+                this.deck.discard(p.weapon);
                 p.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
             }
             for (let k = (p.board || []).length - 1; k >= 0; k--) {
@@ -75,7 +75,7 @@ const CharactersMixin = {
                 // jako u Rvačky/Paniky – klient podle ní najde, odkud karta letí).
                 removed.push({ playerIdx: i, boardIdx: 1 + k, cardId: c.id });
                 p.board.splice(k, 1);
-                this.deck.discardPile.push(c);
+                this.deck.discard(c);
             }
         });
         if (!removed.length) return;
@@ -274,7 +274,7 @@ const CharactersMixin = {
             const d = this.players[vs.deadIdx];
             if (d) {
                 const w = (d.weapon && d.weapon.id !== -1) ? [d.weapon] : [];
-                this.deck.discardPile.push(...d.hand, ...d.board, ...w);
+                this.deck.discard(...d.hand, ...d.board, ...w);
                 d.hand = [];
                 d.board = [];
                 d.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
@@ -333,7 +333,7 @@ const CharactersMixin = {
         if (!p.hand[cardIdx]) return;
 
         const card = p.hand.splice(cardIdx, 1)[0];
-        this.deck.discardPile.push(card);
+        this.deck.discard(card);
         this.checkSuzyLafayette(p);
 
         if (!this.sidKetchumPending) {
@@ -345,7 +345,7 @@ const CharactersMixin = {
     },
 
     startLuckyDukeCheck(checkContext) {
-        const hadEnough = this.deck.cards.length >= 2;
+        const hadEnough = this.deck._drawPile.length >= 2;
         const c1 = this.deck.draw();
         const c2 = this.deck.draw();
         if (!c1 || !c2) return;
@@ -367,8 +367,8 @@ const CharactersMixin = {
         // Pořadí v odhozu kopíruje animaci: NEvybraná odletí hned, vybraná až po
         // klasickém sejmutí uprostřed obrazovky – leží tedy navrchu (viz
         // playLuckyDukeResult v game.js, kde se z vrchu odhozu i pozná).
-        this.deck.discardPile.push(other);
-        this.deck.discardPile.push(chosen);
+        this.deck.discard(other);
+        this.deck.discard(chosen);
         this.currentCheck = { ...ld.checkContext, card: chosen, active: false };
         this.luckyDukeState = null;
         this.phase = "CHECKING";
@@ -386,8 +386,8 @@ const CharactersMixin = {
         if (cardIndices.length !== 2) return;
         cardIndices.sort((a, b) => b - a);
         if (new Set(cardIndices).size !== 2) return;
-        this.deck.discardPile.push(p.hand.splice(cardIndices[0], 1)[0]);
-        this.deck.discardPile.push(p.hand.splice(cardIndices[1], 1)[0]);
+        this.deck.discard(p.hand.splice(cardIndices[0], 1)[0]);
+        this.deck.discard(p.hand.splice(cardIndices[1], 1)[0]);
         this._heal(p, 1);
         this.checkSuzyLafayette(p);
     },
@@ -419,7 +419,7 @@ const CharactersMixin = {
         // Modrá = i Vězení (viz isBlueCard v core/cardRules.js) – to, že se vykládá před
         // soupeře, z něj modrou kartu dělat nepřestává.
         if (!isBlueCard(p.hand[cardIdx])) return false;
-        this.deck.discardPile.push(p.hand.splice(cardIdx, 1)[0]);
+        this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
         p._joseUses = (p._joseUses || 0) + 1;
         this.checkSuzyLafayette(p);
         this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 2 });
@@ -449,8 +449,8 @@ const CharactersMixin = {
                              this._effSuit(p.hand[cardIndices[1]]) === Suits.DIAMONDS;
 
         const idxs = [...cardIndices].sort((a, b) => b - a);
-        this.deck.discardPile.push(p.hand.splice(idxs[0], 1)[0]);
-        this.deck.discardPile.push(p.hand.splice(idxs[1], 1)[0]);
+        this.deck.discard(p.hand.splice(idxs[0], 1)[0]);
+        this.deck.discard(p.hand.splice(idxs[1], 1)[0]);
         p._docUsed = true;
         this.checkSuzyLafayette(p);
 

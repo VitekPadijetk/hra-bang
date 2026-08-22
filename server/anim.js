@@ -212,8 +212,8 @@ module.exports = function installAnimService(ctx) {
         if (gs.deck._reshuffleOccurred) {
             const count = gs.deck._reshuffleCount || 20;
             const isProactive = gs.deck._reshuffleWasProactive === true;
-            const topCardId = gs.deck.discardPile.length > 0
-                ? gs.deck.discardPile[gs.deck.discardPile.length - 1].id
+            const topCardId = gs.deck.discardTop()
+                ? gs.deck.discardTop().id
                 : null;
             gs.deck._reshuffleOccurred = false;
             gs.deck._reshuffleCount = 0;

@@ -50,7 +50,7 @@ const ChecksMixin = {
                 return;
             }
             const checkCard = this.deck.draw();
-            this.deck.discardPile.push(checkCard);
+            this.deck.discard(checkCard);
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
@@ -68,7 +68,7 @@ const ChecksMixin = {
                 return;
             }
             const checkCard = this.deck.draw();
-            this.deck.discardPile.push(checkCard);
+            this.deck.discard(checkCard);
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
@@ -118,7 +118,7 @@ const ChecksMixin = {
                 const fromBoardIdx = 1 + check.boardIdx;
                 const dynCard = p.board.splice(check.boardIdx, 1)[0];
                 this.lastAnimEvent = { type: 'dynamite_explode', playerIdx: check.playerIdx, cardId: dynCard?.id, boardIdx: fromBoardIdx };
-                this.deck.discardPile.push(dynCard);
+                this.deck.discard(dynCard);
                 // Hráč musí 3× kliknout na životy (po jednom hitu)
                 this.pendingDynamiteDamage = { playerIdx: check.playerIdx, hitsLeft: 3 };
                 this.phase = "DYNAMITE_DAMAGE";
@@ -149,7 +149,7 @@ const ChecksMixin = {
             const jailCard = p.board.splice(check.boardIdx, 1)[0];
             const visualBoardIdx = 1 + check.boardIdx;
             this.lastAnimEvent = { type: 'board_to_discard', fromPlayerIdx: check.playerIdx, cardId: jailCard?.id, boardIdx: visualBoardIdx };
-            this.deck.discardPile.push(jailCard);
+            this.deck.discard(jailCard);
             if (suit === Suits.HEARTS) {
                 this.startDrawPhase();
             } else {

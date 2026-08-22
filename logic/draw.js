@@ -172,7 +172,7 @@ const DrawMixin = {
         else if (source === 'deck') {
             // Kolik karet měl balíček PŘED líznutím – potřebují to odkryté řady
             // (Kit Carlson / Claus), viz _revealAnim.
-            const deckBefore = this.deck.cards.length;
+            const deckBefore = this.deck._drawPile.length;
             const card = this.deck.draw();
             if (!card) return;
 
@@ -379,7 +379,7 @@ const DrawMixin = {
             // Nevybrané zpátky na balíček ve STEJNÉM pořadí, v jakém ležely (FAQ H6):
             // draw() bere z konce pole, takže se vrací odzadu (poslední odkrytá jde dolů).
             for (let i = kc.revealed.length - 1; i >= 0; i--) {
-                if (!pickedSet.has(i)) this.deck.cards.push(kc.revealed[i]);
+                if (!pickedSet.has(i)) this.deck.returnToTop(kc.revealed[i]);
             }
             const extra = kc.extra || 0;
             this.kitCarlsonState = null;
