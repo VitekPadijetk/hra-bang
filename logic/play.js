@@ -16,6 +16,8 @@ const PlayMixin = {
 
         // High Noon – Želízka: v tomhle tahu jen karty zvolené barvy.
         if (this._suitBlocked(this.currentPlayerIndex, card)) return;
+        // Fistful – Právo západu: vynucená karta musí ven jako první (viz _lawLocked).
+        if (this._lawLocked(this.currentPlayerIndex, card)) return;
         // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené).
         if (this._judgeBlocks(card)) return;
 
@@ -115,6 +117,8 @@ const PlayMixin = {
         // pouštějí (computeCanHit/isInPlay), takže bez tohohle server Bang! tiše zahodil.
         if (!isInPlay(target)) return;
         if (this._suitBlocked(attackerIdx, card)) return;   // High Noon – Želízka
+        // Fistful – Právo západu: vynucená karta musí ven jako první (viz _lawLocked).
+        if (this._lawLocked(attackerIdx, card)) return;
 
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
@@ -214,6 +218,8 @@ const PlayMixin = {
         if (!attacker || !attacker.hand[cardIdx]) return;
 
         if (this._suitBlocked(attIdx, attacker.hand[cardIdx])) return;   // High Noon – Želízka
+        // Fistful – Právo západu: vynucená karta musí ven jako první (viz _lawLocked).
+        if (this._lawLocked(attIdx, attacker.hand[cardIdx])) return;
         // Fistful – Soudce: Vězení se vykládá před hráče (ostatní speciálky ne).
         if (this._judgeBlocks(attacker.hand[cardIdx])) return;
 

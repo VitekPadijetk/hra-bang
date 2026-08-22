@@ -311,7 +311,11 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
         case 'SHOOT': {
             const reach = bangEffectReach(card);
             const t = pick(i => alive(i) && computeCanHit(state, myIndex, i, reach));
-            return t === -1 ? null : { event: 'play_bang', payload: { attackerIdx: myIndex, targetIdx: t, cardIdx } };
+            // Právo západu: když nedosáhne na NIKOHO jiného, musí střelit sám na sebe
+            // (zrcadlo lawSelfShootOnly v core/playability.js). Bez toho by se hra
+            // zasekla: end_turn server odmítne a jinou kartu zahrát nesmí.
+            const tgt = t === -1 ? myIndex : t;
+            return { event: 'play_bang', payload: { attackerIdx: myIndex, targetIdx: tgt, cardIdx } };
         }
         case T.JAIL: {
             const sheriffIdx = state.players.findIndex(p => p.role === 'Sheriff');

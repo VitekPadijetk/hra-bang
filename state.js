@@ -158,18 +158,26 @@ const App = {
     // nekreslí, stejně jako u klasického domíchání); storeShuffleBlock = hráči byli
     // rychlejší než míchání a hra na jeho dokončení čeká se zamčeným UI (blockInput,
     // který room_update kvůli tomuhle flagu nesmí předčasně odemknout).
-    // storeDeckCount = kolik karet má PO DOBU rozdávání ukazovat dobírací balíček.
+    // dealDeckCount = kolik karet má PO DOBU rozdávání ukazovat dobírací balíček
+    // (hokynářství i odkrytá řada Kita Carlsona / Clause – viz dealRevealRow).
     // Stav už v okamžiku otevření hokynářství obsahuje zamíchaný (velký) balíček, takže
     // by hromádka skočila z „4 karet" na sto ještě než se z ní vůbec začne rozdávat.
     // Držíme proto vlastní počet, který ubývá s každou odlétající kartou (a na nule
     // hromádka zmizí – přesně s poslední rozdanou kartou). null = kresli podle stavu.
     storePileLiftY: 0,
-    storeDeckCount: null,
+    dealDeckCount: null,
     storeDealIds: new Set(),
     storeLocked: false,
     storeShuffleEndAt: 0,
     storeShuffling: false,
     storeShuffleBlock: false,
+    // Odkrytá řada (Kit Carlson / Claus): revealShuffling = uprostřed rozdávání běží
+    // míchací cinematika (balíček se po tu dobu nekreslí, jako u hokynářství);
+    // revealLocked = řada se ještě rozdává, takže z ní zatím nejde vybírat. Stav
+    // s fází dorazí hned (míchání si řídí klient), takže bez zámku by šlo kliknout
+    // na kartu, která ještě letí – stejná dohoda jako storeLocked u hokynářství.
+    revealShuffling: false,
+    revealLocked: false,
     discardBorderShown: false,
     // Pedro Ramirez: po kliknutí na odhoz (vzít první kartu z odhozu) zamkni odhoz,
     // ať se během letové animace nedá klikat znovu (jinak by se odpálilo víc animací).

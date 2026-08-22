@@ -1906,6 +1906,9 @@ function _playCardAnim(data) {
         case 'peyote_reveal':
             startPeyoteReveal(data);
             break;
+        case 'law_reveal':
+            startLawReveal(data);
+            break;
         case 'store_pick': {
             // Karta letí ze slotu hokynářství do ruky hráče. Já: lícem do mého slotu
             // (staging). Jiný: líc→rub do jeho ruky (mizí mu do skryté ruky).
@@ -1947,13 +1950,57 @@ function _playCardAnim(data) {
 // Karta je veřejná – všichni vidí líc – a do ruky se schová (líc→rub) až za letu, stejně
 // jako u Black Jacka. Časování je sdílené se serverem (core/fistfulAnim.js).
 function startPeyoteReveal(data) {
-    if (!gameScene || !state || !data?.card) return;
-    const card = data.card, playerIdx = data.playerIdx;
-    const D = PEYOTE_ANIM;
+    // `printedSuit`: Peyote se schválně vyhodnocuje proti VYTIŠTĚNÉ barvě (jinak by pod
+    // Požehnáním/Prokletím sedl každý tip), takže i odkrytá karta musí ukázat tu
+    // vytištěnou – přebarvení na srdce/piky se na ní projeví až v ruce.
+    startDeckCardReveal(data.card, data.playerIdx, PEYOTE_ANIM,
+                        { pulse: true, printedSuit: true, toDiscard: !data.hit });
+}
+
+// A Fistful of Cards – Právo západu: vynucená karta se ukáže celému stolu (BEZ pulzující
+// marky – nezkoumá se hodnota ani barva) a pak jde do ruky, kde je zase tajná. Časování
+// je sdílené se serverem (core/fistfulAnim.js).
+//
+// `data.from` říká, ODKUD karta vzlétá: chybí = z balíčku (běžné lízání), 'claus' /'kit'
+// = z odkryté řady, kterou si postava rozděluje. U Clause leží řada uprostřed stolu
+// stejně pro všechny; u Kita ji vidí jen on (ostatním parkují ruby u jeho místa), takže
+// se u nich spotřebuje jedna parkující karta – jinak by ji `finishKitCarlsonSpectator`
+// poslal do ruky ještě jednou.
+function startLawReveal(data) {
+    const opts = { pulse: false };
+    if (data.from === 'claus') {
+        opts.from = clausSlotPos(data.slot);
+        opts.fromScale = (App.clausPanel && App.clausPanel.scale) || 0.3;
+        App.clausTakenSlots = App.clausTakenSlots || new Set();
+        App.clausTakenSlots.add(data.slot);
+        renderUI();   // slot v řadě zhasne se startem letu (stav dorazí až za ním)
+    } else if (data.from === 'kit') {
+        if (data.playerIdx === myIndex && myIndex !== null) {
+            opts.from = { x: 960 - 260 + (data.slot || 0) * 260, y: 480 };
+            opts.fromScale = 0.6;
+        } else {
+            const parked = (App.kitSpecParked || []).shift();
+            if (parked) {
+                opts.from = { x: parked.x, y: parked.y };
+                opts.fromScale = 0.3;
+                if (parked.sprite?.active) parked.sprite.destroy();
+                App.kitSpecPicksDone = (App.kitSpecPicksDone || 0) + 1;
+            }
+        }
+    }
+    startDeckCardReveal(data.card, data.playerIdx, LAW_ANIM, opts);
+}
+
+// Společné tělo obou (a předloha je 2. karta Black Jacka): karta vyletí z balíčku
+// doprostřed obrazovky, cestou se překlopí a zvětší, chvíli drží – a pak letí do RUKY
+// (ostatním se za letu překlopí zpět na rub) nebo do ODHOZU (`toDiscard`).
+function startDeckCardReveal(card, playerIdx, D, opts = {}) {
+    if (!gameScene || !state || !card) return;
     const faceTex = getCardTex(card.id);
     const isOwner = playerIdx === myIndex && myIndex !== null;
-    const from = deckTopPos();
-    const pScale = currentLayout().scaleDeck;
+    const from = opts.from || deckTopPos();
+    const pScale = currentLayout().scaleDeck;   // velikost karty na hromádce (odhoz)
+    const startScale = opts.fromScale ?? pScale;
     let pulse = null;
     const stopPulse = () => {
         if (!pulse) return;
@@ -1962,7 +2009,7 @@ function startPeyoteReveal(data) {
         pulse = null;
     };
     const sprite = gameScene.add.image(from.x, from.y, 'card_back')
-        .setScale(pScale).setDepth(820).setAlpha(0.98);
+        .setScale(startScale).setDepth(820).setAlpha(0.98);
     // 1) balíček → střed: posun + růst + flip rub→líc
     const halfFlip = Math.round(D.flyMs / 2);
     gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: D.flyMs, ease: 'Cubic.easeOut' });
@@ -1970,11 +2017,14 @@ function startPeyoteReveal(data) {
     gameScene.tweens.add({ targets: sprite, scaleX: 0, duration: halfFlip, ease: 'Sine.easeIn',
         onComplete: () => { if (!sprite.active) return; sprite.setTexture(faceTex);
             gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: halfFlip, ease: 'Sine.easeOut',
-                onComplete: () => { if (sprite.active) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card); } }); } });
+                onComplete: () => { if (sprite.active && opts.pulse) {
+                    pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card,
+                                           { printedSuit: !!opts.printedSuit });
+                } } }); } });
 
     const flyDelay = D.flyMs + D.holdMs;
     // 2a) NETREFIL – karta sjede do odhozu (a fáze lízání končí).
-    if (!data.hit) {
+    if (opts.toDiscard) {
         const to = discardTopPos();
         gameScene.tweens.add({ targets: sprite, x: to.x, y: to.y, scaleX: pScale, scaleY: pScale,
             delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn',
@@ -2072,6 +2122,8 @@ function _animDurationMs(data) {
     if (data.type === 'new_identity_result') return niResultMs(data.take);
     // Fistful – Peyote: odkrytí karty, na jejíž barvu hráč tipoval (střed → ruka/odhoz).
     if (data.type === 'peyote_reveal') return peyoteRevealMs();
+    // Fistful – Právo západu: vynucená karta se ukáže celému stolu (střed → ruka).
+    if (data.type === 'law_reveal') return lawRevealMs();
     // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
     if (data.type === 'vulture_split_death') return deathFallMs();
     if (data.type === 'player_death_reveal') {
@@ -2278,7 +2330,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.storeDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.dealDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.revealShuffling = false; App.revealLocked = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Jen u
     // živého hráče v běžící hře (smrt řeší vlastní odhozová animace → vyžadujeme health>0).

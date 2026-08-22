@@ -14,6 +14,8 @@ const registerCharacters = require('../server/handlers.characters.js');
 const registerDebug = require('../server/handlers.debug.js');
 
 const cardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.json', 'utf8'));
+const highNoonCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.high_noon.json', 'utf8'));
+const fistfulCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.fistful.json', 'utf8'));
 
 before(() => { console.log = () => {}; });
 
@@ -35,7 +37,7 @@ function mkEnv() {
             };
         },
     };
-    const ctx = { io, cardData, GameState };
+    const ctx = { io, cardData, highNoonCardData, fistfulCardData, GameState };
     installRoomService(ctx);
     installIntroService(ctx);
     installAnimService(ctx);
@@ -316,4 +318,32 @@ test('lucky_duke_pick: nejdřív lucky_duke_result (s chosenId), pak výsledek c
     assert.equal(anims[iRes].chosenId, 942);
     assert.equal(anims[iRes].otherId, 941);
     assert.equal(anims[iJail].cardId, jail.id);
+});
+
+// Debug hra rozdává postavy vlastní cestou (debug_select_char), a ta dřív skákala rovnou
+// na handleStartOfTurnChecks. `_beginTurn` se tím na PRVNÍM tahu vůbec nespustil, takže
+// se `_sheriffTurns` nezapočítalo a první událost High Noon / Fistfulu se odkryla až na
+// TŘETÍM tahu šerifa místo na druhém.
+test('debug hra počítá kola událostí od prvního tahu (High Noon/Fistful)', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    s.fire('debug_start', {
+        playerCount: 4, roles: ['Sheriff', 'Outlaw', 'Outlaw', 'Renegade'],
+        highNoon: true, fistful: true,
+    });
+    const gs = [...ctx.rooms.values()][0].gameState;
+    assert.ok(gs.eventDeck.length > 0, 'balíček událostí se připravil');
+    gs.players.forEach((p, i) => s.fire('debug_select_char', { playerIdx: i, charName: 'Paul Regret' }));
+
+    assert.equal(gs._sheriffTurns, 1, 'první tah se započítal');
+    assert.equal(gs.activeEvent, null, 'na prvním tahu se ještě nic neodkrývá');
+
+    // Druhý tah šerifa (u stolu jsou čtyři) už událost odkryje.
+    const start = gs.eventDeck.length;
+    for (let i = 0; i < 4; i++) gs.nextTurn();
+    assert.equal(gs.currentPlayerIndex, gs._firstPlayerIndex());
+    assert.equal(gs._sheriffTurns, 2);
+    assert.ok(gs.activeEvent, 'karta High Noon je ve hře');
+    assert.equal(gs.eventDeck.length, start - 1);
+    assert.ok(gs.activeFistful, 'a karta Fistfulu taky');
 });

@@ -225,3 +225,98 @@ test('Johnny Kisch nachystá animaci odhozu pro server', () => {
     g.playCard(give(g, 0, CardType.BARREL, { name: 'Barel' }));
     assert.deepEqual(g._johnnyPurgeAnim, [{ playerIdx: 1, boardIdx: 1, cardId: barrel.id }]);
 });
+
+// ── Došlý balíček uprostřed odkrývání řady (Kit Carlson / Claus) ────────────
+// Odkrytá řada se rozdává stejně jako hokynářství: co v balíčku bylo, se odkryje hned,
+// pak se zamíchá (klientská cinematika, hra na ni čeká) a teprve pak dorazí zbytek.
+// `_revealAnim` je jediný zdroj pravdy o tom, jak se to má rozdělit – a zároveň potlačí
+// legacy reshuffle_anim, aby se míchání nepřehrálo dvakrát.
+
+function mkDeck(g, deckN, discardN) {
+    g.deck.cards = Array.from({ length: deckN }, () => mkCard(CardType.BANG));
+    g.deck.discardPile = Array.from({ length: discardN }, () => mkCard(CardType.BEER));
+}
+
+test('Claus: dost karet v balíčku → odkryje se všechno naráz, nemíchá se', () => {
+    const g = mkGame([{ character: 'Claus the Saint' }, {}, {}, {}]);
+    mkDeck(g, 12, 4);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    const a = g.clausState.anim;
+    assert.strictEqual(g.clausState.revealed.length, 5);
+    assert.strictEqual(a.mode, 'none');
+    assert.strictEqual(a.dealtBefore, 5);
+    assert.strictEqual(a.origCount, 12);
+    assert.strictEqual(g.deck._reshuffleOccurred, false, 'legacy reshuffle_anim je potlačený');
+});
+
+test('Claus: balíček se vyprázdní poslední kartou → míchá se až po rozdání', () => {
+    const g = mkGame([{ character: 'Claus the Saint' }, {}, {}, {}]);
+    mkDeck(g, 5, 6);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    const a = g.clausState.anim;
+    assert.strictEqual(g.clausState.revealed.length, 5);
+    assert.strictEqual(a.mode, 'proactive');
+    assert.strictEqual(a.dealtBefore, 5);
+    assert.ok(a.shuffleCount > 0, 'míchání se zaznamenalo pro cinematiku');
+});
+
+test('Claus: v balíčku je míň karet → odkryje se jen ono, pak míchání, pak zbytek', () => {
+    const g = mkGame([{ character: 'Claus the Saint' }, {}, {}, {}]);
+    mkDeck(g, 2, 9);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    const a = g.clausState.anim;
+    assert.strictEqual(g.clausState.revealed.length, 5, 'nakonec je odkrytých všech pět');
+    assert.strictEqual(a.mode, 'blocking');
+    assert.strictEqual(a.dealtBefore, 2, 'první dvě z původního balíčku');
+    assert.strictEqual(a.origCount, 2);
+    assert.ok(a.shuffleCount > 0);
+});
+
+test('Claus: prázdný balíček → nejdřív míchání, teprve pak celá řada', () => {
+    const g = mkGame([{ character: 'Claus the Saint' }, {}, {}, {}]);
+    mkDeck(g, 0, 9);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    const a = g.clausState.anim;
+    assert.strictEqual(a.mode, 'blocking');
+    assert.strictEqual(a.dealtBefore, 0);
+    assert.strictEqual(g.clausState.revealed.length, 5);
+});
+
+test('Claus: nedostatek karet i po zamíchání → odkryje se, co je, a výběr dojde', () => {
+    const g = mkGame([{ character: 'Claus the Saint' }, {}, {}, {}]);
+    mkDeck(g, 1, 2);   // celkem 3 karty na 5 potřebných
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.strictEqual(g.clausState.revealed.length, 3);
+    assert.strictEqual(g.clausState.keep, 2, 'co si nechává má přednost');
+    assert.strictEqual(g.clausState.queue.length, 1, 'zbyde na jednoho obdarovaného');
+    assert.strictEqual(g.clausState.anim.mode, 'blocking');
+});
+
+test('Kit Carlson: došlý balíček rozdělí odkrývání stejně jako u Clause', () => {
+    const g = mkGame([{ character: 'Kit Carlson' }, {}, {}]);
+    mkDeck(g, 1, 9);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.strictEqual(g.phase, 'KIT_CARLSON');
+    assert.strictEqual(g.kitCarlsonState.revealed.length, 3);
+    assert.strictEqual(g.kitCarlsonState.anim.mode, 'blocking');
+    assert.strictEqual(g.kitCarlsonState.anim.dealtBefore, 1);
+    assert.strictEqual(g.deck._reshuffleOccurred, false);
+});
+
+test('Kit Carlson: došlý balíček i odhoz → nechá si jen to, co se odkrylo', () => {
+    const g = mkGame([{ character: 'Kit Carlson' }, {}, {}]);
+    mkDeck(g, 0, 1);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.strictEqual(g.kitCarlsonState.revealed.length, 1);
+    assert.strictEqual(g.kitCarlsonState.needed, 1, 'výběr musí jít dokončit');
+    g.kitCarlsonPick(0);
+    assert.strictEqual(g.phase, 'PLAY');
+    assert.strictEqual(g.players[0].hand.length, 1);
+});

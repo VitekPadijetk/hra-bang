@@ -689,15 +689,10 @@ function drawOpponents(ctx) {
             const isElGringoSteal = state.phase === "EL_GRINGO_STEAL" &&
                 state.pendingElGringoSteal?.playerIdx === myIndex &&
                 state.pendingElGringoSteal?.attackerIdx === actualIdx;
-            // Fistful – Právo západu: vynucená karta leží v ruce ODKRYTÁ (redakce ji pouští,
-            // viz server/rooms.js) – celý stůl vidí, co musí hráč na tahu zahrát.
-            const _lawSlotCard = slot !== undefined ? player.hand?.[slot] : null;
-            // Podmínka `hráč je na tahu` zrcadlí redakci – v debug hře (kde se neredaguje)
-            // by jinak zastaralé `_lawCardId` nechalo kartu odkrytou i po jeho tahu.
-            const _lawTex = (state.currentPlayerIndex === actualIdx && _lawSlotCard &&
-                             !_lawSlotCard._placeholder && _lawSlotCard.id != null &&
-                             _lawSlotCard.id === player._lawCardId) ? getTex(_lawSlotCard.id) : 'card_back';
-            let hCard = gameScene.add.sprite(x, y, _lawTex).setAngle(angle).setScale(hScale);
+            // Fistful – Právo západu: vynucená karta se ukáže VEŘEJNĚ hned při líznutí
+            // (cinematika law_reveal, viz net/handlers.js) a pak putuje do ruky jako
+            // každá jiná – ve vějíři soupeře tedy leží rubem nahoru.
+            let hCard = gameScene.add.sprite(x, y, 'card_back').setAngle(angle).setScale(hScale);
             if (isJesseJonesDraw) {
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });
@@ -1039,6 +1034,12 @@ function drawCompactOpponent(ctx) {
 // ── Vlastní oblast dole (role, životy, postava, stůl, ruka, akční tlačítka) ──
 function drawMyArea(ctx) {
     const { me, scaleMe, getTex, getCharTex, handlePanicCBClick, L } = ctx;
+    // Fistful – Právo západu: odkrytou druhou lízanou kartu musí hráč zahrát, dokud to
+    // jde – do té doby má zamčený zbytek tahu (karty v ruce, zelené karty na stole
+    // i tlačítka aktivních schopností). Stejný helper používá server (tryEndTurn,
+    // _lawLocked) i bot – rozejít se nesmí, jinak by UI slibovalo akce, které server
+    // tiše odmítá.
+    const _lawForced = lawForcedCard(state, me, myIndex);
 
         const livesX = L.livesX;
         const myBaseY = L.myBaseY;
@@ -1216,6 +1217,19 @@ function drawMyArea(ctx) {
                     App.blockInput = true;
                     renderUI();
                 });
+            }
+        }
+
+        // Fistful – Právo západu: vynucený Bang!, na který v dostřelu nikdo jiný není,
+        // musí hráč poslat SÁM NA SEBE – výjimečně se mu proto vlastní postava zvýrazní
+        // jako platný cíl (jinak se při střelbě na sebe nezvýrazňuje). Stejné pravidlo
+        // počítá server i bot přes lawSelfShootOnly (core/playability.js).
+        if (selectedState.action === 'SHOOT' && selectedState.cardIndex !== null) {
+            const _lawShotCard = me.hand[selectedState.cardIndex];
+            if (_lawShotCard && _lawShotCard.id === me._lawCardId &&
+                lawForcedCard(state, me, myIndex) &&
+                lawSelfShootOnly(state, me, myIndex, _lawShotCard)) {
+                charImg.setTint(0x88ff88);
             }
         }
 
@@ -1406,9 +1420,12 @@ function drawMyArea(ctx) {
         // reakce v RESPOND. Vzhled zeleného okraje je součástí artu karty.
         {
             // Fistful – Laso: zelenou kartu na stole nejde aktivovat (server ji odmítne).
+            // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného –
+            // zelený bang-efekt by jinak vyčerpal limit Bang! (server to odmítne, viz
+            // _lawLocked).
             const greenTurn = state.phase === 'PLAY' && state.currentPlayerIndex === myIndex &&
                 selectedState.cardIndex === null && !App.blockInput && !isPanicCBMyTurn &&
-                !boardDeadFor(state);
+                !boardDeadFor(state) && !_lawForced;
             // isRespondMiss / _belleIgnoresBoard viz výše (počítá se před kreslením desky,
             // rozhoduje i o tom, jestli se zelená Vedle!-karta smí šedivit).
 
@@ -1509,11 +1526,6 @@ function drawMyArea(ctx) {
         // Čistá logika hratelnosti je v core/playability.js. `me` předáváme explicitně,
         // protože ve spectator módu to NENÍ state.players[myIndex] (viz výpočet `me` výše).
         const getCardPlayability = (card) => cardPlayability(state, me, myIndex, card);
-        // Fistful – Právo západu: odkrytou druhou lízanou kartu musí hráč zahrát, dokud to
-        // jde. Stejný helper používá server (tryEndTurn) i bot – rozejít se nesmí, jinak by
-        // tlačítko svítilo a server tah tiše odmítal ukončit.
-        const _lawForced = lawForcedCard(state, me, myIndex);
-
         if (me.hand.length > 0) {
             // Ruka má vlastní řadu i měřítko (na mobilu je pod stolem a větší, na
             // desktopu je handY = myBaseY a scaleHand = scaleMe, tedy dnešní stav).
@@ -1604,9 +1616,10 @@ function drawMyArea(ctx) {
                 if (_isLastLifeBeer) cSprite.setTint(0xffff44);
 
                 // Fistful – Právo západu: vynucená karta svítí zlatě, dokud ji hráč nezahraje
-                // (do té doby nejde ukončit tah – viz tlačítko níž).
-                const _isLawForced = !isMySidActive && !isStagedCard && _lawForced?.card?.id === card.id;
-                if (_isLawForced) cSprite.setTint(0xffcc33);
+                // (do té doby nejde ukončit tah – viz tlačítko níž). Zlatá se nastavuje
+                // až ÚPLNĚ NAKONEC (viz níž), aby přebila každé jiné zvýraznění – hráč
+                // musí pořád vidět, která karta ho drží, i když si zrovna vybral jinou.
+                const _isLawForced = !isStagedCard && _lawForced?.card?.id === card.id;
 
                 // Zvýraznění VŠECH hratelných karet v RESPOND (Vedle!, Bang!, pivo, ...)
                 const _isResponsePlayable = !isMySidActive && playable === true && !isStagedCard &&
@@ -1620,6 +1633,9 @@ function drawMyArea(ctx) {
                     cSprite.y -= 20;
                     cSprite.setTint(0xddffdd);
                 }
+                // Zlatá vynucené karty (Právo západu) má přednost přede vším ostatním –
+                // i před zeleným zvýrazněním právě vybrané karty (ta se pozná vysunutím).
+                if (_isLawForced) cSprite.setTint(0xffcc33);
 
                 // Reflow slide: když se změnil počet karet, ostatní dokloužou na nové místo
                 // místo skoku. Staged (Sid) / zmenšenou hlavní kartu nekloužeme – mají vlastní transformaci.
@@ -1644,7 +1660,10 @@ function drawMyArea(ctx) {
                     if (isDiscardAnother) { if (!isDAmain) cSprite.setScale(baseScale * 1.05); return; }
                     if (selectedState.cardIndex === index) return;
 
-                    if (_keepHighlight) {
+                    if (_isLawForced) {
+                        cSprite.setTint(0xffdd77); // světlejší zlatá při hoveru
+                        cSprite.setScale(baseScale * 1.05);
+                    } else if (_keepHighlight) {
                         cSprite.setTint(0xffff88); // světlejší žlutá při hoveru
                         cSprite.setScale(baseScale * 1.05);
                     } else if (playable === false) {
@@ -1659,6 +1678,8 @@ function drawMyArea(ctx) {
                 cSprite.on('pointerout', () => {
                     scheduleZoomFade();
                     isHovered = false;
+                    // Zlatá (Právo západu) drží i nad vybranou kartou – jen měřítko zpět.
+                    if (_isLawForced) { cSprite.setScale(baseScale); cSprite.setTint(0xffcc33); return; }
                     if (selectedState.cardIndex === index) return;
                     cSprite.setScale((isDAmain || isDocStaged || isRanchPicked) ? baseScale * 0.88 : baseScale);
                     if (isRanchMine) { cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff); return; }
@@ -1901,6 +1922,9 @@ function drawMyArea(ctx) {
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH'].includes(state.phase)
+            // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
+            // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
+            && !_lawForced
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
@@ -1953,8 +1977,12 @@ function drawMyArea(ctx) {
         // karty; `options` je stejný zdroj pravdy jako na serveru (viz _drawOptionsBase).
         {
             const _ds = state.drawPhaseState;
+            // `options` ze serveru už 'liquor' při plných životech neobsahuje (léčit se
+            // není kam a hráč by se zdarma vzdal celé fáze lízání); podmínka na životy
+            // je tu jako druhá pojistka, aby tlačítko nikdy neproblesklo.
             const _canLiquor = state.phase === "DRAW" && _ds?.active && _ds.playerIdx === myIndex &&
                 (_ds.options || []).includes('liquor') && _ds.cardsDrawn === 0 &&
+                isInPlay(me) && me.health < me.maxHealth &&
                 App.pendingDrawCount === 0 && !App.blockInput;
             if (_canLiquor) {
                 themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH, '🥃 PÁLENKA: +1 ❤️', {
@@ -2018,7 +2046,11 @@ function drawMyArea(ctx) {
 
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────
         {
-            const myPlayTurn = state.phase === "PLAY" && state.currentPlayerIndex === myIndex && !App.blockInput;
+            // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
+            // jiného (server to odmítne, viz _lawLocked) – tlačítka schopností se proto
+            // vůbec nekreslí. Po zahrání vynucené karty jsou zase k dispozici.
+            const myPlayTurn = state.phase === "PLAY" && state.currentPlayerIndex === myIndex &&
+                !App.blockInput && !_lawForced;
             const BTN_Y = L.btnAbilY;   // stejné místo jako [ SID: … ]
             // Chuck Wengam: klik → nabít (zvýrazní se životy); klik na životy = −1 ❤ → 2 karty.
             if (myPlayTurn && effectiveCharacter(me) === "Chuck Wengam" && me.health > 1) {
@@ -2257,14 +2289,20 @@ function drawPhaseOverlays(ctx) {
             cSprite.setInteractive({ useHandCursor: true });
             cSprite.on('pointerover', () => { cSprite.setScale(0.65); cSprite.setTint(0xddffdd); });
             cSprite.on('pointerout', () => { cSprite.setScale(0.6); cSprite.clearTint(); });
+            // Fistful – Právo západu: DRUHÁ karta, kterou si Kit nechá, je vynucená a
+            // ukáže se celému stolu (server pošle law_reveal, který ji sám dopraví do
+            // ruky). Vlastní let by se s ní zdvojil, takže ho tady vynecháme.
+            const _kitLawPick = eventActive(state, 'PRAVO_ZAPADU') && (kc.pendingAdd?.length || 0) === 1;
             let _kitPickSent = false;
             cSprite.on('pointerdown', () => {
-                if (_kitPickSent) return;
+                if (_kitPickSent || App.revealLocked) return;
                 _kitPickSent = true;
                 if (!App.kitPicked.includes(card.id)) App.kitPicked.push(card.id);
                 // Vybraná velká karta letí rovnou do ruky se zmenšením (0.6 → ruka),
                 // nečeká na druhý výběr. Staging skryje kartu v ruce do doletu.
-                animateDrawToMyHand(myIndex, card.id, cx, 480, { faceUp: true, startScale: 0.6, duration: 460 });
+                if (!_kitLawPick) {
+                    animateDrawToMyHand(myIndex, card.id, cx, 480, { faceUp: true, startScale: 0.6, duration: 460 });
+                }
                 renderUI();   // panel ji hned přestane kreslit (App.kitPicked)
                 socket.emit('kit_carlson_pick', i);
             });
@@ -2350,7 +2388,7 @@ function drawPhaseOverlays(ctx) {
             if (App.clausTakenSlots?.has(i)) return;     // právě odlétá k příjemci
             const slot = clausSlotPos(i);
             const cSprite = gameScene.add.image(slot.x, slot.y, getTex(card?.id)).setScale(P.scale);
-            if (mine && !App.blockInput) {
+            if (mine && !App.blockInput && !App.revealLocked) {
                 cSprite.setInteractive({ useHandCursor: true });
                 cSprite.setTint(0xddffdd);
                 cSprite.on('pointerover', (pointer) => {
@@ -2482,12 +2520,13 @@ function drawDrawPiles(ctx) {
 
     // Během míchání se balíček nekreslí (místo počtu 🔀) – platí i pro míchání
     // v hokynářství, které běží ve zvednuté poloze (App.storeShuffling).
-    const _hideDeck = App.reshuffleAnimating || App.reshuffleIsProactive || App.storeShuffling;
-    // Po dobu rozdávání v hokynářství kreslíme balíček podle vlastního počtu
-    // (App.storeDeckCount), ne podle stavu – ten už obsahuje zamíchaný balíček. Viz
-    // startStoreCinematic/dealStoreCards v game.js.
-    const _deckCount = App.storeDeckCount !== null && App.storeDeckCount !== undefined
-        ? App.storeDeckCount : (state.deck.cards?.length ?? 0);
+    const _hideDeck = App.reshuffleAnimating || App.reshuffleIsProactive || App.storeShuffling ||
+                      App.revealShuffling;
+    // Po dobu rozdávání (hokynářství i odkrytá řada Kita/Clause) kreslíme balíček podle
+    // vlastního počtu (App.dealDeckCount), ne podle stavu – ten už obsahuje zamíchaný
+    // balíček. Viz startStoreCinematic/dealStoreCards a dealRevealRow v game.js.
+    const _deckCount = App.dealDeckCount !== null && App.dealDeckCount !== undefined
+        ? App.dealDeckCount : (state.deck.cards?.length ?? 0);
 
     {
         const total = _hideDeck ? 0 : _deckCount;

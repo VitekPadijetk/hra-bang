@@ -32,6 +32,9 @@ const CharactersMixin = {
     // nevykládá před hráče; Želízka (High Noon) ano, karta jde z ruky.
     useUncleWill(playerIdx, cardIdx) {
         if (this.phase !== "PLAY" || playerIdx !== this.currentPlayerIndex) return false;
+        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
+        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
+        if (this._lawLocked(playerIdx)) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Uncle Will") return false;
         if (p._willUsedTurn === this.turnId) return false;
@@ -375,6 +378,10 @@ const CharactersMixin = {
     useSidKetchum(playerIdx, cardIndices) {
         let p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
+        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic jiného –
+        // schopností by si ji jinak odhodil a povinnosti se zbavil. Mimo svůj tah ho to
+        // neomezuje (vynucená karta se vyhodnocuje jen ve fázi PLAY jejího majitele).
+        if (this._lawLocked(playerIdx)) return;
         if (!isInPlay(p) || p.health >= p.maxHealth) return;   // duch (Město duchů) se léčit smí
         if (cardIndices.length !== 2) return;
         cardIndices.sort((a, b) => b - a);
@@ -389,6 +396,9 @@ const CharactersMixin = {
     // Chuck Wengam: ztrať 1 život → lízni 2 (opakovatelné, ne poslední život).
     useChuckWengam(playerIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
+        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
+        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
+        if (this._lawLocked(playerIdx)) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Chuck Wengam" || p.health <= 1) return false;
         p.health--;
@@ -400,6 +410,9 @@ const CharactersMixin = {
     // José Delgado: odhoď modrou kartu z ruky → lízni 2 (max 2×/tah).
     useJoseDelgado(playerIdx, cardIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
+        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
+        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
+        if (this._lawLocked(playerIdx)) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "José Delgado") return false;
         if ((p._joseUses || 0) >= 2) return false;
@@ -417,6 +430,9 @@ const CharactersMixin = {
     // Doc Holyday: 1×/tah odhoď 2 karty z ruky → bang-efekt na cíl v dostřelu zbraně.
     useDocHolyday(playerIdx, cardIndices, targetIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
+        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
+        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
+        if (this._lawLocked(playerIdx)) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Doc Holyday" || p._docUsed) return false;
         if (!Array.isArray(cardIndices) || cardIndices.length !== 2 || new Set(cardIndices).size !== 2) return false;

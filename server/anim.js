@@ -182,6 +182,32 @@ module.exports = function installAnimService(ctx) {
         return { pickReady, shuffleEnd };
     }
 
+    // ── Odkrytá řada (Kit Carlson / Claus): časování klientské cinematiky ────────
+    // Karty letí z balíčku do řady po jedné (stagger) a když balíček během odkrývání
+    // dojde, přeruší je míchání – přesně jako v hokynářství (viz storeCinematicMs).
+    // Tempo MUSÍ zrcadlit game.js (startKitCarlsonDeal / startClausDeal).
+    //   pickReady  – kdy smí padnout PRVNÍ výběr (u 'blocking' až po dorozdání),
+    //   shuffleEnd – kdy je míchání hotové (0 = nemíchá se).
+    const REVEAL_TEMPO = {
+        kit:   { start: 0,   stagger: 160, fly: 420 },
+        claus: { start: 100, stagger: 110, fly: 420 },
+    };
+    function revealCinematicMs(anim, n, kind) {
+        const t = REVEAL_TEMPO[kind] || REVEAL_TEMPO.kit;
+        const a = anim || {};
+        const total = Math.max(0, n || 0);
+        const dealMs = c => c > 0 ? (c - 1) * t.stagger + t.fly : 0;
+        if (a.mode === 'blocking') {
+            const k = Math.min(a.dealtBefore || 0, total);
+            const shuffleEnd = t.start + dealMs(k) + STORE_SHUFFLE_MS;
+            return { pickReady: shuffleEnd + dealMs(total - k) + STORE_BUF_MS, shuffleEnd };
+        }
+        const pickReady = t.start + dealMs(total) + STORE_BUF_MS;
+        const shuffleEnd = a.mode === 'proactive'
+            ? t.start + dealMs(total) + STORE_SHUFFLE_MS : 0;
+        return { pickReady, shuffleEnd };
+    }
+
     function handleReshuffleAndBroadcast(room, gs, baseDelay = 400) {
         if (gs.deck._reshuffleOccurred) {
             const count = gs.deck._reshuffleCount || 20;
@@ -287,6 +313,7 @@ module.exports = function installAnimService(ctx) {
 
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
                          handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
+                         revealCinematicMs,
                          beforeBroadcast });
     return ctx;
 };

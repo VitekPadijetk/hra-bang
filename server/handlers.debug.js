@@ -78,9 +78,15 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
                 const n = pl._baseHealth ?? (pl.role === "Sheriff" ? pl.health - 1 : pl.health);
                 for (let i = 0; i < n; i++) pl.hand.push(gs.deck.draw());
             });
+            gs._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
             gs.currentPlayerIndex = gs._firstPlayerIndex();
-            gs.handleStartOfTurnChecks();
             room.phase = 'playing';
+            // První tah hry nejde přes nextTurn – start tahu (odkrytí událostí High Noon
+            // i Fistful) se proto musí spustit ručně, stejně jako v logic/setup.js. Bez
+            // toho se `_sheriffTurns` v debug hře vůbec nezapočítalo a první událost se
+            // odkryla až na TŘETÍM tahu šerifa.
+            if (gs._beginTurn()) { broadcastRoom(room); return; }
+            gs.handleStartOfTurnChecks();
         }
         broadcastRoom(room);
     });

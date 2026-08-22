@@ -69,6 +69,13 @@ function cardPlayability(state, me, myIndex, card) {
         return false;
     }
     if (isMyPlayTurn) {
+        // Fistful – Právo západu: dokud hráč drží vynucenou (odkrytou) kartu a JDE zahrát,
+        // je zbytek ruky zamčený – vynucená karta musí ven jako první. Bez toho jde
+        // povinnost snadno obejít: zahrát Pivo, aby vynucený Salón přestal jít zahrát,
+        // nebo jiný Bang! a vyčerpat jím limit. Sama vynucená karta se sem nezacyklí:
+        // pro ni se gate přeskočí ještě před dotazem na lawForcedCard.
+        if (me._lawCardId != null && card.id !== me._lawCardId &&
+            lawForcedCard(state, me, myIndex)) return false;
         // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené, Vězení).
         if (judgeBlocksFor(state, card)) return false;
         // Karta s bang-efektem (Úder, …) mimo zelené: nepočítá se do limitu Bang!.
@@ -168,7 +175,9 @@ function _lawHasTarget(state, me, myIndex, card) {
     const hasCards = (p) => p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
     switch (getActionForCard(card, effectiveCharacter(me))) {
         case 'SHOOT':
-            return state.players.some((p, i) => other(i) && computeCanHit(state, myIndex, i, bangEffectReach(card)));
+            // Cíl je vždycky: když hráč nedosáhne na nikoho jiného, musí střelit SÁM NA SEBE
+            // (viz lawSelfShootOnly – klient mu k tomu výjimečně zvýrazní vlastní postavu).
+            return true;
         case 'Panika!':
             return state.players.some((p, i) => other(i) && hasCards(p) && computeDistance(state, myIndex, i) <= 1);
         case 'Cat Balou':
@@ -179,6 +188,24 @@ function _lawHasTarget(state, me, myIndex, card) {
     }
 }
 
+// Musí hráč vynucený Bang! (nebo bang-efekt) poslat sám na sebe? Platí, když na NIKOHO
+// jiného nedosáhne – pravidlo ho pak nutí střelit sebe. Jediný zdroj pravdy pro server
+// (playBang povolí cíl = útočník), klienta (zvýrazní vlastní postavu) i bota.
+function lawSelfShootOnly(state, me, myIndex, card) {
+    if (!card || getActionForCard(card, effectiveCharacter(me)) !== 'SHOOT') return false;
+    const reach = bangEffectReach(card);
+    return !state.players.some((p, i) =>
+        i !== myIndex && p.health > 0 && computeCanHit(state, myIndex, i, reach));
+}
+
+// Zamyká vynucená karta zbytek tahu? `card` = karta hraná Z RUKY; null (schopnost postavy,
+// aktivace zelené karty ze stolu) je zamčené vždycky. Zrcadlo serverového _lawLocked.
+function lawLocksOther(state, me, myIndex, card) {
+    if (!me || me._lawCardId == null) return false;
+    if (card && card.id === me._lawCardId) return false;
+    return !!lawForcedCard(state, me, myIndex);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cardPlayability, lawForcedCard };
+    module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther };
 }

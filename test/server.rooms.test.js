@@ -197,9 +197,10 @@ test('redakce: ruce soupeřů jsou zástupné karty se správným počtem', () =
     assert.ok(gsA.players[2].hand.every(c => c._placeholder && c.id === null), 'ale bez identity');
 });
 
-// A Fistful of Cards – Právo západu: vynucená karta hráče NA TAHU je odkrytá pro celý
-// stůl (musí ji zahrát), zbytek jeho ruky ne. Mimo jeho tah je zase tajná.
-test('redakce: vynucená karta Práva západu je vidět jen v tahu jejího majitele', () => {
+// A Fistful of Cards – Právo západu: vynucená karta se ukáže veřejně už při líznutí
+// (cinematika law_reveal), v ruce pak leží rubem nahoru jako každá jiná – ve stavu
+// ostatních po ní nesmí zbýt ani ID.
+test('redakce: vynucená karta Práva západu leží v cizí ruce zakrytá', () => {
     const { ctx, addSocket, emits } = setup();
     ['s1', 's2', 's3'].forEach(addSocket);
     const room = mkPlaying(ctx);
@@ -208,14 +209,11 @@ test('redakce: vynucená karta Práva západu je vidět jen v tahu jejího majit
     ctx.broadcastRoom(room);
     const gsA = payloadFor(emits, 's1');
     assert.equal(gsA.players[2].hand.length, 2, 'počet karet se nemění');
-    assert.equal(gsA.players[2].hand[1].name, 'Duel', 'vynucená karta je odkrytá');
-    assert.ok(gsA.players[2].hand[0]._placeholder, 'zbytek ruky zůstává tajný');
-
-    emits.length = 0;
-    room.gameState.currentPlayerIndex = 0;         // Cyril už na tahu není
-    ctx.broadcastRoom(room);
-    assert.ok(payloadFor(emits, 's1').players[2].hand.every(c => c._placeholder),
-        'mimo svůj tah je celá ruka zase tajná');
+    assert.ok(gsA.players[2].hand.every(c => c._placeholder), 'celá ruka zůstává tajná');
+    assert.equal(gsA.players[2]._lawCardId, null, 'ani ID vynucené karty ven nejde');
+    // Majitel ji ve své ruce vidí normálně.
+    assert.equal(payloadFor(emits, 's3').players[2].hand[1].name, 'Duel');
+    assert.equal(payloadFor(emits, 's3').players[2]._lawCardId, 5);
 });
 
 test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => {

@@ -21,6 +21,25 @@ function peyoteRevealMs() {
     return D.flyMs + D.holdMs + D.landMs + D.bufMs;
 }
 
+// ── Právo západu: druhá lízaná karta se ukáže CELÉMU STOLU ───────────────────
+// Stejná cinematika jako u Peyote (balíček → střed, překlopení, výdrž, do ruky), jen
+// BEZ pulzující marky: nezkoumá se hodnota ani barva, jen se ukazuje, co bude hráč
+// muset zahrát. Rozdávání se na tu chvíli pozastaví, karta se ukáže a jde do ruky –
+// v ní už je zase tajná (rubem nahoru), takže výdrž je krátká.
+// Výjimka: Black Jack má druhou kartu odkrytou tak jako tak a jeho vlastní reveal
+// (BLACK_JACK_CHECK) marky bliká – tam se tahle cinematika nespouští.
+const LAW_ANIM = {
+    flyMs: 420,     // balíček → střed (uvnitř běží překlopení rub→líc, 2× 210)
+    holdMs: 1300,   // odkrytá karta drží uprostřed
+    landMs: 400,    // do ruky (ostatním se cestou překlopí zpět na rub)
+    bufMs: 100,     // rezerva, ať stav nedorazí přesně na hranu dosednutí
+};
+
+function lawRevealMs() {
+    const D = LAW_ANIM;
+    return D.flyMs + D.holdMs + D.landMs + D.bufMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { PEYOTE_ANIM, peyoteRevealMs };
+    module.exports = { PEYOTE_ANIM, peyoteRevealMs, LAW_ANIM, lawRevealMs };
 }

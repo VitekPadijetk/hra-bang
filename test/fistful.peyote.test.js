@@ -206,7 +206,7 @@ test('Ranč: po fázi lízání se čeká na výměnu', () => {
     assert.deepEqual(pendingActor(g), { idx: 0, kind: 'RANCH' });
 });
 
-test('Ranč: vymění přesně označené karty a dolízne stejný počet', () => {
+test('Ranč: odhodí přesně označené karty a nechá si je ručně dolíznout', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}], 'RANC');
     // Balíček dál než na výměnu, ať se při dolízní nespustí proaktivní zamíchání
     // (to by odhoz vysálo zpátky do balíčku a těžko by se testoval).
@@ -218,11 +218,35 @@ test('Ranč: vymění přesně označené karty a dolízne stejný počet', () =
     const hand0 = g.players[0].hand.map(c => c.id);
     const res = g.ranchExchange(0, [hand0[0], hand0[2]]);
     assert.equal(res.discarded.length, 2);
-    assert.equal(res.drawn.length, 2);
     assert.deepEqual(g.deck.discardPile.map(c => c.id), [hand0[0], hand0[2]]);
+    // Náhradní karty NEjsou v ruce hned – hráč si je líže klikáním na balíček.
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    assert.equal(g.drawPhaseState.isRanch, true);
+    assert.equal(g.drawPhaseState.isStartOfTurn, false, 'Želízka ani Ranč se znovu neptají');
+    assert.deepEqual(g.players[0].hand.map(c => c.id), [hand0[1]]);
+    assert.deepEqual(pendingActor(g), { idx: 0, kind: 'DRAW' });
+    g.drawCard('deck');
+    assert.equal(g.phase, 'DRAW', 'po první kartě se pořád čeká');
+    g.drawCard('deck');
     assert.deepEqual(g.players[0].hand.map(c => c.id), [hand0[1], deck[2].id, deck[3].id]);
     assert.equal(g.phase, 'PLAY');
     assert.ok(!g.pendingRanch);
+});
+
+test('Ranč: karty odcházejí do odhozu zleva doprava, ať se klikaly jakkoli', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'RANC');
+    stack(g, [RED(), RED(), mkCard(CardType.BEER), mkCard(CardType.BEER), mkCard(CardType.BEER)]);
+    give(g, 0, CardType.JAIL);
+    give(g, 0, CardType.SALOON);
+    g.startDrawPhase();
+    g.drawCard('deck'); g.drawCard('deck');
+    const h = g.players[0].hand.map(c => c.id);
+    // Klikáno odzadu dopředu – pořadí odhozu se stejně řídí pozicí ve vějíři.
+    const res = g.ranchExchange(0, [h[3], h[1], h[0]]);
+    assert.deepEqual(res.discarded.map(c => c.id), [h[0], h[1], h[3]]);
+    assert.deepEqual(g.deck.discardPile.map(c => c.id), [h[0], h[1], h[3]]);
+    assert.deepEqual(g.players[0].hand.map(c => c.id), [h[2]]);
 });
 
 test('Ranč: přeskočení nechá ruku i balíček beze změny', () => {
@@ -232,7 +256,7 @@ test('Ranč: přeskočení nechá ruku i balíček beze změny', () => {
     g.drawCard('deck'); g.drawCard('deck');
     const before = g.players[0].hand.map(c => c.id);
     const res = g.ranchExchange(0, []);
-    assert.deepEqual(res, { discarded: [], drawn: [] });
+    assert.deepEqual(res, { discarded: [] });
     assert.deepEqual(g.players[0].hand.map(c => c.id), before);
     assert.equal(g.deck.cards.length, 1);
     assert.equal(g.phase, 'PLAY');
@@ -292,9 +316,11 @@ test('Ranč: výměna celé ruky Suzy Lafayette neprobudí (karty se vrátí nar
     g.drawCard('deck'); g.drawCard('deck');
     assert.equal(g.phase, 'RANCH');
     g.ranchExchange(0, g.players[0].hand.map(c => c.id));
+    assert.equal(g.phase, 'DRAW', 'náhradní karty si líže sám');
+    g.drawCard('deck'); g.drawCard('deck');
     assert.equal(g.players[0].hand.length, 2);
     assert.equal(g.phase, 'PLAY');
-    assert.equal(g.specialActionQueue.length, 0, 'ruka nikdy nebyla prázdná');
+    assert.equal(g.specialActionQueue.length, 0, 'efekt karty doběhl dřív, než se Suzy ptá');
 });
 
 test('Ranč: tah nejde ukončit, dokud se hráč nerozhodne', () => {
@@ -334,6 +360,14 @@ test('bot: v Ranči vymění jen nízko hodnocené karty a nikdy se nezasekne', 
     const kept = g.players[0].hand.filter(c => !a.payload.cardIds.includes(c.id));
     assert.ok(kept.some(c => c.type === CardType.BEER), 'Pivo si nechá');
     // Akce musí projít – jinak by se hra jen botů zasekla.
-    assert.ok(g.ranchExchange(0, a.payload.cardIds));
+    const res = g.ranchExchange(0, a.payload.cardIds);
+    assert.ok(res);
+    // Náhradní karty si bot dolízne klasickou fází lízání (klik na balíček).
+    if (res.discarded.length) {
+        assert.equal(g.phase, 'DRAW');
+        const next = decideBotAction(g, 0, null);
+        assert.equal(next.event, 'draw_card');
+        for (let i = 0; i < res.discarded.length; i++) g.drawCard('deck');
+    }
     assert.equal(g.phase, 'PLAY');
 });

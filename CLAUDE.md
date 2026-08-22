@@ -37,7 +37,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `server/ledger.js` | Factory `installLedger(ctx)` – **veřejný ledger chování** (`room.behaviorLedger`): kdo na koho útočil / koho léčil. `recordBehavior`/`initLedger`. Handlery (`play_bang`/`play_special`/`doc_holyday`/`activate_green_card`/`discard_extra_choose`) ho plní; bot z něj přes `core/beliefs.js` dedukuje skryté role. Mimo broadcastovaný `gameState`. Reset při startu hry (lifecycle). Test: `test/server.ledger.test.js`. |
 | `server/bots.js` | **Počítačoví hráči.** Factory `installBotService(ctx)` – bot = bezhlavý klient přes „fake socket" se stejnými handlery jako člověk (`register*Handlers`). Driver `runBotTickOnce`/`scheduleBotTick` po každém broadcastu (hook `ctx.afterBroadcast` v rooms.js) i intro emitu (`ctx.afterIntroEmit` v intro.js) zjistí přes `pendingActor`, zda se čeká na bota, spočítá `beliefs` (z `room.behaviorLedger`) + akci `decideBotAction` a vystřelí ji handlerem (1:1 reuse animací). `createBot`/`removeBot`, stall guard. **Intro gate:** během intra (`room._introPlaying`, nastaví lifecycle, sundá intro.js na `'done'`) bot herní akce (líznutí/karty) NEDĚLÁ – jen výběr postav; po startu hry navíc `room._botStartupSettle` dá první herní akci delší pauzu (`startupSettleMs`), ať hráč vidí, co bot zahraje. Test: `test/server.bots.test.js` (vč. zátěže „hra jen botů doběhne"). |
 | `server/version.js` | Factory `installVersion(ctx)` – **otisk nasazeného kódu** (`ctx.buildId` = sha1 obsahu `*.js/json/html/css` v kořeni + `core/logic/view/net/server`, bez assetů a lockfile). Server ho pošle každému socketu hned po připojení (`server_version`); klient si první hodnotu zapamatuje a po reconnectu porovná – změna = na server se nahrála nová verze → banner „načti stránku znovu" (`showUpdateBanner` ve `view/menu.js`). Otisk je z obsahu, ne z času startu, takže restart/pád beze změny kódu hlášku nevyvolá. Test: `test/server.version.test.js`. |
-| `server/handlers.*.js` | Socket handlery podle subsystému: `register*Handlers(socket, ctx, withRoom)`, těla berou helpery z `ctx`. **lobby** (místnosti/spectate/chat/disconnect + `add_bot`/`remove_bot`/`create_bot_game` = hra jen botů ke sledování), **nextgame** (výběr postav/intro OK/další hra), **game** (herní akce + Kit/Lucky/Barel/Sid/dynamit/pivo/store), **characters** (Bart/El Gringo/Suzy/checky/Black Jack), **debug** (debug_*). Eventy: `test/server.handlers.test.js`; integrace: `test/server.integration.test.js`. |
+| `server/handlers.*.js` | Socket handlery podle subsystému: `register*Handlers(socket, ctx, withRoom)`, těla berou helpery z `ctx`. **lobby** (místnosti/spectate/chat/disconnect + `add_bot`/`remove_bot`/`create_bot_game` = hra jen botů ke sledování), **nextgame** (výběr postav/intro OK/další hra), **game** (herní akce + Kit/Lucky/Barel/Sid/dynamit/pivo/store), **characters** (Bart/El Gringo/Suzy/checky/Black Jack), **debug** (debug_*; výběr postav v debug hře MUSÍ končit `_beginTurn()` jako `logic/setup.js` – jinak se nezapočítá první tah a události High Noon/Fistfulu se odkryjí až o kolo později). Eventy: `test/server.handlers.test.js`; integrace: `test/server.integration.test.js`. |
 | `cards.json` | Data všech karet (jména, typy, hodnoty). Načítá server i testy. |
 
 ### Klient — jádro
@@ -503,6 +503,97 @@ smí vzít místo současné a klesnout na 2 životy (odložená se vymění, p�
   sjede ze středu na místo postavy, rovnou na výšku dvou životů. Nová postava proto čeká
   celou 1. fázi zvětšená uprostřed – overlay s tlačítky zmizí hned po kliknutí.
 
+## Právo západu (A Fistful of Cards): vynucená karta zamyká zbytek tahu
+
+Druhá karta, kterou hráč ve fázi lízání vezme do ruky, se **veřejně ukáže** a musí ji
+v tomhle tahu zahrát, pokud to jde. Jediný zdroj pravdy je `lawForcedCard`
+([core/playability.js](core/playability.js)) – ptá se jím server (`_lawForced`), klient
+(zlaté zvýraznění, zašedlé „Ukončit tah") i bot. Rozejít se nesmí, jinak by server tah
+tiše odmítal ukončit a bot by posílal `end_turn` donekonečna.
+
+- **Zámek zbytku tahu** — `_lawLocked(playerIdx, card)` ([logic/fistful.js](logic/fistful.js)).
+  Dokud hráč vynucenou kartu drží a JDE zahrát, nesmí udělat nic jiného: `playCard`,
+  `playBang`, `playSpecialCard`, `startDiscardExtra`, `activateGreenCard` a všechny aktivní
+  schopnosti (Sid Ketchum, Uncle Will, Chuck Wengam, José Delgado, Doc Holyday) se na něj
+  ptají. Bez toho jde povinnost snadno obejít: zahrát Pivo, aby se hráč doléčil a vynucený
+  **Salón** přestal jít zahrát; zahrát **jiný Bang!** a vyčerpat jím limit (s Volcanicem
+  se druhý Bang! prostě zahraje až PO tom vynuceném); nebo si kartu odhodit schopností.
+  Klientské zrcadlo je jeden gate na začátku větve `isMyPlayTurn` v `cardPlayability`
+  (zbytek ruky se rovnou zašedne) – zacyklení nehrozí, pro samotnou vynucenou kartu se
+  gate přeskočí ještě před dotazem na `lawForcedCard`.
+- **Bang! bez cíle míří na sebe** — `_lawHasTarget` u `SHOOT` vrací **vždy true**: když
+  hráč na nikoho jiného nedosáhne, musí střelit sám sebe (`lawSelfShootOnly`). Klient mu
+  k tomu výjimečně zvýrazní **vlastní postavu** (`drawMyArea`), bot má stejný fallback
+  v `forcedLawIntent`. Bez toho se hra zasekne: `end_turn` server odmítne a jinou kartu
+  hráč hrát nesmí.
+- **Karta se ukáže veřejně, v ruce je pak zase tajná** — cinematika `law_reveal`
+  (`startLawReveal` v [net/handlers.js](net/handlers.js), časování `LAW_ANIM`/`lawRevealMs`
+  v [core/fistfulAnim.js](core/fistfulAnim.js)): karta vyletí doprostřed obrazovky,
+  překlopí se, chvíli drží a pak jde do ruky – ostatním se cestou překlopí zpět na rub.
+  Je to totéž tělo jako u Peyote (`startDeckCardReveal`), jen **bez pulzující marky**
+  (nezkoumá se hodnota ani barva). `redactState` proto vynucenou kartu **nepouští** –
+  v cizí ruce leží rubem nahoru jako každá jiná.
+  Zdroje vynucené karty a jejich cinematika:
+  | odkud | co se přehraje |
+  |---|---|
+  | běžná 2. karta z balíčku | `law_reveal` (`from` chybí → start na balíčku) |
+  | Black Jack | jeho vlastní `BLACK_JACK_CHECK` reveal – ten markami **bliká** (barvu opravdu zkoumá), takže se `law_reveal` neposílá |
+  | Claus "The Saint" | `law_reveal` s `from: 'claus'` – rozdávání se zastaví, karta vyletí ze své pozice v řadě a pak jde do ruky |
+  | Kit Carlson | `law_reveal` s `from: 'kit'` – vlastník má odkrytou řadu uprostřed, ostatní parkující ruby u jeho místa (spotřebuje se jedna, jinak by ji `finishKitCarlsonSpectator` poslal do ruky ještě jednou). Klient u téhle volby vynechá vlastní let do ruky (`_kitLawPick` ve [view/board.js](view/board.js)) |
+- **Zlaté zvýraznění přebíjí všechna ostatní** — nastavuje se ve `drawMyArea` až úplně
+  nakonec (i za zeleným zvýrazněním právě vybrané karty, ta se pozná vysunutím) a drží
+  i po hover-outu. Hráč musí pořád vidět, která karta ho v tahu drží.
+
+## Odkrytá řada (Kit Carlson / Claus): došlý balíček ji rozdělí na dvě části
+
+Odkrytá řada se rozdává **stejnou cestou jako hokynářství**. Když balíček během odkrývání
+dojde, odkryje se nejdřív to, co v něm bylo, pak se zamíchá (hra čeká) a teprve pak dorazí
+zbytek – dřív se jen o 5,7 s odložil celý broadcast a řada naskočila naráz až po míchání.
+
+- Rozhoduje o tom `_revealAnim(deckBefore, dealt)` ([logic/draw.js](logic/draw.js)), jehož
+  výsledek jde ve stavu jako `kitCarlsonState.anim` / `clausState.anim`:
+  `'none'` (karet byl dostatek), `'proactive'` (balíček se vyprázdnil poslední odkrytou
+  kartou → míchá se až po rozdání, paralelně s výběrem), `'blocking'` (došel dřív → rozdá
+  se `dealtBefore`, zamíchá se, dorozdá se zbytek). Zároveň **potlačí legacy
+  `reshuffle_anim`** (vynuluje `_reshuffleOccurred`), aby se míchání nepřehrálo dvakrát –
+  přesně jako `openStore`.
+- Klient to hraje přes `dealRevealRow(n, anim, tempo, flyOne, onDone)` ([game.js](game.js)) –
+  jeden rozdávač pro Kitův panel, Clausovu řadu i pohled ostatních na Kita. Po dobu
+  rozdávání kreslí balíček podle vlastního počtu (`App.dealDeckCount`, sdílené
+  s hokynářstvím) a drží `App.revealLocked` (z řady zatím nejde vybírat – stav s fází
+  dorazí hned, protože míchání si řídí klient) a `App.revealShuffling` (balíček se po tu
+  dobu nekreslí).
+- Boti čekají přes `room._revealBlockUntil` / `room._reshuffleBlockUntil`, které se počítají
+  **stejným vzorcem** (`revealCinematicMs` v [server/anim.js](server/anim.js), tempo v
+  `REVEAL_TEMPO` musí zrcadlit `KIT_TEMPO`/`CLAUS_TEMPO` v game.js).
+- Když karet není dost ani po zamíchání (došel i odhoz), odkryje se prostě míň:
+  Kit si nechá `min(kitNeeded, revealed.length)`, Claus má přednost před rozdáváním
+  (`keep` napřed, `queue` až ze zbytku) – jinak by výběr nešel dokončit.
+
+## Ranč (A Fistful of Cards): odhoz po jedné, náhradní karty ručně
+
+„Po fázi lízání smíš odhodit libovolný počet karet a líznout si stejně." Odhoz i lízání
+se dřív odbyly naráz jedním kliknutím; teď:
+
+- `ranchExchange` ([logic/fistful.js](logic/fistful.js)) jen **odhodí** označené karty
+  a nastaví klasickou fázi lízání (`drawPhaseState` s `cardsNeeded` = počet odhozených,
+  `isRanch: true`, **`isStartOfTurn: false`** – Želízka ani Ranč sám se znovu neptají).
+  Náhradní karty si hráč lízne **ručně**, klikem na balíček za každou odhozenou; domíchání
+  balíčku se tím odbaví úplně stejnou cestou jako u kteréhokoli jiného lízání.
+- Odhoz se řadí **podle pozice ve vějíři**, ne podle pořadí klikání – karty pak odlétají
+  do odhozu po jedné zleva doprava (`hand_to_discard` jde frontou animací, takže se
+  přehrají za sebou a stav dorazí až za nimi, ať je jich kolik chce).
+- Suzy Lafayette se neprobudí: prázdnou ruku vidí až po dokončení efektu, a to už má
+  karty zpátky (viz „nejdřív doběhne efekt zahrané karty").
+
+## Pálenka se nenabízí s plnými životy
+
+„Vynech fázi lízání a vezmi si 1 život" nemá s plnými životy co dát, takže by tlačítko
+šlo zmáčknout jen omylem – a hráč by přišel o celou fázi lízání za nulu. Rozhoduje o tom
+`_drawOptionsBase(player)` ([logic/draw.js](logic/draw.js)), tedy **jediný zdroj pravdy**
+pro server, klientské tlačítko i bota; `drawCard('liquor')` se navíc ptá znovu v okamžiku
+akce (`options` je jen snímek z okamžiku, kdy fáze začala).
+
 ## Lucky Duke: výběr a pak KLASICKÉ sejmutí
 
 Lucky Duke si u každého snímání líže 2 karty a jednu si vybere. Během výběru se marky
@@ -628,6 +719,12 @@ hodnota zůstává). Musí se to projevit ve dvou vrstvách:
   Stejnou markou se řídí i pulzující zvýraznění při snímání (`effSuitMarkKey` →
   `pulseCheckMark`); to si pod zvětšenou marku podkládá **záplatu z původního artu**
   (`_markCoverPatch`), aby pod ní neprosvítala ta malá zapečená.
+- **Výjimka Peyote (Fistful)** — tip se vyhodnocuje proti VYTIŠTĚNÉ barvě, takže i odkrytá
+  karta uprostřed obrazovky musí ukázat tu vytištěnou (jinak by hráč viděl jinou barvu, než
+  na kterou právě sázel). Zařídí to `pulseCheckMark(..., { printedSuit: true })` – pulzující
+  marka si pod sebe podkládá záplatu z původního artu (`_markCoverPatch`), takže zapečenou
+  (přebarvenou) marku zakryje. Přebarvení se na kartě projeví až ve chvíli, kdy dosedne
+  do ruky. Jinde se `printedSuit` nepoužívá.
 - **Pozor na dvě podoby barvy** — v datech (`cards.json`, z nich se pečou textury) je
   `"HEARTS"`, ve stavu hry už symbol `♥️` (přemapuje `Card` přes `Suits`). `SUIT_SLUG`
   v `core/cardArt.js` proto zná **obojí**; jinak `suitMarkKey` pro kartu ZE STAVU vrátí
@@ -701,6 +798,10 @@ Server k tomu v `server.js`:
 - `Cache-Control` v `express.static`: assety `max-age=86400`, kód zůstává na
   `max-age=0` + ETag (nasazená verze musí být vidět hned). Delší platnost assetů by
   chtěla verzi v URL, kterou tu bez build stepu nemáme.
+- **Na localhostu (a na LAN IP) se assety NEcachují** (`no-cache` + ETag, `isLocalHost`
+  v `server.js`): jinak se nově převedený art neprojeví ani po F5 a člověk ladí grafiku,
+  kterou prohlížeč vůbec nestáhl. Pozná se to podle hostname požadavku, ne podle env
+  proměnné – nasazený server chodí na doméně, takže se nekonfiguruje nic.
 
 ## Testy
 

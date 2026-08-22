@@ -1,9 +1,10 @@
 // server/handlers.characters.js — socket handlery dotahových schopností postav
 // (Bart Cassidy, El Gringo, Suzy) a vyhodnocení checků/Black Jacku + get_taken_names.
 // registerCharacterHandlers(socket, ctx, withRoom) – těla byte-identická.
+const { lawRevealMs } = require('../core/fistfulAnim.js');
 module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
     const { rooms, emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn,
-            handleReshuffleAndBroadcast, broadcastRoomDelayed } = ctx;
+            handleReshuffleAndBroadcast, broadcastRoom, broadcastRoomDelayed } = ctx;
     // Guard „čí je tah" (viz handlers.game.js / server/guard.js).
     const on = ctx.guardedOn?.(socket) || socket.on.bind(socket);
 
@@ -174,6 +175,15 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             const card = cs?.revealed?.[slot];
             if (toIdx == null || !card) return;
             if (!gs.clausPick(slot)) return;
+            // Fistful – Právo západu: druhá karta, kterou si Claus NECHÁ, je vynucená –
+            // rozdávání se na chvíli zastaví, karta se ukáže celému stolu a teprve pak
+            // jde do ruky (v ní je zase tajná). Stav drží fronta animací na klientu.
+            if (gs.players[toIdx]?._lawCardId === card.id) {
+                emitAnim(room, { type: 'law_reveal', playerIdx: toIdx, card, from: 'claus', slot });
+                room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + lawRevealMs());
+                broadcastRoom(room);
+                return;
+            }
             const base = { type: 'claus_pick', slot, toIdx };
             emitAnimPrivate(room, [toIdx, giverIdx], { ...base, cardId: card.id },
                                                      { ...base, cardId: null });

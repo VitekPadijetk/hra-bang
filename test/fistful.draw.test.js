@@ -34,14 +34,28 @@ function stackDeck(g, n, type = CardType.BEER, o = {}) {
 // ── Pálenka ─────────────────────────────────────────────────────────────────
 
 test('Pálenka: volba se nabízí jen se zapnutou událostí', () => {
-    const g = mkEv([{ role: 'Sheriff' }, {}], 'PALENKA');
-    assert.deepEqual(g._drawOptionsBase(), ['deck', 'liquor']);
+    const g = mkEv([{ role: 'Sheriff', health: 2 }, {}], 'PALENKA');
+    assert.deepEqual(g._drawOptionsBase(g.players[0]), ['deck', 'liquor']);
     g.activeFistful = null;
-    assert.deepEqual(g._drawOptionsBase(), ['deck']);
+    assert.deepEqual(g._drawOptionsBase(g.players[0]), ['deck']);
 
-    const h = mkEv([{ role: 'Sheriff' }, {}], 'PALENKA');
+    const h = mkEv([{ role: 'Sheriff', health: 2 }, {}], 'PALENKA');
     h.startDrawPhase();
     assert.ok(h.drawPhaseState.options.includes('liquor'));
+});
+
+// S plnými životy nemá co získat – nabídnout mu vzdát se celé fáze lízání za nic
+// je jen past. Nenabízí se proto ani na serveru (options), ani v UI.
+test('Pálenka: s plnými životy se volba vůbec nenabídne', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'PALENKA');
+    assert.equal(g.players[0].health, g.players[0].maxHealth);
+    assert.deepEqual(g._drawOptionsBase(g.players[0]), ['deck']);
+    stackDeck(g, 4);
+    g.startDrawPhase();
+    assert.ok(!g.drawPhaseState.options.includes('liquor'));
+    g.drawCard('liquor');
+    assert.equal(g.phase, 'DRAW', 'a ani odeslaná akce neprojde');
+    assert.equal(g.players[0].hand.length, 0);
 });
 
 test('Pálenka: místo lízání +1 život a konec fáze', () => {
@@ -56,13 +70,16 @@ test('Pálenka: místo lízání +1 život a konec fáze', () => {
     assert.equal(g.deck.cards.length, 4, 'balíček zůstal nedotčený');
 });
 
-test('Pálenka: nad maximum neléčí, ale fázi lízání stejně ukončí', () => {
-    const g = mkEv([{ role: 'Sheriff', maxHealth: 4, health: 4 }, {}], 'PALENKA');
+// Zraněný hráč s Kocovinou/duchem apod. si o poslední chybějící život říct smí; jakmile
+// se ale mezi nabídnutím a klikem doléčí, akce už neprojde (options se počítají znovu).
+test('Pálenka: doléčenému hráči už akce neprojde', () => {
+    const g = mkEv([{ role: 'Sheriff', maxHealth: 4, health: 3 }, {}], 'PALENKA');
     stackDeck(g, 4);
     g.startDrawPhase();
+    assert.ok(g.drawPhaseState.options.includes('liquor'));
+    g.players[0].health = 4;               // mezitím se doléčil (Pivo v reakci, Salón…)
     g.drawCard('liquor');
-    assert.equal(g.players[0].health, 4);
-    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.phase, 'DRAW', 'fáze lízání běží dál');
     assert.equal(g.players[0].hand.length, 0);
 });
 
@@ -214,20 +231,29 @@ test('Právo západu: nehratelná karta tah nezamkne', () => {
     assert.equal(g.currentPlayerIndex, 1);
 });
 
-test('Právo západu: Bang! bez dosažitelného cíle tah nezamkne', () => {
+test('Právo západu: Bang! bez dosažitelného cíle musí hráč poslat sám na sebe', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}, {}, {}], 'PRAVO_ZAPADU');
     [1, 2, 3, 4].forEach(i => board(g, i, CardType.EQUIPMENT, { effect: 'mustang' }));
     stackDeck(g, 2, CardType.BANG);
     g.startDrawPhase();
     g.drawCard('deck'); g.drawCard('deck');
-    assert.equal(g._lawForced(0), null, 'na dostřel 1 nikdo není');
+    const forced = g._lawForced(0);
+    assert.ok(forced, 'karta drží dál – cílem je v nouzi sám hráč');
+    assert.equal(g._lawSelfShootOnly(0, forced.card), true);
+    g.tryEndTurn();
+    assert.equal(g.phase, 'PLAY', 'tah nejde ukončit');
+    g.playBang(0, 0, forced.idx);
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.pendingResponse.targetIdx, 0, 'střílí sám na sebe');
 
-    // Se sousedem v dostřelu už karta drží.
+    // Se sousedem v dostřelu už na sebe střílet nemusí.
     const h = mkEv([{ role: 'Sheriff' }, { role: 'Outlaw' }, {}], 'PRAVO_ZAPADU');
     stackDeck(h, 2, CardType.BANG);
     h.startDrawPhase();
     h.drawCard('deck'); h.drawCard('deck');
-    assert.ok(h._lawForced(0));
+    const hf = h._lawForced(0);
+    assert.ok(hf);
+    assert.equal(h._lawSelfShootOnly(0, hf.card), false);
 });
 
 test('Právo západu: Cat Balou bez cíle s kartami tah nezamkne', () => {
@@ -387,4 +413,78 @@ test('Právo západu: bot nikdy neposílá end_turn, dokud karta drží', () => 
         const a = decideBotAction(g, 0, null);
         assert.notEqual(a.event, 'end_turn', `${t} by hru zasekla`);
     });
+});
+
+// ── Právo západu: vynucená karta zamyká zbytek tahu ─────────────────────────
+// Bez zámku jde povinnost obejít: Pivem se doléčit, aby vynucený Salón přestal jít
+// zahrát; jiným Bangem vyčerpat limit; nebo si vynucenou kartu odhodit schopností.
+
+// Vynucená karta se pozná podle toho, že ji `_lawMark` označí jako DRUHOU líznutou.
+function mkForced(g, forcedType, forcedOpts = {}) {
+    stackDeck(g, 1, CardType.BEER);
+    g.deck.cards.unshift(mkCard(forcedType, forcedOpts));   // druhá líznutá (pop z konce)
+    g.startDrawPhase();
+    g.drawCard('deck'); g.drawCard('deck');
+    return g._lawForced(0);
+}
+
+test('Právo západu: vynucený Salón nejde obejít Pivem (zbytek ruky je zamčený)', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'PRAVO_ZAPADU');
+    const beer = give(g, 0, CardType.BEER);
+    give(g, 0, CardType.BANG);
+    const forced = mkForced(g, CardType.SALOON);
+    assert.ok(forced, 'Salón drží – jsem zraněný');
+    const bangCard = g.players[0].hand.find(c => c.type === CardType.BANG);
+    assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[beer]), false,
+        'Pivo je do zahrání Salónu zamčené');
+    assert.equal(cardPlayability(g, g.players[0], 0, bangCard), false, 'a stejně tak zbytek ruky');
+    g.playCard(beer);
+    assert.equal(g.players[0].health, 3, 'Pivo se nezahrálo');
+    // Až po vynuceném Salónu je ruka zase volná.
+    g.playCard(forced.idx);
+    assert.equal(g.players[0].health, 4, 'Salón vyléčil');
+    assert.equal(g._lawForced(0), null);
+    assert.equal(cardPlayability(g, g.players[0], 0, bangCard), true, 'ruka je zase odemčená');
+});
+
+test('Právo západu: jiný Bang! nesmí vyčerpat limit před vynuceným', () => {
+    const g = mkEv([{ role: 'Sheriff' }, { role: 'Outlaw' }, {}], 'PRAVO_ZAPADU');
+    const other = give(g, 0, CardType.BANG);
+    const forced = mkForced(g, CardType.BANG);
+    assert.ok(forced);
+    g.playBang(0, 1, other);
+    assert.equal(g.phase, 'PLAY', 'cizí Bang! server odmítl');
+    assert.equal(g.players[0].bangsPlayedThisTurn, 0);
+    // Vynucený projde a teprve pak je limit spotřebovaný.
+    g.playBang(0, 1, forced.idx);
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.players[0].bangsPlayedThisTurn, 1);
+});
+
+test('Právo západu: schopnost postavy si vynucenou kartu odhodit nesmí', () => {
+    const g = mkEv([{ role: 'Sheriff', character: 'Sid Ketchum', health: 2 }, {}, {}], 'PRAVO_ZAPADU');
+    give(g, 0, CardType.BANG);
+    give(g, 0, CardType.BANG);
+    const forced = mkForced(g, CardType.SALOON);
+    assert.ok(forced);
+    g.useSidKetchum(0, [0, 1]);
+    assert.equal(g.players[0].health, 2, 'Sid se nespustil');
+    g.playCard(forced.idx);
+    assert.equal(g._lawForced(0), null);
+    g.useSidKetchum(0, [0, 1]);
+    assert.equal(g.players[0].health, 4, 'po zahrání vynucené karty už schopnost jde');
+});
+
+test('Právo západu: zelená karta ze stolu se do zahrání vynucené neaktivuje', () => {
+    const g = mkEv([{ role: 'Sheriff' }, { role: 'Outlaw' }, {}], 'PRAVO_ZAPADU');
+    const pepper = board(g, 0, CardType.PEPPERBOX, {
+        props: { green: true, bangEffect: true }, suit: Suits.HEARTS,
+    });
+    pepper._playedTurn = 0;
+    g.turnId = 9;
+    const forced = mkForced(g, CardType.BANG);
+    assert.ok(forced);
+    g.activateGreenCard(0, pepper.id, { targetIdx: 1 });
+    assert.equal(g.phase, 'PLAY', 'aktivace neprošla');
+    assert.equal(g.players[0].board.length, 1, 'zelená karta leží dál');
 });

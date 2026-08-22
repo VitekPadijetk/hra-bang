@@ -2,7 +2,7 @@
 // reakce, odhoz, Kit Carlson/Lucky Duke/Barel výběry, Sid/dynamit/pivo záchrany,
 // hokynářství). registerGameHandlers(socket, ctx, withRoom) – těla byte-identická.
 const { niResultMs } = require('../core/highNoonAnim.js');
-const { peyoteRevealMs } = require('../core/fistfulAnim.js');
+const { peyoteRevealMs, lawRevealMs } = require('../core/fistfulAnim.js');
 
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, handleAutoEndTurn,
@@ -91,12 +91,34 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // Líznutí z balíčku: majitel uvidí reveal (flip rub→líc skutečné karty,
                 // kterou si bere), ostatní jen rub. Líznutá karta je teď poslední v ruce.
                 const hand = gs.players[playerIdx].hand;
-                const drawnId = hand[hand.length - 1]?.id;
-                emitAnimPrivate(room, playerIdx,
-                    { type: 'draw', playerIdx, cardId: drawnId },
-                    { type: 'draw', playerIdx });
+                const drawn = hand[hand.length - 1];
+                const drawnId = drawn?.id;
+                // Fistful – Právo západu: tuhle kartu musí hráč zahrát, takže se místo
+                // běžného líznutí ukáže CELÉMU STOLU (nálet doprostřed, překlopení, výdrž,
+                // pak do ruky). V ruce už je zase tajná – proto ji redakce nepouští.
+                if (drawn && gs.players[playerIdx]._lawCardId === drawnId) {
+                    emitAnim(room, { type: 'law_reveal', playerIdx, card: drawn });
+                    room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + lawRevealMs());
+                } else {
+                    emitAnimPrivate(room, playerIdx,
+                        { type: 'draw', playerIdx, cardId: drawnId },
+                        { type: 'draw', playerIdx });
+                }
             }
             if (isKitCarlson || isClaus) {
+                // Odkrytou řadu (a případné míchání uprostřed ní) si přehrává klient –
+                // _revealAnim potlačil legacy reshuffle_anim, takže stav odejde hned
+                // a boti se o tu dobu podrží stejně jako v hokynářství.
+                const st = isKitCarlson ? gs.kitCarlsonState : gs.clausState;
+                const t = ctx.revealCinematicMs?.(st?.anim, st?.revealed?.length || 0,
+                                                  isKitCarlson ? 'kit' : 'claus');
+                if (t) {
+                    room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + t.pickReady);
+                    if (t.shuffleEnd > 0) {
+                        room._reshuffleBlockUntil = Math.max(room._reshuffleBlockUntil || 0,
+                                                             Date.now() + t.shuffleEnd);
+                    }
+                }
                 handleReshuffleAndBroadcast(room, gs, 0);
             } else if (gs.deck._reshuffleOccurred) {
                 handleReshuffleAndBroadcast(room, gs, 400);
@@ -598,7 +620,19 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     });
 
     const handleKitCarlson = (index) => {
-        withRoom((room, p, gs) => { gs.kitCarlsonPick(index); broadcastRoom(room); });
+        withRoom((room, p, gs) => {
+            const kitIdx = gs.currentPlayerIndex;
+            const card = gs.kitCarlsonState?.revealed?.[index];
+            gs.kitCarlsonPick(index);
+            // Fistful – Právo západu: druhá karta, kterou si Kit NECHÁ, je vynucená –
+            // ukáže se proto celému stolu (z jeho odkryté řady doprostřed a pak do ruky).
+            // Klient si podle toho odpustí vlastní let do ruky, viz startLawReveal.
+            if (card && gs.players[kitIdx]?._lawCardId === card.id) {
+                emitAnim(room, { type: 'law_reveal', playerIdx: kitIdx, card, from: 'kit', slot: index });
+                room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + lawRevealMs());
+            }
+            broadcastRoom(room);
+        });
     };
     on('kit_carlson_pick', handleKitCarlson);
     on('kit_carlson_select', (data) => handleKitCarlson(data?.index ?? data));
@@ -734,10 +768,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    // A Fistful of Cards – Ranč: hráč po lízání odhodil N karet a lízne si stejně nových.
-    // Odhoz i líznutí proběhnou naráz, takže se odanimují po jedné za sebou (ruka → odhoz,
-    // pak balíček → ruka) a stav dorazí až za nimi – pořadí drží fronta animací na klientu
-    // (core/animQueue.js). Líznutá karta je soukromá: majitel vidí líc, ostatní rub.
+    // A Fistful of Cards – Ranč: hráč po lízání odhodil N karet. Odhoz proběhne naráz,
+    // ale karty odlétají do odhozu PO JEDNÉ (zleva doprava, jak leží ve vějíři) – fronta
+    // animací na klientu (core/animQueue.js) je přehraje za sebou a stav dorazí až za nimi,
+    // ať je karet kolik chce. Náhradní karty si pak hráč líže sám klikáním na balíček
+    // (nová fáze DRAW, viz ranchExchange v logic/fistful.js).
     on('ranch_exchange', (d) => {
         withRoom((room, p, gs) => {
             const idx = gs.pendingRanch?.playerIdx;
@@ -745,11 +780,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const res = gs.ranchExchange(idx, (d && d.cardIds) || []);
             if (!res) { broadcastRoom(room); return; }
             res.discarded.forEach(c => emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: c.id }));
-            res.drawn.forEach(c => emitAnimPrivate(room, idx,
-                { type: 'draw', playerIdx: idx, cardId: c.id },
-                { type: 'draw', playerIdx: idx }));
-            if (gs.deck._reshuffleOccurred) handleReshuffleAndBroadcast(room, gs, 400);
-            else broadcastRoom(room);
+            broadcastRoom(room);
         });
     });
 

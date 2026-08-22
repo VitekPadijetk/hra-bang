@@ -69,13 +69,17 @@ const DrawMixin = {
     // A Fistful of Cards – Pálenka: hráč smí vynechat celou fázi lízání a získat za to
     // 1 život. Volba se nabízí u KAŽDÉHO lízání na začátku tahu, tedy i u postav s vlastní
     // fází (Kit Carlson, Claus) – rozhodují se dřív, než se cokoli odkryje. `options` je
-    // jediný zdroj pravdy: Jesse/Pedro si je po první kartě sami ořežou na ['deck'].
-    _drawOptionsBase() {
-        return this.hasEvent('PALENKA') ? ['deck', 'liquor'] : ['deck'];
+    // jediný zdroj pravdy: Jesse/Pedro si je po první kartě sami ořežou na ['deck'],
+    // klient podle nich kreslí tlačítko a bot se ptá úplně stejně.
+    // S PLNÝMI ŽIVOTY se nenabízí vůbec: hráč by se vzdal celé fáze lízání za nic
+    // (léčit se není kam) – tlačítko by šlo zmáčknout jen omylem.
+    _drawOptionsBase(player) {
+        const canHeal = !!player && isInPlay(player) && player.health < player.maxHealth;
+        return (this.hasEvent('PALENKA') && canHeal) ? ['deck', 'liquor'] : ['deck'];
     },
 
     _getDrawOptions(player) {
-        const opts = this._drawOptionsBase();
+        const opts = this._drawOptionsBase(player);
         if (effectiveCharacter(player) === "Jesse Jones") opts.push('opponent_hand');
         if (effectiveCharacter(player) === "Pedro Ramirez") opts.push('discard');
         // Dodge City: Pat Brennan smí místo lízání vzít 1 kartu ze stolu libovolného hráče.
@@ -95,6 +99,9 @@ const DrawMixin = {
         // (Město duchů) – hlídá to _heal přes isInPlay.
         if (source === 'liquor') {
             if (!(ds.options || []).includes('liquor') || ds.cardsDrawn > 0) return;
+            // `options` je snímek z okamžiku, kdy fáze začala – ověř i teď, že je pořád
+            // co léčit (jinak by hráč zahodil celou fázi lízání za nulu).
+            if (!this._drawOptionsBase(player).includes('liquor')) return;
             const healed = this._heal(player, 1);
             this.logEvent('event', { card: 'Pálenka', who: player.name, msg: `vynechal lízání (+${healed} život)` });
             this._finishDraw();
@@ -163,26 +170,21 @@ const DrawMixin = {
             ds.options = ['deck'];
         }
         else if (source === 'deck') {
+            // Kolik karet měl balíček PŘED líznutím – potřebují to odkryté řady
+            // (Kit Carlson / Claus), viz _revealAnim.
+            const deckBefore = this.deck.cards.length;
             const card = this.deck.draw();
             if (!card) return;
 
             this.drawPhaseState.options = ['deck'];
 
             if (effectiveCharacter(player) === "Kit Carlson" && ds.isKitCarlson) {
-                // FIX: Pro Kit Carlson je JAKÝKOLIV reshuffle vždy emergency –
-                // výběr karet nesmí být zobrazen dřív než se zamíchá balíček.
-                // Zachytíme reshuffle při c1 (už proběhl před tímto blokem)
-                // i případný reshuffle při c2/c3.
-                const reshuffledAtC1 = this.deck._reshuffleOccurred;
                 // Odkrývá VŽDY 3 karty (to je jeho schopnost) – mění se jen kolik si z nich
                 // nechá: běžně 2, se Žízní 1. Příjezd vlaku počet odkrytých nezvyšuje: nechá
                 // si 2 a kartu navíc si pak lízne klasicky z balíčku (ds.kitExtra, viz
                 // kitCarlsonPick).
                 const rest = [];
                 for (let i = 0; i < KIT_REVEAL - 1; i++) rest.push(this.deck.draw());
-                if (reshuffledAtC1 || this.deck._reshuffleOccurred) {
-                    this.deck._reshuffleWasProactive = false; // vždy emergency pro Kit Carlson
-                }
                 const revealed = [card, ...rest].filter(Boolean);
                 this.kitCarlsonState = {
                     revealed,
@@ -191,7 +193,9 @@ const DrawMixin = {
                     // Nikdy si nesmí nechat víc, než kolik karet se povedlo odkrýt
                     // (došlý balíček) – jinak by výběr nešel dokončit.
                     needed: Math.min(ds.kitNeeded || 2, revealed.length),
-                    extra: ds.kitExtra || 0
+                    extra: ds.kitExtra || 0,
+                    // Rozdání řady (a případné míchání uprostřed) si řídí klient – viz _revealAnim.
+                    anim: this._revealAnim(deckBefore, revealed.length),
                 };
                 this.drawPhaseState.active = false;
                 this.phase = "KIT_CARLSON";
@@ -203,18 +207,12 @@ const DrawMixin = {
             // devět a vidí je jen on (ostatním leží rubem, viz redactState). Rozdělí je pak
             // klikáním: nejdřív si vezme svoje, pak po jedné ostatním (fáze CLAUS_GIVE).
             if (ds.isClaus && effectiveCharacter(player) === "Claus the Saint") {
-                // Stejně jako u Kita: JAKÉKOLI domíchání během odkrývání je „emergency" –
-                // karty se nesmí ukázat dřív, než balíček dojede míchací cinematiku.
-                const reshuffledAtC1 = this.deck._reshuffleOccurred;
                 const order = (ds.clausOrder || []).filter(i => isInPlay(this.players[i]));
                 const total = (ds.clausKeep || 2) + order.length;
                 const revealed = [card];
                 for (let i = 1; i < total; i++) {
                     const c = this.deck.draw();
                     if (c) revealed.push(c);
-                }
-                if (reshuffledAtC1 || this.deck._reshuffleOccurred) {
-                    this.deck._reshuffleWasProactive = false;
                 }
                 // Došlý balíček: co si nechává má přednost, teprve zbytek se rozdává –
                 // jinak by na poslední hráče ve frontě nezbylo a výběr by nešel dokončit.
@@ -224,7 +222,10 @@ const DrawMixin = {
                 player.stats.cardsDrawn += keep;
                 this.logEvent('draw', { who: player.name, source: 'deck (Claus)', cards: revealed.map(c => c.name) });
                 this.drawPhaseState.active = false;
-                this.clausState = { revealed, picked: [], keep, taken: 0, queue, toIdx: this.currentPlayerIndex };
+                // Rozdání řady (a případné míchání uprostřed) si řídí klient – viz _revealAnim.
+                this.clausState = { revealed, picked: [], keep, taken: 0, queue,
+                                    toIdx: this.currentPlayerIndex,
+                                    anim: this._revealAnim(deckBefore, revealed.length) };
                 this.phase = "CLAUS_GIVE";
                 return;
             }
@@ -251,6 +252,28 @@ const DrawMixin = {
         if (ds.cardsDrawn >= ds.cardsNeeded) {
             this._finishDraw();
         }
+    },
+
+    // Odkrytá řada (Kit Carlson / Claus) se rozdává stejnou cestou jako hokynářství:
+    // karty letí z balíčku po jedné a když během odkrývání DOJDE, odkryje se nejdřív to,
+    // co v balíčku bylo, pak se zamíchá (hra čeká) a teprve pak dorazí zbytek.
+    // `deckBefore` = velikost balíčku před první odkrytou kartou, `dealt` = kolik se jich
+    // nakonec podařilo odkrýt (míň jen tehdy, když došel i odhoz).
+    //   'none'      – karet byl dostatek, nemíchá se,
+    //   'proactive' – balíček se vyprázdnil poslední odkrytou kartou → míchá se až po
+    //                 rozdání, paralelně s výběrem,
+    //   'blocking'  – došel dřív → rozdá se `dealtBefore`, zamíchá se, dorozdá se zbytek.
+    // Míchání si přebírá klientská cinematika, takže se legacy reshuffle_anim (a s ním
+    // i zdržení broadcastu v handleReshuffleAndBroadcast) potlačí – přesně jako v openStore.
+    _revealAnim(deckBefore, dealt) {
+        const before = Math.max(0, deckBefore | 0);
+        const n = Math.max(0, dealt | 0);
+        const mode = before < n ? 'blocking' : (before === n ? 'proactive' : 'none');
+        const shuffleCount = this.deck._reshuffleOccurred ? (this.deck._reshuffleCount || 0) : 0;
+        this.deck._reshuffleOccurred = false;
+        this.deck._reshuffleCount = 0;
+        this.deck._reshuffleWasProactive = false;
+        return { dealtBefore: Math.min(before, n), mode, shuffleCount, total: n, origCount: before };
     },
 
     _finishDraw() {
@@ -298,7 +321,7 @@ const DrawMixin = {
             playerIdx: this.currentPlayerIndex,
             cardsNeeded: 1,
             cardsDrawn: 0,
-            options: this._drawOptionsBase(),
+            options: this._drawOptionsBase(player),
             // Pořád je to lízání na začátku tahu – Želízka (High Noon) se ptají až za ním.
             isStartOfTurn: true,
             isClaus: true,
@@ -321,7 +344,7 @@ const DrawMixin = {
             playerIdx: this.currentPlayerIndex,
             cardsNeeded: 1,
             cardsDrawn: 0,
-            options: this._drawOptionsBase(),
+            options: this._drawOptionsBase(player),
             isKitCarlson: true,
             // I Kitovo odkrývání JE fáze lízání na začátku tahu – bez tohoto příznaku by
             // _finishDraw přeskočil volbu barvy pro Želízka (High Noon) a Kit by jako

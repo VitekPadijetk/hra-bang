@@ -111,6 +111,27 @@ const FistfulMixin = {
         return p ? lawForcedCard(this, p, playerIdx) : null;
     },
 
+    // Zamyká vynucená karta zbytek tahu? Dokud ji hráč drží a JDE zahrát, nesmí udělat
+    // nic jiného – povinnost by se jinak dala obejít: zahrát Pivo, aby vynucený Salón
+    // přestal jít zahrát; zahrát jiný Bang! a vyčerpat jím limit (s Volcanicem se druhý
+    // Bang! zahraje až PO tom vynuceném); nebo si kartu prostě odhodit schopností
+    // (Sid Ketchum, Doc Holyday, José Delgado, Uncle Will, „odhoď další kartu").
+    // `card` = karta hraná Z RUKY; null (schopnost postavy, aktivace zelené karty ze
+    // stolu) je zamčené vždycky – i zelený bang-efekt by jinak vyčerpal limit Bang!.
+    // Zrcadlo pro klienta i bota: lawLocksOther / cardPlayability v core/playability.js.
+    _lawLocked(playerIdx, card = null) {
+        const forced = this._lawForced(playerIdx);
+        if (!forced) return false;
+        return !card || card.id !== forced.card.id;
+    },
+
+    // Musí vynucený Bang! (nebo bang-efekt) letět SÁM NA SEBE? Jen když hráč na nikoho
+    // jiného nedosáhne – jinak by se povinnost nedala splnit. Trychtýř na sdílený helper.
+    _lawSelfShootOnly(playerIdx, card) {
+        const p = this.players[playerIdx];
+        return !!p && lawSelfShootOnly(this, p, playerIdx, card);
+    },
+
     // ── Peyote: „Místo lízání hádej barvu vrchní karty; uhodneš – ber a hádej dál." ─
     // Nahrazuje CELOU fázi lízání včetně postav, které si ji upravují (Kit Carlson,
     // Jesse Jones, Pedro Ramirez, Pat Brennan, Black Jack, Claus) – ptáme se proto
@@ -187,38 +208,51 @@ const FistfulMixin = {
     },
 
     // `cardIds` = co hráč označil (prázdné pole / nic = přeskočit). Bere se podle ID, ne
-    // indexů: ruka se mezi odesláním a doručením mohla přeskládat. Odhoz i líznutí proběhnou
-    // naráz, takže Suzy Lafayette prázdnou ruku uvidí jen tehdy, když nebylo z čeho dolízat.
+    // indexů: ruka se mezi odesláním a doručením mohla přeskládat.
+    //
+    // Odhoz proběhne naráz, ale karty odlétají do odhozu PO JEDNÉ a v pořadí, v jakém leží
+    // v ruce (zleva doprava) – proto se `discarded` řadí podle indexu ve vějíři, ne podle
+    // pořadí klikání. Náhradní karty si hráč líže RUČNĚ: nastaví se klasická fáze lízání
+    // s `cardsNeeded` = počet odhozených, takže tolikrát klikne na balíček (a domíchání
+    // balíčku se odbaví stejnou cestou jako u hokynářství).
     ranchExchange(playerIdx, cardIds) {
         if (this.phase !== "RANCH" || !this.pendingRanch) return null;
         if (this.pendingRanch.playerIdx !== playerIdx) return null;
         const p = this.players[playerIdx];
         const seen = new Set();
-        const discarded = [];
+        const picked = [];
         (Array.isArray(cardIds) ? cardIds : []).forEach(id => {
             if (seen.has(id)) return;
             const i = p.hand.findIndex(c => c && c.id === id);
             if (i === -1) return;
             seen.add(id);
-            discarded.push(p.hand.splice(i, 1)[0]);
+            picked.push({ i, card: p.hand[i] });
         });
+        // Odzadu, ať se indexy během vyndávání neposunou; výsledek pak zleva doprava.
+        picked.sort((a, b) => b.i - a.i).forEach(({ i }) => p.hand.splice(i, 1));
+        const discarded = picked.slice().reverse().map(x => x.card);
         discarded.forEach(c => this.deck.discardPile.push(c));
-        const drawn = [];
-        for (let i = 0; i < discarded.length; i++) {
-            const c = this.deck.draw();
-            if (!c) break;
-            p.hand.push(c);
-            p.stats.cardsDrawn++;
-            drawn.push(c);
-        }
-        if (discarded.length) {
-            this.logEvent('event', { card: 'Ranč', who: p.name, msg: `vyměnil ${discarded.length} karet` });
-        }
         this.pendingRanch = null;
-        this.phase = "PLAY";
-        this.checkSuzyLafayette(p);
-        this._processSpecialQueue();
-        return { discarded, drawn };
+        if (!discarded.length) {
+            this.phase = "PLAY";
+            this.checkSuzyLafayette(p);
+            this._processSpecialQueue();
+            return { discarded };
+        }
+        this.logEvent('event', { card: 'Ranč', who: p.name, msg: `mění ${discarded.length} karet` });
+        // Není to lízání na začátku tahu (`isStartOfTurn: false`) – Želízka ani Ranč sám
+        // se po jeho dokončení znovu neptají, _finishDraw jen vrátí fázi PLAY.
+        this.drawPhaseState = {
+            active: true,
+            playerIdx,
+            cardsNeeded: discarded.length,
+            cardsDrawn: 0,
+            options: ['deck'],
+            isStartOfTurn: false,
+            isRanch: true,
+        };
+        this.phase = "DRAW";
+        return { discarded };
     },
 };
 

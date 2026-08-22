@@ -20,6 +20,19 @@ const io = new Server(server, { perMessageDeflate: { threshold: 1024 } });
 // middleware sám přeskočí, ty jsou komprimované už formátem.
 app.use(compression());
 
+// Localhost = vývoj: tam se assety NEcachují (jen ETag), jinak by se nově převedený
+// art neprojevil ani po F5 a člověk by ladil grafiku, kterou prohlížeč vůbec nestáhl.
+// Pozná se to podle hostname požadavku, ne podle env proměnné – nasazený server chodí
+// na doméně, takže se konfigurovat nemusí nic.
+function isLocalHost(req) {
+    const h = (req && req.hostname) || '';
+    if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]') return true;
+    // LAN adresa (testování na telefonu ve stejné síti) je pořád vývoj – nasazený
+    // server chodí na doméně, nikdy na privátní IP.
+    return /^10\./.test(h) || /^192\.168\./.test(h) ||
+           /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+}
+
 // express.static dává všemu max-age=0 + ETag, tedy „vždy se zeptej, obvykle dostaneš
 // 304". Pro kód je to správně (nasazená verze musí být vidět hned), pro assety ne –
 // těch je přes sto souborů a tahat je znovu každou session je právě to, co vyžralo
@@ -29,7 +42,9 @@ app.use(compression());
 app.use(express.static(__dirname, {
     setHeaders(res, filePath) {
         if (filePath.replace(/\\/g, '/').includes('/assets/')) {
-            res.setHeader('Cache-Control', 'public, max-age=86400');
+            res.setHeader('Cache-Control', isLocalHost(res.req)
+                ? 'no-cache'                      // vývoj: revaliduj přes ETag
+                : 'public, max-age=86400');
         }
     }
 }));

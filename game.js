@@ -1040,7 +1040,7 @@ function animatePileLift(target, onDone) {
 
 // Rozdá storeCards[from..to) z balíčku do řady (flip rub→líc, stagger). Po doletu
 // poslední zavolá onDone. Sloty jsou gated (App.storeDealIds), board.js je ukáže až po doletu.
-// S každou odlétající kartou ubere jednu vrstvu z kresleného balíčku (App.storeDeckCount),
+// S každou odlétající kartou ubere jednu vrstvu z kresleného balíčku (App.dealDeckCount),
 // takže hromádka viditelně mizí a s poslední kartou je pryč (viz startStoreCinematic).
 function dealStoreCards(cards, from, to, onDone) {
     const indices = [];
@@ -1053,7 +1053,7 @@ function dealStoreCards(cards, from, to, onDone) {
         setTimeout(() => {
             const card = cards[i];
             if (!card) return;
-            if (App.storeDeckCount !== null) App.storeDeckCount = Math.max(0, App.storeDeckCount - 1);
+            if (App.dealDeckCount !== null) App.dealDeckCount = Math.max(0, App.dealDeckCount - 1);
             if (!gameScene) { App.storeDealIds.delete(card.id); return; }
             const slot = getStoreSlotPos(i, count, App.storePileLiftY || 0);
             animateCardFlip(deckX, deckY, slot.x, slot.y, 'card_back', getCardTex(card.id),
@@ -1102,7 +1102,7 @@ function startStoreCinematic() {
     const origCount = sa.origCount ?? (sa.mode === 'none'
         ? (state.deck?.cards?.length ?? 0) + N
         : (sa.mode === 'proactive' ? N : k));
-    App.storeDeckCount = origCount;
+    App.dealDeckCount = origCount;
     renderUI();
     const shufN = sa.shuffleCount || 20;
     animatePileLift(storeLift(), () => {
@@ -1112,17 +1112,17 @@ function startStoreCinematic() {
                 playStoreShuffle(shufN, () => {
                     // Po zamíchání je na stole nový (velký) balíček; zbylé karty se z něj
                     // teprve rozdají, takže do doletu poslední drž počet o ně vyšší.
-                    App.storeDeckCount = (state?.deck?.cards?.length ?? 0) + (N - k);
+                    App.dealDeckCount = (state?.deck?.cards?.length ?? 0) + (N - k);
                     dealStoreCards(cards, k, N, () => {
-                        App.storeDeckCount = null; App.storeLocked = false; renderUI();
+                        App.dealDeckCount = null; App.storeLocked = false; renderUI();
                     });
                 });
             });
         } else if (sa.mode === 'proactive') {
             // Přesně tolik: rozdej vše, pak míchej paralelně (výběr už běží).
-            dealStoreCards(cards, 0, N, () => { playStoreShuffle(shufN, () => { App.storeDeckCount = null; renderUI(); }); });
+            dealStoreCards(cards, 0, N, () => { playStoreShuffle(shufN, () => { App.dealDeckCount = null; renderUI(); }); });
         } else {
-            dealStoreCards(cards, 0, N, () => { App.storeDeckCount = null; renderUI(); });
+            dealStoreCards(cards, 0, N, () => { App.dealDeckCount = null; renderUI(); });
         }
     });
 }
@@ -1133,7 +1133,7 @@ function startStoreCinematic() {
 // klasického proaktivního domíchání. Boty drží server (room._reshuffleBlockUntil).
 function endStoreCinematic() {
     App.storeLocked = false;
-    App.storeDeckCount = null;
+    App.dealDeckCount = null;
     App.storeDealIds = new Set();
     const wait = Math.max(0, (App.storeShuffleEndAt || 0) - Date.now());
     if (wait > 0) {
@@ -1198,9 +1198,15 @@ function _markCoverPatch(x, y, scale, card, box) {
 // tehdy je hodnota zapečená ve staré kartě a pulz nejde udělat.
 // marks[0] je (když se povedla) záplata přes zapečené marky – vidět je tak jen ta
 // pulzující; po skončení pulzu (stopPulse) záplata mizí s ní a zůstane zase jen malá.
+// `opts.printedSuit` = ukaž VYTIŠTĚNOU barvu, ne tu platnou. Potřebuje to jediné místo
+// v pravidlech, které se řídí vytištěnou barvou – Peyote (A Fistful of Cards): tipuje se
+// proti tomu, co je na kartě natištěné, takže by pod Požehnáním/Prokletím (High Noon)
+// odkrytá karta ukazovala jinou barvu, než na kterou se právě sázelo. Přebarvení pro ni
+// začne platit až ve chvíli, kdy dosedne do ruky (tam už je marka zapečená).
 function pulseCheckMark(x, y, scale, card, opts = {}) {
     if (!gameScene) return null;
-    const vKey = valueMarkKey(card), sKey = effSuitMarkKey(card);
+    const vKey = valueMarkKey(card);
+    const sKey = opts.printedSuit ? suitMarkKey(card) : effSuitMarkKey(card);
     if (!vKey || !sKey || !gameScene.textures.exists(vKey) || !gameScene.textures.exists(sKey)) return null;
     const W = CARD_TEX_W, H = CARD_TEX_H, L = MARK_LAYOUT;
     const left = x - (W * scale) / 2, top = y - (H * scale) / 2;   // levý horní roh karty na obrazovce
@@ -1339,11 +1345,69 @@ function startBlackJackReveal(ds) {
     }
 }
 
+// ── ODKRYTÁ ŘADA (Kit Carlson / Claus): rozdání z balíčku, případně s mícháním ──
+// Když balíček během odkrývání DOJDE, rozdá se nejdřív to, co v něm bylo, pak se
+// zamíchá (hra čeká) a teprve pak dorazí zbytek – přesně jako v hokynářství.
+// Režim posílá server v `anim` (viz _revealAnim v logic/draw.js); tempo (stagger/fly)
+// musí zrcadlit server/anim.js revealCinematicMs, aby se o stejnou dobu podrželi boti.
+//
+//   n        – kolik karet se rozdává
+//   anim     – { mode, dealtBefore, shuffleCount, origCount } ze stavu
+//   tempo    – { start, stagger, fly }
+//   flyOne(i)– odešli JEDNU kartu (index i) z balíčku do jejího slotu
+function dealRevealRow(n, anim, tempo, flyOne, onDone) {
+    const a = anim || {};
+    const k = a.mode === 'blocking' ? Math.min(a.dealtBefore ?? n, n) : n;
+    // Balíček kreslíme po dobu rozdávání podle vlastního počtu – stav, který s fází
+    // dorazil, už má případně zamíchaný (velký) balíček a hromádka by skočila.
+    App.dealDeckCount = a.origCount ?? (state?.deck?.cards?.length ?? 0) + n;
+    // Dokud se rozdává (a případně míchá), z řady se nevybírá – stav s fází dorazil hned.
+    App.revealLocked = true;
+    const runChunk = (from, to, done) => {
+        if (to <= from) { done(); return; }
+        for (let i = from; i < to; i++) {
+            const idx = i;
+            setTimeout(() => {
+                if (!gameScene) return;
+                if (App.dealDeckCount !== null) App.dealDeckCount = Math.max(0, App.dealDeckCount - 1);
+                flyOne(idx);
+                renderUI();   // hromádka o kartu nižší
+            }, tempo.start + (idx - from) * tempo.stagger);
+        }
+        setTimeout(done, tempo.start + (to - from - 1) * tempo.stagger + tempo.fly + 40);
+    };
+    const finish = () => { App.dealDeckCount = null; App.revealLocked = false; renderUI(); if (onDone) onDone(); };
+    runChunk(0, k, () => {
+        if (a.mode === 'blocking') {
+            App.revealShuffling = true;
+            renderUI();
+            playReshuffleCinematic(a.shuffleCount || 20, { depthBase: 5, onDone: () => {
+                App.revealShuffling = false;
+                // Po zamíchání leží na stole nový (velký) balíček; zbylé karty se z něj
+                // teprve rozdají, takže do doletu poslední drž počet o ně vyšší.
+                App.dealDeckCount = (state?.deck?.cards?.length ?? 0) + (n - k);
+                renderUI();
+                runChunk(k, n, finish);
+            } });
+        } else if (a.mode === 'proactive') {
+            // Balíček se vyprázdnil poslední kartou – míchá se až teď, paralelně s výběrem.
+            App.dealDeckCount = null;
+            App.revealLocked = false;
+            renderUI();
+            playReshuffleCinematic(a.shuffleCount || 20, { depthBase: 5, onDone: () => { renderUI(); } });
+            if (onDone) onDone();
+        } else {
+            finish();
+        }
+    });
+}
+
 // ── KIT CARLSON / LUCKY DUKE: rozdání karet do panelu + následné lety ──────────
 // Karty letí z balíčku do panelu a překlopí se rub→líc (jako reveal sejmutí).
 // Sloty se v board.js skryjí (kitDealIds/luckyDealIds), dokud karta nedoletí.
 
 // Kit Carlson (vidí jen Kit): 3 karty z balíčku do řady panelu.
+const KIT_TEMPO = { start: 0, stagger: 160, fly: 420 };
 function startKitCarlsonDeal() {
     if (!gameScene || !state?.kitCarlsonState) return;
     const revealed = state.kitCarlsonState.revealed || [];
@@ -1352,14 +1416,13 @@ function startKitCarlsonDeal() {
     App.kitRevealCards = revealed.map((c, i) => ({ id: c.id, x: startX + i * spacing, y: slotY }));
     App.kitPicked = [];
     renderUI();
-    revealed.forEach((card, i) => {
-        const sx = startX + i * spacing;
-        setTimeout(() => {
-            if (!gameScene) return;
-            animateCardFlip(DECK_X, DECK_Y, sx, slotY, 'card_back', getCardTex(card.id),
-                { flip: true, startScale: 0.28, endScale: slotScale, duration: 420,
-                  onComplete: () => { App.kitDealIds.delete(card.id); renderUI(); } });
-        }, i * 160);
+    dealRevealRow(revealed.length, state.kitCarlsonState.anim, KIT_TEMPO, (i) => {
+        const card = revealed[i];
+        if (!card) return;
+        const _deckTop = deckTopPos();
+        animateCardFlip(_deckTop.x, _deckTop.y, startX + i * spacing, slotY, 'card_back', getCardTex(card.id),
+            { flip: true, startScale: 0.28, endScale: slotScale, duration: KIT_TEMPO.fly,
+              onComplete: () => { App.kitDealIds.delete(card.id); renderUI(); } });
     });
 }
 
@@ -1377,6 +1440,9 @@ function playKitCarlsonResult() {
     });
     App.kitRevealCards = null;
     App.kitPicked = [];
+    App.dealDeckCount = null;    // konec rozdávání řady → balíček zase podle stavu
+    App.revealShuffling = false;
+    App.revealLocked = false;
 }
 
 // ── CLAUS "THE SAINT" (Fistful): odkrytá řada uprostřed stolu ─────────────────
@@ -1405,6 +1471,7 @@ function clausSlotPos(i) {
 // Vstup do fáze CLAUS_GIVE: karty odletí z balíčku do řady. Claus je vidí lícem
 // (překlopí se za letu), ostatní i divák jen rubem – v jejich stavu je řada zakrytá
 // (redactState), takže se se sloty pracuje přes INDEX, ne přes ID karty.
+const CLAUS_TEMPO = { start: 100, stagger: 110, fly: 420 };
 function startClausDeal() {
     if (!gameScene || !state?.clausState) return;
     const revealed = state.clausState.revealed || [];
@@ -1414,23 +1481,21 @@ function startClausDeal() {
     const picked = new Set(state.clausState.picked || []);
     App.clausDealSlots = new Set(revealed.map((_, i) => i).filter(i => !picked.has(i)));
     App.clausTakenSlots = new Set();
-    const from = deckTopPos();
     const pileScale = currentLayout().scaleDeck;
     renderUI();
-    revealed.forEach((card, i) => {
-        if (picked.has(i)) return;
+    dealRevealRow(revealed.length, state.clausState.anim, CLAUS_TEMPO, (i) => {
+        const card = revealed[i];
+        if (picked.has(i) || !App.clausDealSlots?.has(i)) return;
+        const from = deckTopPos();
         const to = clausSlotPos(i);
-        setTimeout(() => {
-            if (!gameScene || !App.clausDealSlots?.has(i)) return;
-            const done = () => { App.clausDealSlots?.delete(i); renderUI(); };
-            if (card?.id != null) {
-                animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(card.id),
-                    { flip: true, startScale: pileScale, endScale: P.scale, duration: 420, onComplete: done });
-            } else {
-                animateCard(from.x, from.y, to.x, to.y, 'card_back', 420, done,
-                    { startScale: pileScale, endScale: P.scale });
-            }
-        }, 100 + i * 110);
+        const done = () => { App.clausDealSlots?.delete(i); renderUI(); };
+        if (card?.id != null) {
+            animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(card.id),
+                { flip: true, startScale: pileScale, endScale: P.scale, duration: CLAUS_TEMPO.fly, onComplete: done });
+        } else {
+            animateCard(from.x, from.y, to.x, to.y, 'card_back', CLAUS_TEMPO.fly, done,
+                { startScale: pileScale, endScale: P.scale });
+        }
     });
 }
 
@@ -1438,6 +1503,9 @@ function endClausDeal() {
     App.clausPanel = null;
     App.clausDealSlots = new Set();
     App.clausTakenSlots = new Set();
+    App.dealDeckCount = null;
+    App.revealShuffling = false;
+    App.revealLocked = false;
 }
 
 // ── KIT CARLSON – pohled OSTATNÍCH (ne Kit) ───────────────────────────────────
@@ -1458,6 +1526,9 @@ function _clearKitSpecSprites() {
     App.kitSpecParked = [];
     App.kitSpecPicksDone = 0;
     App.oppHandHideCount = {};   // žádné rozletěné Kitovy karty → nic neskrývej
+    App.dealDeckCount = null;    // konec rozdávání řady → balíček zase podle stavu
+    App.revealShuffling = false;
+    App.revealLocked = false;
 }
 
 function startKitCarlsonDealSpectator() {
@@ -1483,18 +1554,24 @@ function startKitCarlsonDealSpectator() {
     // TEĎ: při závěrečném letu už je kitCarlsonState ve stavu null.
     App.kitSpecNeeded = state.kitCarlsonState?.needed ?? 2;
     App.kitSpecParked = [];
+    // Sprity se vyrobí hned (drží pořadí i pro pozdější lety), ale odstartují je až
+    // dealRevealRow – při došlém balíčku mezi ně vloží míchací cinematiku.
+    const slots = [];
     for (let i = 0; i < n; i++) {
         const off = (i - (n - 1) / 2) * spread;
         const tx = ax + perpx * off, ty = ay + perpy * off;
         const sp = gameScene.add.image(DECK_X, DECK_Y, 'card_back')
-            .setScale(0.28).setAngle(0).setDepth(805 + i);
+            .setScale(0.28).setAngle(0).setDepth(805 + i).setAlpha(0);
         App.kitSpecParked.push({ sprite: sp, x: tx, y: ty, angle });
-        setTimeout(() => {
-            if (!sp.active) return;
-            gameScene.tweens.add({ targets: sp, x: tx, y: ty, scaleX: scale, scaleY: scale,
-                angle, duration: 420, ease: 'Cubic.easeOut' });
-        }, i * 160);
+        slots.push({ sp, tx, ty });
     }
+    dealRevealRow(n, state.kitCarlsonState?.anim, KIT_TEMPO, (i) => {
+        const sl = slots[i];
+        if (!sl || !sl.sp.active) return;
+        sl.sp.setPosition(deckTopPos().x, deckTopPos().y).setAlpha(1);
+        gameScene.tweens.add({ targets: sl.sp, x: sl.tx, y: sl.ty, scaleX: scale, scaleY: scale,
+            angle, duration: KIT_TEMPO.fly, ease: 'Cubic.easeOut' });
+    });
 }
 
 // Mezivýběr (1. výběr, fáze stále KIT_CARLSON): nově vybrané karty odešli do ruky Kita.

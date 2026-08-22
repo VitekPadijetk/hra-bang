@@ -53,6 +53,7 @@ if (typeof isBlueCard === 'undefined' && typeof require === 'function') {
 // odmítnutém „Ukončit tah". core/playability.js na logic.js nesahá, cyklus nevzniká.
 if (typeof lawForcedCard === 'undefined' && typeof require === 'function') {
     globalThis.lawForcedCard = require('./core/playability.js').lawForcedCard;
+    globalThis.lawSelfShootOnly = require('./core/playability.js').lawSelfShootOnly;
 }
 
 class GameState {
