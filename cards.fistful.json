@@ -14,5 +14,5 @@
   { "id": 413, "key": "PRAVO_ZAPADU", "name": "Právo západu", "art": "pravo_zapadu", "text": "Ve fázi lízání se druhá lízaná karta odkryje a hráč ji musí v tomto tahu zahrát, pokud to jde." },
   { "id": 414, "key": "PALENKA", "name": "Pálenka", "art": "palenka", "text": "Hráč smí vynechat fázi lízání a získat za to 1 život." },
 
-  { "id": 400, "key": "FISTFUL_OF_CARDS", "name": "Fistful of Cards", "art": "fistful_of_cards", "text": "Na začátku svého tahu je hráč zasažen tolika kartami BANG!, kolik má karet v ruce." }
+  { "id": 400, "key": "FISTFUL_OF_CARDS", "name": "Fistful", "art": "fistful", "text": "Na začátku svého tahu je hráč zasažen tolika kartami BANG!, kolik má karet v ruce." }
 ]

@@ -432,7 +432,7 @@ function renderMenuScreen(screen) {
                     loadExpansionAssets(gameScene, 'high_noon');
                     App.createOptions.highNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
                 });
-            expansionRow(468, exps, 'fistful', 'A Fistful of Cards',
+            expansionRow(468, exps, 'fistful', 'Fistful',
                 '(15 karet událostí a 3 postavy; hraje se i vedle High Noonu)',
                 () => loadExpansionAssets(gameScene, 'fistful'));
         }
@@ -479,7 +479,7 @@ function renderMenuScreen(screen) {
         const _exps = App.createOptions.expansions || {};
         if (_exps.high_noon && !_exps.fistful) {
             advChecks.push({ key: 'highNoonExtra', label: 'High Noon: přibalené karty',
-                hint: '(+ Nová identita a Želízka z A Fistful of Cards)' });
+                hint: '(+ Nová identita a Želízka z Fistfulu)' });
         }
 
         const advY = 678;
@@ -590,7 +590,7 @@ function renderMenuScreen(screen) {
                     loadExpansionAssets(gameScene, 'high_noon');
                     App.botGameHighNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
                 });
-            expansionRow(600, bexps, 'fistful', 'A Fistful of Cards',
+            expansionRow(600, bexps, 'fistful', 'Fistful',
                 '(15 karet událostí a 3 postavy; hraje se i vedle High Noonu)',
                 () => loadExpansionAssets(gameScene, 'fistful'));
         }
