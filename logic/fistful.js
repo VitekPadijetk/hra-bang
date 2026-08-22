@@ -110,6 +110,116 @@ const FistfulMixin = {
         const p = this.players[playerIdx];
         return p ? lawForcedCard(this, p, playerIdx) : null;
     },
+
+    // ── Peyote: „Místo lízání hádej barvu vrchní karty; uhodneš – ber a hádej dál." ─
+    // Nahrazuje CELOU fázi lízání včetně postav, které si ji upravují (Kit Carlson,
+    // Jesse Jones, Pedro Ramirez, Pat Brennan, Black Jack, Claus) – ptáme se proto
+    // hned v `startDrawPhase`, ještě před jejich větvemi. Počet karet se neřeší vůbec:
+    // líže se, dokud hráč hádá, takže Žízeň ani Příjezd vlaku (High Noon) nic nemění.
+    // Vrací true → fáze lízání se rozjela po svém a volající už nic nestaví.
+    startPeyote() {
+        if (!this.hasEvent('PEYOTE')) return false;
+        const player = this.getCurrentPlayer();
+        player.bangsPlayedThisTurn = 0;
+        // drawPhaseState existuje jen kvůli _finishDraw (isStartOfTurn → Želízka, Ranč)
+        // a proto, že se ho ptá spousta míst; `active: false` schová klikatelný balíček –
+        // hádá se tlačítky, ne klikem na hromádku.
+        this.drawPhaseState = {
+            active: false,
+            playerIdx: this.currentPlayerIndex,
+            cardsNeeded: 0,
+            cardsDrawn: 0,
+            options: [],
+            isStartOfTurn: true,
+            isPeyote: true,
+        };
+        this.pendingPeyote = { playerIdx: this.currentPlayerIndex, guesses: 0 };
+        this.phase = "PEYOTE";
+        return true;
+    },
+
+    // Jeden tip. Vrací { card, red, hit } pro animaci, nebo null (neplatný tip / prázdný
+    // balíček i odhoz → fáze prostě skončí).
+    peyoteGuess(playerIdx, red) {
+        if (this.phase !== "PEYOTE" || !this.pendingPeyote) return null;
+        if (this.pendingPeyote.playerIdx !== playerIdx) return null;
+        const player = this.players[playerIdx];
+        const card = this.deck.draw();
+        if (!card) { this._endPeyote(); return null; }
+        // ⚠️ JEDINÉ místo v kódu, kde se čte VYTIŠTĚNÁ `card.suit` (jinde vždy _effSuit).
+        // Požehnání/Prokletí (High Noon) přebarvuje všechny karty na srdce/piky a hraje
+        // se současně s Fistfulem – přes _effSuit by hráč hádal na jistotu a lízl si
+        // celý balíček. Jakmile karta dosedne do ruky, přebarvení pro ni platí normálně
+        // (_effSuit se počítá až při použití), takže výjimka končí tímhle řádkem.
+        const isRed = card.suit === Suits.HEARTS || card.suit === Suits.DIAMONDS;
+        const hit = (!!red === isRed);
+        this.pendingPeyote.guesses++;
+        if (hit) {
+            player.hand.push(card);
+            player.stats.cardsDrawn++;
+            this.drawPhaseState.cardsDrawn++;
+            this.logEvent('draw', { who: player.name, source: 'Peyote', cards: [card.name] });
+        } else {
+            this.deck.discardPile.push(card);
+            this.logEvent('event', { card: 'Peyote', who: player.name, msg: `netrefil (${card.name})` });
+            this._endPeyote();
+        }
+        return { card, red: !!red, hit };
+    },
+
+    _endPeyote() {
+        this.pendingPeyote = null;
+        this._finishDraw();
+    },
+
+    // ── Ranč: „Po fázi lízání smíš odhodit libovolný počet karet a líznout si stejně." ─
+    // Volá se z _finishDraw ZA Želízky (High Noon má přednost: nejdřív barva, pak výměna),
+    // takže na něj musí navázat i chooseHandcuffsSuit. Vrací true → čeká se na hráče.
+    // Kdyby si mezitím vzala slovo fronta odložených akcí (Suzy Lafayette), zůstane hráč
+    // pro tenhle tah bez výměny – stejná dohoda jako u Želízek, nikdy ne zaseknutý.
+    _startRanch() {
+        if (!this.hasEvent('RANC')) return false;
+        const p = this.getCurrentPlayer();
+        if (!p || !isInPlay(p) || !p.hand.length) return false;
+        this.pendingRanch = { playerIdx: this.currentPlayerIndex };
+        this.phase = "RANCH";
+        return true;
+    },
+
+    // `cardIds` = co hráč označil (prázdné pole / nic = přeskočit). Bere se podle ID, ne
+    // indexů: ruka se mezi odesláním a doručením mohla přeskládat. Odhoz i líznutí proběhnou
+    // naráz, takže Suzy Lafayette prázdnou ruku uvidí jen tehdy, když nebylo z čeho dolízat.
+    ranchExchange(playerIdx, cardIds) {
+        if (this.phase !== "RANCH" || !this.pendingRanch) return null;
+        if (this.pendingRanch.playerIdx !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        const seen = new Set();
+        const discarded = [];
+        (Array.isArray(cardIds) ? cardIds : []).forEach(id => {
+            if (seen.has(id)) return;
+            const i = p.hand.findIndex(c => c && c.id === id);
+            if (i === -1) return;
+            seen.add(id);
+            discarded.push(p.hand.splice(i, 1)[0]);
+        });
+        discarded.forEach(c => this.deck.discardPile.push(c));
+        const drawn = [];
+        for (let i = 0; i < discarded.length; i++) {
+            const c = this.deck.draw();
+            if (!c) break;
+            p.hand.push(c);
+            p.stats.cardsDrawn++;
+            drawn.push(c);
+        }
+        if (discarded.length) {
+            this.logEvent('event', { card: 'Ranč', who: p.name, msg: `vyměnil ${discarded.length} karet` });
+        }
+        this.pendingRanch = null;
+        this.phase = "PLAY";
+        this.checkSuzyLafayette(p);
+        this._processSpecialQueue();
+        return { discarded, drawn };
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) {

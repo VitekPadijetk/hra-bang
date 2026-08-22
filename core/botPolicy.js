@@ -84,6 +84,7 @@ const T = {
     GATLING: 'Kulomet', INDIANS: 'Indiáni!', UHYB: 'Úhyb',
 };
 const HEARTS = '♥️';
+const DIAMONDS = '♦️';
 const SPADES = '♠️';
 
 // Cíl je „nepřítel", až když očekávaná nepřátelskost překročí tenhle práh. Malé kladné ε →
@@ -777,6 +778,33 @@ function decideBotAction(state, myIndex, beliefs) {
             let best = null, bestVal = -1;
             Object.keys(score).forEach(s => { if (score[s] > bestVal) { bestVal = score[s]; best = s; } });
             return { event: 'handcuffs_suit', payload: { suit: best || HEARTS } };
+        }
+
+        // Fistful – Peyote: tipni barvu, které je vidět MÍŇ (v balíčku jí tedy zbývá víc).
+        // Přestat nejde, hádá se, dokud se hráč netrefí. Počítá se z VYTIŠTĚNÉ barvy, ne
+        // z effSuit – je to zrcadlo výjimky, kterou má samo pravidlo (viz peyoteGuess
+        // v logic/fistful.js): s Požehnáním/Prokletím by jinak bot tipoval na jistotu.
+        case 'PEYOTE': {
+            let red = 0, black = 0;
+            const count = (c) => {
+                if (!c || c._placeholder || !c.suit) return;
+                if (c.suit === HEARTS || c.suit === DIAMONDS) red++; else black++;
+            };
+            (state.deck?.discardPile || []).forEach(count);
+            me.hand.forEach(count);
+            // Čím víc karet dané barvy už leží mimo balíček, tím míně jí v něm zbývá →
+            // tipuje se ta, které je vidět MÍŇ. Při shodě je to jedno, bere se červená.
+            return { event: 'peyote_guess', payload: { red: red <= black } };
+        }
+
+        // Fistful – Ranč: vyměň jen karty, které bys stejně odhodil (nízké keepScore),
+        // nejvýš tři – větší výměna už je hazard s rukou, se kterou se dá hrát teď.
+        case 'RANCH': {
+            const ids = me.hand.filter(c => c && !c._placeholder && keepScore(c) <= 2)
+                .sort((a, b) => keepScore(a) - keepScore(b))
+                .slice(0, 3)
+                .map(c => c.id);
+            return { event: 'ranch_exchange', payload: { cardIds: ids } };
         }
 
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom

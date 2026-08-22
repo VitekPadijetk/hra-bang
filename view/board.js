@@ -1555,7 +1555,11 @@ function drawMyArea(ctx) {
                 const isDocActive = !!selectedState.doc;
                 const isDocStaged = isDocActive && selectedState.doc.staged.includes(index);
                 const isJoseBlue = !!selectedState.jose && isBlueCard(card);
-                const cScale = (isStagedCard || isDAmain || isDocStaged) ? scaleHand * 0.88 : scaleHand;
+                // Fistful – Ranč: po fázi lízání se z ruky vybírá, co vyměnit. Označená karta
+                // se zmenší a zašedne – stejná řeč jako u Sida/Doca („tahle jde pryč“).
+                const isRanchMine = state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex;
+                const isRanchPicked = isRanchMine && App.ranchSel.has(card.id);
+                const cScale = (isStagedCard || isDAmain || isDocStaged || isRanchPicked) ? scaleHand * 0.88 : scaleHand;
                 let cSprite = gameScene.add.image(posX, handY, getTex(card.id))
                     .setScale(cScale)
                     .setAngle(0);
@@ -1585,6 +1589,8 @@ function drawMyArea(ctx) {
                 // Doc: vybrané (2) karty zašednou; José Delgado: modré karty žlutě.
                 if (isDocStaged) cSprite.setTint(0xbbbbbb);
                 if (isJoseBlue) cSprite.setTint(0xffff44);
+                // Ranč: celá ruka je klikací (světle modře), označené karty zašednou.
+                if (isRanchMine) cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff);
 
                 // Pivo jako záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE).
                 // Reverend (High Noon) Pivo zakazuje i tady → nezvýrazňovat (klik ho také
@@ -1619,7 +1625,7 @@ function drawMyArea(ctx) {
                 // místo skoku. Staged (Sid) / zmenšenou hlavní kartu nekloužeme – mají vlastní transformaci.
                 // AŽ ZA obarvením – reflowCard si tint ze statické karty přebírá, aby ho
                 // klouzající karta neztratila.
-                if (!isStagedCard && !isDAmain && !isDocStaged) {
+                if (!isStagedCard && !isDAmain && !isDocStaged && !isRanchPicked) {
                     reflowCard('h' + card.id, cSprite, posX, handY, getTex(card.id), scaleHand, 0);
                 }
 
@@ -1633,7 +1639,7 @@ function drawMyArea(ctx) {
                     if (pointer?.wasTouch) return;
                     startCardZoom(getTex(card.id), card.id);
                     isHovered = true;
-                    if (isMySidActive || isDocActive || isWillActive || state.phase === "DISCARD") return;
+                    if (isMySidActive || isDocActive || isWillActive || isRanchMine || state.phase === "DISCARD") return;
                     // „Odhoď další kartu": drž červené zvýraznění ceny i při hoveru (jako Sid).
                     if (isDiscardAnother) { if (!isDAmain) cSprite.setScale(baseScale * 1.05); return; }
                     if (selectedState.cardIndex === index) return;
@@ -1654,7 +1660,8 @@ function drawMyArea(ctx) {
                     scheduleZoomFade();
                     isHovered = false;
                     if (selectedState.cardIndex === index) return;
-                    cSprite.setScale((isDAmain || isDocStaged) ? baseScale * 0.88 : baseScale);
+                    cSprite.setScale((isDAmain || isDocStaged || isRanchPicked) ? baseScale * 0.88 : baseScale);
+                    if (isRanchMine) { cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff); return; }
                     if (isDiscardAnother) { cSprite.setTint(isDAmain ? 0xbbbbbb : 0xff6666); return; }
                     if (isDocActive) { cSprite.setTint(isDocStaged ? 0xbbbbbb : 0xff6666); return; }
                     if (isWillActive) { cSprite.setTint(0xff6666); return; }
@@ -1725,6 +1732,13 @@ function drawMyArea(ctx) {
                             return;
                         case 'DESELECT':
                             selectedState = { cardIndex: null, action: null };
+                            renderUI();
+                            return;
+                        case 'RANCH_TOGGLE':
+                            // Fistful – Ranč: druhý klik označení zruší. Seznam se odesílá až
+                            // tlačítkem „VYMĚNIT“, tady se jen překresluje.
+                            if (App.ranchSel.has(intent.cardId)) App.ranchSel.delete(intent.cardId);
+                            else App.ranchSel.add(intent.cardId);
                             renderUI();
                             return;
                         case 'SID_STAGE':
@@ -1883,7 +1897,10 @@ function drawMyArea(ctx) {
         }
 
         if (effectiveCharacter(me) === "Sid Ketchum" && me.hand.length >= 2 && isInPlay(me) && me.health < me.maxHealth
-            && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE', 'NOON_DAMAGE'].includes(state.phase)
+            // PEYOTE/RANCH (Fistful) mají OBA slotky tlačítek obsazené (tip na barvu,
+            // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
+            && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
+                 'NOON_DAMAGE', 'PEYOTE', 'RANCH'].includes(state.phase)
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
@@ -1950,6 +1967,53 @@ function drawMyArea(ctx) {
                     },
                 });
             }
+        }
+
+        // ── A Fistful of Cards – Peyote: tip na barvu vrchní karty balíčku ───────
+        // Místo klikání na balíček (fáze PEYOTE má `drawPhaseState.active === false`, takže
+        // hromádka klikací není) se tipuje dvěma tlačítky. Přestat nejde – hádá se, dokud
+        // hráč netrefi (pak fáze lízání končí), takže tu žádné třetí tlačítko není.
+        if (state.phase === "PEYOTE" && state.pendingPeyote?.playerIdx === myIndex) {
+            const _peyoteGuess = (red) => {
+                if (App.blockInput) return;
+                App.blockInput = true;
+                socket.emit('peyote_guess', { red });
+                renderUI();
+            };
+            const _peyoteBtn = (x, y, label, red, stroke) => {
+                const { bg } = themeButton(gameScene, x, y, 260, L.btnH, label, {
+                    fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum, stroke,
+                    fontSize: '22px', onClick: () => _peyoteGuess(red),
+                });
+                if (App.blockInput) { bg.setAlpha(0.45); bg.disableInteractive(); }
+            };
+            _peyoteBtn(L.btnEndX, L.btnEndY, '♥ ♦ ČERVENÁ', true, THEME.color.dangerNum);
+            _peyoteBtn(L.btnAbilX, L.btnAbilY, '♠ ♣ ČERNÁ', false, THEME.color.borderNum);
+        }
+
+        // ── A Fistful of Cards – Ranč: výměna karet z ruky po fázi lízání ───────
+        // Karty se označují klikáním v ruce (App.ranchSel, viz drawMyArea výš); tady jsou
+        // jen dvě tlačítka. „Přeskočit“ = prázdný seznam, tedy stejná akce jako výměna nuly.
+        if (state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex) {
+            const _ranchIds = me.hand.filter(c => c && !c._placeholder && App.ranchSel.has(c.id)).map(c => c.id);
+            const _ranchSend = (ids) => {
+                if (App.blockInput) return;
+                App.blockInput = true;
+                App.ranchSel.clear();
+                socket.emit('ranch_exchange', { cardIds: ids });
+                renderUI();
+            };
+            const { bg: _ranchBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH,
+                _ranchIds.length ? `VYMĚNIT (${_ranchIds.length})` : 'VYBER KARTY', {
+                ...themeToggleStyle(_ranchIds.length > 0), fontSize: '22px',
+                onClick: () => { if (_ranchIds.length) _ranchSend(_ranchIds); },
+            });
+            if (App.blockInput || !_ranchIds.length) { _ranchBtn.setAlpha(0.45); _ranchBtn.disableInteractive(); }
+            const { bg: _skipBtn } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 260, L.btnH, 'PŘESKOČIT ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px', onClick: () => _ranchSend([]),
+            });
+            if (App.blockInput) { _skipBtn.setAlpha(0.45); _skipBtn.disableInteractive(); }
         }
 
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────

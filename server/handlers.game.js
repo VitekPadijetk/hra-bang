@@ -2,6 +2,7 @@
 // reakce, odhoz, Kit Carlson/Lucky Duke/Barel výběry, Sid/dynamit/pivo záchrany,
 // hokynářství). registerGameHandlers(socket, ctx, withRoom) – těla byte-identická.
 const { niResultMs } = require('../core/highNoonAnim.js');
+const { peyoteRevealMs } = require('../core/fistfulAnim.js');
 
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, handleAutoEndTurn,
@@ -714,6 +715,41 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             }
             handleAutoEndTurn(room, gs);
             broadcastRoom(room);
+        });
+    });
+
+    // A Fistful of Cards – Peyote: hráč tipnul barvu vrchní karty balíčku. Odkrytí vidí
+    // celý stůl (zkrácené sejmutí uprostřed obrazovky), pak karta letí do ruky nebo do
+    // odhozu. Stav jde ven hned – zdržení si vezme fronta animací na klientu; server
+    // o stejnou dobu drží jen boty.
+    on('peyote_guess', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingPeyote?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const res = gs.peyoteGuess(idx, !!(d && d.red));
+            if (!res) { broadcastRoom(room); return; }
+            emitAnim(room, { type: 'peyote_reveal', playerIdx: idx, card: res.card, red: res.red, hit: res.hit });
+            room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + peyoteRevealMs());
+            broadcastRoom(room);
+        });
+    });
+
+    // A Fistful of Cards – Ranč: hráč po lízání odhodil N karet a lízne si stejně nových.
+    // Odhoz i líznutí proběhnou naráz, takže se odanimují po jedné za sebou (ruka → odhoz,
+    // pak balíček → ruka) a stav dorazí až za nimi – pořadí drží fronta animací na klientu
+    // (core/animQueue.js). Líznutá karta je soukromá: majitel vidí líc, ostatní rub.
+    on('ranch_exchange', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingRanch?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const res = gs.ranchExchange(idx, (d && d.cardIds) || []);
+            if (!res) { broadcastRoom(room); return; }
+            res.discarded.forEach(c => emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: c.id }));
+            res.drawn.forEach(c => emitAnimPrivate(room, idx,
+                { type: 'draw', playerIdx: idx, cardId: c.id },
+                { type: 'draw', playerIdx: idx }));
+            if (gs.deck._reshuffleOccurred) handleReshuffleAndBroadcast(room, gs, 400);
+            else broadcastRoom(room);
         });
     });
 

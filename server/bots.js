@@ -165,6 +165,10 @@ module.exports = function installBotService(ctx) {
             case 'RESPOND': return { event: 'respond_to_card', payload: { playerIdx: idx, cardIndex: null } };
             case 'DYNAMITE_DAMAGE': return { event: 'take_dynamite_hit' };
             case 'DRAW': return { event: 'draw_card', payload: { source: 'deck', sourceIdx: null } };
+            // Fistful: Peyote se hádá, dokud se netrefí (tip navíc nic nezablokuje);
+            // Ranč se dá vždycky přeskočit prázdným seznamem.
+            case 'PEYOTE': return { event: 'peyote_guess', payload: { red: true } };
+            case 'RANCH': return { event: 'ranch_exchange', payload: { cardIds: [] } };
             default: return null;
         }
     }

@@ -31,6 +31,11 @@ const DrawMixin = {
             player._veraCopiedTurn = this.turnId;
         }
 
+        // A Fistful of Cards – Peyote: nahrazuje celou fázi lízání a přebíjí i postavy,
+        // které si ji upravují (R8). Až ZA volbou Very Custer – kopírovanou postavu si
+        // volí na tenhle tah, i když se v něm nakonec nelíže z balíčku.
+        if (this.startPeyote()) return;
+
         if (effectiveCharacter(player) === "Kit Carlson") {
             this.startKitCarlsonDraw();
             return;
@@ -265,7 +270,9 @@ const DrawMixin = {
             // High Noon – Želízka: po fázi lízání si hráč na tahu volí barvu. Ptáme se až
             // po frontě odložených akcí (na konci lízání bývá prázdná); kdyby si ji fronta
             // vzala, zůstane hráč pro tenhle tah bez omezení – nikdy ne zaseknutý.
-            if (wasStartOfTurn && this.phase === "PLAY") this._startHandcuffs();
+            // Fistful – Ranč (výměna karet) jde AŽ ZA Želízky, takže když se čeká na barvu,
+            // pustí ho na řadu chooseHandcuffsSuit (logic/highNoon.js).
+            if (wasStartOfTurn && this.phase === "PLAY" && !this._startHandcuffs()) this._startRanch();
         }
     },
 

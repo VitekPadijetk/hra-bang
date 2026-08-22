@@ -122,6 +122,8 @@ class GameState {
         this.ffPile = [];               // už odkryté karty Fistfulu (nejstarší → nejnovější)
         this.activeFistful = null;
         this._ffEntering = null;
+        this.pendingPeyote = null;      // Peyote: čeká se na tip červená/černá
+        this.pendingRanch = null;       // Ranč: čeká se na výměnu karet (po fázi lízání)
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do
         // klienta (řídí zobrazení karet rolí i redakci stavu), _winClaim3p drží seat, který
         // osobně vyřadil svého určeného nepřítele, a tím hru vyhrál.

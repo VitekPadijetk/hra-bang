@@ -15,6 +15,7 @@
 //   { type: 'RESPOND_BEER', index }                   – Pivo jako záchrana při posledním životě
 //   { type: 'RESPOND', index }                        – obranná karta (Vedle!/Bang!)
 //   { type: 'DISCARD', index }                        – odhození ve fázi DISCARD
+//   { type: 'RANCH_TOGGLE', index, cardId }           – Ranč (Fistful): označit/odznačit k výměně
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
 
 if (typeof require === 'function') {
@@ -39,6 +40,12 @@ function decideCardClick(ctx) {
 
     if (blockInput) return { type: 'NONE' };
     if (card._placeholder) return { type: 'NONE' };
+
+    // Fistful – Ranč: po fázi lízání se z ruky VYBÍRÁ, co vyměnit. Je to vlastní fáze
+    // (RANCH), takže sem musí přijít dřív, než se cokoli ptá na „můj tah ve fázi PLAY".
+    if (state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex) {
+        return { type: 'RANCH_TOGGLE', index, cardId: card.id };
+    }
 
     // Odznačení už vybrané karty (mimo Sid režim)
     if (selectedState.cardIndex === index && !isMySidActive) {

@@ -429,6 +429,8 @@ const HighNoonMixin = {
         this.phase = "PLAY";
         this.logEvent('event', { card: 'Želízka', who: p.name, suit });
         this._processSpecialQueue();
+        // Fistful – Ranč se ptá až za Želízky (viz _finishDraw v logic/draw.js).
+        if (this.phase === "PLAY") this._startRanch();
         return true;
     },
 

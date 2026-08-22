@@ -4,8 +4,8 @@ Druhý balíček událostí vedle High Noon. Pracovní plán – až bude hotovo
 se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 
 **Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · ✅ Fáze 2 (Léčka,
-Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · další na řadě je Fáze 4 (Peyote, Ranč).
-Výklady pravidel viz sekce 2.
+Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · ✅ Fáze 4 (Peyote, Ranč) · další
+na řadě je Fáze 5 (Opuštěný důl). Výklady pravidel viz sekce 2.
 
 Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
@@ -31,6 +31,14 @@ Odchylky od plánu, které vyplynuly z implementace:
   nikde uklízet dřív, než ho zahodí `_beginTurn` na začátku hráčova dalšího tahu.
 - **Pálenku vezme tlačítko v místě „Ukončit tah"**, ne u balíčku: ve fázi lízání je ten
   slot volný, kdežto na místě schopností může stát tlačítko Sida Ketchuma.
+- **Peyote i Ranč obsadí OBA slotky tlačítek** (tip červená/černá, resp. vyměnit/přeskočit),
+  takže se v jejich fázích tlačítko Sida Ketchuma nekreslí – stejně jako už nekreslí
+  ve fázi odhazování nebo obrany. Léčit se dá hned po rozhodnutí.
+- **Peyote se neptá na počet karet.** Kartářské události High Noonu (Žízeň −1, Příjezd
+  vlaku +1) na něj nemají vliv – nelíže se „N karet", ale dokud hráč hádá. Přestat
+  dobrovolně nejde, takže fáze vždycky končí jednou kartou v odhozu.
+- **Ranč bere karty podle ID, ne indexů.** Mezi kliknutím a doručením se ruka mohla
+  přeskládat; neznámá, cizí i zdvojená ID se tiše ignorují.
 
 ---
 
@@ -369,20 +377,27 @@ v `test/server.bots.test.js`.
 
 ### FÁZE 4 — Fáze lízání II: Peyote a Ranč · L
 
+✅ **Hotovo.**
+
 #### Peyote (`PEYOTE`)
-- **Kde:** `logic/fistful.js` `startPeyote()` volané hned na začátku `startDrawPhase` (přebíjí Kita/Jesseho/Pedra/Pata/Black Jacka/Clause), fáze `PEYOTE`, `pendingPeyote`, akce `peyote_guess { red }`.
-- **⚠️ Výjimka z pravidel (tvoje zadání):** hádání se vyhodnocuje proti **vytištěné `card.suit`**, ne `_effSuit`. S Požehnáním/Prokletím (obojí z HN, může běžet zároveň) by jinak byla každá karta uhodnutá a hráč by si líznul celý balíček. Jakmile karta **dosedne do ruky**, platí pro ni přebarvení normálně – to je zadarmo, `_effSuit` se počítá až při použití. Bude to **jediné místo v kódu, kde se `card.suit` čte napřímo**, s velkým komentářem.
-- **UI:** tlačítka „♥♦ Červená" / „♠♣ Černá"; odkrytá karta jede existující cinematikou sejmutí (`startCheckReveal`) a pak letí do ruky nebo do odhozu.
+- **Kde:** `logic/fistful.js` `startPeyote()` volané ze `startDrawPhase` **hned za volbou Very Custer** (kopírovanou postavu si volí na celý tah, i když se v něm nelíže) a před větvemi Kita/Jesseho/Pedra/Pata/Black Jacka/Clause, fáze `PEYOTE`, `pendingPeyote`, akce `peyote_guess { red }`.
+- **⚠️ Výjimka z pravidel (tvoje zadání):** hádání se vyhodnocuje proti **vytištěné `card.suit`**, ne `_effSuit`. S Požehnáním/Prokletím (obojí z HN, může běžet zároveň) by jinak byla každá karta uhodnutá a hráč by si líznul celý balíček. Jakmile karta **dosedne do ruky**, platí pro ni přebarvení normálně – to je zadarmo, `_effSuit` se počítá až při použití. Jsou to **jediná dvě místa v kódu, kde se `card.suit` čte napřímo**: `peyoteGuess` (logic/fistful.js) a jeho zrcadlo ve větvi `PEYOTE` bota (core/botPolicy.js) – kdyby bot počítal přes `effSuit`, tipoval by pod Požehnáním proti pravidlům. Obě místa mají velký komentář a vlastní test.
+- **UI:** tlačítka „♥ ♦ ČERVENÁ" / „♠ ♣ ČERNÁ" (oba slotky u pravého okraje). Odkrytá karta jede **zkráceným sejmutím** (`startPeyoteReveal` v net/handlers.js, časování `core/fistfulAnim.js`) a pak letí do ruky, nebo do odhozu. Výdrž je polovilní proti klasickému sejmutí (1500 vs 3000 ms) – při šňůře správných tipů se to přehraje i pětkrát za sebou. Server o stejnou dobu drží boty (`room._revealBlockUntil`).
 - **Hrany:** končí přes `_finishDraw()` s `isStartOfTurn: true`, aby navázala Želízka i Ranč. Došlý balíček se zamíchá standardní cestou.
-- **Bot:** větev `PEYOTE` – hádá barvu, které je v odhozu vidět míň; pokračuje, dokud uhodne.
+- **Bot:** větev `PEYOTE` – hádá barvu, které je v odhozu a ve vlastní ruce vidět míň (té tedy v balíčku zbývá víc); pokračuje, dokud uhodne.
 
 #### Ranč (`RANC`)
-- **Kde:** `_startRanch()` z `_finishDraw` **za** Želízkami (HN má přednost), fáze `RANCH`, akce `ranch_exchange { cardIds }` (prázdné pole = přeskočit).
+- **Kde:** `_startRanch()` z `_finishDraw` **za** Želízkami (HN má přednost – když se čeká na barvu, pustí Ranč na řadu až `chooseHandcuffsSuit`), fáze `RANCH`, akce `ranch_exchange { cardIds }` (prázdné pole = přeskočit).
 - **UI:** označování karet v ruce (druhý klik odznačí) + tlačítka „Vyměnit (N)" a „Přeskočit".
 - **Hrany:** líznutí proběhne naráz (hráč už rozhodl). Suzy s prázdnou rukou nezůstane.
 - **Bot:** vymění karty pod prahem `keepScore` (max 3), jinak přeskočí.
 
-**Testy:** Peyote uhodl/neuhodl, přebíjí Kita, **Požehnání ho neovlivní**; Ranč vymění přesný počet, přeskočení funguje.
+**Testy:** `test/fistful.peyote.test.js` (24) – Peyote uhodl/neuhodl, přebíjí Kita/Clause/
+Jesseho/Pedra/Pata/Black Jacka, **Požehnání ani Prokletí ho neovlivní** (u bota taky),
+Žízeň/Příjezd vlaku nic nemění, duch hádá taky, prázdný balíček fázi jen ukončí,
+navazují Želízka; Ranč vymění přesný počet, přeskočení funguje, cizí/zdvojená ID se
+ignorují, prázdná ruka se neptá, tah nejde ukončit, Suzy zůstane v klidu, klik označuje.
+Navíc zátěž „20 her jen botů s balíčkem samých Peyote a Rančů" (`test/server.bots.test.js`).
 
 ---
 

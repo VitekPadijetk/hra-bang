@@ -1902,6 +1902,10 @@ function _playCardAnim(data) {
                         discard.x, discard.y, 'card_back', 280, null,
                         { startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: pileScale() });
             break;
+        // A Fistful of Cards – Peyote: hráč tipnul barvu vrchní karty, teď se odkryje.
+        case 'peyote_reveal':
+            startPeyoteReveal(data);
+            break;
         case 'store_pick': {
             // Karta letí ze slotu hokynářství do ruky hráče. Já: lícem do mého slotu
             // (staging). Jiný: líc→rub do jeho ruky (mizí mu do skryté ruky).
@@ -1933,6 +1937,83 @@ function _playCardAnim(data) {
             }
             break;
         }
+    }
+}
+
+// ── Peyote (Fistful): odkrytí karty, na jejíž barvu hráč tipoval ────────────
+// Zkrácené SEJMUTÍ (startCheckReveal v game.js): rub z balíčku doprostřed obrazovky, cestou
+// překlopení a zvětšení, výdrž s pulzující markou – a pak podle výsledku do RUKY (uhodl,
+// jako druhá karta Black Jacka) nebo do ODHOZU (netrefil, fáze lízání tím končí).
+// Karta je veřejná – všichni vidí líc – a do ruky se schová (líc→rub) až za letu, stejně
+// jako u Black Jacka. Časování je sdílené se serverem (core/fistfulAnim.js).
+function startPeyoteReveal(data) {
+    if (!gameScene || !state || !data?.card) return;
+    const card = data.card, playerIdx = data.playerIdx;
+    const D = PEYOTE_ANIM;
+    const faceTex = getCardTex(card.id);
+    const isOwner = playerIdx === myIndex && myIndex !== null;
+    const from = deckTopPos();
+    const pScale = currentLayout().scaleDeck;
+    let pulse = null;
+    const stopPulse = () => {
+        if (!pulse) return;
+        if (pulse.tween) pulse.tween.remove();
+        pulse.marks.forEach(m => m.destroy());
+        pulse = null;
+    };
+    const sprite = gameScene.add.image(from.x, from.y, 'card_back')
+        .setScale(pScale).setDepth(820).setAlpha(0.98);
+    // 1) balíček → střed: posun + růst + flip rub→líc
+    const halfFlip = Math.round(D.flyMs / 2);
+    gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: D.flyMs, ease: 'Cubic.easeOut' });
+    gameScene.tweens.add({ targets: sprite, scaleY: REVEAL_BIG, duration: D.flyMs, ease: 'Cubic.easeOut' });
+    gameScene.tweens.add({ targets: sprite, scaleX: 0, duration: halfFlip, ease: 'Sine.easeIn',
+        onComplete: () => { if (!sprite.active) return; sprite.setTexture(faceTex);
+            gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: halfFlip, ease: 'Sine.easeOut',
+                onComplete: () => { if (sprite.active) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card); } }); } });
+
+    const flyDelay = D.flyMs + D.holdMs;
+    // 2a) NETREFIL – karta sjede do odhozu (a fáze lízání končí).
+    if (!data.hit) {
+        const to = discardTopPos();
+        gameScene.tweens.add({ targets: sprite, x: to.x, y: to.y, scaleX: pScale, scaleY: pScale,
+            delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn',
+            // Se začátkem sestupu jde karta z „reveal“ vrstvy do vrstvy hromádky – co přiletí
+            // po ní (odhoz na konci tahu) musí dosednout NAD ni. Stejně jako u sejmutí.
+            onStart: () => { stopPulse(); sprite.setDepth(REVEAL_PILE_DEPTH); },
+            onComplete: () => holdThenFinish(sprite,
+                () => (state?.deck?.discardPile || []).some(c => c.id === card.id),
+                () => { stopPulse(); if (sprite.active) sprite.destroy(); }) });
+        return;
+    }
+    // 2b) UHODL – karta letí do ruky hráče.
+    const hand = state.players[playerIdx]?.hand ?? [];
+    const target = getHandSlotPos(playerIdx, hand.length, hand.length + 1);
+    const endScale = _renderHandScale(playerIdx);
+    if (isOwner) App.pendingDrawIds.add(card.id);   // skryj v ruce do doletu (staging)
+    gameScene.tweens.add({ targets: sprite, x: target.x, y: target.y, scaleY: endScale,
+        delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn',
+        // Marka leží na PEVNÉ pozici uprostřed obrazovky (nedrží se karty), takže musí
+        // zhasnout přesně se startem letu – jinak by zůstala viset ve vzduchu.
+        onStart: () => stopPulse(),
+        onComplete: () => { if (sprite.active) sprite.destroy();
+            if (isOwner) App.pendingDrawIds.delete(card.id);
+            // Karta se objeví PŘESNĚ při dosednutí: pokud stav ještě nedorazil, vlož ji do
+            // ruky optimisticky (další room_update ji stejně přepíše, žádný duplikát).
+            const h = state?.players?.[playerIdx]?.hand;
+            if (h && !h.some(c => c.id === card.id)) h.push(card);
+            renderUI(); } });
+    if (isOwner) {
+        gameScene.tweens.add({ targets: sprite, scaleX: endScale, delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn' });
+    } else {
+        // Ostatní: karta míří do vějíře ruky soupeře → za letu se dotočí do jeho orientace
+        // (bok = ±90°, protější = 180°) a překlopí zpět na rub (míří do skryté ruky).
+        const seatAngle = _kitSpecAngleFor(playerIdx);
+        if (seatAngle) gameScene.tweens.add({ targets: sprite, angle: seatAngle, delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn' });
+        const halfLand = Math.round(D.landMs / 2);
+        gameScene.tweens.add({ targets: sprite, scaleX: 0, delay: flyDelay, duration: halfLand, ease: 'Sine.easeIn',
+            onComplete: () => { if (!sprite.active) return; sprite.setTexture('card_back');
+                gameScene.tweens.add({ targets: sprite, scaleX: endScale, duration: halfLand, ease: 'Sine.easeOut' }); } });
     }
 }
 
@@ -1989,6 +2070,8 @@ function _animDurationMs(data) {
     if (data.type === 'high_noon_reveal') return hnRevealMs();
     // High Noon (přibalené): dojezd Nové identity (výměna postavy / návrat karty).
     if (data.type === 'new_identity_result') return niResultMs(data.take);
+    // Fistful – Peyote: odkrytí karty, na jejíž barvu hráč tipoval (střed → ruka/odhoz).
+    if (data.type === 'peyote_reveal') return peyoteRevealMs();
     // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
     if (data.type === 'vulture_split_death') return deathFallMs();
     if (data.type === 'player_death_reveal') {
@@ -2214,6 +2297,10 @@ function _applyRoomUpdate(payload) {
         if (!state?.isDebug) App.debugViewAs = null;
     }
     App.spectating = (myIndex === null);
+
+    // Fistful – Ranč: označené karty patří jedné fázi, s odchodem z ní se zahodí (jinak by
+    // se starý výběr nabalil na příští Ranč, kde už ta ID nikdo nemá).
+    if (state?.phase !== 'RANCH' && App.ranchSel.size) App.ranchSel.clear();
 
     // Sejmutí / Black Jack reveal: spustí se JEDNOU při přechodu do fáze. Animaci
     // vidí všichni; vyhodnocení (resolve) automaticky odpálí ten, na koho se čeká,

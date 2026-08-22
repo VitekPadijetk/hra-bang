@@ -141,6 +141,10 @@ const App = {
     clausPanel: null,
     clausDealSlots: new Set(),
     clausTakenSlots: new Set(),
+    // Fistful – Ranč: ID karet z ruky, které mám označené k výměně (druhý klik odznačí).
+    // Čistě klientský výběr: server dostane až seznam v `ranch_exchange`. Vyprazdňuje se
+    // s odchodem z fáze RANCH (net/handlers.js).
+    ranchSel: new Set(),
     // High Noon / Fistful of Cards: po dobu cinematiky odkrytí karty události kreslíme
     // balíček událostí podle animace, ne podle stavu (ten dorazí až po ní) – karta
     // z balíčku odchází hned se startem letu. null = kresli podle stavu (drawEventPile).

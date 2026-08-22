@@ -33,6 +33,9 @@ function pendingActor(state) {
         case 'NOON_DAMAGE':      return state.pendingNoonDamage ? { idx: state.pendingNoonDamage.playerIdx, kind: 'NOON_DAMAGE' } : null;
         // High Noon (přibalené) – Želízka: volba barvy po lízání; Nová identita: výměna postavy.
         case 'HANDCUFFS_SUIT':   return state.pendingHandcuffs ? { idx: state.pendingHandcuffs.playerIdx, kind: 'HANDCUFFS_SUIT' } : null;
+        // Fistful – Peyote: hádá barvu místo lízání; Ranč: po lízání mění karty z ruky.
+        case 'PEYOTE':           return state.pendingPeyote ? { idx: state.pendingPeyote.playerIdx, kind: 'PEYOTE' } : null;
+        case 'RANCH':            return state.pendingRanch ? { idx: state.pendingRanch.playerIdx, kind: 'RANCH' } : null;
         case 'NEW_IDENTITY':     return state.pendingNewIdentity ? { idx: state.pendingNewIdentity.playerIdx, kind: 'NEW_IDENTITY' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
@@ -67,6 +70,8 @@ const _WAIT_LABELS = {
     DYNAMITE_DAMAGE:       'výbuch dynamitu',
     NOON_DAMAGE:           'Pravé poledne – ztrácí život',
     HANDCUFFS_SUIT:        'Želízka – volí barvu',
+    PEYOTE:                'Peyote – hádá barvu',
+    RANCH:                 'Ranč – vyměňuje karty',
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
