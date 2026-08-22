@@ -2563,13 +2563,26 @@ function drawDrawPiles(ctx) {
                         state.drawPhaseState?.playerIdx === myIndex &&
                         (state.drawPhaseState?.options || []).includes('discard') &&
                         state.deck.discardPile.length > 0;
+    // A Fistful of Cards – Opuštěný důl: hromádky si po celé kolo vymění role, takže
+    // se z pravé (odhoz) LÍŽE a na levou (balíček) se ODHAZUJE. Prohazují se tím i kliky.
+    const _mine = !!state.deck?.mineMode;
     // POZOR: setInteractive lze na sprite nastavit jen JEDNOU – opakované volání už
-    // `useHandCursor` nepřepíše. Všechny důvody, proč má odhoz ručičku, proto musí být
-    // tady (níž se sprite jen tintuje a věší se na něj klik). DE_DECK = „odhoď další
-    // kartu" bez cíle (Whisky/Rvačka) – potvrzuje se klikem na odhazovací balíček.
-    const discardNeedsCursor = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) ||
+    // `useHandCursor` nepřepíše. Všechny důvody, proč má pravá hromádka ručičku, proto
+    // musí být tady (níž se sprite jen tintuje a věší se na něj klik). DE_DECK = „odhoď
+    // další kartu" bez cíle (Whisky/Rvačka) – potvrzuje se klikem na odhazovací balíček.
+    const _wantsDiscardClick = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) ||
         (selectedState.action === "DE_DECK" && selectedState.cardIndex !== null) ||
         ((selectedState.action === "GREEN_MASS" || selectedState.action === "GREEN_SELF") && selectedState.greenCardId != null) || isPedroDraw;
+    // Pod dolem se na pravou hromádku naopak kliká kvůli LÍZÁNÍ – všechny fáze, které
+    // jinde rozsvěcí balíček (viz bloky níž), musí být i tady.
+    const _wantsDrawClick =
+        (state.phase === "DRAW" && state.drawPhaseState?.playerIdx === myIndex) ||
+        (state.phase === "CHECK_DRAW" && state.pendingCheckDraw?.playerIdx === myIndex) ||
+        (state.phase === "BARREL_DRAW" && state.pendingBarrelCheck?.targetIdx === myIndex) ||
+        (state.phase === "BART_DRAW" && state.pendingBartDraw?.playerIdx === myIndex) ||
+        (state.phase === "SUZY_DRAW" && state.pendingSuzyDraw?.playerIdx === myIndex) ||
+        (state.phase === "UHYB_DRAW" && state.pendingUhybDraw?.playerIdx === myIndex);
+    const discardNeedsCursor = _mine ? _wantsDrawClick : _wantsDiscardClick;
 
     // Během sejmutí je kontrolní karta navrchu odhozu, ale vizuálně je teď uprostřed
     // (reveal animace). V odhozu ji proto zatím nezobrazuj – naskočí, až tam dolétne.
@@ -2644,6 +2657,16 @@ function drawDrawPiles(ctx) {
     const deck    = { x: deckX,    y: _deckTopY    };
     const discard = { x: discardX, y: _discardTopY };
 
+    // Od téhle chvíle se pracuje s ROLÍ hromádky, ne s jejím místem – pod Opuštěným dolem
+    // (Fistful) jsou prohozené. Zrcadlí to deckTopPos()/discardTopPos() v game.js, takže
+    // klik i cíl animace míří na totéž. Prázdný odhoz je obdélník bez setTint, proto tintPile.
+    const drawPileSprite = _mine ? discardSprite : deckSprite;
+    const discPileSprite = _mine ? deckSprite : discardSprite;
+    const tintPile = (sp, color) => {
+        if (!sp) return;
+        if (sp.setTint) sp.setTint(color); else sp.setStrokeStyle(3, color, 1);
+    };
+
     const isMyDraw = !_hideDeck && state.phase === "DRAW" &&
                     state.drawPhaseState?.playerIdx === myIndex;
 
@@ -2657,10 +2680,10 @@ function drawDrawPiles(ctx) {
     const _isMyDrawActive  = isMyDraw && _drawStillNeeded > 0 && !App.blockInput;
 
     if (_isMyDrawActive) {
-        deckSprite.setTint(0xffff44);
-        deckSprite.setAlpha(1);
-        deckSprite.setInteractive({ useHandCursor: true });
-        deckSprite.on('pointerdown', () => {
+        tintPile(drawPileSprite, 0xffff44);
+        drawPileSprite.setAlpha(1);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => {
             if (App.reshuffleAnimating) return;
             // Guard přes STABILNÍ hodnoty (server potvrzené + naklikané) – ne přes
             // _drawStillNeeded, který už pendingDrawCount odečítá. Jinak by re-render
@@ -2678,6 +2701,8 @@ function drawDrawPiles(ctx) {
         // Pedro Ramirez: PRVNÍ kartu může vzít z odhozu. Tahle volba musí být dostupná
         // i během aktivního lízání (drawStillNeeded>0), jinak se odhoz jen označil
         // kurzorem, ale nešel kliknout (žádný tint, žádný pointerdown).
+        // Zůstává na `discardSprite` (ne na aliasu): Pedrovým zdrojem JE odhoz a pod
+        // Opuštěným dolem mu server volbu vůbec nenabídne (_getDrawOptions).
         if (state.drawPhaseState.options.includes('discard') && state.deck.discardPile.length > 0 && !App.pedroDrawLock) {
             discardSprite?.setTint(0xffff44);
             discardSprite?.setInteractive({ useHandCursor: true });
@@ -2690,7 +2715,7 @@ function drawDrawPiles(ctx) {
             });
         }
     } else if (isMyDraw) {
-        deckSprite.setAlpha(1);
+        drawPileSprite.setAlpha(1);
 
         if (state.drawPhaseState.options.includes('discard') && state.deck.discardPile.length > 0 && !App.pedroDrawLock) {
             discardSprite?.setTint(0xffff44);
@@ -2709,9 +2734,9 @@ function drawDrawPiles(ctx) {
                         state.pendingCheckDraw?.playerIdx === myIndex;
 
     if (isMyCheckDraw) {
-        deckSprite.setTint(0xff8800);
-        deckSprite.setInteractive({ useHandCursor: true });
-        deckSprite.on('pointerdown', () => {
+        tintPile(drawPileSprite, 0xff8800);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => {
             socket.emit('trigger_check_draw');
         });
     }
@@ -2720,22 +2745,17 @@ function drawDrawPiles(ctx) {
                             state.pendingBarrelCheck?.targetIdx === myIndex;
 
     if (isMyBarrelDraw) {
-        deckSprite.setTint(0xff8800);
-        deckSprite.setInteractive({ useHandCursor: true });
-        deckSprite.on('pointerdown', () => socket.emit('trigger_barrel_draw'));
+        tintPile(drawPileSprite, 0xff8800);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => socket.emit('trigger_barrel_draw'));
     }
 
     if (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) {
-        discardSprite.setInteractive({ useHandCursor: true });
-        if (discardSprite.setTint) discardSprite.setTint(0xffff44);
-        else discardSprite.setStrokeStyle(3, 0xffff44, 1);
-        discardSprite.on('pointerover', () => {
-            if (discardSprite.setTint) discardSprite.setTint(0xffff88);
-        });
-        discardSprite.on('pointerout', () => {
-            if (discardSprite.setTint) discardSprite.setTint(0xffff44);
-        });
-        discardSprite.on('pointerdown', () => {
+        discPileSprite.setInteractive({ useHandCursor: true });
+        tintPile(discPileSprite, 0xffff44);
+        discPileSprite.on('pointerover', () => tintPile(discPileSprite, 0xffff88));
+        discPileSprite.on('pointerout',  () => tintPile(discPileSprite, 0xffff44));
+        discPileSprite.on('pointerdown', () => {
             const capturedIdx = selectedState.cardIndex;
             const card = me.hand[capturedIdx];
             if (card?.type === "Kulomet" || card?.type === "Indiáni!") {
@@ -2754,11 +2774,11 @@ function drawDrawPiles(ctx) {
     // Houfnice (masový útok) i „vlastní" zelené (Pony express, Čutora): potvrzení klikem
     // na ODHAZOVACÍ hromádku (jako Kulomet) – karta se přitom odhodí.
     if ((selectedState.action === "GREEN_MASS" || selectedState.action === "GREEN_SELF") && selectedState.greenCardId != null) {
-        discardSprite.setInteractive({ useHandCursor: true });
-        if (discardSprite.setTint) discardSprite.setTint(0xffff44);
-        discardSprite.on('pointerover', () => { if (discardSprite.setTint) discardSprite.setTint(0xffff88); });
-        discardSprite.on('pointerout', () => { if (discardSprite.setTint) discardSprite.setTint(0xffff44); });
-        discardSprite.on('pointerdown', () => {
+        discPileSprite.setInteractive({ useHandCursor: true });
+        tintPile(discPileSprite, 0xffff44);
+        discPileSprite.on('pointerover', () => tintPile(discPileSprite, 0xffff88));
+        discPileSprite.on('pointerout',  () => tintPile(discPileSprite, 0xffff44));
+        discPileSprite.on('pointerdown', () => {
             socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId, target: null });
             selectedState = { cardIndex: null, action: null };
             App.blockInput = true;
@@ -2767,9 +2787,9 @@ function drawDrawPiles(ctx) {
     }
 
     if (state.phase === "BART_DRAW" && state.pendingBartDraw?.playerIdx === myIndex) {
-        deckSprite.setTint(0xffff44);
-        deckSprite.setInteractive({ useHandCursor: true });
-        deckSprite.on('pointerdown', () => {
+        tintPile(drawPileSprite, 0xffff44);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => {
             socket.emit('bart_cassidy_draw');
             state.pendingBartDraw = null;
             state.phase = state.interruptedPhase || 'PLAY';
@@ -2778,9 +2798,9 @@ function drawDrawPiles(ctx) {
     }
 
     if (state.phase === "SUZY_DRAW" && state.pendingSuzyDraw?.playerIdx === myIndex) {
-        deckSprite.setTint(0xffff44);
-        deckSprite.setInteractive({ useHandCursor: true });
-        deckSprite.on('pointerdown', () => {
+        tintPile(drawPileSprite, 0xffff44);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => {
             state.pendingSuzyDraw = null;
             App.blockInput = true;
             renderUI();
@@ -2789,9 +2809,9 @@ function drawDrawPiles(ctx) {
     }
 
     if (state.phase === "UHYB_DRAW" && state.pendingUhybDraw?.playerIdx === myIndex) {
-        deckSprite.setTint(0xffff44);
-        deckSprite.setInteractive({ useHandCursor: true });
-        deckSprite.on('pointerdown', () => {
+        tintPile(drawPileSprite, 0xffff44);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => {
             socket.emit('uhyb_draw');
             state.pendingUhybDraw = null;
             state.phase = state.interruptedPhase || 'PLAY';
@@ -2801,13 +2821,12 @@ function drawDrawPiles(ctx) {
 
     // Dodge City „odhoď další kartu" – Whisky/Rvačka nemají jeden cíl, potvrzují se
     // kliknutím na ODHAZOVACÍ balíček (DE_DECK). Pak se přejde na výběr ceny (DISCARD_ANOTHER).
-    if (selectedState.action === "DE_DECK" && selectedState.cardIndex !== null && discardSprite) {
-        discardSprite.setInteractive({ useHandCursor: true });
-        if (discardSprite.setTint) discardSprite.setTint(0xffff44);
-        else discardSprite.setStrokeStyle(3, 0xffff44, 1);
-        discardSprite.on('pointerover', () => { if (discardSprite.setTint) discardSprite.setTint(0xffff88); });
-        discardSprite.on('pointerout', () => { if (discardSprite.setTint) discardSprite.setTint(0xffff44); });
-        discardSprite.on('pointerdown', () => {
+    if (selectedState.action === "DE_DECK" && selectedState.cardIndex !== null && discPileSprite) {
+        discPileSprite.setInteractive({ useHandCursor: true });
+        tintPile(discPileSprite, 0xffff44);
+        discPileSprite.on('pointerover', () => tintPile(discPileSprite, 0xffff88));
+        discPileSprite.on('pointerout',  () => tintPile(discPileSprite, 0xffff44));
+        discPileSprite.on('pointerdown', () => {
             socket.emit('discard_extra_choose', { cardIdx: selectedState.cardIndex, targetIdx: null });
             selectedState = { cardIndex: null, action: null };
             App.blockInput = true;

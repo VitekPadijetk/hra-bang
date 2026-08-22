@@ -133,6 +133,9 @@ const HighNoonMixin = {
         // Balíček Fistful of Cards se otáčí ve stejný okamžik, hned za High Noonem – i když
         // High Noon už došel (proto se sem nesmí vracet dřív). Viz logic/fistful.js.
         this._flipFistfulEvent();
+        // Opuštěný důl (Fistful) prohazuje dobírací balíček s odhozem – přepínač se
+        // musí přepočítat TEĎ, ještě před kontrolním sejmutím na Dynamit a Vězení.
+        this._syncMine();
         return false;
     },
 

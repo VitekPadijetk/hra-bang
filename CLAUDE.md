@@ -18,7 +18,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | Soubor | Co dělá |
 |---|---|
 | `logic.js` | **Rules engine – assembler (~200 ř.).** Kostra třídy `GameState`: konstruktor, tok tahu (`getCurrentPlayer`, `nextTurn`, `discardCard`, `openStore`, `pickFromStore`, `tryEndTurn`), `getDistance`/`canHit` (delegují do `core/distance`), `checkWinCondition`, `_trackCard`. Nahoře shimy globálů (Node), dole `Object.assign(GameState.prototype, …mixiny)`. Zbytek metod je v `logic/*` (viz níže). **Izomorfní**, re-exportuje entity, pokrytý 149 testy. |
-| `logic/entities.js` | Datové/hodnotové třídy: `Card`/`Player`/`Deck` + konstanty `CardType`/`Suits`/`ALL_CHARACTERS`. Bez vazby na `GameState`. Izomorfní (globály v prohlížeči, `require` z logic.js v Node). Re-exportováno z logic.js, takže testy/server importují dál z `logic.js`. |
+| `logic/entities.js` | Datové/hodnotové třídy: `Card`/`Player`/`Deck` + konstanty `CardType`/`Suits`/`ALL_CHARACTERS`. Bez vazby na `GameState`. Izomorfní (globály v prohlížeči, `require` z logic.js v Node). Re-exportováno z logic.js, takže testy/server importují dál z `logic.js`. **`Deck` je jediná cesta na obě hromádky** – `draw`/`discard`/`returnToTop`/`discardTop`/`takeFromDiscard` nad getery `_drawPile`/`_discardPile`, které při `mineMode` (Opuštěný důl, viz níže) role hromádek prohodí. |
 | `logic/setup.js` | **Mixin GameState.** Setup hry a další hry, výběr postav, debug rozdávání: `setupGame`, `setupDebugGame`, `selectCharacter`, `autoSelectAllCharacters`, `startFirstTurn`, `setupNextGame`, `selectCharacterForNextGame`, `rejectCharacterForNextGame`, `_checkNextGameAllChosen`, `debugGiveCard`, `debugRemoveCard`. Připojeno na `GameState.prototype` (viz „Mixin pattern"). |
 | `logic/draw.js` | **Mixin GameState.** Fáze lízání: `startDrawPhase`, `_getDrawOptions`, `drawCard`, `_finishDraw` + postavy Kit Carlson (`startKitCarlsonDraw`, `kitCarlsonPick`) a Black Jack (`resolveBlackJack`). `startDrawPhase` je i bodem, kde si **Vera Custer** volí kopírovanou postavu (těsně před lízáním, tedy až PO checku na Dynamit/Vězení) a kde předchozí kopie vyprší – platí přesně jedno kolo. **Kit Carlson odkrývá VŽDY `KIT_REVEAL` = 3 karty**; události High Noon mění jen to, kolik si jich nechá (Žízeň 1, jinak 2) a Příjezd vlaku vůbec ne – kartu navíc si po výběru lízne klasicky z balíčku (`kitExtra` → nová `drawPhaseState`). U **Black Jacka** platí totéž pořadí: karta za Příjezd vlaku se líže úplně nakonec, takže `resolveBlackJack` po ČERNÉ druhé kartě nekončí fázi, dokud `cardsDrawn < cardsNeeded`. |
 | `logic/play.js` | **Mixin GameState.** Hraní karet: `playCard` (router efektů), `playBang`, `playSpecialCard` (Vězení/Cat Balou/Panika/Duel/Kulomet/Indiáni), `playBoardCard` (modré i zelené na stůl), `triggerBarrelDraw`, `startBarrelCheck`, `resolveCardSelection`, `_advanceMassAttack`, `waitForMissed`. |
@@ -92,6 +92,14 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
   - Konstanty/helpery v tělech (`CardType`, `ALL_CHARACTERS`, `rolesForPlayerCount`, `computeDistance`…) jsou **globály** — v Node je `logic.js` vystavuje na `globalThis` přes shimy nahoře, v prohlížeči pocházejí z dříve načtených `<script>`. Nový mixin nic nepotřebuje `require`-ovat.
   - **Pozor: setup/select metody nejsou pokryté testy** (`npm test` staví stav ručně). Po jejich přesunu ověř smoke skriptem (`new GameState(); g.cardData=…; g.setupGame(...)`).
 - **Klik → `App.blockInput = true`.** Každý klik, který odesílá herní akci, musí hned zamknout vstup; odemkne ho až příchozí `room_update` (tedy až po dojezdu animace, viz `core/animQueue.js`). **Zvýraznění klikatelných cílů se proto odvozuje i od `!App.blockInput`** (`canTargetThisPlayer`, `isPatDraw`, …) – jinak zůstane svítit starý stav a druhý klik odešle akci znovu (u Rvačky/dělení mezi Vulture Samy dokonce za dalšího hráče v pořadí). Serverovou pojistkou je `server/guard.js`.
+- **Na hromádky se sahá jen přes `Deck`.** `deck.discardPile.push(x)` ani `deck.cards.push(x)`
+  se psát nesmí – správně je `deck.discard(x)` / `deck.returnToTop(x)`, poslední odhozenou
+  kartu dá `deck.discardTop()` a zpátky ji vezme `deck.takeFromDiscard(id)`. Délku dobírané
+  hromádky čti přes `deck._drawPile.length`, ne `deck.cards.length`. Důvod je Opuštěný důl
+  (Fistful): při `deck.mineMode` si obě hromádky vymění role a každé přímé sáhnutí ten
+  přepínač obejde. Jedinou výjimkou je Pedro Ramirez, jehož zdrojem JE odhoz (a pod dolem
+  se mu volba nenabídne). Na klientu je totéž `deckTopPos()` / `discardTopPos()` (game.js) –
+  znamenají ROLI, ne místo.
 - **Krádež/odhoz z RUKY nese `stolenIndex`** (slot ve vějíři, odkud karta odešla) – karta se bere náhodně, takže bez něj klient odebírá poslední kartu a u vlastní ruky zmizí viditelně špatná. Platí pro `panic_sequence`, `catbalou_sequence`, `ragtime_steal` (Ragtime/Krytý vůz/dělení mezi Vulture Samy) i `jesse_jones_draw`; z odhozu je karta veřejná, tam si klient slot najde podle ID (`hand_to_discard`).
 - **Karta LÍCEM nahoru potřebuje `exactAngle: true`.** `animateCard` bez něj bere `nearestCardAngle`, který 0° a 180° považuje za totéž (symetrie rubu) – u protějšího hráče (180°) tak rotace ani nevznikne a karta dosedne do odhozu **vzhůru nohama**. Platí pro každý let z něčího stolu/ruky do odhozu (`board_to_discard`, `dynamite_explode`, odhoz karet při vyřazení, obě „sequence" karty). `animateCardFlip` používá `nearestAngle360` vždy, tam se to řešit nemusí.
 - **Letící karta vzlétá ve velikosti ZDROJE a dosedá ve velikosti CÍLE.** Na desktopu jsou
@@ -355,6 +363,66 @@ Cinematika vyřazení je proto rozpůlená: `vulture_split_death` (pokles na nul
 zůstávají ležet) → jednotlivé `ragtime_steal` → `player_death_reveal` (úklid + odhalení role).
 Klient po tu dobu drží `App.vultureSplitIdx` – podle něj `deathCardsStillShown` kreslí
 karty mrtvého dál a slot pro kartu role zatím nerezervuje.
+
+## Opuštěný důl (Fistful): hromádky si na celé kolo vymění role
+
+„Ve fázi lízání si hráč líže z odhazovacího balíčku; odhazované karty se pokládají lícem
+dolů na dobírací balíček." Výklad (R7): platí to **bez výjimek a na celé kolo** – fáze
+lízání, kontrolní sejmutí na Dynamit/Vězení, Lucky Duke, Dostavník, hokynářství, odměny,
+zaplacené ceny, odhoz na konci tahu i celá pozůstalost vyřazeného hráče.
+
+**Celé prohození je jeden příznak na `Deck`.** `deck.mineMode` přepíná getery
+`_drawPile`/`_discardPile` ([logic/entities.js](logic/entities.js)); protože `draw()`
+a `discard()` jsou jediné cesty, kudy karta z hromádek odchází a přichází, pravidla se
+nemusí ptát vůbec nikde. Getery jsou na prototypu, takže je `JSON.stringify` do
+`room_update` nepošle – `mineMode` (vlastní property) ano, a to je jediné, podle čeho
+klient pozná, že se má prohodit i on.
+
+- **Zapíná `_syncMine()`** ([logic/fistful.js](logic/fistful.js)) volaný z `_flipEvent`
+  ([logic/highNoon.js](logic/highNoon.js)) **hned za odkrytím karet obou balíčků** – tedy
+  dřív, než si start tahu sáhne na hromádky (kontrolní sejmutí už líže z prohozených).
+- **„Dokud je to možné" se nikde nehlídá.** Když odhoz během kola dojde, shodí si
+  `mineMode` sám `Deck.draw()` a pro zbytek kola se hraje normálně; zpátky ho zapne až
+  `_syncMine` na začátku dalšího kola. Žádný `_mineOff` proto neexistuje.
+- **Nemíchá se.** Dobírací balíček během kola jen roste, odhoz se vyprazdňuje – `draw()`
+  se v `mineMode` k `_reshuffle()` vůbec nedostane.
+- **Pedro Ramirez volbu `discard` nedostane** (`_getDrawOptions`): odhoz JE dobírací
+  balíček, takže by bral tutéž kartu a jen by obešel trychtýř `draw()`. Je to zároveň
+  jediné místo, které smí sahat na `deck.discardPile` napřímo – klient i bot proto
+  zůstávají beze změny a nemůžou se s ním rozejít.
+- **Redakce sedí sama od sebe:** `cards` (kam se odhazuje lícem dolů) jsou skryté,
+  `discardPile` (odkud se líže) veřejný. Že všichni vidí dopředu, co si kdo lízne –
+  včetně kontrolní karty – **je pointa karty, ne chyba.**
+
+**Klient.** `deckTopPos()` / `discardTopPos()` ([game.js](game.js)) znamenají ROLI, ne
+místo, takže se při aktivním dole prostě prohodí a všechny animace („leť z balíčku",
+„leť do odhozu") míří samy správně. Totéž dělá `drawPileSprite` / `discPileSprite`
+([view/board.js](view/board.js)) se zvýrazněním a klikáním; prázdný odhoz je obdélník
+bez `setTint`, proto `tintPile`. `discardNeedsCursor` se musí ptát obou důvodů naráz –
+`setInteractive({useHandCursor})` jde na sprite nastavit jen jednou.
+
+**Doběh letu do odhozu.** Karta by pod dolem zmizela lícem dolů dřív, než by kdokoli
+přečetl, co se zahrálo. Dosedne proto lícem nahoru, vydrží `MINE_ANIM.holdMs` a teprve
+pak se překlopí na rub (`mineLandThen` v game.js, nasazuje se přes `mineLandOpts()`).
+Tři návazné věci, bez kterých to nefunguje:
+
+- **Fronta animací** ([core/animQueue.js](core/animQueue.js)) drží stav o tu dobu déle –
+  `MINE_LAND_TYPES` v [net/handlers.js](net/handlers.js) **musí sedět se seznamem míst,
+  kde se `mineLandOpts()` rozdává**.
+- **`maxLagMs` smí být funkce.** Pevný práh 1400 ms by dvě odhozené karty za sebou (běžná
+  věc: zahraná karta + odhoz na konci tahu) vyhodnotil jako zaostávání a **zahodil** –
+  tedy právě tu animaci, kvůli které důl je. Práh proto s dolem povyroste.
+- **Boti se drží** o stejnou dobu (`room._mineBlockUntil`, nastaví `emitAnim`
+  v [server/anim.js](server/anim.js), respektuje `scheduleBotTick`). Jeho `MINE_LAND_TYPES`
+  je kopie toho klientského – musí se měnit spolu.
+
+Cinematiky, které kartu předtím ukázaly zvětšenou uprostřed (sejmutí, Lucky Duke) i odhoz
+při vyřazení hráče (vlastní choreografie + `deathSequenceMs`) mají doběh **bez výdrže**
+(`mineLandOptsRevealed`) – jde jen o to, aby lícem nahoru dosednutá karta nepřeskočila na
+rub bez přechodu.
+
+Testy: `test/fistful.mine.test.js` (17) + „20 her jen botů s balíčkem samých Opuštěných
+dolů" (`test/server.bots.test.js`).
 
 ## Daltonové (High Noon): každý odhodí svou modrou kartu
 

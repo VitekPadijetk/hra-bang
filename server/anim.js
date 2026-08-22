@@ -3,6 +3,7 @@
 // Factory installAnimService(ctx): bere { io, broadcastRoomDelayed } z ctx. Bez listenu.
 const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 const { hnRevealMs } = require('../core/highNoonAnim.js');
+const { mineLandMs } = require('../core/fistfulAnim.js');
 
 module.exports = function installAnimService(ctx) {
     const { io, broadcastRoomDelayed } = ctx;
@@ -12,8 +13,27 @@ module.exports = function installAnimService(ctx) {
     // nefiltruje nic.
     const roomAlive = (room) => typeof ctx.roomAlive !== 'function' || ctx.roomAlive(room);
 
+    // A Fistful of Cards – Opuštěný důl: lety končící v „odhozu" (= lícem dolů na
+    // dobíracím balíčku) mají navíc výdrž lícem nahoru a překlopení na rub. Seznam MUSÍ
+    // sedět s MINE_LAND_TYPES v net/handlers.js, jinak se boti podrží jinak dlouho, než
+    // trvá klientská animace. Cinematiky, které kartu předtím ukázaly zvětšenou uprostřed
+    // (sejmutí, Lucky Duke, vyřazení hráče), mají doběh bez výdrže a vlastní držení botů.
+    const MINE_LAND_TYPES = new Set([
+        'discard', 'hand_to_discard', 'board_to_discard', 'dynamite_explode',
+        'duel_exchange', 'beer_auto_save', 'panic_sequence', 'catbalou_sequence',
+    ]);
+
+    // Podrž boty po dobu doběhu, jinak by hráli „přes" něj a klientská fronta animací
+    // by zaostala natolik, že by je zahodila – tedy právě to, kvůli čemu důl je.
+    function holdForMineLand(room, data) {
+        const gs = room && room.gameState;
+        if (!gs || !gs.deck || !gs.deck.mineMode || !data || !MINE_LAND_TYPES.has(data.type)) return;
+        room._mineBlockUntil = Math.max(room._mineBlockUntil || 0, Date.now() + mineLandMs(true));
+    }
+
     function emitAnim(room, data) {
         if (!roomAlive(room)) return;
+        holdForMineLand(room, data);
         // V DEBUG hře sdílí jeden socket VÍC hráčů (room.players mají stejný socketId) –
         // dedup přes seen, jinak by tentýž socket dostal animaci N× (= N překrývajících se letů).
         const seen = new Set();

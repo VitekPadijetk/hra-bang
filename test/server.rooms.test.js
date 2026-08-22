@@ -228,6 +228,23 @@ test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => 
     assert.equal(room.gameState.deck.cards[0].name, 'Dynamit', 'skutečný stav se nezměnil');
 });
 
+// A Fistful of Cards – Opuštěný důl: `deck.mineMode` je JEDINÉ, podle čeho klient pozná,
+// že jsou hromádky prohozené (deckTopPos/discardTopPos, klikatelná hromádka, doběh letu
+// s překlopením na rub). Redakce ho tedy musí propustit – a redakce dolu zároveň sedí
+// sama od sebe: `cards` (kam se odhazuje lícem dolů) zůstávají skryté a `discardPile`
+// (odkud se líže) veřejný, což je přesně pointa karty.
+test('redakce: aktivní Opuštěný důl (deck.mineMode) se ke klientovi dostane', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.deck.mineMode = true;
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');
+    assert.equal(gsA.deck.mineMode, true);
+    assert.ok(gsA.deck.cards.every(c => c._placeholder), 'kam se odhazuje, zůstává skryté');
+    assert.deepEqual(gsA.deck.discardPile.map(c => c.name), ['Salón'], 'odkud se líže, je veřejné');
+});
+
 // Claus "The Saint" (Fistful): odkrytou řadu uprostřed stolu vidí lícem jen on –
 // ostatním z ní smí zbýt jen počet karet a to, které sloty jsou už rozdané.
 test('redakce: Clausovu odkrytou řadu vidí jen on', () => {

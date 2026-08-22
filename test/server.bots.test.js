@@ -483,6 +483,51 @@ test('20 her jen botů jede i s balíčkem samých Peyote a Rančů', () => {
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Peyote/Ranče');
 });
 
+// Cílená zátěž na fázi 5 Fistfulu: v balíčku je JEN Opuštěný důl. Prohodí dobírací
+// balíček s odhozem pro úplně všechno (lízání, kontrolní sejmutí, hokynářství, odměny,
+// pozůstalost vyřazeného), takže se tady projeví každá cesta, která si na hromádku sáhla
+// mimo trychtýř draw()/discard(). Hlídá se i to, že se hra na došlém odhozu nezasekne:
+// důl se má sám vypnout a dohrát klasicky.
+test('20 her jen botů jede i s balíčkem samých Opuštěných dolů', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const ffEv = (key) => {
+        const c = fistfulCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0, mined = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: true, fistful: true },
+                           highNoonExtra: true };
+            const room = { id: 'ff5_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Líže se pop() z konce → karta „vespod" zůstává na indexu 0.
+            const deck = [ffEv('FISTFUL_OF_CARDS')];
+            for (let i = 0; i < 12; i++) deck.push(ffEv('OPUSTENY_DUL'));
+            gs.ffDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `FF5 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `FF5 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            if (gs.ffPile.length) flipped++;
+            if (gs.ffPile.some(c => c.key === 'OPUSTENY_DUL')) mined++;
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 15, `události se opravdu odkrývaly (jen ${flipped} z 20 her)`);
+    assert.ok(mined >= 15, `Opuštěný důl se opravdu hrál (jen ${mined} z 20 her)`);
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Opuštěného dolu');
+});
+
 test('20 her jen botů s High Noon + Dodge City zároveň vždy doběhne', () => {
     const ctx = buildCtx();
     let stalls = 0;

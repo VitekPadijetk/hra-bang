@@ -81,7 +81,10 @@ const DrawMixin = {
     _getDrawOptions(player) {
         const opts = this._drawOptionsBase(player);
         if (effectiveCharacter(player) === "Jesse Jones") opts.push('opponent_hand');
-        if (effectiveCharacter(player) === "Pedro Ramirez") opts.push('discard');
+        // Opuštěný důl (Fistful): odhoz JE dobírací balíček, takže by Pedro bral tutéž
+        // kartu jako „z balíčku" – volba nic nepřidává a jen by obešla trychtýř draw()
+        // (a s ním vypnutí dolu, až odhoz dojde).
+        if (effectiveCharacter(player) === "Pedro Ramirez" && !this.deck.mineMode) opts.push('discard');
         // Dodge City: Pat Brennan smí místo lízání vzít 1 kartu ze stolu libovolného hráče.
         if (effectiveCharacter(player) === "Pat Brennan") opts.push('board');
         return opts;

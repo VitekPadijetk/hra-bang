@@ -4,8 +4,9 @@ Druhý balíček událostí vedle High Noon. Pracovní plán – až bude hotovo
 se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 
 **Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · ✅ Fáze 2 (Léčka,
-Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · ✅ Fáze 4 (Peyote, Ranč) · další
-na řadě je Fáze 5 (Opuštěný důl). Výklady pravidel viz sekce 2.
+Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · ✅ Fáze 4 (Peyote, Ranč) ·
+✅ Fáze 5 (Opuštěný důl) · další na řadě je Fáze 6 (Pokrevní bratři, Fistful of Cards,
+Mrtvý muž). Výklady pravidel viz sekce 2.
 
 Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
@@ -39,6 +40,24 @@ Odchylky od plánu, které vyplynuly z implementace:
   dobrovolně nejde, takže fáze vždycky končí jednou kartou v odhozu.
 - **Ranč bere karty podle ID, ne indexů.** Mezi kliknutím a doručením se ruka mohla
   přeskládat; neznámá, cizí i zdvojená ID se tiše ignorují.
+- **Opuštěný důl nepotřebuje `_mineOff`.** Plán počítal s příznakem na `GameState`, ale
+  vyšel zbytečný: `mineMode` si při došlém odhozu shodí `Deck.draw()` sám a zpátky ho
+  zapne až `_syncMine` při odkrytí další události. „Dokud je to možné" tím padá z pravidel
+  úplně.
+- **Pedro Ramirez pod dolem volbu `discard` nedostane.** Odhoz JE dobírací balíček, takže
+  by bral tutéž kartu jako „z balíčku" – volba nic nepřidává a obcházela by trychtýř
+  `draw()`. Vyřešilo to zároveň bota, u kterého plán čekal vlastní větev: propadne na
+  `source: 'deck'` a bere z prohozené hromádky, ať je nahoře cokoli.
+- **Trychtýř odhozu narostl na 47 míst** (plán psal 42) a k němu ještě čtení délek
+  hromádek: hokynářství, odkrytá řada Kita/Clause a dvojice Lucky Duka. Serverové animace,
+  které si hledaly „právě odhozenou kartu navrchu", dostaly `discardTop`/`takeFromDiscard`.
+- **`maxLagMs` fronty animací musel jít z konstanty na funkci.** Doběh s výdrží prodlouží
+  každý let do odhozu o ~1,2 s, takže dvě odhozené karty za sebou přelezly pevný práh
+  1400 ms a fronta je **zahodila** – tedy právě tu animaci, kvůli které důl je.
+- **Doběh nedostaly cinematiky, které kartu už ukázaly** zvětšenou uprostřed (sejmutí,
+  Lucky Duke) ani odhoz při vyřazení hráče (má vlastní choreografii a serverové držení
+  botů přes `deathSequenceMs`). Překlopení na rub tam proběhne bez výdrže, jen aby karta
+  nepřeskočila bez přechodu.
 
 ---
 
@@ -443,6 +462,11 @@ returnToTop(card)  // push na _drawPile (Kit Carlson vrací nevybrané karty)
 **Testy:** zahraná karta skončí na balíčku a nelze si ji líznout; kontrolní sejmutí bere
 z odhozu a odchází na balíček; Kit vrací nevybrané do odhozu; prázdný odhoz vypne důl na
 zbytek kola; hokynářství rozdá správný počet.
+
+✅ **Hotovo.** `test/fistful.mine.test.js` (17) + „20 her jen botů s balíčkem samých
+Opuštěných dolů" (`test/server.bots.test.js`) + redakce `deck.mineMode`
+(`test/server.rooms.test.js`) + funkční `maxLagMs` (`test/animQueue.test.js`).
+Podrobnosti jsou v CLAUDE.md, sekce „Opuštěný důl".
 
 ---
 

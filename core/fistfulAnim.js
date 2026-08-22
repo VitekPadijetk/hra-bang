@@ -40,6 +40,28 @@ function lawRevealMs() {
     return D.flyMs + D.holdMs + D.landMs + D.bufMs;
 }
 
+// ── Opuštěný důl: dosednutí karty na dobírací balíček ────────────────────────
+// Pod dolem se odhazuje LÍCEM DOLŮ na dobírací balíček, takže by karta zmizela dřív,
+// než by kdokoli stihl přečíst, co se vlastně zahrálo. Dosedne proto lícem nahoru,
+// chvíli vydrží a teprve pak se překlopí na rub – přesně jako u stolu. Přidává se na
+// KONEC každého letu, který končí v „odhozu" (discardTopPos), takže se čeká jen jednou.
+const MINE_ANIM = {
+    holdMs: 900,    // karta leží lícem nahoru navrchu balíčku
+    flipMs: 260,    // překlopení na rub (2× 130 – zúžení na nulu a zpět)
+    bufMs: 80,      // rezerva, ať stav nedorazí přesně na hranu dosednutí
+};
+
+// O kolik se prodlouží let končící v odhozu, když je důl aktivní. `on` = běží důl?
+// `holdMs` přebíjí výdrž: cinematiky, které kartu předtím ukázaly zvětšenou uprostřed
+// (sejmutí, Lucky Duke, Peyote), ji držet znovu nemusí – překlopí se rovnou (hold 0),
+// jen aby lícem nahoru dosednutá karta nepřeskočila na rub bez přechodu.
+function mineLandMs(on, holdMs) {
+    if (!on) return 0;
+    const D = MINE_ANIM;
+    return (holdMs === undefined ? D.holdMs : holdMs) + D.flipMs + D.bufMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { PEYOTE_ANIM, peyoteRevealMs, LAW_ANIM, lawRevealMs };
+    module.exports = { PEYOTE_ANIM, peyoteRevealMs, LAW_ANIM, lawRevealMs,
+                       MINE_ANIM, mineLandMs };
 }

@@ -26,7 +26,12 @@
 // plný snímek (mezistavy nejsou potřeba) a animace jsou čistě vizuální – nespuštěná
 // animace po sobě nenechá nic, na co by se čekalo.
 function createAnimQueue(opts = {}) {
-    const maxLagMs   = opts.maxLagMs ?? 1400;
+    // Práh smí být i FUNKCE – vyhodnotí se při každém měření. Potřebuje to Opuštěný důl
+    // (Fistful): pod ním je každý let do odhozu delší o výdrž s překlopením na rub, takže
+    // by dvě odhozené karty za sebou fixní práh přelezly a fronta by je zahodila – tedy
+    // přesně tu animaci, kvůli které karta existuje.
+    const _maxLagOpt = opts.maxLagMs ?? 1400;
+    const maxLagMs   = () => (typeof _maxLagOpt === 'function' ? _maxLagOpt() : _maxLagOpt);
     const setTimer   = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     const clearTimer = opts.clearTimer ?? ((t) => clearTimeout(t));
     const onDrop     = opts.onDrop || null;   // diagnostika: kolik animací se zahodilo
@@ -57,7 +62,7 @@ function createAnimQueue(opts = {}) {
     // se přehrát celá – ne se zahodit jen proto, že sama přesáhne limit).
     function isLagging() {
         const w = waitingDroppable();
-        return w.n > 1 && w.ms > maxLagMs;
+        return w.n > 1 && w.ms > maxLagMs();
     }
 
     // Odhad, jak dlouho bude trvat, než se fronta vyprázdní (vč. běžící animace).

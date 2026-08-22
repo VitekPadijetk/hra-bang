@@ -150,6 +150,32 @@ test('zaostávání se nekumuluje: přes maxLagMs se čekající animace zahodí
     assert.deepStrictEqual(log, ['a1', 's1', 's2']);
 });
 
+// Práh smí být FUNKCE – vyhodnotí se při každém měření, ne jen při vzniku fronty.
+// Potřebuje to Opuštěný důl (Fistful): pod ním je každý let do odhozu delší, takže by
+// dvě odhozené karty za sebou pevný práh přelezly a fronta by je zahodila.
+test('maxLagMs smí být funkce a přepočítá se za běhu', () => {
+    const clock = mkClock();
+    const dropped = [];
+    let limit = 700;
+    const q = mkQueue(clock, { maxLagMs: () => limit, onDrop: n => dropped.push(n) });
+    const log = [];
+    // Zvednutý práh: stejná fronta jako v testu výš se NEzahodí.
+    limit = 2000;
+    q.pushAnim(() => log.push('a1'), 400);
+    q.pushAnim(() => log.push('a2'), 400);
+    q.pushAnim(() => log.push('a3'), 400);
+    assert.deepStrictEqual(dropped, [], 'pod zvednutým prahem se nic nezahazuje');
+    clock.advance(1200);
+    assert.deepStrictEqual(log, ['a1', 'a2', 'a3']);
+
+    // Práh zase dolů → stejné zaostávání už se zahodí.
+    limit = 700;
+    q.pushAnim(() => log.push('b1'), 400);
+    q.pushAnim(() => log.push('b2'), 400);
+    q.pushAnim(() => log.push('b3'), 400);
+    assert.deepStrictEqual(dropped, [2]);
+});
+
 test('po zahození fronty se pokračuje normálně dál', () => {
     const clock = mkClock();
     const q = mkQueue(clock, { maxLagMs: 500 });

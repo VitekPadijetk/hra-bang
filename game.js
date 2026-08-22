@@ -131,17 +131,24 @@ function _pileTopY(baseY, count) {
     const lift = App.storePileLiftY || 0;
     return (baseY - lift) - Math.max(0, count - 1) * PILE_PX_PER_CARD / 2;
 }
-// Vrch balíčku dobírání (počítá se z aktuálního stavu – při líznutí je karta ještě ve
-// stavu, při reshuffle už tam nová hromádka je).
-function deckTopPos() {
-    return { x: DECK_X, y: _pileTopY(DECK_Y, state?.deck?.cards?.length ?? 0) };
-}
-// Vrch odhozu. Karta letící DO odhozu je v okamžiku animace už ve stavu discardPile
-// (broadcast dorazí okolo card_animation), takže count zahrnuje i ji → cíl = její budoucí
-// klidová poloha navrchu.
-function discardTopPos() {
-    return { x: DISCARD_X, y: _pileTopY(DISCARD_Y, state?.deck?.discardPile?.length ?? 0) };
-}
+// A Fistful of Cards – Opuštěný důl: po celé kolo si hromádky vymění role, líže se
+// z odhozu a odhazuje se lícem dolů na dobírací balíček. Server drží přepínač na
+// balíčku (deck.mineMode, viz logic/entities.js) a posílá ho v room_update.
+function mineOn() { return !!state?.deck?.mineMode; }
+// Fyzická místa obou hromádek (levá = `deck.cards`, pravá = `deck.discardPile`).
+// Vrch se počítá z aktuálního stavu: při líznutí je karta ještě ve stavu, po reshufflu
+// tam už leží nová hromádka.
+function _leftPilePos()  { return { x: DECK_X,    y: _pileTopY(DECK_Y,    state?.deck?.cards?.length ?? 0) }; }
+function _rightPilePos() { return { x: DISCARD_X, y: _pileTopY(DISCARD_Y, state?.deck?.discardPile?.length ?? 0) }; }
+
+// Odkud se líže a kam se odhazuje. Obě funkce znamenají ROLI, ne místo – při aktivním
+// dole se prostě prohodí a všechna volání („leť z balíčku", „leť do odhozu") tím míří
+// samy správně, včetně cinematiky vyřazení a odkrývání kontrolní karty.
+function deckTopPos()    { return mineOn() ? _rightPilePos() : _leftPilePos(); }
+// Karta letící DO odhozu je v okamžiku animace už ve stavu na cílové hromádce (broadcast
+// dorazí okolo card_animation), takže count zahrnuje i ji → cíl = její budoucí klidová
+// poloha navrchu.
+function discardTopPos() { return mineOn() ? _leftPilePos() : _rightPilePos(); }
 
 // ── NOVÉ VYKRESLOVÁNÍ KARET ───────────────────────────────────────────────────
 // Karta se při startu složí z art-obrázku druhu (assets/card_art/<art>.webp) + malých
@@ -627,6 +634,43 @@ function holdThenFinish(sprite, holdUntil, finish, maxTries = 45) {
     poll();
 }
 
+// A Fistful of Cards – Opuštěný důl: pod dolem se odhazuje LÍCEM DOLŮ na dobírací
+// balíček, takže by karta zmizela dřív, než by kdokoli přečetl, co se zahrálo. Dosedne
+// proto lícem nahoru, vydrží MINE_ANIM.holdMs a teprve pak se překlopí na rub – jako
+// u stolu. Nasazuje se na KONEC letu končícího v odhozu (opts.mineLand, viz mineLandOpts);
+// bez dolu je to no-op, takže doběh zůstává pixelově dnešní.
+// Časování je v core/fistfulAnim.js, aby o stejnou dobu počkala i fronta stavu (ANIM_MS).
+function mineLandThen(sprite, opts, next) {
+    if (!opts.mineLand || !sprite?.active || !gameScene) { next(); return; }
+    const half = MINE_ANIM.flipMs / 2;
+    // Karta, kterou cinematika předtím ukázala zvětšenou uprostřed (sejmutí, Lucky Duke),
+    // se držet znovu nemusí – překlopí se rovnou (mineLandHold: 0).
+    const hold = opts.mineLandHold ?? MINE_ANIM.holdMs;
+    gameScene.time.delayedCall(hold, () => {
+        if (!sprite?.active) { next(); return; }
+        const sx = sprite.scaleX, sy = sprite.scaleY;
+        // Překlopení kolem svislé osy: zúžit na nulu, na hraně vyměnit texturu za rub,
+        // roztáhnout zpět (stejná mechanika jako flip v animateCardFlip, jen bez letu).
+        gameScene.tweens.add({
+            targets: sprite, scaleX: 0, duration: half, ease: 'Linear',
+            onComplete: () => {
+                if (!sprite?.active) { next(); return; }
+                sprite.setTexture('card_back').setScale(0, sy);
+                gameScene.tweens.add({ targets: sprite, scaleX: sx, duration: half,
+                                       ease: 'Linear', onComplete: next });
+            }
+        });
+    });
+}
+
+// Letí karta do „odhozu"? Pak jí pod aktivním dolem přidej doběh s překlopením na rub.
+// Rozprostírá se na každý let, který míří na discardTopPos() – mimo důl vrací {}.
+function mineLandOpts() { return mineOn() ? { mineLand: true } : {}; }
+// Varianta pro cinematiky, které kartu PŘEDTÍM ukázaly zvětšenou uprostřed (sejmutí,
+// Lucky Duke): držet ji podruhé nemá smysl, jde jen o to, aby lícem nahoru dosednutá
+// karta nepřeskočila na rub bez přechodu.
+function mineLandOptsRevealed() { return mineOn() ? { mineLand: true, mineLandHold: 0 } : {}; }
+
 function animateCard(fromX, fromY, toX, toY, texKey, duration = 380, onComplete = null, opts = {}) {
     if (!gameScene) return;
     const startAngle = opts.startAngle ?? 0;
@@ -643,10 +687,10 @@ function animateCard(fromX, fromY, toX, toY, texKey, duration = 380, onComplete 
     gameScene.tweens.add({
         targets: sprite, x: toX, y: toY,
         duration, delay, ease: 'Power2',
-        onComplete: () => holdThenFinish(sprite, opts.holdUntil, () => {
+        onComplete: () => mineLandThen(sprite, opts, () => holdThenFinish(sprite, opts.holdUntil, () => {
             if (sprite?.active) sprite.destroy();
             if (onComplete) onComplete();
-        }, opts.holdTries)
+        }, opts.holdTries))
     });
     if (endAngle !== startAngle) {
         gameScene.tweens.add({ targets: sprite, angle: endAngle, duration, delay, ease: 'Power2' });
@@ -733,13 +777,13 @@ function animateCardFlip(fromX, fromY, toX, toY, backTex, faceTex, opts = {}) {
             sprite.setAngle(angle);
             sprite.setScale(scale, scaleY);
         },
-        onComplete: () => holdThenFinish(sprite, opts.holdUntil, () => {
+        onComplete: () => mineLandThen(sprite, opts, () => holdThenFinish(sprite, opts.holdUntil, () => {
             // Nejdřív odkryj cílovou kartu (onComplete typicky zruší hide + renderUI), pak
             // teprve zahoď letící sprite – ať pod ním už leží finální karta a neprobliká
             // stará vrchní karta odhozu.
             if (onComplete) onComplete();
             if (sprite?.active) sprite.destroy();
-        }, opts.holdTries)
+        }, opts.holdTries))
     });
     return sprite;
 }
@@ -1266,7 +1310,7 @@ function startCheckReveal(check) {
         // Se začátkem sestupu do odhozu jde karta z „reveal" vrstvy do vrstvy hromádky –
         // výsledek sejmutí (vězení/dynamit) letí za ní a musí dosednout NAD ni.
         onStart: () => { stopPulse(); sprite.setDepth(REVEAL_PILE_DEPTH); },
-        onComplete: () => holdThenFinish(sprite, () => {
+        onComplete: () => mineLandThen(sprite, mineLandOptsRevealed(), () => holdThenFinish(sprite, () => {
             // Drž, dokud kontrolní karta není ve stavu odhozu A zároveň skončila fáze
             // CHECKING (board.js ji do té doby navrchu schovává). NEvyžaduj, aby byla
             // úplně navrchu – vyhodnocení (Vězení/Dynamit) hned přidá další kartu NAD
@@ -1275,7 +1319,7 @@ function startCheckReveal(check) {
             const dp = state?.deck?.discardPile;
             return !!dp?.some(c => c.id === check.card.id) &&
                    !(state.phase === 'CHECKING' && state.currentCheck?.active);
-        }, () => { stopPulse(); if (sprite.active) sprite.destroy(); }) });
+        }, () => { stopPulse(); if (sprite.active) sprite.destroy(); })) });
 }
 
 // Black Jack: 2. líznutá karta se zkoumá (stejný reveal jako sejmutí), ale pak
@@ -1707,7 +1751,7 @@ function playLuckyDukeResult(chosenId) {
         animateCard(rc.x, rc.y, _luckyDiscard.x, _luckyDiscard.y, getCardTex(rc.id), LD_DROP_MS, () => {
             App.discardFlyHideIds.delete(rc.id); renderUI();
         }, { startScale: 0.65, endScale: PILE_SCALE, depth: REVEAL_PILE_DEPTH - 1,
-             holdUntil: () => inDiscardNow(rc.id) });
+             holdUntil: () => inDiscardNow(rc.id), ...mineLandOptsRevealed() });
     });
 
     // 2) Vybraná doprostřed → pulz → do odhozu (klasické sejmutí, viz startCheckReveal).
@@ -1732,12 +1776,12 @@ function playLuckyDukeResult(chosenId) {
         // Se začátkem sestupu jde karta z „reveal" vrstvy do vrstvy hromádky – výsledek
         // sejmutí (vězení/dynamit) letí za ní a musí dosednout NAD ni.
         onStart: () => { stopPulse(); sprite.setDepth(REVEAL_PILE_DEPTH); },
-        onComplete: () => holdThenFinish(sprite, () => inDiscardNow(picked.id), () => {
+        onComplete: () => mineLandThen(sprite, mineLandOptsRevealed(), () => holdThenFinish(sprite, () => inDiscardNow(picked.id), () => {
             stopPulse();
             if (sprite.active) sprite.destroy();
             App.discardFlyHideIds.delete(picked.id);
             renderUI();
-        })
+        }))
     });
 }
 

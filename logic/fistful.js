@@ -30,6 +30,8 @@ const FistfulMixin = {
         this.ffPile = [];
         this.activeFistful = null;
         this._ffEntering = null;
+        // Nová (i navazující) hra začíná bez události, takže i bez prohozených hromádek.
+        if (this.deck) this.deck.mineMode = false;
         // Navazující hra přebírá hráče z předchozí – vynucená karta Práva západu po nich nesmí
         // zůstat (redakce ji ukazuje celému stolu, viz server/rooms.js).
         (this.players || []).forEach(p => { p._lawCardId = null; });
@@ -69,6 +71,19 @@ const FistfulMixin = {
         this._ffEntering = null;
         if (!key) return false;
         return false;
+    },
+
+    // ── Opuštěný důl: „Líže se z odhozu, odhazuje se lícem dolů na balíček." ───
+    // Samotné prohození hromádek umí Deck (logic/entities.js) – tady se jen zapíná.
+    // Volá se z `_flipEvent` (logic/highNoon.js) HNED ZA odkrytím karet obou balíčků,
+    // tedy dřív, než si start tahu sáhne na hromádky (kontrolní sejmutí na Dynamit
+    // a Vězení už z prohozených líže – R7 nezná výjimky).
+    //
+    // Mimo odkrývání se s příznakem nehýbe, a to je celé „dokud je to možné":
+    // když odhoz během kola dojde, shodí si `mineMode` sám `Deck.draw()` a pro zbytek
+    // kola se hraje normálně. Zpátky ho zapne až tenhle sync na začátku dalšího kola.
+    _syncMine() {
+        this.deck.mineMode = this.hasEvent('OPUSTENY_DUL');
     },
 
     // ── Laso: „Karty vyložené před hráči nemají žádný efekt." ──────────────────

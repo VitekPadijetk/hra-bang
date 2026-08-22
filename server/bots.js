@@ -212,6 +212,10 @@ module.exports = function installBotService(ctx) {
         const revealWait = Math.max(0, (room._revealBlockUntil || 0) - Date.now());
         // Nová identita (High Noon): dojezd výměny postavy (nastaví handlers.game.js).
         const niWait = Math.max(0, (room._niBlockUntil || 0) - Date.now());
+        // Opuštěný důl (Fistful): odhozená karta leží chvíli lícem nahoru na dobíracím
+        // balíčku a teprve pak se překlopí na rub (nastaví emitAnim v server/anim.js) –
+        // po tu dobu bot nehraje, aby bylo vidět, co se zahrálo.
+        const mineWait = Math.max(0, (room._mineBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
         if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
@@ -257,7 +261,7 @@ module.exports = function installBotService(ctx) {
 
         // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
         // časováním – bot čeká, než doběhnou.
-        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait);
+        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();
