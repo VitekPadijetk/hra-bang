@@ -85,6 +85,10 @@ const HighNoonMixin = {
         // Pivem) běží dřív a jely by ještě podle barvy z MINULÉHO tahu tohohle hráče.
         const cp = this.getCurrentPlayer();
         if (cp) cp._handcuffsSuit = null;
+        // A Fistful of Cards – Právo západu: vynucená karta platí jen pro tah, ve kterém
+        // se lízla. Zahodit ji je nutné hned tady (ne až ve fázi lízání) – kontroly na
+        // Dynamit/Vězení a s nimi i „Ukončit tah" běží dřív.
+        if (cp) cp._lawCardId = null;
         return this._runBeginTurn();
     },
 

@@ -4,8 +4,8 @@ Druhý balíček událostí vedle High Noon. Pracovní plán – až bude hotovo
 se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 
 **Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · ✅ Fáze 2 (Léčka,
-Laso, Soudce) · další na řadě je Fáze 3 (Pálenka, Právo západu). Výklady pravidel viz
-sekce 2.
+Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · další na řadě je Fáze 4 (Peyote, Ranč).
+Výklady pravidel viz sekce 2.
 
 Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
@@ -21,6 +21,16 @@ Odchylky od plánu, které vyplynuly z implementace:
 - **Laso vypíná i Volcanic.** „Karty vyložené před hráči nemají žádný efekt" se týká
   i zbraně, takže kromě dostřelu (→ 1 jako s Coltem) padá i její schopnost hrát Bang!
   bez limitu. Willy the Kid je postava, ta platí dál.
+- **Právo západu vynucuje kartu jen s KONKRÉTNÍM cílem.** `cardPlayability` se u Bang!
+  a Cat Balou na cíl neptá (na sebe sama střílet lze, Cat Balou vrací true vždy), takže
+  by šlo tah zamknout kartou, kterou nemá kdo schytat. `lawForcedCard` proto navíc
+  ověřuje existenci cíle — a bot má pro vynucenou kartu vlastní větev, která sáhne
+  i po hráči, kterého by si dobrovolně nevybral. **Obojí je pojistka proti zaseknutí.**
+- **Vynucená karta se odkrývá jen v tahu svého majitele.** Mimo něj je zase tajná
+  (redakce i klient se ptají přes `currentPlayerIndex`), takže se `_lawCardId` nemusí
+  nikde uklízet dřív, než ho zahodí `_beginTurn` na začátku hráčova dalšího tahu.
+- **Pálenku vezme tlačítko v místě „Ukončit tah"**, ne u balíčku: ve fázi lízání je ten
+  slot volný, kdežto na místě schopností může stát tlačítko Sida Ketchuma.
 
 ---
 
@@ -316,18 +326,44 @@ vypnuté rozšíření = prázdný balíček. `test/layout.test.js` – `eventPi
 
 ### FÁZE 3 — Fáze lízání I: Pálenka, Právo západu · M
 
+✅ **Hotovo.** Testy: `test/fistful.draw.test.js` (27), redakce v `test/server.rooms.test.js`
+a cílená zátěž botů „balíček samých Pálenek a Práv západu" (se zapnutými Želízky)
+v `test/server.bots.test.js`.
+
 #### Pálenka (`PALENKA`)
-- **Kde:** nový zdroj lízání `'liquor'` v `_getDrawOptions` (jen `isStartOfTurn`); `drawCard('liquor')` → `_heal(player, 1)` a rovnou `_finishDraw()` (tedy včetně Ranče/Želízek).
-- **UI:** tlačítko u balíčku „🥃 Pálenka: +1 život místo lízání" (tam, kde se dnes nabízí volba Pedra/Jesseho).
-- **Hrany:** platí i pro Kita (rozhoduje se dřív, než odkryje) a ducha (léčit se smí). Bot použije při zranění a ruce ≥ 3 karty.
+- **Kde:** nový zdroj lízání `'liquor'`. `_drawOptionsBase()` (logic/draw.js) je jediný
+  zdroj pravdy — dostane ho `_getDrawOptions` i vlastní fáze **Kita Carlsona a Clause**
+  (rozhodují se dřív, než cokoli odkryjí). `drawCard('liquor')` ověří `options`
+  a `cardsDrawn === 0`, zavolá `_heal(player, 1)` a rovnou `_finishDraw()` — fáze tedy
+  končí obvyklou cestou (fronta odložených akcí, volba barvy pro Želízka).
+- **UI:** tlačítko `🥃 PÁLENKA: +1 ❤️` v místě „Ukončit tah" (ve fázi lízání je volné).
+  Server pro `'liquor'` neemituje žádnou animaci a posílá stav hned.
+- **Hrany:** ocásek Kita za Příjezd vlaku volbu nemá (už líznul), odměna za banditu
+  taky ne (není to lízání na začátku tahu), duch se napít smí (`_heal` → `isInPlay`).
+- **Bot:** vezme ji zraněný s ≥ 3 kartami v ruce; duch ne (o život na konci tahu přijde).
 
 #### Právo západu (`PRAVO_ZAPADU`)
-- **Kde:** `logic/draw.js` – druhá karta, která ve fázi 1 doputuje do ruky, se zapíše do `player._lawCardId`. `tryEndTurn` (logic.js) odmítne ukončit tah, dokud `_lawForcedPlayable()` vrací true. Nuluje se na začátku tahu a v okamžiku, kdy karta odejde z ruky.
-- **`_lawForcedPlayable`:** karta je v ruce **a** `cardPlayability === true` **a** (u Bang!/bang-efektu) existuje dosažitelný cíl. Bez druhé podmínky by šlo tah zamknout kartou Bang!, na kterou nikdo není v dostřelu.
-- **Odkrytí ostatním:** `redactState` propustí v ruce tuhle jednu kartu, klient ji ve vějíři soupeře nakreslí lícem (analogie: druhá karta Black Jacka).
-- **UI:** zlatý rámeček + hint; „Ukončit tah" zašedlé s vysvětlením.
-- **Bot:** `decidePlay` zkusí vynucenou kartu jako první.
-- **Hrany:** Žízeň (líže se 1) → žádná vynucená karta. Kit Carlson → druhá **ponechaná**. Peyote je z téhož balíčku, takže se nikdy nepotkají.
+- **Kde:** `_lawMark(player, card, nth)` v `logic/fistful.js` zapíše `player._lawCardId`
+  pro **druhou** kartu fáze lízání. Volá se ze všech cest, kudy karta v téhle fázi
+  doputuje do ruky: běžné líznutí a Black Jack (`logic/draw.js`), Kit Carlson
+  (`kitCarlsonPick` — druhá **ponechaná**) a Claus (`clausPick` — rozdané se nepočítají).
+  Nuluje se v `_beginTurn`, na začátku hráčova dalšího tahu.
+- **`lawForcedCard(state, me, myIndex)` v `core/playability.js`** je **jediný zdroj
+  pravdy**: karta je v ruce **a** `cardPlayability === true` **a** existuje konkrétní
+  cíl (`_lawHasTarget` — Bang!/bang-efekt, Panika!, Cat Balou, Ragtime; zbytek pokrývá
+  `cardPlayability`). Ptá se jím `tryEndTurn` (přes `GameState._lawForced`), bot
+  i klient — rozejít se nesmí, jinak server tah tiše odmítne ukončit.
+- **Odkrytí ostatním:** `redactState` (server/rooms.js) propustí tuhle jednu kartu
+  v ruce hráče **na tahu**; klient ji ve vějíři soupeře nakreslí lícem (`drawHandCard`
+  ve view/board.js, se stejnou podmínkou „je na tahu" kvůli debug hře).
+- **UI:** vynucená karta v ruce svítí zlatě, „Ukončit tah" je zašedlé a nese
+  `MUSÍŠ ZAHRÁT ⚡`.
+- **Bot:** `forcedLawIntent` (core/botPolicy.js) hned na začátku `decidePlay` — vynucenou
+  kartu zahraje jako první a cíl vybere „nejdřív nejpravděpodobnější nepřítel, jinak
+  kdokoli platný" (práh nepřátelskosti by v koncovce nikoho nepustil = stall).
+- **Hrany:** Žízeň (líže se 1) → žádná vynucená karta. Želízka mají přednost (zakázaná
+  barva → `cardPlayability` false → nic nevynucuje). Peyote je z téhož balíčku, takže
+  se nikdy nepotkají.
 
 ---
 

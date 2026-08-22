@@ -20,7 +20,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // deck→ruka animace, řadu si klient nakreslí z přechodu fáze (jako u Kita).
             const isClaus = ds?.isClaus;
             const animateDraw = playerIdx !== undefined && playerIdx !== null && !isKitCarlson && !isClaus;
-            const isDeckDraw = data.source !== 'opponent_hand' && data.source !== 'discard' && data.source !== 'board';
+            // Pálenka (Fistful) je zdroj 'liquor' – žádná karta neletí, jen +1 život.
+            const isDeckDraw = data.source === 'deck';
             if (animateDraw && data.source === 'discard') {
                 const topCard = gs.deck.discardPile[gs.deck.discardPile.length - 1];
                 emitAnim(room, { type: 'pedro_draw', playerIdx, cardId: topCard?.id });
@@ -51,6 +52,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // jinak by poslední karta z ruky „znovu přiletěla" z balíčku. Jen sesynchronizuj.
             if (gs.phase === phaseBefore && (gs.drawPhaseState?.cardsDrawn ?? -1) === drawnBefore
                 && (gs.players[playerIdx]?.hand.length ?? -1) === handBefore) {
+                broadcastRoom(room);
+                return;
+            }
+            // Pálenka (Fistful): nic neletí, jen se hráči zvedl život – pošli stav hned.
+            if (data.source === 'liquor') {
                 broadcastRoom(room);
                 return;
             }

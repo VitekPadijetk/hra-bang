@@ -34,6 +34,11 @@ if (typeof require === 'function') {
     if (typeof cardPlayability === 'undefined') {
         globalThis.cardPlayability = require('./playability.js').cardPlayability;
     }
+    // Právo západu (Fistful) – samostatný guard: kdo načte playability.js dřív, doplnil
+    // by si jen cardPlayability.
+    if (typeof lawForcedCard === 'undefined') {
+        globalThis.lawForcedCard = require('./playability.js').lawForcedCard;
+    }
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
@@ -283,10 +288,81 @@ function daltonsDiscard(p) {
 }
 
 // ── Hlavní rozhodování pro fázi PLAY: vrať akci pro jednu nejlepší kartu, nebo end_turn ──
+// Jedna KONKRÉTNÍ karta z ruky → akce, kterou server přijme. Používá se jen na kartu
+// vynucenou Právem západu, takže smí sáhnout i po cíli, který by si bot dobrovolně nevybral:
+// pravidlo ho k tomu nutí. Cíl proto hledá „nejdřív nejpravděpodobnější nepřítel, jinak
+// kdokoli platný", ne přes práh nepřátelskosti – jinak by se hra zasekla ve chvíli, kdy
+// bot u stolu žádného nepřítele nevidí. Vrací null, když cíl neexistuje (lawForcedCard
+// takovou kartu zároveň nevynucuje, takže se to nemá stát).
+function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
+    const me = state.players[myIndex];
+    const alive = (i) => i !== myIndex && state.players[i].health > 0;
+    const hasCards = (p) => p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
+    const pick = (ok) => {
+        const ranked = rankEnemies(state, myIndex, beliefs, false).find(e => ok(e.idx));
+        if (ranked) return ranked.idx;
+        for (let i = 0; i < state.players.length; i++) if (ok(i)) return i;
+        return -1;
+    };
+    const special = (targetIdx) => ({ event: 'play_special', payload: { attackerIdx: myIndex, targetIdx, cardIdx } });
+
+    switch (getActionForCard(card, effectiveCharacter(me))) {
+        case 'SHOOT': {
+            const reach = bangEffectReach(card);
+            const t = pick(i => alive(i) && computeCanHit(state, myIndex, i, reach));
+            return t === -1 ? null : { event: 'play_bang', payload: { attackerIdx: myIndex, targetIdx: t, cardIdx } };
+        }
+        case T.JAIL: {
+            const sheriffIdx = state.players.findIndex(p => p.role === 'Sheriff');
+            const t = pick(i => alive(i) && i !== sheriffIdx && !(state.players[i].board || []).some(c => c.type === T.JAIL));
+            return t === -1 ? null : special(t);
+        }
+        case T.DUEL: {
+            const t = pick(alive);
+            return t === -1 ? null : special(t);
+        }
+        case T.PANIC:
+        case T.CAT_BALOU: {
+            const maxDist = card.type === T.PANIC ? 1 : Infinity;
+            const t = pick(i => alive(i) && hasCards(state.players[i]) && computeDistance(state, myIndex, i) <= maxDist);
+            return t === -1 ? null : special(t);
+        }
+        case 'DE_BANG': {
+            const t = pick(alive);
+            return t === -1 ? null : { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t } };
+        }
+        case 'DE_STEAL': {
+            const t = pick(i => alive(i) && hasCards(state.players[i]));
+            if (t === -1) return null;
+            const a = chooseTargetCardArea(state.players[t], T.PANIC);
+            return { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t, area: a.area, boardIdx: a.cardIdx ?? 0 } };
+        }
+        case 'DE_HEAL': {
+            const t = (isInPlay(me) && me.health < me.maxHealth) ? myIndex
+                : state.players.findIndex((p, i) => alive(i) && p.health < p.maxHealth);
+            return t === -1 ? null : { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t } };
+        }
+        case 'DE_DECK':
+            return { event: 'discard_extra_choose', payload: { cardIdx } };
+        default:
+            // Netargetované karty i modré/zelené na stůl – play_card(index) stačí.
+            return { event: 'play_card', payload: cardIdx };
+    }
+}
+
 function decidePlay(state, myIndex, beliefs) {
     const me = state.players[myIndex];
     const n = state.players.length;
     const sheriffIdx = state.players.findIndex(p => p.role === 'Sheriff'); // veřejná info (hvězda)
+
+    // A Fistful of Cards – Právo západu: odkrytou druhou lízanou kartu MUSÍ hráč zahrát,
+    // dokud to jde – server jinak tah neukončí (tryEndTurn). Ptáme se stejným helperem,
+    // takže se bot nemůže zaseknout na tiše odmítnutém end_turn.
+    const forced = lawForcedCard(state, me, myIndex);
+    if (forced) {
+        const intent = forcedLawIntent(state, myIndex, beliefs, forced.card, forced.idx);
+        if (intent) return intent;
+    }
     let best = { score: 0, intent: { event: 'end_turn' } };
     const consider = (score, intent) => { if (score > best.score) best = { score, intent }; };
 
@@ -573,6 +649,13 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'DRAW': {
             const ds = state.drawPhaseState;
             const opts = ds.options || ['deck'];
+            // Pálenka (Fistful): vynechat celou fázi lízání za 1 život. Vyplatí se to jen
+            // zraněnému, který už má co hrát – jinak jsou karty cennější. Duch (Město duchů)
+            // o naléčený život na konci tahu zase přijde, takže si radši líže.
+            if (ds.cardsDrawn === 0 && opts.includes('liquor') && !me._ghost &&
+                me.health < me.maxHealth && me.hand.length >= 3) {
+                return { event: 'draw_card', payload: { source: 'liquor', sourceIdx: null } };
+            }
             if (ds.cardsDrawn === 0 && opts.includes('opponent_hand')) {
                 const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => state.players[e.idx].hand.length > 0);
                 if (tgt) return { event: 'draw_card', payload: { source: 'opponent_hand', sourceIdx: tgt.idx } };

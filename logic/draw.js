@@ -61,8 +61,16 @@ const DrawMixin = {
         return Math.max(1, n);
     },
 
+    // A Fistful of Cards – Pálenka: hráč smí vynechat celou fázi lízání a získat za to
+    // 1 život. Volba se nabízí u KAŽDÉHO lízání na začátku tahu, tedy i u postav s vlastní
+    // fází (Kit Carlson, Claus) – rozhodují se dřív, než se cokoli odkryje. `options` je
+    // jediný zdroj pravdy: Jesse/Pedro si je po první kartě sami ořežou na ['deck'].
+    _drawOptionsBase() {
+        return this.hasEvent('PALENKA') ? ['deck', 'liquor'] : ['deck'];
+    },
+
     _getDrawOptions(player) {
-        const opts = ['deck'];
+        const opts = this._drawOptionsBase();
         if (effectiveCharacter(player) === "Jesse Jones") opts.push('opponent_hand');
         if (effectiveCharacter(player) === "Pedro Ramirez") opts.push('discard');
         // Dodge City: Pat Brennan smí místo lízání vzít 1 kartu ze stolu libovolného hráče.
@@ -75,6 +83,18 @@ const DrawMixin = {
 
         const ds = this.drawPhaseState;
         const player = this.players[ds.playerIdx];
+
+        // A Fistful of Cards – Pálenka: místo celé fáze lízání si hráč vezme 1 život.
+        // Rozhoduje se místo PRVNÍ karty (později už ne) a fáze tím končí klasickou cestou
+        // (_finishDraw → fronta odložených akcí, volba barvy pro Želízka). Léčit se smí i duch
+        // (Město duchů) – hlídá to _heal přes isInPlay.
+        if (source === 'liquor') {
+            if (!(ds.options || []).includes('liquor') || ds.cardsDrawn > 0) return;
+            const healed = this._heal(player, 1);
+            this.logEvent('event', { card: 'Pálenka', who: player.name, msg: `vynechal lízání (+${healed} život)` });
+            this._finishDraw();
+            return;
+        }
 
         // Dodge City: Pat Brennan – místo lízání vezmi 1 kartu ze stolu (výzbroj/modrá/zelená)
         // libovolného hráče do ruky; tím jeho fáze lízání končí (bere jen tuto jednu kartu).
@@ -214,6 +234,8 @@ const DrawMixin = {
             this.logEvent('draw', { who: player.name, source: 'deck', cards: [card.name] });
             player.stats.cardsDrawn++;
             ds.cardsDrawn++;
+            // Fistful – Právo západu: druhá karta fáze lízání je odkrytá a musí se zahrát.
+            if (ds.isStartOfTurn) this._lawMark(player, card, ds.cardsDrawn);
 
             // Bonusová karta za červenou je doražená – dál rozhoduje běžné počítadlo
             // (s Příjezdem vlaku je základ 3, takže po bonusu ještě jedna zbývá).
@@ -269,7 +291,7 @@ const DrawMixin = {
             playerIdx: this.currentPlayerIndex,
             cardsNeeded: 1,
             cardsDrawn: 0,
-            options: ['deck'],
+            options: this._drawOptionsBase(),
             // Pořád je to lízání na začátku tahu – Želízka (High Noon) se ptají až za ním.
             isStartOfTurn: true,
             isClaus: true,
@@ -292,7 +314,7 @@ const DrawMixin = {
             playerIdx: this.currentPlayerIndex,
             cardsNeeded: 1,
             cardsDrawn: 0,
-            options: ['deck'],
+            options: this._drawOptionsBase(),
             isKitCarlson: true,
             // I Kitovo odkrývání JE fáze lízání na začátku tahu – bez tohoto příznaku by
             // _finishDraw přeskočil volbu barvy pro Želízka (High Noon) a Kit by jako
@@ -319,6 +341,8 @@ const DrawMixin = {
         kc.pendingAdd.push(cardIdx);
         player.hand.push(card);
         this.logEvent('draw', { who: player.name, source: 'Kit Carlson', cards: [card.name] });
+        // Fistful – Právo západu: vynucená je druhá karta, kterou si NECHÁ.
+        this._lawMark(player, card, kc.pendingAdd.length);
 
         if (kc.pendingAdd.length >= (kc.needed || 2)) {
             const pickedSet = new Set(kc.pendingAdd);
@@ -363,6 +387,8 @@ const DrawMixin = {
         this.logEvent('draw', { who: player.name, source: 'deck (Black Jack)', cards: [card.name] });
         player.stats.cardsDrawn++;
         ds.cardsDrawn++;
+        // Fistful – Právo západu: Black Jackova druhá karta je odkrytá tak jako tak.
+        this._lawMark(player, card, ds.cardsDrawn);
         ds.blackJackCard = null;
 
         if (isRed) {

@@ -61,10 +61,14 @@ module.exports = function installRoomService(ctx) {
             // během svého tahu naléčil životy (a `health <= 0` tedy neplatí).
             // Hra pro 3 (Město duchů): všechny tři role leží od začátku lícem nahoru.
             const roleVisible = gs.mode3p || p.role === 'Sheriff' || p.health <= 0 || !!p._ghost;
+            // A Fistful of Cards – Právo západu: druhá lízaná karta hráče NA TAHU leží v ruce
+            // odkrytá – celý stůl vidí, co musí zahrát. Mimo jeho tah už je zase tajná, takže
+            // zastaralé `_lawCardId` (než ho zahodí _beginTurn) nic neprozradí.
+            const lawId = (i === gs.currentPlayerIndex && p._lawCardId != null) ? p._lawCardId : null;
             return {
                 ...p,
                 role: roleVisible ? p.role : null,
-                hand: (p.hand || []).map(() => HIDDEN_CARD),
+                hand: (p.hand || []).map(c => (lawId !== null && c && c.id === lawId) ? c : HIDDEN_CARD),
                 _secondChar: null,   // odložená identita je lícem dolů (klient ji nečte)
             };
         });

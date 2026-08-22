@@ -398,6 +398,49 @@ test('20 her jen botů jede i s balíčkem samých Léček/Las/Soudců', () => {
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Léčky/Lasa/Soudce');
 });
 
+// Cílená zátěž na fázi 3 Fistfulu: v balíčku jsou JEN Pálenka a Právo západu. Právo
+// západu je nejrizikovější karta rozšíření – server odmítá ukončit tah, dokud hráč
+// nezahraje odkrytou kartu, takže každý rozchod mezi lawForcedCard (tryEndTurn) a botem
+// znamená nekonečné posílání end_turn. Běží spolu se Želízky z High Noonu, které do
+// hratelnosti karet mluví taky.
+test('20 her jen botů jede i s balíčkem samých Pálenek a Práv západu', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const ffEv = (key) => {
+        const c = fistfulCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: true, fistful: true },
+                           highNoonExtra: true };
+            const room = { id: 'ff3_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Líže se pop() z konce → karta „vespod" zůstává na indexu 0.
+            const deck = [ffEv('FISTFUL_OF_CARDS')];
+            for (let i = 0; i < 12; i++) deck.push(ffEv(i % 2 ? 'PALENKA' : 'PRAVO_ZAPADU'));
+            gs.ffDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `FF3 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `FF3 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            if (gs.ffPile.length) flipped++;
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 15, `události se opravdu odkrývaly (jen ${flipped} z 20 her)`);
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u Pálenky/Práva západu');
+});
+
 test('20 her jen botů s High Noon + Dodge City zároveň vždy doběhne', () => {
     const ctx = buildCtx();
     let stalls = 0;

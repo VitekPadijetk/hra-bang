@@ -689,7 +689,15 @@ function drawOpponents(ctx) {
             const isElGringoSteal = state.phase === "EL_GRINGO_STEAL" &&
                 state.pendingElGringoSteal?.playerIdx === myIndex &&
                 state.pendingElGringoSteal?.attackerIdx === actualIdx;
-            let hCard = gameScene.add.sprite(x, y, 'card_back').setAngle(angle).setScale(hScale);
+            // Fistful – Právo západu: vynucená karta leží v ruce ODKRYTÁ (redakce ji pouští,
+            // viz server/rooms.js) – celý stůl vidí, co musí hráč na tahu zahrát.
+            const _lawSlotCard = slot !== undefined ? player.hand?.[slot] : null;
+            // Podmínka `hráč je na tahu` zrcadlí redakci – v debug hře (kde se neredaguje)
+            // by jinak zastaralé `_lawCardId` nechalo kartu odkrytou i po jeho tahu.
+            const _lawTex = (state.currentPlayerIndex === actualIdx && _lawSlotCard &&
+                             !_lawSlotCard._placeholder && _lawSlotCard.id != null &&
+                             _lawSlotCard.id === player._lawCardId) ? getTex(_lawSlotCard.id) : 'card_back';
+            let hCard = gameScene.add.sprite(x, y, _lawTex).setAngle(angle).setScale(hScale);
             if (isJesseJonesDraw) {
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });
@@ -720,7 +728,7 @@ function drawOpponents(ctx) {
             gameScene.cardsSprites.add(hCard);
             // Reflow slide: rub nemá identitu → klíč per-slot; vějíř ruky se při ubrání/
             // přibytí karty plynule přeskládá (slot = pozice ve vějíři).
-            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, 'card_back', hScale, angle);
+            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, _lawTex, hScale, angle);
         };
 
         const showElGringoHint = () => {};  // hint odstraněn
@@ -1501,6 +1509,10 @@ function drawMyArea(ctx) {
         // Čistá logika hratelnosti je v core/playability.js. `me` předáváme explicitně,
         // protože ve spectator módu to NENÍ state.players[myIndex] (viz výpočet `me` výše).
         const getCardPlayability = (card) => cardPlayability(state, me, myIndex, card);
+        // Fistful – Právo západu: odkrytou druhou lízanou kartu musí hráč zahrát, dokud to
+        // jde. Stejný helper používá server (tryEndTurn) i bot – rozejít se nesmí, jinak by
+        // tlačítko svítilo a server tah tiše odmítal ukončit.
+        const _lawForced = lawForcedCard(state, me, myIndex);
 
         if (me.hand.length > 0) {
             // Ruka má vlastní řadu i měřítko (na mobilu je pod stolem a větší, na
@@ -1585,13 +1597,18 @@ function drawMyArea(ctx) {
                      (state.phase === "NOON_DAMAGE" && state.pendingNoonDamage?.playerIdx === myIndex));
                 if (_isLastLifeBeer) cSprite.setTint(0xffff44);
 
+                // Fistful – Právo západu: vynucená karta svítí zlatě, dokud ji hráč nezahraje
+                // (do té doby nejde ukončit tah – viz tlačítko níž).
+                const _isLawForced = !isMySidActive && !isStagedCard && _lawForced?.card?.id === card.id;
+                if (_isLawForced) cSprite.setTint(0xffcc33);
+
                 // Zvýraznění VŠECH hratelných karet v RESPOND (Vedle!, Bang!, pivo, ...)
                 const _isResponsePlayable = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "RESPOND" && state.pendingResponse?.active &&
                     state.pendingResponse.targetIdx === myIndex;
                 if (_isResponsePlayable) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
-                const _keepHighlight = _isLastLifeBeer || _isResponsePlayable;
+                const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -1830,11 +1847,12 @@ function drawMyArea(ctx) {
                 return p !== false;
             });
 
-            const { bg: endBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH, 'UKONČIT TAH', {
+            const { bg: endBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH,
+                _lawForced ? 'MUSÍŠ ZAHRÁT ⚡' : 'UKONČIT TAH', {
                 fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
-                fontSize: '24px',
+                fontSize: _lawForced ? '20px' : '24px',
                 onClick: () => {
-                    if (App.blockInput) return;
+                    if (App.blockInput || _lawForced) return;
                     selectedState = { cardIndex: null, action: null };
                     // Zamkni do příchodu nového stavu. Na pomalé lince se dřív stihlo
                     // kliknout víckrát (tlačítko svítilo dál, stav ještě nedorazil) a KAŽDÝ
@@ -1846,9 +1864,10 @@ function drawMyArea(ctx) {
                 },
             });
 
-            if (App.blockInput) {
-                // Čeká se na server (běžící animace nebo právě odeslaný konec tahu):
-                // tlačítko zůstane na místě, ale zhasnuté a neklikatelné.
+            if (App.blockInput || _lawForced) {
+                // Čeká se na server (běžící animace nebo právě odeslaný konec tahu), nebo hráče
+                // drží v tahu vynucená karta Práva západu (Fistful): tlačítko zůstane na místě,
+                // ale zhasnuté a neklikatelné.
                 endBtn.setAlpha(0.45);
                 endBtn.disableInteractive();
             } else if (!hasPlayable) {
@@ -1905,6 +1924,28 @@ function drawMyArea(ctx) {
                             selectedState.action = null;
                             selectedState.sidKetchum = [];
                         }
+                        renderUI();
+                    },
+                });
+            }
+        }
+
+        // ── A Fistful of Cards – Pálenka: vynechat fázi lízání za 1 život ──────────
+        // Sedí v místě „Ukončit tah" – to se ve fázi lízání nekreslí, takže je slot volný
+        // (na místě schopností může stát tlačítko Sida Ketchuma). Nabízí se jen místo PRVNÍ
+        // karty; `options` je stejný zdroj pravdy jako na serveru (viz _drawOptionsBase).
+        {
+            const _ds = state.drawPhaseState;
+            const _canLiquor = state.phase === "DRAW" && _ds?.active && _ds.playerIdx === myIndex &&
+                (_ds.options || []).includes('liquor') && _ds.cardsDrawn === 0 &&
+                App.pendingDrawCount === 0 && !App.blockInput;
+            if (_canLiquor) {
+                themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH, '🥃 PÁLENKA: +1 ❤️', {
+                    ...themeToggleStyle(false), fontSize: '20px',
+                    onClick: () => {
+                        if (App.blockInput) return;
+                        App.blockInput = true;
+                        socket.emit('draw_card', { source: 'liquor', sourceIdx: null });
                         renderUI();
                     },
                 });

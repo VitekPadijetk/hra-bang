@@ -48,6 +48,12 @@ if (typeof evaluateWinner === 'undefined' && typeof require === 'function') {
 if (typeof isBlueCard === 'undefined' && typeof require === 'function') {
     globalThis.isBlueCard = require('./core/cardRules.js').isBlueCard;
 }
+// A Fistful of Cards – Právo západu: „drží hráče v tahu vynucená karta?" Stejným helperem
+// se ptá klient (rámeček, zašedlé tlačítko) i bot, jinak by se hra zasekla na tiše
+// odmítnutém „Ukončit tah". core/playability.js na logic.js nesahá, cyklus nevzniká.
+if (typeof lawForcedCard === 'undefined' && typeof require === 'function') {
+    globalThis.lawForcedCard = require('./core/playability.js').lawForcedCard;
+}
 
 class GameState {
     constructor() {
@@ -285,6 +291,10 @@ class GameState {
             this.nextTurn();
             return;
         }
+        // A Fistful of Cards – Právo západu: odkrytou druhou lízanou kartu musí hráč zahrát,
+        // dokud to jde – tah tedy zatím ukončit nelze. Klient tlačítko zašedí a bot kartu
+        // zahraje jako první, oba se ptají TÍM SAMÝM helperem (viz _lawForced).
+        if (this.phase === "PLAY" && this._lawForced(this.currentPlayerIndex)) return;
         // High Noon – Město duchů: co si duch během svého tahu naléčil, na jeho konci zase
         // ztrácí (do hry se vrátil s nulou). Musí to padnout PŘED limitem karet, aby zbytek
         // tahu proběhl „klasicky": limit = 0 životů → odhodí celou ruku (FAQ H8).

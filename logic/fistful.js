@@ -30,6 +30,9 @@ const FistfulMixin = {
         this.ffPile = [];
         this.activeFistful = null;
         this._ffEntering = null;
+        // Navazující hra přebírá hráče z předchozí – vynucená karta Práva západu po nich nesmí
+        // zůstat (redakce ji ukazuje celému stolu, viz server/rooms.js).
+        (this.players || []).forEach(p => { p._lawCardId = null; });
         const on = options.expansions && options.expansions.fistful;
         if (!on || !Array.isArray(this.fistfulCardData)) return;
 
@@ -88,6 +91,24 @@ const FistfulMixin = {
     _judgeBlocks(card) {
         return this.hasEvent('SOUDCE') && !!card &&
                (!!card.green || JUDGE_BLOCKED_TYPES.includes(card.type));
+    },
+
+    // ── Právo západu: „Druhá lízaná karta se odkryje a musí se v tomhle tahu zahrát." ─
+    // Označení karty. `nth` je pořadí karty v rámci fáze lízání (1-based) – volá se ze
+    // všech cest, kudy karta v téhle fázi doputuje do ruky (běžné líznutí, Black Jack,
+    // Kit Carlson a Claus si značí druhou PONECHANOU). Se Žízní (High Noon) se líže jen
+    // jedna karta, takže žádná vynucená není. Nuluje se v `_beginTurn` (logic/highNoon.js).
+    _lawMark(player, card, nth) {
+        if (nth !== 2 || !player || !card || !this.hasEvent('PRAVO_ZAPADU')) return;
+        player._lawCardId = card.id;
+        this.logEvent('event', { card: 'Právo západu', who: player.name, msg: `musí zahrát ${card.name}` });
+    },
+
+    // Drží hráče v tahu vynucená karta? Trychtýř na sdílený helper z core/playability.js –
+    // úplně stejně se ptá klient i bot, jinak by server tiše odmítal „Ukončit tah".
+    _lawForced(playerIdx) {
+        const p = this.players[playerIdx];
+        return p ? lawForcedCard(this, p, playerIdx) : null;
     },
 };
 

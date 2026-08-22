@@ -197,6 +197,27 @@ test('redakce: ruce soupeřů jsou zástupné karty se správným počtem', () =
     assert.ok(gsA.players[2].hand.every(c => c._placeholder && c.id === null), 'ale bez identity');
 });
 
+// A Fistful of Cards – Právo západu: vynucená karta hráče NA TAHU je odkrytá pro celý
+// stůl (musí ji zahrát), zbytek jeho ruky ne. Mimo jeho tah je zase tajná.
+test('redakce: vynucená karta Práva západu je vidět jen v tahu jejího majitele', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.currentPlayerIndex = 2;
+    room.gameState.players[2]._lawCardId = 5;      // Duel v ruce Cyrila
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');
+    assert.equal(gsA.players[2].hand.length, 2, 'počet karet se nemění');
+    assert.equal(gsA.players[2].hand[1].name, 'Duel', 'vynucená karta je odkrytá');
+    assert.ok(gsA.players[2].hand[0]._placeholder, 'zbytek ruky zůstává tajný');
+
+    emits.length = 0;
+    room.gameState.currentPlayerIndex = 0;         // Cyril už na tahu není
+    ctx.broadcastRoom(room);
+    assert.ok(payloadFor(emits, 's1').players[2].hand.every(c => c._placeholder),
+        'mimo svůj tah je celá ruka zase tajná');
+});
+
 test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => {
     const { ctx, addSocket, emits } = setup();
     ['s1', 's2', 's3'].forEach(addSocket);

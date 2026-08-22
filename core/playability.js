@@ -39,6 +39,14 @@ if (typeof require === 'function') {
     if (typeof judgeBlocksFor === 'undefined') {
         globalThis.judgeBlocksFor = require('./highNoon.js').judgeBlocksFor;
     }
+    // Právo západu (viz lawForcedCard níž) se ptá na aktivní událost i na to,
+    // jakou akci karta spouští – cardRules.js na nikoho nesahá, cyklus nevzniká.
+    if (typeof eventActive === 'undefined') {
+        globalThis.eventActive = require('./highNoon.js').eventActive;
+    }
+    if (typeof getActionForCard === 'undefined') {
+        globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
+    }
 }
 
 function cardPlayability(state, me, myIndex, card) {
@@ -130,6 +138,47 @@ function cardPlayability(state, me, myIndex, card) {
     return null;
 }
 
+// ── A Fistful of Cards – Právo západu ──────────────────────────────
+// Druhá karta, kterou hráč ve fázi lízání vezme do ruky, se odkryje a MUSÍ ji v tomhle
+// tahu zahrát, pokud to jde. Vrací { card, idx }, dokud ho drží v tahu, jinak null.
+//
+// „Pokud to jde“ je záměrně opatrné: kromě cardPlayability se u cílených karet ověřuje,
+// že existuje KONKRÉTNÍ cíl. Bez toho by šlo tah zamknout kartou Bang!, na kterou nikdo
+// nedosáhne, nebo Cat Balouem ve chvíli, kdy nikdo nic nemá.
+//
+// JEDINÝ zdroj pravdy pro server (tryEndTurn), bota (decidePlay) i klienta (zlatý rámeček
+// a zašedlé „Ukončit tah“). Rozejít se nesmí: server by tah odmítl ukončit, bot by posílal
+// end_turn donekonečna a hra by se zasekla.
+function lawForcedCard(state, me, myIndex) {
+    if (!me || me._lawCardId == null || !eventActive(state, 'PRAVO_ZAPADU')) return null;
+    const idx = (me.hand || []).findIndex(c => c && !c._placeholder && c.id === me._lawCardId);
+    if (idx === -1) return null;
+    const card = me.hand[idx];
+    if (cardPlayability(state, me, myIndex, card) !== true) return null;
+    if (!_lawHasTarget(state, me, myIndex, card)) return null;
+    return { card, idx };
+}
+
+// Existuje cíl, na který se vynucená karta dá zahrát? Doplňuje cardPlayability tam, kde
+// se na cíl neptá (Bang!/bang-efekt, Cat Balou) nebo kde by jako cíl stačil sám hráč
+// (Ragtime) – klient i bot musí mít na co kliknout. Zbytek pokrývá cardPlayability
+// (Vězení, Duel, Pivo, Salon, ostatní „odhoď další kartu“).
+function _lawHasTarget(state, me, myIndex, card) {
+    const other = (i) => i !== myIndex && state.players[i].health > 0;
+    const hasCards = (p) => p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
+    switch (getActionForCard(card, effectiveCharacter(me))) {
+        case 'SHOOT':
+            return state.players.some((p, i) => other(i) && computeCanHit(state, myIndex, i, bangEffectReach(card)));
+        case 'Panika!':
+            return state.players.some((p, i) => other(i) && hasCards(p) && computeDistance(state, myIndex, i) <= 1);
+        case 'Cat Balou':
+        case 'DE_STEAL':
+            return state.players.some((p, i) => other(i) && hasCards(p));
+        default:
+            return true;
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cardPlayability };
+    module.exports = { cardPlayability, lawForcedCard };
 }

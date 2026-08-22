@@ -104,8 +104,12 @@ const CharactersMixin = {
         if (!to) return false;
         cs.picked.push(revealIdx);
         to.hand.push(card);
-        if (cs.toIdx === this.currentPlayerIndex) cs.taken++;
-        else {
+        if (cs.toIdx === this.currentPlayerIndex) {
+            cs.taken++;
+            // Fistful – Právo západu: vynucená je druhá karta, kterou si Claus NECHÁ
+            // (rozdané se nepočítají – do jeho ruky nikdy nedošly).
+            this._lawMark(to, card, cs.taken);
+        } else {
             cs.queue.shift();
             this.logEvent('special', { who: this.getCurrentPlayer().name,
                                        card: 'Claus the Saint – dává kartu', target: to.name });
