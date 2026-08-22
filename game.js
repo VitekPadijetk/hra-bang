@@ -257,6 +257,33 @@ function detectLayoutProfile() {
     return pickLayoutProfile({ query, stored, width, coarse });
 }
 
+// Ruční přepínač rozložení (obrazovka „PC nebo mobil?" na startu + přepínač v menu).
+// Hodnoty v localStorage jsou 'big' (mobilní rozložení) / 'normal' (PC) – čte je
+// detectLayoutProfile výš přes pickLayoutProfile.
+function uiModeStored() {
+    try { return localStorage.getItem('bangUiMode'); } catch (_) { return null; }
+}
+
+function setUiMode(mode) {
+    try { localStorage.setItem('bangUiMode', mode); } catch (_) {}
+    // Profil se mění pod rukama celému klientovi: přepočítej jeviště (a s ním kameru,
+    // pozadí i App.layout) a překresli. Intro drží pozice jako hotové souřadnice, takže
+    // se musí přepočítat zvlášť – stejně jako po změně velikosti okna.
+    applyStage();
+    if (typeof _introRelayoutPlaced === 'function') _introRelayoutPlaced();
+    if (App.clausPanel) App.clausPanel = clausPanelLayout(App.clausPanel.n);
+    if (gameScene) renderUI();
+}
+
+// Zeptat se na rozložení hned po startu? (core/layout.js shouldAskLayout drží pravidla.)
+function shouldAskLayoutNow() {
+    if (typeof window === 'undefined') return false;
+    let query = null;
+    try { query = new URLSearchParams(location.search).get('ui'); } catch (_) {}
+    const coarse = !!window.matchMedia?.('(pointer: coarse)')?.matches;
+    return shouldAskLayout({ query, stored: uiModeStored(), width: window.innerWidth, coarse });
+}
+
 // Přepočítá jeviště podle aktuální plochy okna a srovná podle něj plátno, kameru
 // a pozadí. Kamera se posune o půlku přírůstku, takže původní souřadnice (0…1920 /
 // 0…1080) zůstávají uprostřed a rozložení desky se nehne – přírůstek se objeví jako
@@ -2215,6 +2242,11 @@ function createScene() {
     this.input.setPollAlways();
 
     document.addEventListener('fullscreenchange', () => { if (gameScene) renderUI(); });
+
+    // Dotykový displej / úzké okno: než hráč uvidí menu, ať si vybere rozložení desky.
+    // Ptáme se jen jednou (volba se pamatuje) a jen když v menu opravdu jsme – po
+    // reloadu uprostřed hry rejoin roomState nastaví a menu se vůbec nekreslí.
+    if (shouldAskLayoutNow()) App.menuScreen = 'ui_choice';
 
     renderUI();
 

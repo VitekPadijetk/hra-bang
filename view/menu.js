@@ -292,6 +292,48 @@ function renderMenuScreen(screen) {
         return;
     }
 
+    // Volba rozložení desky (PC / mobil). Ukazuje se na dotykovém displeji nebo v úzkém
+    // okně hned po startu, dokud si hráč nevybral (game.js shouldAskLayoutNow), a dá se
+    // sem vrátit chipem „rozložení" v hlavním menu. Volba se pamatuje v localStorage.
+    if (screen === 'ui_choice') {
+        const btmLogo = addLogo(215);
+        themeTitle(gameScene, 960, btmLogo + 30, 'Jaké rozložení?', { fontSize: '38px' });
+
+        const sub = gameScene.add.text(960, btmLogo + 92,
+            'Vyber si, jak se má kreslit herní stůl. Změnit to jde kdykoli v menu vlevo dole.',
+            { fontFamily: THEME.fontUI, fontSize: '20px', color: THEME.color.textMuted,
+              align: 'center', wordWrap: { width: 1100 } }).setOrigin(0.5, 0);
+        gameScene.cardsSprites.add(sub);
+
+        // Doporučená je ta, kterou by hra zapnula sama (App.uiProfile – zatím bez volby).
+        const auto = App.uiProfile === 'mobile' ? 'big' : 'normal';
+        const cards = [
+            { mode: 'big', x: 620, icon: '📱', label: 'Mobilní rozložení',
+              desc: 'Větší karty, soupeři v jedné řadě nahoře,\nruka přes celou šířku. Pro telefon a tablet.',
+              color: 0x1a2033, hover: 0x273049 },
+            { mode: 'normal', x: 1300, icon: '🖥', label: 'PC rozložení',
+              desc: 'Soupeři v kruhu kolem stolu, menší karty.\nPro počítač a velké displeje.',
+              color: 0x1a3326, hover: 0x27492f },
+        ];
+        const topY = btmLogo + 175;
+        cards.forEach(c => {
+            themePanel(gameScene, c.x, topY + 130, 600, 300);
+            const { bg } = menuBtn(c.x, topY + 60, `${c.icon}  ${c.label}`, c.color, c.hover, 520, 86);
+            bg.on('pointerup', () => { App.menuScreen = 'main'; setUiMode(c.mode); });
+            const desc = gameScene.add.text(c.x, topY + 140, c.desc,
+                { fontFamily: THEME.fontUI, fontSize: '19px', color: THEME.color.text,
+                  align: 'center', lineSpacing: 6 }).setOrigin(0.5, 0);
+            gameScene.cardsSprites.add(desc);
+            if (c.mode === auto) {
+                const rec = gameScene.add.text(c.x, topY + 232, '✓  doporučeno pro tvé zařízení',
+                    { fontFamily: THEME.fontUI, fontSize: '18px', color: THEME.color.gold })
+                    .setOrigin(0.5, 0);
+                gameScene.cardsSprites.add(rec);
+            }
+        });
+        return;
+    }
+
     if (screen === 'main') {
         const btmLogo = addLogo(250);
 
@@ -316,6 +358,22 @@ function renderMenuScreen(screen) {
                 renderUI();
             });
         });
+
+        // Přepínač rozložení desky. Na dotykovém displeji musí být trefitelný prstem,
+        // proto větší písmo i odsazení (stejně jako tlačítko ⛶ FS).
+        {
+            const small = isSmallTouchUi();
+            const mobileNow = App.uiProfile === 'mobile';
+            const chip = gameScene.add.text(stageLeft() + 20, stageBottom() - 20,
+                mobileNow ? '📱 Mobilní rozložení' : '🖥 PC rozložení',
+                { fontFamily: THEME.fontUI, fontSize: small ? '28px' : '17px', color: THEME.color.textMuted,
+                  backgroundColor: 'rgba(0,0,0,0.55)', padding: small ? { x: 16, y: 11 } : { x: 9, y: 6 } })
+                .setOrigin(0, 1).setInteractive({ useHandCursor: true });
+            chip.on('pointerover', () => chip.setColor(THEME.color.gold));
+            chip.on('pointerout', () => chip.setColor(THEME.color.textMuted));
+            chip.on('pointerup', () => setUiMode(mobileNow ? 'normal' : 'big'));
+            gameScene.cardsSprites.add(chip);
+        }
 
         const dbg = gameScene.add.text(stageRight() - 20, stageBottom() - 20, '⚙ DEBUG',
             { fontFamily: THEME.fontUI, fontSize: '16px', color: THEME.color.textMuted, backgroundColor: 'rgba(0,0,0,0.5)', padding: { x: 8, y: 5 } })

@@ -154,6 +154,18 @@ Na mobilu se soupeři nekreslí v okruhu kolem stolu (`oppMode: 'ring'`), ale v 
 nahoře – jeden sloupec na soupeře (`oppMode: 'compact'`). Uvolní to boky i spodek pro moji
 zónu a hlavně dá vyloženým kartám soupeřů vlastní řadu.
 
+**Profil si hráč smí vybrat sám.** Automatika (`pickLayoutProfile`) je jen výchozí odhad;
+na dotykovém displeji nebo v úzkém okně se hra hned po startu zeptá obrazovkou
+`ui_choice` (`renderMenuScreen` ve [view/menu.js](view/menu.js)) – zapíná ji
+`shouldAskLayoutNow()` v [game.js](game.js) nad čistým pravidlem `shouldAskLayout`
+([core/layout.js](core/layout.js)). Volba se pamatuje v `localStorage.bangUiMode`
+(`'big'` = mobil, `'normal'` = PC), takže se ptáme jen jednou; přepnout jde kdykoli
+chipem v levém dolním rohu hlavního menu. Obojí vede na **`setUiMode(mode)`**
+([game.js](game.js)), které po zápisu volá `applyStage()` + `_introRelayoutPlaced()` +
+přepočet Clausova panelu – tedy přesně to, co dělá změna velikosti okna, protože profil
+se mění pod rukama celému klientovi. `?ui=mobile`/`?ui=desktop` má dál přednost před
+uloženou volbou (testování mobilního rozložení na PC) a otázku vypíná.
+
 Sloupec shora dolů: **otočená karta životů s portrétem** (chová se přesně jako soupeř
 vlevo – portrét jede po nábojích doprava, hvězda šerifa se stejnými offsety) → **vějíř
 rubů ruky** (menší měřítko, ale pořád skutečné karty) → **jméno + ⏳ stav** (oba řádky se

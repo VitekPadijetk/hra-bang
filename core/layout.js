@@ -464,12 +464,25 @@ function pickLayoutProfile(opts) {
     return 'desktop';
 }
 
+// Má se hráče na začátku zeptat, jestli chce PC, nebo mobilní rozložení? Ptáme se jen
+// tam, kde je odpověď nejistá (dotykový displej nebo úzké okno) a jen dokud si hráč
+// nevybral – volba se pamatuje v localStorage.bangUiMode (viz pickLayoutProfile).
+// Testovací ?ui= v adrese má přednost před vším, takže se v něm neptáme vůbec.
+function shouldAskLayout(opts) {
+    const o = opts || {};
+    if (o.query === 'mobile' || o.query === 'desktop') return false;
+    if (o.stored === 'big' || o.stored === 'normal') return false;
+    const w = Number(o.width);
+    if (o.coarse) return true;
+    return w > 0 && w < 820;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H,
         CARD_ART_W, CARD_ART_H,
         computeStage, stageCoverSize,
-        LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
+        LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile, shouldAskLayout,
         resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
         boardBand, boardSlot,
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,

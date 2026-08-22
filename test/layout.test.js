@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const {
     STAGE_BASE_W, STAGE_BASE_H, STAGE_MAX_W, STAGE_MAX_H, CARD_ART_W, CARD_ART_H,
     computeStage, stageCoverSize,
-    LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile,
+    LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile, shouldAskLayout,
     resolveLayout, stretchAnchors, boardRowLimit,
     COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
     compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
@@ -275,6 +275,33 @@ describe('stretchAnchors – krajní soupeři se lepí na okraj', () => {
         const st = computeStage(844, 390);
         const [a] = stretchAnchors([{ x: 960, y: 150, side: 'top' }], D, st);
         assert.strictEqual(a.x, 960);
+    });
+});
+
+describe('shouldAskLayout – nabídka volby PC/mobil na startu', () => {
+    test('dotykové zařízení se ptá, dokud si hráč nevybral', () => {
+        assert.strictEqual(shouldAskLayout({ width: 390, coarse: true }), true);
+        assert.strictEqual(shouldAskLayout({ width: 1280, coarse: true }), true);   // tablet naležato
+    });
+
+    test('úzké okno na PC se ptá taky', () => {
+        assert.strictEqual(shouldAskLayout({ width: 700 }), true);
+    });
+
+    test('běžné PC se neptá', () => {
+        assert.strictEqual(shouldAskLayout({ width: 1920 }), false);
+        assert.strictEqual(shouldAskLayout({ width: 900 }), false);
+        assert.strictEqual(shouldAskLayout({}), false);
+        assert.strictEqual(shouldAskLayout(), false);
+    });
+
+    test('hotová volba i ?ui= otázku umlčí', () => {
+        assert.strictEqual(shouldAskLayout({ width: 390, coarse: true, stored: 'big' }), false);
+        assert.strictEqual(shouldAskLayout({ width: 390, coarse: true, stored: 'normal' }), false);
+        assert.strictEqual(shouldAskLayout({ width: 390, coarse: true, query: 'desktop' }), false);
+        assert.strictEqual(shouldAskLayout({ width: 390, coarse: true, query: 'mobile' }), false);
+        // Nesmysl v localStorage otázku neumlčí (pickLayoutProfile ho taky ignoruje).
+        assert.strictEqual(shouldAskLayout({ width: 390, coarse: true, stored: 'blbost' }), true);
     });
 });
 
