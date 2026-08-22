@@ -1353,18 +1353,19 @@ function playKitCarlsonResult() {
 }
 
 // ── CLAUS "THE SAINT" (Fistful): odkrytá řada uprostřed stolu ─────────────────
-// Karet je až devět (osm hráčů), takže se na rozdíl od Kitova panelu MĚŘÍTKO i rozteč
-// počítají z jejich počtu – řada se musí vejít mezi okraje jeviště. Tahle geometrie je
-// jediný zdroj pravdy pro kreslení (view/board.js), rozdávání z balíčku i následné lety
-// k příjemcům, takže se nikde nesmí dopočítávat „podle sebe".
-const CLAUS_ROW_Y = 470, CLAUS_MAX_SCALE = 0.5, CLAUS_GAP = 14, CLAUS_CARD_W = 650;
+// Karet je až devět (osm hráčů, s Příjezdem vlaku i deset), takže se na rozdíl od Kitova
+// panelu MĚŘÍTKO počítá z jejich počtu – řada se musí vejít mezi okraje jeviště. Mezera
+// mezi kartami je naopak PEVNÁ (a malá): karty se mají zvětšovat, ne rozestupovat.
+// Tahle geometrie je jediný zdroj pravdy pro kreslení (view/board.js), rozdávání
+// z balíčku i následné lety k příjemcům, takže se nikde nesmí dopočítávat „podle sebe".
+const CLAUS_ROW_Y = 470, CLAUS_MAX_SCALE = 0.6, CLAUS_GAP = 10;
 
 function clausPanelLayout(n) {
     const count = Math.max(1, n || 1);
     const avail = Math.max(600, (stageRight() - stageLeft()) - 180);
     const scale = Math.max(0.16, Math.min(CLAUS_MAX_SCALE,
-        (avail - CLAUS_GAP * (count - 1)) / (count * CLAUS_CARD_W)));
-    const spacing = CLAUS_CARD_W * scale + CLAUS_GAP;
+        (avail - CLAUS_GAP * (count - 1)) / (count * CARD_TEX_W)));
+    const spacing = CARD_TEX_W * scale + CLAUS_GAP;
     // Střed jeviště zůstává na 960 i po roztažení plátna (viz computeStage).
     return { n: count, scale, spacing, y: CLAUS_ROW_Y, startX: 960 - (count - 1) * spacing / 2 };
 }

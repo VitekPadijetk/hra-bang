@@ -55,7 +55,7 @@ s tvojí sadou** – u pár karet jsou v oběhu různé překlady.
 
 | # | Postava | Životy | Schopnost |
 |---|---|---|---|
-| 31 | **Claus "The Saint"** | 4 | Ve fázi lízání si lízne o jednu kartu víc, než je hráčů ve hře; pak dá po jedné kartě každému ostatnímu hráči a zbylé 2 si nechá. |
+| 31 | **Claus "The Saint"** | 3 | Ve fázi lízání si lízne o jednu kartu víc, než je hráčů ve hře; pak dá po jedné kartě každému ostatnímu hráči a zbylé 2 si nechá. |
 | 32 | **Uncle Will** | 4 | Jednou za svůj tah smí zahrát libovolnou kartu z ruky jako Hokynářství. |
 | 33 | **Johnny Kisch** | 4 | Kdykoli vyloží kartu do hry, všechny ostatní vyložené karty se stejným jménem se odhodí. |
 
@@ -262,7 +262,7 @@ vypnuté rozšíření = prázdný balíček. `test/layout.test.js` – `eventPi
 
 ### FÁZE 1 — Tři postavy · M
 
-#### Claus "The Saint" (4 životy)
+#### Claus "The Saint" (3 životy)
 - **Pravidlo:** ve fázi 1 si lízne `(počet hráčů ve hře) + 1` karet, pak dá po jedné každému ostatnímu hráči ve hře a zbylé 2 si nechá.
 - **Kde:** `logic/draw.js` – větev v `startDrawPhase` (vzor Kit Carlson), `clausState`, `logic/characters.js` `clausPick(revealIdx)` + `_clausAdvance()`, socket `claus_give`.
 - **Průběh:** celá řada se odkryje naráz (klik na balíček), líce vidí jen Claus (`redactState`), ostatní ruby. Rozděluje klikáním – nejdřív sobě (`keep`), pak po jedné ostatním po směru; příjemci svítí postava (`clausState.toIdx`) a za každou kartou letí animace `claus_pick`.

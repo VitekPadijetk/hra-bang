@@ -69,6 +69,10 @@ test('baseHealthForCharacter: Paul Regret a El Gringo mají 3, ostatní 4', () =
     assert.equal(baseHealthForCharacter("El Gringo"), 3);
     assert.equal(baseHealthForCharacter("Bart Cassidy"), 4);
     assert.equal(baseHealthForCharacter("Suzy Lafayette"), 4);
+    // A Fistful of Cards: Claus je jediná ze tří postav rozšíření se třemi životy.
+    assert.equal(baseHealthForCharacter("Claus the Saint"), 3);
+    assert.equal(baseHealthForCharacter("Uncle Will"), 4);
+    assert.equal(baseHealthForCharacter("Johnny Kisch"), 4);
 });
 
 test('healthForCharacter: šerif má +1, ostatní base', () => {

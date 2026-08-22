@@ -57,7 +57,9 @@ function firstPlayerIndex(players) {
 
 const LOW_HEALTH_CHARS = ["Paul Regret", "El Gringo",
     // Dodge City – postavy se 3 životy (Apache Kid a Vera Custer přibudou ve fázi 7).
-    "Elena Fuente", "Pixie Pete", "Sean Mallory", "Apache Kid", "Vera Custer"];
+    "Elena Fuente", "Pixie Pete", "Sean Mallory", "Apache Kid", "Vera Custer",
+    // A Fistful of Cards
+    "Claus the Saint"];
 
 // Základní počet životů postavy (bez šerifova bonusu).
 function baseHealthForCharacter(charName) {
