@@ -331,6 +331,128 @@ test('rouletteHasCard: prázdná ruka i jen nehodící se karty = nemá', () => 
     assert.equal(rouletteHasCard(g, g.players[0]), true);
 });
 
+// ── Ruská ruleta: Barel a Jourdonnais (FAQ Q13) ──────────────────────────────
+// „Můžu použít Barel, Bibli apod. nebo schopnosti postav (Jourdonnaisovu), abych se
+// vyhnul efektu Ruské rulety?" – Ano. Sejmutí se zkouší PŘED odhozem: při ♥ hráč projde
+// zadarmo, jinak kartu odhodit musí (nebo schytá 2 zásahy).
+
+test('Ruská ruleta: Barel se snímá dřív než odhoz a při ♥ hráč projde zadarmo', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    const missCard = g.players[0].hand[missIdx(g, 0)];
+    missIdx(g, 1); missIdx(g, 2);
+    topDeck(g, Suits.HEARTS);
+    enterFf(g, 'RUSKA_RULETA');
+
+    assert.equal(g.phase, 'BARREL_DRAW');
+    assert.deepEqual(pendingActor(g), { idx: 0, kind: 'BARREL_DRAW' });
+    assert.equal(g.pendingBarrelCheck.roulette, true);
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+
+    assert.equal(g.phase, 'ROULETTE_DISCARD', 'kolečko jde na dalšího hráče');
+    assert.equal(g.pendingRoulette.playerIdx, 1);
+    assert.ok(g.players[0].hand.includes(missCard), 'šerif nic neodhodil');
+});
+
+test('Ruská ruleta: neúspěšný Barel hráče pošle zpátky k odhozu', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    missIdx(g, 0); missIdx(g, 1); missIdx(g, 2);
+    topDeck(g, Suits.SPADES);
+    enterFf(g, 'RUSKA_RULETA');
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+
+    assert.equal(g.phase, 'ROULETTE_DISCARD');
+    assert.equal(g.pendingRoulette.playerIdx, 0, 'pořád je na řadě šerif');
+    g.rouletteDiscard(0, { cardId: g.players[0].hand[0].id });
+    assert.equal(g.pendingRoulette.playerIdx, 1);
+});
+
+test('Ruská ruleta: neúspěšný Barel bez karty Vedle! = 2 zásahy', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    give(g, 0, CardType.BEER, { name: 'Pivo' });
+    topDeck(g, Suits.CLUBS);
+    enterFf(g, 'RUSKA_RULETA');
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    assert.deepEqual(g.pendingDynamiteDamage,
+        { playerIdx: 0, hitsLeft: 2, source: 'ROULETTE', resume: 'BEGIN_TURN' });
+});
+
+test('Ruská ruleta: Jourdonnais snímá i bez Barelu', () => {
+    const g = mkEv([{ role: 'Sheriff', character: 'Jourdonnais' }, {}, {}], null);
+    missIdx(g, 1); missIdx(g, 2);
+    topDeck(g, Suits.HEARTS);
+    enterFf(g, 'RUSKA_RULETA');
+
+    assert.equal(g.phase, 'BARREL_DRAW');
+    assert.equal(g.pendingBarrelCheck.reason, 'JOURDONNAIS');
+    assert.equal(g.pendingBarrelCheck.checksLeft, 1);
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.pendingRoulette.playerIdx, 1, 'prošel bez karty v ruce');
+});
+
+test('Ruská ruleta: Jourdonnais s Barelem má dvě sejmutí', () => {
+    const g = mkEv([{ role: 'Sheriff', character: 'Jourdonnais' }, {}, {}], null);
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    missIdx(g, 1); missIdx(g, 2);
+    topDeck(g, Suits.HEARTS);
+    topDeck(g, Suits.SPADES);   // první mine
+    enterFf(g, 'RUSKA_RULETA');
+
+    assert.equal(g.pendingBarrelCheck.checksLeft, 2);
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'BARREL_DRAW', 'druhý pokus');
+    assert.equal(g.pendingBarrelCheck.roulette, true);
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.pendingRoulette.playerIdx, 1);
+});
+
+test('Ruská ruleta: Laso (Fistful) Barel vypne, Jourdonnaisova schopnost platí dál', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    missIdx(g, 0); missIdx(g, 1); missIdx(g, 2);
+    g.activeEvent = ff('LASO');
+    enterFf(g, 'RUSKA_RULETA');
+    assert.equal(g.phase, 'ROULETTE_DISCARD', 'žádné sejmutí – barel na stole nic neumí');
+
+    const h = mkEv([{ role: 'Sheriff', character: 'Jourdonnais' }, {}, {}], null);
+    board(h, 0, CardType.BARREL, { name: 'Barel' });
+    missIdx(h, 0); missIdx(h, 1); missIdx(h, 2);
+    h.activeEvent = ff('LASO');
+    enterFf(h, 'RUSKA_RULETA');
+    assert.equal(h.phase, 'BARREL_DRAW');
+    assert.equal(h.pendingBarrelCheck.checksLeft, 1, 'vrozená schopnost, karta ne');
+});
+
+test('Ruská ruleta: barelové sejmutí má vlastní popis (odhazuje se, nehraje)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    missIdx(g, 0); missIdx(g, 1); missIdx(g, 2);
+    enterFf(g, 'RUSKA_RULETA');
+    const d = describePendingCheck(g, 0);
+    assert.equal(d.kind, 'BARREL');
+    assert.match(d.detail, /Ruská ruleta/);
+    assert.match(d.detail, /odhodit/);
+});
+
+test('Ruská ruleta: bot barelové sejmutí spustí (trigger_barrel_draw)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    missIdx(g, 0); missIdx(g, 1); missIdx(g, 2);
+    enterFf(g, 'RUSKA_RULETA');
+    const act = decideBotAction(JSON.parse(JSON.stringify(g)), 0, {});
+    assert.equal(act.event, 'trigger_barrel_draw');
+});
+
 // ── Vendeta ─────────────────────────────────────────────────────────────────
 
 test('Vendeta: na konci tahu se sejme karta (CHECK_DRAW s reason)', () => {

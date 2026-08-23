@@ -526,6 +526,18 @@ nemůže, ztrácí 2 životy a efekt končí."
   pořadí je po směru od šerifa (ve hře pro 3 od pomocníka, `_firstPlayerIndex`) i při
   Zlaté horečce – efekty karet jdou vždy po směru (FAQ H3). Duch (Město duchů) se
   neúčastní (R10).
+- **Jeden hráč na řadě = `_rouletteTurn(idx, barrelDone)`** a pořadí možností je pravidlo:
+  **nejdřív Barel/Jourdonnais** (FAQ Q13 – sejmutí místo odhozu; při ♥ hráč projde
+  zadarmo), pak odhoz karty, a kdo nemůže ani jedno, schytá 2 zásahy. Sejmutí se zkouší
+  první schválně: je zadarmo, takže když nevyjde, hráč kartu odhodí stejně jako by musel.
+  Recykluje se **barelový check obyčejného Bang!** s příznakem `roulette: true`, který se
+  protahuje až do `currentCheck` – fáze `BARREL_DRAW`, `pendingActor`, guard, klik na
+  balíček i větev bota (`trigger_barrel_draw`) tím fungují beze změny. Vyhodnocení má
+  vlastní odbočku hned na začátku barelové větve `_applyCheckResult`
+  (`_rouletteBarrelResult`), protože se neřeší obrana, ale kolečko. Kolik sejmutí hráč
+  má, říká sdílený **`rouletteBarrelChecks`** ([core/playability.js](core/playability.js)):
+  Barel 1, Jourdonnais 1, obojí 2 – **Laso vypíná jen Barel jako kartu, Jourdonnaisova
+  vrozená schopnost platí dál**.
 - **Kdo nemá čím, se do fáze `ROULETTE_DISCARD` vůbec nedostane**: `rouletteHasCard` to
   pozná na serveru a pošle ho rovnou do existující klikací fáze zásahů
   (`pendingDynamiteDamage` se `source: 'ROULETTE'` a `resume: 'BEGIN_TURN'`). Tím zdarma

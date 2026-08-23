@@ -60,6 +60,7 @@ if (typeof lawForcedCard === 'undefined' && typeof require === 'function') {
 if (typeof rouletteDiscardable === 'undefined' && typeof require === 'function') {
     globalThis.rouletteDiscardable = require('./core/playability.js').rouletteDiscardable;
     globalThis.rouletteHasCard = require('./core/playability.js').rouletteHasCard;
+    globalThis.rouletteBarrelChecks = require('./core/playability.js').rouletteBarrelChecks;
 }
 // A Fistful of Cards – Odstřelovač a Odražená střela: „co se počítá za kartu Bang!",
 // „zbývá volný limit Bang!/tah" a „je tenhle cíl v dostřelu". Znovu tytéž helpery pro

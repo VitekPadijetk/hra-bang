@@ -191,6 +191,9 @@ const ChecksMixin = {
                 this.nextTurn();
             }
         } else if (check.reason === "BARREL" || check.reason === "JOURDONNAIS") {
+            // Fistful – Ruská ruleta: sejmutí nahrazuje odhozenou kartu Vedle! (FAQ Q13),
+            // takže se nevyhodnocuje obrana, ale kolečko (viz _rouletteBarrelResult).
+            if (check.roulette) { this._rouletteBarrelResult(check, suit === Suits.HEARTS); return; }
             if (suit === Suits.HEARTS) {
                 const attacker = this.players[check.attackerIdx];
                 // Kolik karet Vedle! si útok žádá celkem. Obvykle to nese sám check

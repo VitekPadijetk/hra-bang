@@ -452,11 +452,7 @@ const FistfulMixin = {
         return rouletteDiscardable(this, this.players[playerIdx], card, fromBoard);
     },
 
-    // Na řadu jde další hráč v kolečku. Kdo nemá co odhodit, schytá 2 zásahy a efekt
-    // končí – zásahy se klikají po jednom stejnou cestou jako výbuch dynamitu
-    // (`pendingDynamiteDamage`), takže záchrana Pivem i Sidem Ketchumem, guard, klient
-    // i bot fungují beze změny; liší se jen `resume`, tedy kam se pak pokračuje.
-    // Vrací vždy true – start tahu se v obou případech pozastaví.
+    // Na řadu jde další hráč v kolečku. Vrací vždy true – start tahu se pozastaví.
     _advanceRoulette() {
         const pr = this.pendingRoulette;
         if (!pr) return false;
@@ -467,20 +463,80 @@ const FistfulMixin = {
             const idx = pr.order[pr.pos];
             const p = this.players[idx];
             if (!p || p.health <= 0) continue;
-            if (!rouletteHasCard(this, p)) {
-                this.pendingRoulette = null;
-                this.logEvent('event', { card: 'Ruská ruleta', who: p.name, msg: 'nemá Vedle! → −2 životy' });
-                this.pendingDynamiteDamage = { playerIdx: idx, hitsLeft: 2, source: 'ROULETTE', resume: 'BEGIN_TURN' };
-                this.phase = "DYNAMITE_DAMAGE";
-                return true;
-            }
             pr.playerIdx = idx;
-            this.phase = "ROULETTE_DISCARD";
-            return true;
+            return this._rouletteTurn(idx, false);
         }
         // U stolu nezbyl nikdo, kdo by mohl pokračovat – efekt prostě skončí.
         this.pendingRoulette = null;
         return false;
+    },
+
+    // Jeden hráč na řadě v kolečku. Pořadí možností je dané pravidly (FAQ Q13):
+    //   1. Barel / Jourdonnais – sejmutí místo odhozu; při ♥ projde zadarmo.
+    //      Zkouší se PRVNÍ, protože je zdarma: když nevyjde, hráč stejně kartu odhodí.
+    //   2. odhoz karty Vedle! (fáze ROULETTE_DISCARD),
+    //   3. kdo nemůže ani jedno, schytá 2 zásahy a efekt končí – zásahy se klikají po
+    //      jednom stejnou cestou jako výbuch dynamitu (`pendingDynamiteDamage`), takže
+    //      záchrana Pivem i Sidem Ketchumem, guard, klient i bot fungují beze změny;
+    //      liší se jen `resume`, tedy kam se pak pokračuje.
+    // `barrelDone` = sejmutí už proběhlo a neuhnulo (volá se z `_rouletteBarrelResult`).
+    _rouletteTurn(idx, barrelDone) {
+        const p = this.players[idx];
+        if (!p) return false;
+        const checks = barrelDone ? 0 : rouletteBarrelChecks(this, p);
+        if (checks > 0) {
+            // Recykluje se barelový check obyčejného Bang!, jen bez útočníka a s příznakem
+            // `roulette` – fáze BARREL_DRAW, pendingActor, guard, klik na balíček i větev
+            // bota (`trigger_barrel_draw`) tím fungují beze změny.
+            this.pendingBarrelCheck = {
+                active: true,
+                targetIdx: idx,
+                attackerIdx: null,
+                checksLeft: checks,
+                reason: checks === 2 || effectiveCharacter(p) === "Jourdonnais" ? "JOURDONNAIS" : "BARREL",
+                sourceCard: null,
+                sourceCardName: 'Ruská ruleta',
+                bangEffect: false,
+                ricochet: null,
+                roulette: true
+            };
+            this.phase = "BARREL_DRAW";
+            return true;
+        }
+        if (!rouletteHasCard(this, p)) {
+            this.pendingRoulette = null;
+            this.logEvent('event', { card: 'Ruská ruleta', who: p.name, msg: 'nemá Vedle! → −2 životy' });
+            this.pendingDynamiteDamage = { playerIdx: idx, hitsLeft: 2, source: 'ROULETTE', resume: 'BEGIN_TURN' };
+            this.phase = "DYNAMITE_DAMAGE";
+            return true;
+        }
+        this.phase = "ROULETTE_DISCARD";
+        return true;
+    },
+
+    // Sejmutí na Barel/Jourdonnaise v Ruské ruletě doběhlo (volá `_applyCheckResult`).
+    // ♥ = hráč prošel zadarmo a kolečko jde dál; jinak se zkusí druhé sejmutí
+    // (Jourdonnais + Barel), a když ani to nevyjde, musí kartu odhodit jako každý jiný.
+    _rouletteBarrelResult(check, passed) {
+        const idx = check.playerIdx;
+        const p = this.players[idx];
+        if (!this.pendingRoulette || this.pendingRoulette.playerIdx !== idx) return;
+        if (passed) {
+            this.logEvent('event', { card: 'Ruská ruleta', who: p?.name, msg: 'uhnul sejmutím' });
+            this._continueRoulette();
+            return;
+        }
+        if (check.checksLeft > 1) {
+            // Jourdonnais + Barel = dvě sejmutí; druhé je „jen barel".
+            this.pendingBarrelCheck = {
+                active: true, targetIdx: idx, attackerIdx: null, checksLeft: check.checksLeft - 1,
+                reason: "BARREL", sourceCard: null, sourceCardName: 'Ruská ruleta',
+                bangEffect: false, ricochet: null, roulette: true
+            };
+            this.phase = "BARREL_DRAW";
+            return;
+        }
+        this._rouletteTurn(idx, true);
     },
 
     // Kolečko pokračuje dalším hráčem. Když už není kdo (všichni účastníci mezitím

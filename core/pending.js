@@ -168,6 +168,19 @@ function describePendingCheck(state, viewerIdx) {
         const left = pbc.checksLeft > 1 ? ` (2 pokusy)` : '';
         const from = pbc.attackerIdx != null && pbc.attackerIdx !== pbc.targetIdx
             ? ` od hráče ${nameOf(pbc.attackerIdx)}` : '';
+        // Fistful – Ruská ruleta: sejmutí nahrazuje odhozenou kartu Vedle! (FAQ Q13),
+        // takže „musíš zahrát Vedle!" by lhalo – odhazuje se, nehraje.
+        if (pbc.roulette) {
+            return {
+                forMe: pbc.targetIdx === viewerIdx,
+                kind: isJourdonnais ? 'JOURDONNAIS' : 'BARREL',
+                playerIdx: pbc.targetIdx,
+                waitingName: nameOf(pbc.targetIdx),
+                short: isJourdonnais ? 'Jourdonnais' : 'Barel',
+                title: (isJourdonnais ? '🛢️ Jourdonnais' : '🛢️ Barel') + ' – lízni si kontrolní kartu' + left,
+                detail: `♥ = prošel jsi zadarmo, jinak musíš odhodit Vedle! · Ruská ruleta`,
+            };
+        }
         return {
             forMe: pbc.targetIdx === viewerIdx,
             kind: isJourdonnais ? 'JOURDONNAIS' : 'BARREL',

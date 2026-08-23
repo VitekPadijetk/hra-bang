@@ -236,11 +236,23 @@ function rouletteDiscardable(state, me, card, fromBoard) {
         effectiveCharacter(me) === "Elena Fuente";
 }
 
-// Má hráč vůbec co odhodit? Kdo nemá, ztrácí 2 životy a efekt končí.
+// Má hráč vůbec co odhodit? Kdo nemá (a neuhne ani barelem), ztrácí 2 životy a efekt končí.
 function rouletteHasCard(state, p) {
     if (!p) return false;
     return (p.hand || []).some(c => rouletteDiscardable(state, p, c, false)) ||
            (p.board || []).some(c => rouletteDiscardable(state, p, c, true));
+}
+
+// Kolik kontrolních sejmutí smí hráč v Ruské ruletě zkusit místo odhozu karty (FAQ Q13:
+// „Barel, Bible atd. i schopnosti postav jako Jourdonnaisova fungují"). Stejný výčet jako
+// u obyčejného Bang! (_beginBangResolution): Barel 1, Jourdonnais 1, obojí 2. Laso
+// (Fistful) vypíná Barel jako kartu na stole, Jourdonnaisova VROZENÁ schopnost platí dál.
+// Sejmutí se zkouší PŘED odhozem – při ♥ hráč projde zadarmo, jinak kartu odhodit musí.
+function rouletteBarrelChecks(state, p) {
+    if (!p) return 0;
+    const hasBarrel = !boardDeadFor(state) && (p.board || []).some(c => c.type === "Barel");
+    const jourdonnais = effectiveCharacter(p) === "Jourdonnais";
+    return (hasBarrel ? 1 : 0) + (jourdonnais ? 1 : 0);
 }
 
 // ── A Fistful of Cards – Odstřelovač a Odražená střela ──────────────────────
@@ -322,7 +334,7 @@ function sniperOffer(state, me, myIndex, card) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther,
-                       rouletteDiscardable, rouletteHasCard,
+                       rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer };
 }

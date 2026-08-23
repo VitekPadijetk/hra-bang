@@ -326,7 +326,7 @@ const PlayMixin = {
         if (this.phase !== "BARREL_DRAW" || !this.pendingBarrelCheck?.active) return;
         const pbc = this.pendingBarrelCheck;
         this.pendingBarrelCheck = null;
-        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName, pbc.ricochet, pbc.missesNeeded);
+        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName, pbc.ricochet, pbc.missesNeeded, pbc.roulette);
     },
 
     // Vyloží kartu (modrou i zelenou) na stůl. Nelze mít 2 karty stejného jména (D7).
@@ -345,11 +345,12 @@ const PlayMixin = {
         return false;
     },
 
-    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null) {
+    // `roulette` = sejmutí místo odhozu karty Vedle! v Ruské ruletě (Fistful, FAQ Q13).
+    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null, roulette = false) {
         const target = this.players[targetIdx];
 
         if (effectiveCharacter(target) === "Lucky Duke") {
-            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded };
+            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette };
             this.startLuckyDukeCheck(checkContext);
             return;
         }
@@ -357,7 +358,7 @@ const PlayMixin = {
         const checkCard = this.deck.draw();
         this.deck.discard(checkCard);
         this.phase = "CHECKING";
-        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded };
+        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette };
     },
 
     resolveCardSelection(attackerIdx, targetCardArea, targetCardIdx) {
