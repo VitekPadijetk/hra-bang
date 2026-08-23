@@ -759,7 +759,7 @@ function drawOpponents(ctx) {
             gameScene.cardsSprites.add(hCard);
             // Reflow slide: rub nemá identitu → klíč per-slot; vějíř ruky se při ubrání/
             // přibytí karty plynule přeskládá (slot = pozice ve vějíři).
-            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, _lawTex, hScale, angle);
+            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, 'card_back', hScale, angle);
         };
 
         const showElGringoHint = () => {};  // hint odstraněn
