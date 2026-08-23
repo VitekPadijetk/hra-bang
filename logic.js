@@ -55,6 +55,12 @@ if (typeof lawForcedCard === 'undefined' && typeof require === 'function') {
     globalThis.lawForcedCard = require('./core/playability.js').lawForcedCard;
     globalThis.lawSelfShootOnly = require('./core/playability.js').lawSelfShootOnly;
 }
+// A Fistful of Cards – Ruská ruleta: „co se počítá za kartu Vedle!". Stejný helper si
+// bere klient (zvýraznění) i bot, takže se výčet nemůže rozejít se serverem.
+if (typeof rouletteDiscardable === 'undefined' && typeof require === 'function') {
+    globalThis.rouletteDiscardable = require('./core/playability.js').rouletteDiscardable;
+    globalThis.rouletteHasCard = require('./core/playability.js').rouletteHasCard;
+}
 
 class GameState {
     constructor() {
@@ -129,6 +135,9 @@ class GameState {
         this.pendingFistful = null;     // Fistful of Cards: rozdělaná série zásahů na začátku tahu
         this._firstDeadIdx = null;      // Mrtvý muž: kdo byl vyřazen jako první
         this._deadManUsed = false;      // Mrtvý muž: návrat je jednorázový
+        this.pendingRoulette = null;    // Ruská ruleta: kolečko odhazování karet Vedle!
+        this._vendettaDone = false;     // Vendeta: sejmutí je v jednom tahu jen jednou
+        this._extraTurn = false;        // Vendeta: běží tah navíc (nová událost se neodkrývá)
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do
         // klienta (řídí zobrazení karet rolí i redakci stavu), _winClaim3p drží seat, který
         // osobně vyřadil svého určeného nepřítele, a tím hru vyhrál.
@@ -208,6 +217,10 @@ class GameState {
     }
 
     nextTurn() {
+        // Fistful – Vendeta: na konci svého tahu hráč sejme kartu a při ♥ hraje ještě
+        // jednou. Gate je úplně nahoře, PŘED odchodem ducha (Město duchů): duch Vendetu
+        // dostává taky (R10) a ze hry odchází až na konci toho tahu navíc.
+        if (this._vendettaCheck()) return;
         // High Noon – Město duchů: končí-li právě tah ducha, odejde ze hry ještě předtím,
         // než se posune tah (odloží karty, spustí Grega Diggera/Herba Huntera). Když se
         // tím naplní fronta odložených akcí, posune tah až _resumeAfterSpecial.
@@ -234,6 +247,11 @@ class GameState {
             p._ghost = true;
             this.logEvent('event', { card: 'Město duchů', who: p.name, msg: 'vrací se na jeden tah do hry' });
         }
+        // Fistful – Vendeta: sejmutí („jen jednou za tah") i příznak tahu navíc platí vždy
+        // jen pro hráče, jehož tah právě skončil. Nuluje se to tedy při přechodu na jiného
+        // – a NUTNĚ ještě před _beginTurn(), který se ptá _extraTurn (odkrytí událostí).
+        this._vendettaDone = false;
+        this._extraTurn = false;
         const cp = this.players[this.currentPlayerIndex];
         this.logEvent('turn', { who: cp?.name, role: cp?.role, hp: cp?.health, max: cp?.maxHealth, hand: cp?.hand?.length });
         // High Noon: odkrytí události (šerif) a Pravé poledne se vyhodnocují PŘED

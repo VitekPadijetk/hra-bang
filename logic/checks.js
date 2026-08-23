@@ -44,6 +44,27 @@ const ChecksMixin = {
 
         const p = this.players[pcd.playerIdx];
 
+        // Fistful – Vendeta: sejmutí na konci tahu (♥ = hraje ještě jednou). Není u něj
+        // žádná karta na stole, jen důvod – jinak jede úplně stejnou cestou jako
+        // Dynamit/Vězení, takže se zdarma veze i Lucky Duke a klientská cinematika.
+        if (pcd.reason) {
+            if (effectiveCharacter(p) === "Lucky Duke") {
+                this.startLuckyDukeCheck({ reason: pcd.reason, playerIdx: pcd.playerIdx, boardIdx: null, checksLeft: 1, active: false });
+                return;
+            }
+            const checkCard = this.deck.draw();
+            this.deck.discard(checkCard);
+            this.phase = "CHECKING";
+            this.currentCheck = {
+                active: true,
+                reason: pcd.reason,
+                playerIdx: pcd.playerIdx,
+                card: checkCard,
+                boardIdx: null
+            };
+            return;
+        }
+
         if (pcd.dynamiteIdx !== null) {
             if (effectiveCharacter(p) === "Lucky Duke") {
                 this.startLuckyDukeCheck({ reason: "DYNAMITE", playerIdx: pcd.playerIdx, boardIdx: pcd.dynamiteIdx, checksLeft: 1, active: false });
@@ -108,6 +129,7 @@ const ChecksMixin = {
         let checkResult;
         if (check.reason === "DYNAMITE") checkResult = (suit === Suits.SPADES && numVal >= 2 && numVal <= 9) ? 'výbuch' : 'nevybuchl';
         else if (check.reason === "JAIL") checkResult = (suit === Suits.HEARTS) ? 'srdce → hraje' : 'vězení → konec tahu';
+        else if (check.reason === "VENDETTA") checkResult = (suit === Suits.HEARTS) ? 'srdce → tah navíc' : 'konec tahu';
         else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
         this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${suit}`, result: checkResult });
 
@@ -156,6 +178,16 @@ const ChecksMixin = {
                 // Vera Custer se z vězení nedostala → k volbě kopie (těsně před lízáním)
                 // se nedostane a stará kopie tady vyprší: pro tohle kolo je bez schopnosti.
                 this._veraExpireCopy(check.playerIdx);
+                this.nextTurn();
+            }
+        } else if (check.reason === "VENDETTA") {
+            // Fistful – Vendeta: ♥ podle _effSuit (Požehnání pomáhá, Prokletí zabíjí).
+            // `_vendettaDone` je nastavené od začátku sejmutí, takže se nextTurn zeptat
+            // znovu nemůže a tah se prostě posune dál.
+            if (suit === Suits.HEARTS) {
+                this._vendettaExtraTurn();
+            } else {
+                this.phase = "PLAY";
                 this.nextTurn();
             }
         } else if (check.reason === "BARREL" || check.reason === "JOURDONNAIS") {

@@ -16,6 +16,7 @@
 //   { type: 'RESPOND', index }                        – obranná karta (Vedle!/Bang!)
 //   { type: 'DISCARD', index }                        – odhození ve fázi DISCARD
 //   { type: 'RANCH_TOGGLE', index, cardId }           – Ranč (Fistful): označit/odznačit k výměně
+//   { type: 'ROULETTE_DISCARD', index, cardId }       – Ruská ruleta (Fistful): odhoď kartu Vedle!
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
 
 if (typeof require === 'function') {
@@ -45,6 +46,14 @@ function decideCardClick(ctx) {
     // (RANCH), takže sem musí přijít dřív, než se cokoli ptá na „můj tah ve fázi PLAY".
     if (state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex) {
         return { type: 'RANCH_TOGGLE', index, cardId: card.id };
+    }
+
+    // Fistful – Ruská ruleta: odhod karty Vedle! probíhá MIMO tah i mimo obranu (kolečko
+    // od šerifa), takže se ptá stejně brzy jako Ranč. Klikatelné jsou jen platné karty –
+    // hratelnost hlídá cardPlayability (`playable`), odhod je povinný.
+    if (state.phase === "ROULETTE_DISCARD" && state.pendingRoulette?.playerIdx === myIndex) {
+        return playable === true ? { type: 'ROULETTE_DISCARD', index, cardId: card.id }
+                                 : { type: 'UNPLAYABLE_FLASH' };
     }
 
     // Odznačení už vybrané karty (mimo Sid režim)

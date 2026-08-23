@@ -32,6 +32,10 @@ const FistfulMixin = {
         this._ffEntering = null;
         this.pendingFistful = null;
         this.pendingBlood = null;
+        this.pendingRoulette = null;
+        // Vendeta: sejmutí na konci tahu je jednou za tah, tah navíc neodkrývá událost.
+        this._vendettaDone = false;
+        this._extraTurn = false;
         // Mrtvý muž: kdo byl vyřazen jako první a jestli se návrat už použil.
         this._firstDeadIdx = null;
         this._deadManUsed = false;
@@ -76,6 +80,7 @@ const FistfulMixin = {
         const key = this._ffEntering;
         this._ffEntering = null;
         if (!key) return false;
+        if (key === 'RUSKA_RULETA') return this._startRoulette();
         return false;
     },
 
@@ -393,6 +398,134 @@ const FistfulMixin = {
         }
         this._resumeBeginTurn();
         return true;
+    },
+
+    // ── Ruská ruleta: „Počínaje šerifem každý odhodí kartu Vedle!; první, kdo ──
+    //     nemůže, ztrácí 2 životy a efekt končí."
+    // Okamžitý efekt při příchodu karty do hry (krok 3 startu tahu, `_runBeginTurn`
+    // v logic/highNoon.js) – vrací true, takže se start tahu pozastaví, dokud kolečko
+    // nedoběhne. Kolečko se OPAKUJE dokola, dokud někdo neselže; pořadí je po směru
+    // od šerifa (ve hře pro 3 od pomocníka, `_firstPlayerIndex`), i při Zlaté horečce –
+    // efekty karet jdou vždy po směru (FAQ H3). Duch (Město duchů) se neúčastní (R10).
+    _startRoulette() {
+        const n = this.players.length;
+        const from = this._firstPlayerIndex();
+        const order = [];
+        for (let k = 0; k < n; k++) {
+            const idx = (from + k) % n;
+            const p = this.players[idx];
+            if (p && p.health > 0 && !p._ghost) order.push(idx);
+        }
+        if (!order.length) return false;
+        this.pendingRoulette = { playerIdx: null, order, pos: -1 };
+        this.logEvent('event', { card: 'Ruská ruleta', order: order.map(i => this.players[i].name) });
+        return this._advanceRoulette();
+    },
+
+    // Co se počítá za „kartu Vedle!" rozhoduje sdílený helper z core/playability.js –
+    // tím samým se ptá klient (zvýraznění) i bot, takže se výčet nemůže rozejít.
+    _rouletteValidCard(playerIdx, card, fromBoard) {
+        return rouletteDiscardable(this, this.players[playerIdx], card, fromBoard);
+    },
+
+    // Na řadu jde další hráč v kolečku. Kdo nemá co odhodit, schytá 2 zásahy a efekt
+    // končí – zásahy se klikají po jednom stejnou cestou jako výbuch dynamitu
+    // (`pendingDynamiteDamage`), takže záchrana Pivem i Sidem Ketchumem, guard, klient
+    // i bot fungují beze změny; liší se jen `resume`, tedy kam se pak pokračuje.
+    // Vrací vždy true – start tahu se v obou případech pozastaví.
+    _advanceRoulette() {
+        const pr = this.pendingRoulette;
+        if (!pr) return false;
+        // Kolečko dokola: hráče mimo hru (mohl mezitím odejít) přeskoč, jinak by se
+        // čekalo na klik, který nikdo neudělá.
+        for (let tries = 0; tries < pr.order.length; tries++) {
+            pr.pos = (pr.pos + 1) % pr.order.length;
+            const idx = pr.order[pr.pos];
+            const p = this.players[idx];
+            if (!p || p.health <= 0) continue;
+            if (!rouletteHasCard(this, p)) {
+                this.pendingRoulette = null;
+                this.logEvent('event', { card: 'Ruská ruleta', who: p.name, msg: 'nemá Vedle! → −2 životy' });
+                this.pendingDynamiteDamage = { playerIdx: idx, hitsLeft: 2, source: 'ROULETTE', resume: 'BEGIN_TURN' };
+                this.phase = "DYNAMITE_DAMAGE";
+                return true;
+            }
+            pr.playerIdx = idx;
+            this.phase = "ROULETTE_DISCARD";
+            return true;
+        }
+        // U stolu nezbyl nikdo, kdo by mohl pokračovat – efekt prostě skončí.
+        this.pendingRoulette = null;
+        return false;
+    },
+
+    // Hráč odhodil kartu. `fromBoard` = zelená Vedle!-karta ze stolu, jinak karta z ruky
+    // (podle ID – ruka se mezi klikem a doručením mohla přeskládat). Vrací odhozenou
+    // kartu pro animaci, nebo null u neplatného kliku (výběr se pak NEposune dál).
+    //
+    // Karta se odhazuje, nehraje – líznutí za Úhyb/Bibli se tedy nespustí a Molly Stark
+    // si nelíže. Suzy Lafayette s prázdnou rukou si počká: líznutí jde do fronty a ta se
+    // dobírá až po celém kolečku (viz „nejdřív doběhne efekt zahrané karty" v CLAUDE.md),
+    // takže o kolo dál může na Ruskou ruletu doplatit.
+    rouletteDiscard(playerIdx, opts = {}) {
+        if (this.phase !== "ROULETTE_DISCARD" || !this.pendingRoulette) return null;
+        if (this.pendingRoulette.playerIdx !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        if (!p) return null;
+        const fromBoard = !!opts.fromBoard;
+        const src = fromBoard ? p.board : p.hand;
+        const i = src.findIndex(c => c && c.id === opts.cardId);
+        if (i === -1) return null;
+        const card = src[i];
+        if (!this._rouletteValidCard(playerIdx, card, fromBoard)) return null;
+
+        src.splice(i, 1);
+        this.deck.discard(card);
+        this.logEvent('event', { card: 'Ruská ruleta', who: p.name, msg: `odhazuje ${card.name}` });
+        this.checkSuzyLafayette(p);
+        const boardIdx = fromBoard ? 1 + i : null;
+        this._advanceRoulette();
+        return { card, fromBoard, boardIdx };
+    },
+
+    // ── Vendeta: „Na konci svého tahu hráč sejme kartu: při ♥ hraje ještě jeden ──
+    //     tah. V jednom tahu jen jednou."
+    // Gate úplně nahoře v `nextTurn` (logic.js). Sejmutí jde existující cestou
+    // CHECK_DRAW → CHECKING → `_applyCheckResult`, takže se zdarma veze i Lucky Duke,
+    // klientská cinematika odkrytí i větev bota. `_vendettaDone` se nastaví hned tady:
+    // „jen jednou za tah" pak platí i pro tah navíc (nový tah, ale týž hráč) a nemůže
+    // vzniknout smyčka. Nuluje ho až přechod na jiného hráče (nextTurn).
+    // Ukončení tahu smrtí Vendetu nespouští (hráč už není ve hře).
+    _vendettaCheck() {
+        if (!this.hasEvent('VENDETA') || this._vendettaDone || this.winner) return false;
+        const p = this.getCurrentPlayer();
+        if (!p || !isInPlay(p)) return false;
+        this._vendettaDone = true;
+        this.pendingCheckDraw = {
+            active: true,
+            playerIdx: this.currentPlayerIndex,
+            dynamiteIdx: null,
+            jailIdx: null,
+            reason: 'VENDETTA',
+        };
+        this.phase = "CHECK_DRAW";
+        return true;
+    },
+
+    // ♥ padlo → týž hráč hraje ještě jeden tah. Je to plnohodnotný tah: nové `turnId`
+    // (zelené karty jdou zase aktivovat), znovu celý start tahu i kontroly na Dynamit
+    // a Vězení – včetně dynamitu, který si hráč vyložil v první půlce tahu (R6).
+    // `_extraTurn` jen zajistí, že se NEodkryje nová událost (R6) a nezapočítá se kolo.
+    // Duch (Město duchů) si tím zahraje znovu jako duch: ruku odhodil už v tryEndTurn
+    // (limit = 0 životů), `_ghost` mu zůstal a `_teardownGhost` se nespustil (R10).
+    _vendettaExtraTurn() {
+        this.turnId = (this.turnId || 0) + 1;
+        this._extraTurn = true;
+        const p = this.getCurrentPlayer();
+        this.logEvent('event', { card: 'Vendeta', who: p?.name, msg: 'hraje ještě jeden tah' });
+        this.phase = "PLAY";
+        if (this._beginTurn()) return;
+        this.handleStartOfTurnChecks();
     },
 
     // ── Mrtvý muž: „Hráč vyřazený jako první se ve svém tahu vrací se 2 životy ──

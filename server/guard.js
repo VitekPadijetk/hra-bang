@@ -29,7 +29,7 @@ module.exports = function installActionGuard(ctx) {
         'respond_with_beer', 'beer_dynamite_save',
         'take_noon_hit', 'beer_noon_save',
         'handcuffs_suit', 'new_identity_choose',
-        'peyote_guess', 'ranch_exchange', 'blood_brothers',
+        'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
         'claus_give', 'uncle_will',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another',
         'activate_green_card',

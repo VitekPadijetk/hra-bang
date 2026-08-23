@@ -186,10 +186,28 @@ const CombatMixin = {
     },
 
     // ── DYNAMIT: hráč klikne na životy (1 hit z 3) ────────────────────────────
+    // Kam se pokračuje, až jsou klikané zásahy dobrané. Dynamit vybuchl uprostřed kontrol
+    // na začátku tahu → následuje kontrola Vězení a fáze lízání. Ruská ruleta (Fistful)
+    // naopak přišla z krokovače startu tahu (krok 3), takže se musí vrátit do NĚJ – a
+    // navíc může vyřadit kohokoli u stolu, ne jen hráče na tahu.
+    // `afterQueue: true` = totéž, ale až se dobere fronta odložených akcí.
+    _afterDamageClicks(resume, afterQueue) {
+        const toBeginTurn = resume === 'BEGIN_TURN' && isInPlay(this.getCurrentPlayer());
+        if (afterQueue) {
+            if (toBeginTurn) this._resumeBeginTurnAfterQueue = true;
+            else this._startChecksAfterQueue = true;
+            return;
+        }
+        if (toBeginTurn) this._resumeBeginTurn();
+        else this.handleStartOfTurnChecks();
+    },
+
     takeDynamiteHit(playerIdx) {
         if (this.phase !== "DYNAMITE_DAMAGE") return;
         const pdd = this.pendingDynamiteDamage;
         if (!pdd || pdd.playerIdx !== playerIdx) return;
+        // Kam se po dobrání zásahů pokračuje – sebrat PŘED vynulováním pendingu.
+        const resume = pdd.resume;
 
         const p = this.players[playerIdx];
         p.health--;
@@ -210,10 +228,17 @@ const CombatMixin = {
             // `length > 0` prošlo, _processSpecialQueue by nic nerozeběhlo a hra by uvázla
             // ve fázi, ve které zrovna je – u dynamitu s prázdným pendingDynamiteDamage,
             // takže by na ni ani nešlo kliknout (pendingActor = null).
+            // Fistful – Ruská ruleta: zásahy mohly vyřadit KOHOKOLI u stolu (kolečko běží
+            // na začátku tahu hráče na tahu). Když hráč na tahu žije dál, jeho start tahu
+            // musí pokračovat – posunout tah by ho o něj připravilo.
+            const _rouletteResume = resume === 'BEGIN_TURN' && isInPlay(this.getCurrentPlayer());
             this._pruneSuzyQueue();
             if (this.specialActionQueue.length > 0) {
-                this._nextTurnAfterQueue = true;
+                if (_rouletteResume) this._resumeBeginTurnAfterQueue = true;
+                else this._nextTurnAfterQueue = true;
                 this._processSpecialQueue();
+            } else if (_rouletteResume) {
+                this._resumeBeginTurn();
             } else {
                 this.nextTurn();
             }
@@ -238,10 +263,10 @@ const CombatMixin = {
             // Bartova líznutí zůstala viset až za jeho vlastní fází lízání.
             this._pruneSuzyQueue();   // viz komentář u smrti na dynamit výš
             if (this.specialActionQueue.length > 0) {
-                this._startChecksAfterQueue = true;
+                this._afterDamageClicks(resume, true);
                 this._processSpecialQueue();
             } else {
-                this.handleStartOfTurnChecks();
+                this._afterDamageClicks(resume, false);
             }
             return;
         }

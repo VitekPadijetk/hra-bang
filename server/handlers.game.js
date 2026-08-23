@@ -794,6 +794,24 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // A Fistful of Cards – Ruská ruleta: hráč odhodil kartu Vedle! (z ruky, nebo zelenou
+    // ze stolu). Odhod je povinný a kolečko běží dokola, dokud někdo nemůže – ten pak
+    // schytá 2 zásahy existující klikací cestou dynamitu (fáze DYNAMITE_DAMAGE).
+    on('roulette_discard', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingRoulette?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const res = gs.rouletteDiscard(idx, { cardId: d && d.cardId, fromBoard: !!(d && d.fromBoard) });
+            if (!res) { broadcastRoom(room); return; }
+            if (res.fromBoard) {
+                emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: idx, cardId: res.card.id, boardIdx: res.boardIdx });
+            } else {
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            }
+            broadcastRoom(room);
+        });
+    });
+
     // High Noon (přibalené) – Želízka: hráč po lízání zvolil barvu pro tenhle tah.
     on('handcuffs_suit', (d) => {
         withRoom((room, p, gs) => {

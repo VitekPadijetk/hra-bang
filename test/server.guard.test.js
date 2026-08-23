@@ -165,3 +165,25 @@ test('po konci hry se herní akce už nepřijímají', () => {
     assert.equal(gs.currentPlayerIndex, 0);
     assert.equal(sock(0).rejected.length, 1);
 });
+
+// A Fistful of Cards – Ruská ruleta: kolečko běží MIMO tah, takže odhodit smí jen ten,
+// na koho se právě čeká. Bez guardu by opožděný klik odhodil kartu za dalšího v pořadí.
+test('roulette_discard od hráče mimo pořadí se zahodí', () => {
+    const { gs, sock } = mkEnv({ phase: 'ROULETTE_DISCARD' });
+    gs.activeFistful = { key: 'RUSKA_RULETA', name: 'Ruská ruleta' };
+    gs.players.forEach(p => { p.hand = [mkCard(CardType.MISSED, { name: 'Vedle!' })]; });
+    gs.pendingRoulette = { playerIdx: 0, order: [0, 1, 2, 3], pos: 0 };
+
+    const s1 = sock(1);
+    s1.fire('roulette_discard', { cardId: gs.players[1].hand[0].id, fromBoard: false });
+    assert.equal(gs.players[1].hand.length, 1, 'za cizí místo se nic neodhodilo');
+    assert.equal(gs.pendingRoulette.playerIdx, 0);
+    assert.equal(s1.rejected.length, 1);
+
+    // Ten, na koho se čeká, projde.
+    const s0 = sock(0);
+    s0.fire('roulette_discard', { cardId: gs.players[0].hand[0].id, fromBoard: false });
+    assert.equal(gs.players[0].hand.length, 0);
+    assert.equal(gs.pendingRoulette.playerIdx, 1);
+    assert.equal(s0.rejected.length, 0);
+});

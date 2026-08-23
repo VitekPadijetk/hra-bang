@@ -38,6 +38,8 @@ function pendingActor(state) {
         case 'RANCH':            return state.pendingRanch ? { idx: state.pendingRanch.playerIdx, kind: 'RANCH' } : null;
         // Fistful – Pokrevní bratři: na začátku tahu smí hráč darovat 1 život zraněnému.
         case 'BLOOD_BROTHERS':   return state.pendingBlood ? { idx: state.pendingBlood.playerIdx, kind: 'BLOOD_BROTHERS' } : null;
+        // Fistful – Ruská ruleta: kolečko „odhoď kartu Vedle!" (mimo tah i mimo obranu).
+        case 'ROULETTE_DISCARD': return state.pendingRoulette ? { idx: state.pendingRoulette.playerIdx, kind: 'ROULETTE_DISCARD' } : null;
         case 'NEW_IDENTITY':     return state.pendingNewIdentity ? { idx: state.pendingNewIdentity.playerIdx, kind: 'NEW_IDENTITY' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
@@ -75,6 +77,7 @@ const _WAIT_LABELS = {
     PEYOTE:                'Peyote – hádá barvu',
     RANCH:                 'Ranč – vyměňuje karty',
     BLOOD_BROTHERS:        'Pokrevní bratři – rozdává život',
+    ROULETTE_DISCARD:      'Ruská ruleta – odhazuje Vedle!',
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
@@ -165,6 +168,18 @@ function describePendingCheck(state, viewerIdx) {
 
     if (state.phase === 'CHECK_DRAW' && state.pendingCheckDraw?.active) {
         const pcd = state.pendingCheckDraw;
+        // Fistful – Vendeta: sejmutí na KONCI tahu (nemá kartu na stole, jen důvod).
+        if (pcd.reason === 'VENDETTA') {
+            return {
+                forMe: pcd.playerIdx === viewerIdx,
+                kind: 'VENDETTA',
+                playerIdx: pcd.playerIdx,
+                waitingName: nameOf(pcd.playerIdx),
+                short: 'Vendeta',
+                title: '🔫 Vendeta – lízni si kontrolní kartu',
+                detail: '♥ = hraješ ještě jeden tah, jinak tah končí',
+            };
+        }
         const isDynamite = pcd.dynamiteIdx !== null && pcd.dynamiteIdx !== undefined;
         return {
             forMe: pcd.playerIdx === viewerIdx,

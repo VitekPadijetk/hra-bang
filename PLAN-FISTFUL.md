@@ -6,7 +6,8 @@ se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 **Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · ✅ Fáze 2 (Léčka,
 Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · ✅ Fáze 4 (Peyote, Ranč) ·
 ✅ Fáze 5 (Opuštěný důl) · ✅ Fáze 6 (Pokrevní bratři, Fistful of Cards, Mrtvý muž) ·
-další na řadě je Fáze 7 (Ruská ruleta, Vendeta). Výklady pravidel viz sekce 2.
+✅ Fáze 7 (Ruská ruleta, Vendeta) · další na řadě je Fáze 8 (Odstřelovač, Odražená
+střela). Výklady pravidel viz sekce 2.
 
 Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
@@ -75,6 +76,32 @@ Odchylky od plánu, které vyplynuly z implementace:
   v `handlePlayerDeath` a řeší tím zároveň redakci role vráceného Mrtvého muže.
 - **Guard dostal i chybějící akce z fází 1–4** (`peyote_guess`, `ranch_exchange`,
   `claus_give`, `uncle_will`) – plán je odkládal do fáze 9, ale je to jeden řádek.
+- **Ruská ruleta nepotřebuje „klik na životy" ve vlastní fázi.** Plán počítal s tím, že
+  kdo nemá Vedle!, dostane zvýrazněné jen životy uvnitř `ROULETTE_DISCARD`. Server ale
+  „nemá čím" pozná sám (`rouletteHasCard`) a takového hráče pošle rovnou do
+  `DYNAMITE_DAMAGE` – tam už zvýrazněné životy, záchrana Pivem i Sidem, guard, klient
+  i bot fungují beze změny. `pendingActor` ve fázi `ROULETTE_DISCARD` je tím pádem VŽDY
+  hráč, který kartu má, takže se hra nemá jak zaseknout na kliku, který nikdo neudělá.
+- **Odhod v Ruské ruletě není zahrání karty.** Líznutí za Úhyb/Bibli se nespustí a Molly
+  Stark si nelíže – karta se odhazuje, ne hraje.
+- **Suzy Lafayette může na Ruskou ruletu doplatit.** Líznutí za prázdnou ruku jde do
+  fronty odložených akcí a ta se dobírá až za celým kolečkem (pravidlo „nejdřív doběhne
+  efekt zahrané karty"), takže na dalším kole nemusí mít co odhodit. Zároveň je to
+  jediné, co kolečku zaručuje konec – jinak by si Suzy doplňovala ruku donekonečna.
+- **Zásahy z Ruské rulety musí umět vrátit se do KROKOVAČE startu tahu.** `pendingDynamiteDamage`
+  dostalo `resume: 'BEGIN_TURN'` a nový trychtýř `_afterDamageClicks` (logic/combat.js),
+  kterým prochází i obě záchrany posledního života. Bez toho by po dobrání zásahů běžely
+  kontroly na Dynamit/Vězení podruhé – a hlavně: ruleta může vyřadit KOHOKOLI u stolu, ne
+  jen hráče na tahu, takže větev „smrt → nextTurn()" by hráči na tahu sebrala tah.
+- **Vendeta nepotřebuje vlastní fázi ani vlastní sejmutí.** Recykluje `CHECK_DRAW` →
+  `CHECKING` → `_applyCheckResult` jen přes nové pole `pendingCheckDraw.reason`; tím se
+  zdarma veze Lucky Duke, klientská cinematika odkrytí, banner „co a proč" i větev bota.
+- **`_vendettaDone` se nastavuje už při ZAČÁTKU sejmutí**, ne až u tahu navíc. „V jednom
+  tahu jen jednou" pak platí i pro ten tah navíc (nový `turnId`, ale týž hráč) a smyčka
+  nemůže vzniknout ani při opakovaném volání `nextTurn` z fronty odložených akcí.
+- **Tah přeskočený kvůli Vězení se na Vendetu snímá.** Tah formálně skončil; při ♥ si
+  hráč tah navíc odehraje doopravdy (Vězení už leží v odhozu). Ukončení tahu SMRTÍ
+  Vendetu naopak nespouští (`isInPlay`).
 
 ---
 
@@ -518,6 +545,10 @@ Podrobnosti jsou v CLAUDE.md, sekce „Start tahu (Fistful)".
 ---
 
 ### FÁZE 7 — Ruská ruleta a Vendeta · L
+
+✅ **Hotovo.** `test/fistful.roulette.test.js` (31) + „20 her jen botů s balíčkem samých
+Ruských ruletí a Vendet" (`test/server.bots.test.js`) + autorizace `roulette_discard`
+(`test/server.guard.test.js`). Podrobnosti viz odchylky nahoře.
 
 #### Ruská ruleta (`RUSKA_RULETA`)
 - **Pravidlo:** při příchodu karty do hry každý od šerifa po směru odhodí kartu s efektem Vedle!; první, kdo nemůže, ztrácí 2 životy a efekt končí. **Kolečko se opakuje**, dokud někdo neselže.

@@ -122,6 +122,9 @@ const HighNoonMixin = {
     _flipEvent() {
         const p = this.getCurrentPlayer();
         if (!p || this.currentPlayerIndex !== this._firstPlayerIndex()) return false;
+        // Fistful – Vendeta: na tahu navíc se nová událost NEodkrývá (R6). Musí to být
+        // ještě před počítadlem kol, jinak by tah navíc jedno kolo „spotřeboval".
+        if (this._extraTurn) return false;
         this._sheriffTurns = (this._sheriffTurns || 0) + 1;
         if (this._sheriffTurns < 2) return false;
 

@@ -1370,9 +1370,15 @@ function drawMyArea(ctx) {
         const _belleIgnoresBoard = _origIdx != null &&
             state.currentPlayerIndex === _origIdx &&
             effectiveCharacter(state.players[_origIdx]) === "Belle Star";
-        const isRespondMiss = state.phase === 'RESPOND' && state.pendingResponse?.active &&
+        const isRespondMiss = (state.phase === 'RESPOND' && state.pendingResponse?.active &&
             state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
-            !_belleIgnoresBoard && !boardDeadFor(state);
+            !_belleIgnoresBoard && !boardDeadFor(state))
+            // Fistful – Ruská ruleta: odhodit se smí i zelená Vedle!-karta ze stolu.
+            // Chová se stejně (klikatelná, nešediví se), jen se posílá jiná akce – zdroj
+            // pravdy „co se počítá" je rouletteDiscardable (core/playability.js).
+            || (state.phase === 'ROULETTE_DISCARD' && state.pendingRoulette?.playerIdx === myIndex
+                && !boardDeadFor(state));
+        const _isRouletteMine = state.phase === 'ROULETTE_DISCARD' && state.pendingRoulette?.playerIdx === myIndex;
         const myBoardSprites = [];
         myBoardCards.forEach((card, i) => {
             // Karta právě ukradená Panikou/Cat Balou: po dobu letu ji nekresli (slot
@@ -1508,8 +1514,12 @@ function drawMyArea(ctx) {
                     sprite.on('pointerover', () => { sprite.setTint(0xffff88); sprite.setScale(scaleMe * 1.06); });
                     sprite.on('pointerout', () => { sprite.setTint(0xffff44); sprite.setScale(scaleMe); });
                     sprite.on('pointerdown', () => {
-                        if (state.pendingResponse) state.pendingResponse.active = false;
-                        socket.emit('respond_to_card', { playerIdx: myIndex, cardIndex: null, boardCardId: card.id });
+                        if (_isRouletteMine) {
+                            socket.emit('roulette_discard', { cardId: card.id, fromBoard: true });
+                        } else {
+                            if (state.pendingResponse) state.pendingResponse.active = false;
+                            socket.emit('respond_to_card', { playerIdx: myIndex, cardIndex: null, boardCardId: card.id });
+                        }
                         App.blockInput = true;
                         renderUI();
                     });
@@ -1694,8 +1704,13 @@ function drawMyArea(ctx) {
                     state.phase === "RESPOND" && state.pendingResponse?.active &&
                     state.pendingResponse.targetIdx === myIndex;
                 if (_isResponsePlayable) cSprite.setTint(0xffff44);
+                // Fistful – Ruská ruleta: stejná řeč jako obrana – svítí jen karty
+                // s efektem Vedle! (odhod je povinný, nic jiného kliknout nejde).
+                const _isRoulettePick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "ROULETTE_DISCARD" && state.pendingRoulette?.playerIdx === myIndex;
+                if (_isRoulettePick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
-                const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isLawForced;
+                const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -1828,6 +1843,14 @@ function drawMyArea(ctx) {
                             // tlačítkem „VYMĚNIT“, tady se jen překresluje.
                             if (App.ranchSel.has(intent.cardId)) App.ranchSel.delete(intent.cardId);
                             else App.ranchSel.add(intent.cardId);
+                            renderUI();
+                            return;
+                        case 'ROULETTE_DISCARD':
+                            // Fistful – Ruská ruleta: odhod je povinný, žádné potvrzení.
+                            socket.emit('roulette_discard', { cardId: intent.cardId, fromBoard: false });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
                             renderUI();
                             return;
                         case 'SID_STAGE':
@@ -1989,7 +2012,7 @@ function drawMyArea(ctx) {
             // PEYOTE/RANCH (Fistful) mají OBA slotky tlačítek obsazené (tip na barvu,
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
-                 'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS'].includes(state.phase)
+                 'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced
@@ -2351,6 +2374,28 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_bbName} – Pokrevní bratři (rozdává život)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Fistful – Ruská ruleta: banner kolečka „odhoď kartu Vedle!" ────────────────
+    if (state.phase === "ROULETTE_DISCARD" && state.pendingRoulette) {
+        const _rMine = state.pendingRoulette.playerIdx === myIndex;
+        const _rName = state.players[state.pendingRoulette.playerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _rMine ? 0xff5555 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_rMine) {
+            let l1 = gameScene.add.text(960, 66, '🎲 Ruská ruleta – odhoď kartu Vedle!',
+                { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, 'Odhodit musíš – kdo nemůže, ztrácí 2 životy a efekt končí',
+                { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_rName} – Ruská ruleta (odhazuje Vedle!)`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }

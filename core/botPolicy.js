@@ -39,6 +39,10 @@ if (typeof require === 'function') {
     if (typeof lawForcedCard === 'undefined') {
         globalThis.lawForcedCard = require('./playability.js').lawForcedCard;
     }
+    // Ruská ruleta (Fistful) – samostatný guard ze stejného důvodu.
+    if (typeof rouletteDiscardable === 'undefined') {
+        globalThis.rouletteDiscardable = require('./playability.js').rouletteDiscardable;
+    }
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
@@ -825,6 +829,21 @@ function decideBotAction(state, myIndex, beliefs) {
                 });
             }
             return { event: 'blood_brothers', payload: { targetIdx: best } };
+        }
+
+        // Fistful – Ruská ruleta: odhod je povinný, jde jen o to, co bolí nejmíň.
+        // Nejdřív nejhorší karta z ruky (keepScore), zelenou Vedle!-kartu ze stolu až
+        // jako poslední možnost – ta je dlouhodobě cennější než jedno Vedle! z ruky.
+        // Kdo nemá nic, se sem vůbec nedostane (server ho rovnou posílá na 2 zásahy).
+        case 'ROULETTE_DISCARD': {
+            const opts = me.hand.filter(c => rouletteDiscardable(state, me, c, false));
+            if (opts.length) {
+                const worst = opts.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
+                return { event: 'roulette_discard', payload: { cardId: worst.id, fromBoard: false } };
+            }
+            const green = (me.board || []).find(c => rouletteDiscardable(state, me, c, true));
+            if (green) return { event: 'roulette_discard', payload: { cardId: green.id, fromBoard: true } };
+            return null;
         }
 
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom

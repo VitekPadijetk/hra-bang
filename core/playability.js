@@ -51,6 +51,13 @@ if (typeof require === 'function') {
 
 function cardPlayability(state, me, myIndex, card) {
     if (card?._placeholder) return null;
+    // Fistful – Ruská ruleta: vlastní fáze mimo tah i mimo obranu, klikatelné jsou jen
+    // karty s efektem Vedle! (odhod je povinný, „přeskočit" neexistuje). Musí to být
+    // dřív než cokoli jiného – hráč na řadě nemusí být na tahu ani cílem útoku.
+    if (state.phase === "ROULETTE_DISCARD") {
+        return state.pendingRoulette?.playerIdx === myIndex
+            ? rouletteDiscardable(state, me, card, false) : null;
+    }
     const isMyResponseTurn = isResponseTurn(state, myIndex);
     const isMyPlayTurn = isPlayTurn(state, myIndex);
     // High Noon – Želízka: ve svém tahu jen karty zvolené barvy (i jako reakce).
@@ -206,6 +213,32 @@ function lawLocksOther(state, me, myIndex, card) {
     return !!lawForcedCard(state, me, myIndex);
 }
 
+// ── A Fistful of Cards – Ruská ruleta: co se počítá za „kartu Vedle!" ────────
+// „Počínaje šerifem každý hráč odhodí kartu Vedle!. První, kdo nemůže, ztrácí 2 životy."
+// Jediný zdroj pravdy pro server (_rouletteValidCard v logic/fistful.js), klientské
+// zvýraznění (cardPlayability níž + zelené karty ve view/board.js) i bota. Rozejít se
+// nesmí: server by klik odmítl, bot by ho posílal donekonečna a hra by se zasekla.
+//   • z ruky  – Vedle!, Úhyb, u Calamity Janet i Bang!, u Eleny Fuente libovolná karta
+//               (stejný výčet jako obrana proti Bang! v logic/response.js),
+//   • ze stolu – zelená karta s efektem Vedle! (Železný plát/Sombrero/Bible); s Lasem
+//               karty na stole nic neumí, takže tehdy se nepočítají.
+// Karta se ODHAZUJE, nehraje: její vlastní efekt (líznutí za Úhyb/Bibli) se nespustí.
+function rouletteDiscardable(state, me, card, fromBoard) {
+    if (!card || card._placeholder) return false;
+    if (fromBoard) return !!card.green && card.activate === 'miss' && !boardDeadFor(state);
+    return card.type === "Vedle!" || card.type === "Úhyb" ||
+        (effectiveCharacter(me) === "Calamity Janet" && card.type === "Bang!") ||
+        effectiveCharacter(me) === "Elena Fuente";
+}
+
+// Má hráč vůbec co odhodit? Kdo nemá, ztrácí 2 životy a efekt končí.
+function rouletteHasCard(state, p) {
+    if (!p) return false;
+    return (p.hand || []).some(c => rouletteDiscardable(state, p, c, false)) ||
+           (p.board || []).some(c => rouletteDiscardable(state, p, c, true));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther };
+    module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther,
+                       rouletteDiscardable, rouletteHasCard };
 }

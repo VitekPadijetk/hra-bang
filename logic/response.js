@@ -37,7 +37,9 @@ const ResponseMixin = {
 
             if (pdd.hitsLeft <= 0) {
                 this.pendingDynamiteDamage = null;
-                this.handleStartOfTurnChecks();
+                // Ruská ruleta (Fistful) sem posílá zásahy z krokovače startu tahu →
+                // pokračuje se do něj, ne do kontrol Dynamit/Vězení (viz _afterDamageClicks).
+                this._afterDamageClicks(pdd.resume, false);
             }
             return true;
         }
@@ -95,7 +97,7 @@ const ResponseMixin = {
             pdd.hitsLeft--;
             if (pdd.hitsLeft <= 0) {
                 this.pendingDynamiteDamage = null;
-                this.handleStartOfTurnChecks();
+                this._afterDamageClicks(pdd.resume, false);   // Ruská ruleta → zpět do startu tahu
             }
             return true;
         }
