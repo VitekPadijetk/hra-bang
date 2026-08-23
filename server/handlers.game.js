@@ -668,13 +668,20 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const handleKitCarlson = (index) => {
         withRoom((room, p, gs) => {
             const kitIdx = gs.currentPlayerIndex;
-            const card = gs.kitCarlsonState?.revealed?.[index];
+            const revealed = (gs.kitCarlsonState?.revealed || []).slice();
+            const lawBefore = gs.players[kitIdx]?._lawCardId ?? null;
             gs.kitCarlsonPick(index);
-            // Fistful – Právo západu: druhá karta, kterou si Kit NECHÁ, je vynucená –
-            // ukáže se proto celému stolu (z jeho odkryté řady doprostřed a pak do ruky).
-            // Klient si podle toho odpustí vlastní let do ruky, viz startLawReveal.
-            if (card && gs.players[kitIdx]?._lawCardId === card.id) {
-                emitAnim(room, { type: 'law_reveal', playerIdx: kitIdx, card, from: 'kit', slot: index });
+            // Fistful – Právo západu: vynucená je druhá karta, kterou si Kit nechá,
+            // a to v pořadí BALÍČKU (FAQ Q12) – nemusí to tedy být ta, na kterou právě
+            // klikl. Slot se proto hledá v odkryté řadě podle ID, ne podle `index`.
+            // Ukáže se celému stolu (z řady doprostřed a pak do ruky); klient si podle
+            // toho odpustí vlastní let do ruky, viz startLawReveal a _kitLawPick.
+            const lawId = gs.players[kitIdx]?._lawCardId ?? null;
+            const lawSlot = (lawId != null && lawId !== lawBefore)
+                ? revealed.findIndex(c => c && c.id === lawId) : -1;
+            if (lawSlot !== -1) {
+                emitAnim(room, { type: 'law_reveal', playerIdx: kitIdx,
+                                 card: revealed[lawSlot], from: 'kit', slot: lawSlot });
                 room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + lawRevealMs());
             }
             broadcastRoom(room);

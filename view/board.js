@@ -2572,10 +2572,17 @@ function drawPhaseOverlays(ctx) {
             cSprite.setInteractive({ useHandCursor: true });
             cSprite.on('pointerover', () => { cSprite.setScale(0.65); cSprite.setTint(0xddffdd); });
             cSprite.on('pointerout', () => { cSprite.setScale(0.6); cSprite.clearTint(); });
-            // Fistful – Právo západu: DRUHÁ karta, kterou si Kit nechá, je vynucená a
-            // ukáže se celému stolu (server pošle law_reveal, který ji sám dopraví do
-            // ruky). Vlastní let by se s ní zdvojil, takže ho tady vynecháme.
-            const _kitLawPick = eventActive(state, 'PRAVO_ZAPADU') && (kc.pendingAdd?.length || 0) === 1;
+            // Fistful – Právo západu: vynucená je druhá karta, kterou si Kit nechá, a to
+            // v pořadí BALÍČKU, ne v pořadí klikání (FAQ Q12) – řada leží v pořadí balíčku,
+            // takže je to ta ponechaná s druhým nejnižším indexem. Rozhodne se až posledním
+            // výběrem; ukáže se pak celému stolu (server pošle law_reveal, který ji sám
+            // dopraví do ruky), takže by se s ní vlastní let zdvojil. Když ale vynucená
+            // vyjde na kartu vybranou DŘÍV, tahle poslední letí do ruky normálně a
+            // law_reveal si tu dřívější vytáhne z ruky zpátky (stará se o staging sám).
+            const _kitPicks = kc.pendingAdd || [];
+            const _kitLastPick = _kitPicks.length === (kc.needed || 2) - 1;
+            const _kitLawPick = eventActive(state, 'PRAVO_ZAPADU') && _kitLastPick &&
+                [..._kitPicks, i].sort((a, b) => a - b)[1] === i;
             let _kitPickSent = false;
             cSprite.on('pointerdown', () => {
                 if (_kitPickSent || App.revealLocked) return;

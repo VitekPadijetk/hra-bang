@@ -110,8 +110,10 @@ const CharactersMixin = {
         if (cs.toIdx === this.currentPlayerIndex) {
             cs.taken++;
             // Fistful – Právo západu: vynucená je druhá karta, kterou si Claus NECHÁ
-            // (rozdané se nepočítají – do jeho ruky nikdy nedošly).
-            this._lawMark(to, card, cs.taken);
+            // (rozdané se nepočítají – do jeho ruky nikdy nedošly), a to v pořadí
+            // BALÍČKU, ne v pořadí klikání (FAQ Q12). Rozhodne se proto až po jeho
+            // posledním výběru: `picked` má na začátku právě ty jeho.
+            if (cs.taken >= cs.keep) this._lawMarkFromRow(to, cs.revealed, cs.picked.slice(0, cs.keep));
         } else {
             cs.queue.shift();
             this.logEvent('special', { who: this.getCurrentPlayer().name,

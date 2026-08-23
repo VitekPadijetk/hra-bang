@@ -928,6 +928,19 @@ tiše odmítal ukončit a bot by posílal `end_turn` donekonečna.
   | Black Jack | jeho vlastní `BLACK_JACK_CHECK` reveal – ten markami **bliká** (barvu opravdu zkoumá), takže se `law_reveal` neposílá |
   | Claus "The Saint" | `law_reveal` s `from: 'claus'` – rozdávání se zastaví, karta vyletí ze své pozice v řadě a pak jde do ruky |
   | Kit Carlson | `law_reveal` s `from: 'kit'` – vlastník má odkrytou řadu uprostřed, ostatní parkující ruby u jeho místa (spotřebuje se jedna, jinak by ji `finishKitCarlsonSpectator` poslal do ruky ještě jednou). Klient u téhle volby vynechá vlastní let do ruky (`_kitLawPick` ve [view/board.js](view/board.js)) |
+- **Z odkryté řady (Kit Carlson, Claus) je vynucená druhá karta v pořadí BALÍČKU, ne
+  v pořadí klikání** – FAQ Q12: *„vybere si dvě a ukáže tu druhou (pozor, pořadí karet
+  měnit nesmí!)"*. Jinak by si hráč vybíral, která karta ho bude v tahu držet. Řada leží
+  v pořadí balíčku (index 0 = vrchní), takže `_lawMarkFromRow`
+  ([logic/fistful.js](logic/fistful.js)) jen seřadí PONECHANÉ indexy a vezme ten druhý;
+  volá se **až po posledním výběru** (dřív se neví, která to bude), a se Žízní (jedna
+  ponechaná) žádná vynucená není. Dvě věci z toho plynou:
+  - **Vynucená karta nemusí být ta, na kterou hráč právě klikl.** Serverové handlery ji
+    proto hledají v řadě podle ID (`lawSlot`), ne podle indexu kliku, a u Clause se navíc
+    může stát, že se pošle `claus_pick` (právě vybraná) **i** `law_reveal` (dřívější).
+  - **Když vynucená vyjde na kartu vybranou dřív, je už v ruce.** `law_reveal` ji odtud
+    vytáhne zpátky doprostřed – `startDeckCardReveal` si ji po dobu letu schová
+    (`App.pendingDrawIds`), takže se nikdy nezdvojí.
 - **Zlaté zvýraznění přebíjí všechna ostatní** — nastavuje se ve `drawMyArea` až úplně
   nakonec (i za zeleným zvýrazněním právě vybrané karty, ta se pozná vysunutím) a drží
   i po hover-outu. Hráč musí pořád vidět, která karta ho v tahu drží.

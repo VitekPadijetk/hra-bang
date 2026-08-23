@@ -131,6 +131,20 @@ const FistfulMixin = {
         this.logEvent('event', { card: 'Právo západu', who: player.name, msg: `musí zahrát ${card.name}` });
     },
 
+    // Označení z ODKRYTÉ ŘADY (Kit Carlson, Claus the Saint). Vynucená je druhá karta
+    // v pořadí BALÍČKU, ne v pořadí, ve kterém na ně hráč klikal – FAQ Q12: „Kit Carlson
+    // se podívá na 3 karty, vybere si dvě a ukáže tu druhou (pozor, pořadí karet měnit
+    // nesmí!)". Řada leží v pořadí balíčku (index 0 = vrchní karta), takže se ponechané
+    // indexy jen seřadí a vezme se ten na druhém místě. Volá se AŽ po posledním výběru –
+    // dřív se neví, která to bude.
+    // `keptIdxs` = indexy karet, které si hráč nechal SÁM (u Clause bez rozdaných).
+    _lawMarkFromRow(player, revealed, keptIdxs) {
+        if (!this.hasEvent('PRAVO_ZAPADU')) return;
+        const sorted = (keptIdxs || []).slice().sort((a, b) => a - b);
+        if (sorted.length < 2) return;   // se Žízní si nechá jen jednu → žádná vynucená
+        this._lawMark(player, revealed[sorted[1]], 2);
+    },
+
     // Drží hráče v tahu vynucená karta? Trychtýř na sdílený helper z core/playability.js –
     // úplně stejně se ptá klient i bot, jinak by server tiše odmítal „Ukončit tah".
     _lawForced(playerIdx) {

@@ -289,18 +289,46 @@ test('Právo západu: Želízka mají přednost – zakázaná barva nic nevynut
     assert.equal(g.currentPlayerIndex, 1);
 });
 
-test('Právo západu: Kit Carlson – vynucená je druhá PONECHANÁ karta', () => {
+// FAQ Q12: „Kit Carlson se podívá na 3 karty, vybere si dvě a ukáže tu druhou (pozor,
+// pořadí karet měnit nesmí!)" – vynucená je tedy druhá v pořadí BALÍČKU, ne v pořadí
+// klikání. Jinak by si Kit vždycky vybral, která karta ho bude v tahu držet.
+test('Právo západu: Kit Carlson – vynucená je druhá karta v pořadí BALÍČKU', () => {
     const g = mkEv([{ role: 'Sheriff', character: 'Kit Carlson', health: 2 }, {}], 'PRAVO_ZAPADU');
     const cards = stackDeck(g, 3, CardType.BEER);
     g.startDrawPhase();
     g.drawCard('deck');
     assert.equal(g.phase, 'KIT_CARLSON');
     g.kitCarlsonPick(2);
-    assert.ok(!g.players[0]._lawCardId, 'po první ponechané ještě nic');
+    assert.ok(!g.players[0]._lawCardId, 'po první ponechané ještě nic – neví se, která to bude');
     g.kitCarlsonPick(0);
     assert.equal(g.players[0].hand.length, 2);
-    assert.equal(g.players[0]._lawCardId, cards[0].id, 'druhá ponechaná = revealed[0]');
-    assert.equal(g.players[0].hand[0].id, cards[2].id, 'první ponechaná = revealed[2]');
+    assert.equal(g.players[0]._lawCardId, cards[2].id, 'z ponechaných {0,2} je druhá v balíčku revealed[2]');
+    assert.equal(g.players[0].hand[0].id, cards[2].id, 'první KLIKNUTÁ byla revealed[2]');
+});
+
+test('Právo západu: Kit Carlson – pořadí klikání výsledek nemění', () => {
+    const mk = () => {
+        const g = mkEv([{ role: 'Sheriff', character: 'Kit Carlson', health: 2 }, {}], 'PRAVO_ZAPADU');
+        const cards = stackDeck(g, 3, CardType.BEER);
+        g.startDrawPhase();
+        g.drawCard('deck');
+        return { g, cards };
+    };
+    const a = mk(); a.g.kitCarlsonPick(0); a.g.kitCarlsonPick(1);
+    const b = mk(); b.g.kitCarlsonPick(1); b.g.kitCarlsonPick(0);
+    assert.equal(a.g.players[0]._lawCardId, a.cards[1].id);
+    assert.equal(b.g.players[0]._lawCardId, b.cards[1].id, 'opačné pořadí kliků, stejná vynucená karta');
+});
+
+test('Právo západu: Kit Carlson se Žízní (nechá si 1) žádnou vynucenou nemá', () => {
+    const g = mkEv([{ role: 'Sheriff', character: 'Kit Carlson', health: 2 }, {}], 'PRAVO_ZAPADU');
+    g.activeEvent = hn('ZIZEN');
+    stackDeck(g, 3, CardType.BEER);
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.equal(g.kitCarlsonState.needed, 1);
+    g.kitCarlsonPick(1);
+    assert.ok(!g.players[0]._lawCardId);
 });
 
 test('Právo západu: Black Jack – vynucená je jeho odkrytá druhá karta', () => {
@@ -328,6 +356,20 @@ test('Právo západu: Claus rozdané karty neoznačuje, jen druhou vlastní', ()
     g.clausPick(2); g.clausPick(3);       // rozdané ostatním – nic nemění
     assert.equal(g.players[0]._lawCardId, forcedId);
     assert.ok(g.players[0].hand.some(c => c.id === forcedId));
+});
+
+test('Právo západu: Claus – vynucená je druhá vlastní v pořadí BALÍČKU', () => {
+    const mk = () => {
+        const g = mkEv([{ role: 'Sheriff', character: 'Claus the Saint', health: 2 }, {}, {}], 'PRAVO_ZAPADU');
+        const cards = stackDeck(g, 6, CardType.BEER);
+        g.startDrawPhase();
+        g.drawCard('deck');
+        return { g, cards };
+    };
+    const a = mk(); a.g.clausPick(0); a.g.clausPick(3);
+    const b = mk(); b.g.clausPick(3); b.g.clausPick(0);
+    assert.equal(a.g.players[0]._lawCardId, a.cards[3].id, 'z ponechaných {0,3} je druhá revealed[3]');
+    assert.equal(b.g.players[0]._lawCardId, b.cards[3].id, 'opačné pořadí kliků, stejná vynucená karta');
 });
 
 test('Právo západu: označení platí jen pro ten jeden tah', () => {

@@ -172,21 +172,32 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             const slot = d?.cardIdx;
             const giverIdx = gs.currentPlayerIndex;
             const toIdx = cs?.toIdx;
-            const card = cs?.revealed?.[slot];
+            const revealed = (cs?.revealed || []).slice();
+            const card = revealed[slot];
             if (toIdx == null || !card) return;
+            const lawBefore = gs.players[toIdx]?._lawCardId ?? null;
             if (!gs.clausPick(slot)) return;
-            // Fistful – Právo západu: druhá karta, kterou si Claus NECHÁ, je vynucená –
-            // rozdávání se na chvíli zastaví, karta se ukáže celému stolu a teprve pak
+            // Fistful – Právo západu: vynucená je druhá karta, kterou si Claus NECHÁ
+            // (rozdané se nepočítají), a to v pořadí BALÍČKU (FAQ Q12) – nemusí to tedy
+            // být ta, na kterou právě klikl. Slot se proto hledá v odkryté řadě podle ID.
+            // Rozdávání se na chvíli zastaví, karta se ukáže celému stolu a teprve pak
             // jde do ruky (v ní je zase tajná). Stav drží fronta animací na klientu.
-            if (gs.players[toIdx]?._lawCardId === card.id) {
-                emitAnim(room, { type: 'law_reveal', playerIdx: toIdx, card, from: 'claus', slot });
+            const lawId = gs.players[toIdx]?._lawCardId ?? null;
+            const lawSlot = (lawId != null && lawId !== lawBefore)
+                ? revealed.findIndex(c => c && c.id === lawId) : -1;
+            // Právě vybraná karta letí normálně – ledaže je to zrovna ta vynucená.
+            if (lawSlot !== slot) {
+                const base = { type: 'claus_pick', slot, toIdx };
+                emitAnimPrivate(room, [toIdx, giverIdx], { ...base, cardId: card.id },
+                                                         { ...base, cardId: null });
+            }
+            if (lawSlot !== -1) {
+                emitAnim(room, { type: 'law_reveal', playerIdx: toIdx,
+                                 card: revealed[lawSlot], from: 'claus', slot: lawSlot });
                 room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + lawRevealMs());
                 broadcastRoom(room);
                 return;
             }
-            const base = { type: 'claus_pick', slot, toIdx };
-            emitAnimPrivate(room, [toIdx, giverIdx], { ...base, cardId: card.id },
-                                                     { ...base, cardId: null });
             broadcastRoomDelayed(room, 380);
         });
     });

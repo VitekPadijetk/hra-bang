@@ -379,10 +379,11 @@ const DrawMixin = {
         kc.pendingAdd.push(cardIdx);
         player.hand.push(card);
         this.logEvent('draw', { who: player.name, source: 'Kit Carlson', cards: [card.name] });
-        // Fistful – Právo západu: vynucená je druhá karta, kterou si NECHÁ.
-        this._lawMark(player, card, kc.pendingAdd.length);
 
         if (kc.pendingAdd.length >= (kc.needed || 2)) {
+            // Fistful – Právo západu: vynucená je druhá karta v pořadí BALÍČKU, ne v pořadí
+            // klikání (FAQ Q12) – rozhodne se proto až tady, po posledním výběru.
+            this._lawMarkFromRow(player, kc.revealed, kc.pendingAdd);
             const pickedSet = new Set(kc.pendingAdd);
             // Nevybrané zpátky na balíček ve STEJNÉM pořadí, v jakém ležely (FAQ H6):
             // draw() bere z konce pole, takže se vrací odzadu (poslední odkrytá jde dolů).
