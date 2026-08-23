@@ -74,6 +74,9 @@ const App = {
     // postavou (blikající zvýraznění, ~8 s) a vlastní Verou (bez zvýraznění, ~2 s).
     // Naplňuje renderGameBoard, čte scene.update(). Prvky: { sprite, selfTex, copyTex }.
     veraPortraits: [],
+    // Postava útočníka, který u jediného cíle vyžaduje víc než jedno Vedle!
+    // (Slab the Killer) – v update() bliká. Naplňuje renderGameBoard (view/board.js).
+    attackPulse: [],
     // Přesná pozice rezervovaného slotu gated karty z board.js (cardId -> {x,y}).
     // Letící líznutí se na ni zaměřuje – board.js je autorita, žádný odhad slotu.
     gatedSlotPos: {},

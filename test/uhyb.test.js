@@ -67,11 +67,11 @@ test('Slab: Úhyb + Vedle! (2 uhnutí), Úhyb přesto lízne (po dokončení obr
     assert.equal(g.phase, 'PLAY');
 });
 
-test('Slab: Úhyb bez druhého Vedle! → schytá zásah, Úhyb zpět do ruky, ŽÁDNÉ líznutí', () => {
+test('Slab: Úhyb bez druhého Vedle! → schytá zásah, Úhyb ZŮSTÁVÁ v odhozu a lízne', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Slab the Killer' }, { role: 'Outlaw' }]);
     const bang = give(g, 0, CardType.BANG);
     const uhyb = give(g, 1, CardType.UHYB, uhybProps); // jediná karta v ruce cíle → idx 0
-    topDeck(g, Suits.SPADES, '4'); // kdyby (chybně) líznul, byla by to tahle
+    topDeck(g, Suits.SPADES, '4');
 
     g.playBang(0, 1, bang);
     assert.equal(g.missesRequired, 2);
@@ -81,11 +81,48 @@ test('Slab: Úhyb bez druhého Vedle! → schytá zásah, Úhyb zpět do ruky, �
 
     g.handleResponse(1, null);            // schytá zásah (nemá druhé Vedle!)
     assert.equal(g.players[1].health, 3); // dostal zásah
-    assert.equal(g.phase, 'PLAY');        // žádná UHYB_DRAW fáze
-    // Úhyb se vrátil do ruky NEPOUŽITÝ a hráč si za něj nesmí líznout kartu z balíčku.
+    // Zahraný Úhyb se nevrací – zůstává v odhozu, takže platí i jeho líznutí.
+    assert.equal(g.players[1].hand.length, 0);
+    assert.equal(g.deck.discardTop().type, CardType.UHYB);
+    assert.equal(g.phase, 'UHYB_DRAW');
+    g.uhybDraw(1);
     assert.equal(g.players[1].hand.length, 1);
-    assert.equal(g.players[1].hand[0].type, CardType.UHYB);
+    assert.equal(g.players[1].hand[0].value, '4');
+});
+
+test('Slab: zásah Úhybem obránce vyřadí → líznutí za Úhyb propadá', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Slab the Killer' },
+                      { role: 'Outlaw' }, { role: 'Renegade' }]);
+    g.players[1].health = 1;
+    const bang = give(g, 0, CardType.BANG);
+    give(g, 1, CardType.UHYB, uhybProps);
+    topDeck(g, Suits.SPADES, '4');
+
+    g.playBang(0, 1, bang);
+    g.handleResponse(1, 0);               // Úhyb: uhne 1×, líznutí ve frontě
+    g.handleResponse(1, null);            // druhé Vedle! nemá → zásah ho vyřadí
+
+    assert.equal(g.players[1].health, 0);
     assert.equal(g.specialActionQueue.filter(a => a.type === 'UHYB_DRAW').length, 0);
+    assert.notEqual(g.phase, 'UHYB_DRAW');
+});
+
+test('Slab: první Vedle! zůstane v odhozu, i když druhé nepřijde', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Slab the Killer' }, { role: 'Outlaw' }]);
+    const bang = give(g, 0, CardType.BANG);
+    give(g, 1, CardType.MISSED);          // jediné Vedle! v ruce cíle
+
+    g.playBang(0, 1, bang);
+    g.handleResponse(1, 0);               // zahraje Vedle! – proti Slabovi je potřeba druhé
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.missesPlayed, 1);
+
+    g.handleResponse(1, null);            // schytá zásah
+    assert.equal(g.players[1].health, 3);
+    assert.equal(g.players[1].hand.length, 0);          // Vedle! se NEvrací
+    assert.equal(g.deck.discardTop().type, CardType.MISSED);
+    assert.equal(g.missesPlayed, 0);
+    assert.equal(g.phase, 'PLAY');
 });
 
 test('cardPlayability: Úhyb hratelný jako reakce, ne ve vlastním tahu', () => {

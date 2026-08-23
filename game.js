@@ -2384,7 +2384,29 @@ function createScene() {
 
 function update() {
     _tickVeraPortraits();
+    // AŽ za Verou: útočící Vera Custer (kopíruje Slaba) je v obou seznamech a blikání
+    // útočníka musí přebít barvu, kterou jí nastaví _tickVeraPortraits.
+    _tickAttackPulse();
     _tickCardZoom();
+}
+
+// Slab the Killer útočí: jeho postava (obarvená ATTACK_TINT ve view/board.js) bliká,
+// ať cíl hned vidí, že jedno Vedle! nestačí. Řízeno hodinami (Date.now) → stejná fáze
+// pro každého i po překreslení; seznam staví renderGameBoard (App.attackPulse).
+const ATTACK_PULSE_MS = 620;
+function _tickAttackPulse() {
+    const list = App.attackPulse;
+    if (!list || !list.length) return;
+    // Plynulý přechod bílá ↔ červená (žádné skoky ani mizení karty).
+    const t = Math.abs(Math.sin((Date.now() % (ATTACK_PULSE_MS * 2)) / ATTACK_PULSE_MS * Math.PI));
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.IntegerToColor(0xffffff),
+        Phaser.Display.Color.IntegerToColor(0xff3333),
+        100, Math.round(t * 100));
+    const tint = Phaser.Display.Color.GetColor(c.r, c.g, c.b);
+    for (const sp of list) {
+        if (sp && sp.active) sp.setTint(tint);
+    }
 }
 
 // Vera Custer: portrét u jejího místa cyklicky střídá kopírovanou postavu a vlastní

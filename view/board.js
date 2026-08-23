@@ -53,6 +53,38 @@ function clausTargetIdx() {
     return (state?.phase === 'CLAUS_GIVE' && state.clausState) ? state.clausState.toIdx : null;
 }
 
+// ── Útočník: kdo právě míří na cíl (fáze RESPOND s jediným cílem) ───────────
+// Cíl musí na první pohled vidět, KDO na něj střílí – postava útočníka se proto
+// obarví červeně. Hromadné útoky (Kulomet/Indiáni) sem nepatří: cílem je celý
+// stůl, takže „samotný cíl" neexistuje a rozsvítit útočníka nic nevysvětluje.
+// blink = útok vyžaduje víc než jedno Vedle! (Slab the Killer) → postava bliká,
+// ať je hned jasné, proč jedno Vedle! nestačí. Bang-efekt (Úder) Slabův bonus
+// nemá, takže tam missesRequired zůstane 1 a nebliká se.
+const ATTACK_TINT = 0xff6666;
+function attackHighlight() {
+    if (!state || state.phase !== 'RESPOND') return null;
+    const pr = state.pendingResponse;
+    if (!pr || !pr.active) return null;
+    if (pr.sourceCard === CardType.GATLING || pr.sourceCard === CardType.INDIANS) return null;
+    // Duel: útočníkem je vždy ten druhý – strany se v odpovídání střídají.
+    const idx = (pr.sourceCard === CardType.DUEL && pr.targetIdx === pr.originatorIdx)
+        ? pr.initialTargetIdx : pr.originatorIdx;
+    if (idx == null || idx === pr.targetIdx) return null;
+    const atk = state.players[idx];
+    const blink = !!atk && effectiveCharacter(atk) === 'Slab the Killer' &&
+        pr.requiredCard === CardType.MISSED && (state.missesRequired || 1) > 1;
+    return { idx, blink };
+}
+
+// Obarvi postavu útočníka; blikání řeší _tickAttackPulse (game.js) nad seznamem,
+// který se – stejně jako u Very Custer – staví od nuly při každém renderu desky.
+function applyAttackTint(sprite, playerIdx, hl) {
+    if (!sprite || !hl || hl.idx !== playerIdx) return false;
+    sprite.setTint(ATTACK_TINT);
+    if (hl.blink) App.attackPulse.push(sprite);
+    return true;
+}
+
 function applyTurnTint(sprite) {
     if (!sprite) return;
     const t0 = App.turnTintStart || 0;
@@ -80,6 +112,8 @@ function renderGameBoard() {
     // Vera Custer: seznam portrétů k cyklickému přepínání se staví od nuly každý render
     // (sprity jsou nové). scene.update() pak jen animuje aktuální seznam.
     App.veraPortraits = [];
+    // Blikající postava útočníka (Slab the Killer) – stejný princip jako veraPortraits.
+    App.attackPulse = [];
 
     const centerX = 1920 / 2;
     const centerY = 1080 / 2;
@@ -400,6 +434,8 @@ function drawOpponents(ctx) {
     // Hráč, na kterého hra čeká mimo normální tah (Suzy líže, kontrola, reakce…) → jantarové zvýraznění.
     const _waiting = (typeof waitingStatus === 'function') ? waitingStatus(state) : null;
     const WAIT_TINT = 0xffb84d;
+    // Útočník u jediného cíle (RESPOND) – jeho postava se rozsvítí červeně, u Slaba bliká.
+    const _attack = attackHighlight();
 
     const renderMyIndex = myIndex ?? 0;
     let oppIdx = 0;
@@ -734,7 +770,8 @@ function drawOpponents(ctx) {
             drawCompactOpponent({
                 player, actualIdx, anchor, scaleOpp, getCharTex, L,
                 cardW, cardH, bulletH, displayCards, handFan, handLen,
-                isCurrent, isWaiting, isClausTarget, waiting: _waiting, waitTint: WAIT_TINT, starScale,
+                isCurrent, isWaiting, isClausTarget, attack: _attack,
+                waiting: _waiting, waitTint: WAIT_TINT, starScale,
                 drawBoardCard, drawHandCard, addCharInteraction,
             });
         }
@@ -752,7 +789,8 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+            if (applyAttackTint(charOpp, actualIdx, _attack)) { /* útočník – červeně */ }
+            else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
@@ -824,7 +862,8 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX, livesCY + bulletH * player.health, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+            if (applyAttackTint(charOpp, actualIdx, _attack)) { /* útočník – červeně */ }
+            else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
@@ -895,7 +934,8 @@ function drawOpponents(ctx) {
 
             let charOpp = gameScene.add.image(livesCX - bulletH * player.health, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
-            if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+            if (applyAttackTint(charOpp, actualIdx, _attack)) { /* útočník – červeně */ }
+            else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
@@ -967,7 +1007,7 @@ function drawOpponents(ctx) {
 function drawCompactOpponent(ctx) {
     const { player, actualIdx, anchor, scaleOpp, getCharTex, L,
             cardW, cardH, bulletH, displayCards, handFan, handLen,
-            isCurrent, isWaiting, isClausTarget, waiting, waitTint, starScale,
+            isCurrent, isWaiting, isClausTarget, attack, waiting, waitTint, starScale,
             drawBoardCard, drawHandCard, addCharInteraction } = ctx;
 
     const m = compactMetrics(state.players.length - 1, L);
@@ -980,7 +1020,8 @@ function drawCompactOpponent(ctx) {
 
     let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
         .setScale(scaleOpp).setAngle(angle);
-    if (isClausTarget) charOpp.setTint(CLAUS_TINT);
+    if (applyAttackTint(charOpp, actualIdx, attack)) { /* útočník – červeně */ }
+    else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
     else if (isCurrent) applyTurnTint(charOpp);
     else if (isWaiting) charOpp.setTint(waitTint);
     addCharInteraction(charOpp);
@@ -1161,6 +1202,11 @@ function drawMyArea(ctx) {
         if (App.niHideChar) charImg.setVisible(false);
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character))) charImg.setVisible(false);
+        // Střílím zrovna na někoho? Moje postava se rozsvítí u všech u stolu stejně
+        // (jediný cíl vidí, kdo na něj míří) – včetně mě, ať vím, co ostatní vidí.
+        // PŘED registrací Very: ta si obarvení uloží jako baseTint a vrací ho mezi
+        // problikáváním kopie, jinak by červená z portrétu útočící Very hned zmizela.
+        applyAttackTint(charImg, myIndex, attackHighlight());
         registerVeraPortrait(charImg, me, getCharTex);
         // Claus (Fistful) si právě bere kartu pro sebe → moje postava svítí stejně jako
         // postava kohokoli jiného, komu zrovna vybírá.
@@ -2139,7 +2185,8 @@ function drawSpectatorPlayer(ctx) {
         gameScene.cardsSprites.add(livesImg2);
         const charY2 = livesCY - bH * Math.max(0, player.health);
         const charImg2 = gameScene.add.image(livesX_adj, charY2, getCharTex(player.character)).setScale(sOpp);
-        if (isCurrent) charImg2.setTint(0x88ff88);
+        if (applyAttackTint(charImg2, 0, attackHighlight())) { /* útočník – červeně */ }
+        else if (isCurrent) charImg2.setTint(0x88ff88);
         gameScene.cardsSprites.add(charImg2);
         registerVeraPortrait(charImg2, player, getCharTex);
         if (player.role === 'Sheriff') {

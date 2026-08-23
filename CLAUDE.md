@@ -332,6 +332,33 @@ Testy: `boardBand` v `test/layout.test.js` (pixelová identita do kapacity, kons
 půdorys nad ní) a v `test/positions.test.js` invariant „pás nedosáhne na balíčky ani na
 souseda" pro **2–8 hráčů, každé sedadlo a 1–14 karet**.
 
+## Slab the Killer: zahrané Vedle! se nevrací a útočník je vidět
+
+Dvě věci, které spolu drží: proti Slabovi je potřeba **2× Vedle!** a hráč to musí vědět
+DŘÍV, než to první zahraje.
+
+- **Rozehraná Vedle! zůstávají v odhozu.** Dřív se hráči vracela do ruky, když druhé
+  Vedle! nepřišlo (`partialMisses` v [logic/response.js](logic/response.js)) – zahraná
+  karta se tím ale brala zpět, což pravidla neznají. Teď je karta prostě pryč a hráč
+  schytá zásah. Odpadl s tím i serverový návrat karty (`discard_to_hand` ve větvi
+  „schytat zásah" v [server/handlers.game.js](server/handlers.game.js)); ta animace
+  zůstává jen pro zrušené léčení Sidem Ketchumem.
+- **Úhyb si tím pádem líznutí drží** – karta byla zahraná, takže `UHYB_DRAW` ve frontě
+  platí. Vyhodí se jen tomu, koho ten zásah vyřadil (stejná podmínka jako u Suzy
+  v `_pruneSuzyQueue`; duch z Města duchů má 0 životů, ale ve hře je → lízne si).
+- **Postava útočníka se u jediného cíle rozsvítí červeně** (`attackHighlight` +
+  `applyAttackTint` ve [view/board.js](view/board.js), `ATTACK_TINT`). Zvýraznění má
+  přednost před tahem/čekáním/Clausem a kreslí se ve všech čtyřech větvích okruhu,
+  v kompaktním sloupci, v mojí zóně i v diváckém pohledu – **musí se měnit spolu**.
+  Hromadné útoky (Kulomet/Indiáni) se nezvýrazňují: cílem je celý stůl. U Duelu je
+  útočníkem vždy ta druhá strana (`targetIdx` se v odpovídání střídá).
+- **Blikání = „jedno Vedle! nestačí"**: rozhoduje `missesRequired > 1` u požadavku
+  `Vedle!`, ne jen jméno postavy – Slabův bonus totiž neplatí na bang-efekt (Úder), kde
+  by blikání lhalo. Samotný pulz je `_tickAttackPulse` v [game.js](game.js) nad seznamem
+  `App.attackPulse`, který se – stejně jako `App.veraPortraits` – staví od nuly při
+  každém renderu desky. **Volá se AŽ za `_tickVeraPortraits`**: útočící Vera Custer, která
+  kopíruje Slaba, je v obou seznamech a blikání musí přebít barvu nastavenou Verou.
+
 ## Pivo nemá efekt, když jsou ve hře dva hráči
 
 Klient to nenabízel už dřív (`cardPlayability`), ale server pravidlo hlídal jen u záchrany

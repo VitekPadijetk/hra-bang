@@ -176,18 +176,11 @@ const ResponseMixin = {
         let respondedWithCard = false;
 
         if (cardIdx === null && boardCardId == null) {
+            // Rozehraná Vedle! (proti Slabovi to první ze dvou) se hráči NEVRACÍ – zahráním
+            // se spotřebovala a zůstává v odhozu, i když druhé Vedle! nepřišlo. Hráč prostě
+            // schytá zásah. Odměna za Úhyb (UHYB_DRAW ve frontě) proto platí dál: karta byla
+            // zahraná. Vezme si ji ale jen ten, kdo zásah přežil (viz níž).
             if (this.pendingResponse.partialMisses?.length > 0) {
-                this.pendingResponse.partialMisses.forEach(pm => {
-                    this.deck.takeFromDiscard(pm.card.id);
-                    this.players[pm.playerIdx].hand.push(pm.card);
-                    // Úhyb (a jiné Vedle!-karty s `draw`) se vrací do ruky NEPOUŽITÁ (např.
-                    // proti Slabovi nebyl druhý Vedle!) → zruš i naplánovanou odměnu
-                    // (líznutí z fronty), aby si hráč nebral kartu za nezahranou kartu.
-                    for (let k = 0; k < (pm.card.draw || 0); k++) {
-                        const qi = this.specialActionQueue.findIndex(a => a.type === 'UHYB_DRAW' && a.playerIdx === pm.playerIdx);
-                        if (qi !== -1) this.specialActionQueue.splice(qi, 1);
-                    }
-                });
                 this.pendingResponse.partialMisses = [];
                 this.missesPlayed = 0;
             }
@@ -200,6 +193,16 @@ const ResponseMixin = {
                 }
             }
             this.handleDamage(playerIdx, this.pendingResponse.originatorIdx);
+
+            // Zásah hráče vyřadil → líznutí za Úhyb už nemá kdo vybrat (stejná podmínka
+            // jako u Suzy v _pruneSuzyQueue). Duch (Město duchů) hraje s 0 životy, ale
+            // ve hře je, takže si lízne.
+            if (!isInPlay(this.players[playerIdx])) {
+                for (let i = this.specialActionQueue.length - 1; i >= 0; i--) {
+                    const a = this.specialActionQueue[i];
+                    if (a.type === 'UHYB_DRAW' && a.playerIdx === playerIdx) this.specialActionQueue.splice(i, 1);
+                }
+            }
 
             if (this.winner) {
                 this.pendingResponse.active = false;

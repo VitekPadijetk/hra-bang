@@ -407,7 +407,6 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 handleAutoEndTurn(room, gs);
                 handleReshuffleAndBroadcast(room, gs);
             } else {
-                const partialMisses = gs.pendingResponse?.partialMisses?.map(pm => ({ ...pm })) || [];
                 const targetPlayer = gs.players[d.playerIdx];
                 const beerBefore = targetPlayer?.hand?.filter(c => c.type === 'Pivo').map(c => c.id) || [];
 
@@ -418,16 +417,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 }
                 handleAutoEndTurn(room, gs);
 
+                // Rozehraná Vedle! (proti Slabovi to první ze dvou) zůstávají v odhozu –
+                // hráči se nevracejí, takže tu není co animovat (viz logic/response.js).
                 let hasAnimations = false;
-
-                if (partialMisses.length > 0) {
-                    hasAnimations = true;
-                    partialMisses.forEach(pm => {
-                        setTimeout(() => {
-                            emitAnim(room, { type: 'discard_to_hand', toPlayerIdx: pm.playerIdx, cardId: pm.card?.id });
-                        }, 50);
-                    });
-                }
 
                 const beerAfter = targetPlayer?.hand?.filter(c => c.type === 'Pivo').map(c => c.id) || [];
                 const usedBeerIds = beerBefore.filter(id => !beerAfter.includes(id));

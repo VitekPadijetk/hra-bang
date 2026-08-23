@@ -1226,7 +1226,7 @@ function _liftCardFromHand(playerIdx, cardId) {
     // Zaregistruj kartu jako „letící z ruky" – room_update ji do doletu animace nevrátí
     // zpět (server ji může dočasně vrátit do ruky a znovu rozeslat, viz handFlyHideIds).
     // Po ustálení stavu (delší než nejdelší play animace + broadcast) registraci zruš –
-    // aby se stejná karta mohla později do ruky legálně vrátit (Slab: discard_to_hand).
+    // aby se stejná karta mohla později do ruky legálně vrátit (Sid Ketchum: discard_to_hand).
     if (cardId != null) {
         App.handFlyHideIds.add(cardId);
         setTimeout(() => App.handFlyHideIds.delete(cardId), 1500);
@@ -1730,7 +1730,7 @@ function _playCardAnim(data) {
             break;
         }
         case 'discard_to_hand': {
-            // Vedle se vrací z odhozu do ruky (Slab the Killer – zrušený částečný odpor).
+            // Karta se vrací z odhozu do ruky (Sid Ketchum – zrušené léčení).
             // U mě letí na svůj SKUTEČNÝ slot (staging přes pendingDrawIds, jako líznutí),
             // ne na fixní kotvu ruky – proto animateDrawToMyHand (líc nahoru, bez otáčení).
             if (data.toPlayerIdx === myIndex &&
