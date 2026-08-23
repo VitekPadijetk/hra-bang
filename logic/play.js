@@ -159,7 +159,10 @@ const PlayMixin = {
     // (bang-efekt „any" po odhození další karty). isEffect = bez limitu/Slaba.
     // `sourceName` = SKUTEČNÁ karta, která útok spustila (Úder/Nůž/Derringer/Springfield…);
     // pravidla se dál řídí `sourceCard` (typ efektu), jméno je jen pro UI/log.
-    _beginBangResolution(attackerIdx, targetIdx, isEffect = false, sourceName = null) {
+    // `ricochet` = { targetIdx, area, cardId } u Odražené střely (Fistful): vyhodnocení
+    // je úplně stejné jako u Bang! (R3), jen ve chvíli „hráč neuhnul" se místo zásahu
+    // zničí zasažená karta. Protahuje se proto celým řetězem až do pendingResponse.
+    _beginBangResolution(attackerIdx, targetIdx, isEffect = false, sourceName = null, ricochet = null) {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
 
@@ -191,7 +194,8 @@ const PlayMixin = {
                 reason: barrelReason,
                 sourceCard: CardType.BANG,
                 sourceCardName: sourceName || CardType.BANG,
-                bangEffect: isEffect
+                bangEffect: isEffect,
+                ricochet
             };
             this.phase = "BARREL_DRAW";
         } else {
@@ -203,6 +207,7 @@ const PlayMixin = {
                 sourceCard: CardType.BANG,
                 sourceCardName: sourceName || CardType.BANG,
                 bangEffect: isEffect,
+                ricochet,
                 responded: []
             };
             this.phase = "RESPOND";
@@ -313,7 +318,7 @@ const PlayMixin = {
         if (this.phase !== "BARREL_DRAW" || !this.pendingBarrelCheck?.active) return;
         const pbc = this.pendingBarrelCheck;
         this.pendingBarrelCheck = null;
-        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName);
+        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName, pbc.ricochet);
     },
 
     // Vyloží kartu (modrou i zelenou) na stůl. Nelze mít 2 karty stejného jména (D7).
@@ -332,11 +337,11 @@ const PlayMixin = {
         return false;
     },
 
-    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null) {
+    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null) {
         const target = this.players[targetIdx];
 
         if (effectiveCharacter(target) === "Lucky Duke") {
-            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect };
+            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet };
             this.startLuckyDukeCheck(checkContext);
             return;
         }
@@ -344,7 +349,7 @@ const PlayMixin = {
         const checkCard = this.deck.draw();
         this.deck.discard(checkCard);
         this.phase = "CHECKING";
-        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect };
+        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet };
     },
 
     resolveCardSelection(attackerIdx, targetCardArea, targetCardIdx) {
@@ -490,7 +495,7 @@ const PlayMixin = {
         }
     },
 
-    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false, sourceCardName = null) {
+    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false, sourceCardName = null, ricochet = null) {
         const attacker = this.players[attackerIdx];
         this.pendingResponse = {
             active: true,
@@ -500,6 +505,7 @@ const PlayMixin = {
             sourceCard: sourceCard,
             sourceCardName: sourceCardName || sourceCard,
             bangEffect: bangEffect,
+            ricochet,
             responded: []
         };
         if (!this.missesPlayed || this.missesPlayed === 0) {

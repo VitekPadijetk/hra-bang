@@ -1666,6 +1666,41 @@ function _playCardAnim(data) {
             }
             break;
         }
+        // A Fistful of Cards – Odražená střela: karta Bang! letí z ruky útočníka na
+        // zasaženou vyloženou kartu a odtud rovnou do odhozu. Se zasaženou kartou se
+        // tady NEhýbe – jestli přežije, se rozhodne až ve fázi RESPOND (její případný
+        // odlet přijde zvlášť jako board_to_discard).
+        case 'ricochet_shot': {
+            const atk = getMyPlayedCardPos(data.attackerIdx, data.cardId);
+            const to = getBoardPos(data.targetIdx, data.boardIdx ?? 0);
+            const rcTex = getCardTex(data.cardId);
+            const atkAngle = sideAngle(data.attackerIdx);
+            const tgtAngle = sideAngle(data.targetIdx);
+            const isMyShot = data.attackerIdx === myIndex;
+            // Kartu odeber z ruky útočníka teprve TEĎ, když ji zvedá animace (pozici
+            // `atk` už máme) – ať z ruky nezmizí dřív, než začne letět.
+            _liftCardFromHand(data.attackerIdx, data.cardId);
+            const afterHit = () => {
+                // Do odhozu se srovná do 0° (exactAngle – letí lícem nahoru, u cíle
+                // naproti by jinak dosedla vzhůru nohama; viz catbalou_sequence).
+                animateCard(to.x, to.y, discard.x, discard.y, rcTex, 250, null,
+                    { startAngle: tgtAngle, endAngle: 0, exactAngle: true,
+                      startScale: sideScale(data.targetIdx), endScale: pileScale(),
+                      holdUntil: () => inDiscard(data.cardId), ...mineLandOpts() });
+            };
+            // 1. leg: svůj Bang! znám (líc); cizí se za letu odhalí (rub→líc).
+            if (isMyShot) {
+                animateCard(atk.x, atk.y, to.x, to.y, rcTex, 320, afterHit,
+                    { startAngle: atkAngle, endAngle: tgtAngle, exactAngle: true,
+                      startScale: sideScale(data.attackerIdx, 'hand'), endScale: sideScale(data.targetIdx) });
+            } else {
+                animateCardFlip(atk.x, atk.y, to.x, to.y, 'card_back', rcTex,
+                    { flip: true, startAngle: atkAngle, endAngle: tgtAngle,
+                      startScale: sideScale(data.attackerIdx, 'hand'), endScale: sideScale(data.targetIdx),
+                      duration: 320, onComplete: afterHit });
+            }
+            break;
+        }
         case 'jesse_jones_draw': {
             const victim = state?.players?.[data.fromPlayerIdx];
             const vLen = victim?.hand?.length ?? 0;
@@ -2153,6 +2188,7 @@ const ANIM_MS = {
     store_pick:        420,
     panic_sequence:    640,   // 320 k cíli + 320 s ukradenou kartou zpět
     catbalou_sequence: 640,   // 320 k cíli + 320 se zničenou kartou do odhozu
+    ricochet_shot:     570,   // 320 na zasaženou kartu + 250 do odhozu
     // Nevybraná odletí hned (400), vybraná mezitím jede klasické sejmutí uprostřed
     // obrazovky: 450 nálet + 3000 výdrž s pulzem + 400 sestup do odhozu (= CHECK_REVEAL_MS).
     lucky_duke_result: 3850,
@@ -2203,6 +2239,7 @@ function _animDurationMs(data) {
 const MINE_LAND_TYPES = new Set([
     'discard', 'hand_to_discard', 'board_to_discard', 'dynamite_explode',
     'duel_exchange', 'beer_auto_save', 'panic_sequence', 'catbalou_sequence',
+    'ricochet_shot',
 ]);
 
 socket.on('card_animation', (data) => {

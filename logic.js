@@ -61,6 +61,19 @@ if (typeof rouletteDiscardable === 'undefined' && typeof require === 'function')
     globalThis.rouletteDiscardable = require('./core/playability.js').rouletteDiscardable;
     globalThis.rouletteHasCard = require('./core/playability.js').rouletteHasCard;
 }
+// A Fistful of Cards – Odstřelovač a Odražená střela: „co se počítá za kartu Bang!",
+// „zbývá volný limit Bang!/tah" a „je tenhle cíl v dostřelu". Znovu tytéž helpery pro
+// server, klienta i bota – kdyby se rozešly, server by akci odmítl a bot ji posílal dál.
+if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
+    const __pl = require('./core/playability.js');
+    globalThis.bangCardFromHand = __pl.bangCardFromHand;
+    globalThis.bangLimitFree = __pl.bangLimitFree;
+    globalThis.bangAtPlayerOk = __pl.bangAtPlayerOk;
+    globalThis.ricochetOffer = __pl.ricochetOffer;
+    globalThis.ricochetTargetOk = __pl.ricochetTargetOk;
+    globalThis.ricochetAvailable = __pl.ricochetAvailable;
+    globalThis.sniperOffer = __pl.sniperOffer;
+}
 
 class GameState {
     constructor() {

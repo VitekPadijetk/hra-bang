@@ -551,6 +551,141 @@ const FistfulMixin = {
         this.handleStartOfTurnChecks();
     },
 
+    // ── Odstřelovač: „Hráč smí ve svém tahu odhodit 2 karty Bang! najednou ──────
+    //     proti jinému hráči: ten se ubrání jen dvěma kartami Vedle!."
+    // Recykluje se „odhoď další kartu" z Dodge City: hráč zvolí cíl (startSniper), pak
+    // ve fázi DISCARD_ANOTHER zaplatí druhou kartou Bang! (discardAnotherCard) a teprve
+    // pak se útok spustí. Klient, bot i guard tím fungují beze změny.
+    //
+    // `cardIndex` = první karta Bang! v ruce, `targetIdx` = cíl. Neplatný pokus je tichý
+    // no-op (stejně jako startDiscardExtra) – klient ani bot ho podle sniperOffer nenabídnou.
+    startSniper(cardIndex, targetIdx) {
+        if (this.phase !== "PLAY") return;
+        const pIdx = this.currentPlayerIndex;
+        const player = this.getCurrentPlayer();
+        const card = player?.hand[cardIndex];
+        if (!card) return;
+        // Jediný zdroj pravdy sdílený s klientem i botem (core/playability.js): aktivní
+        // událost, moje fáze PLAY, druhá karta Bang! v ruce, volný limit, Kazatel, Želízka
+        // i Právo západu. Cíl se pak ověřuje zvlášť (dostřel + je vůbec ve hře).
+        if (!sniperOffer(this, player, pIdx, card)) return;
+        const target = this.players[targetIdx];
+        if (!target || targetIdx === pIdx || !isInPlay(target)) return;
+        if (!computeCanHit(this, pIdx, targetIdx)) return;
+
+        this.pendingDiscardAnother = {
+            playerIdx: pIdx,
+            mainCardId: card.id,
+            effect: 'sniper',
+            target: { targetIdx },
+        };
+        this.phase = "DISCARD_ANOTHER";
+    },
+
+    // Je tahle karta platnou „cenou" Odstřelovače? Ptá se jí discardAnotherCard
+    // (logic/dodgeCity.js) – neplatný klik se ignoruje, aby se hráči nespotřebovala
+    // karta, kterou platit nesmí. Stejný výčet používá klient i bot.
+    _sniperPayValid(playerIdx, card) {
+        return bangCardFromHand(this, this.players[playerIdx], playerIdx, card);
+    },
+
+    // Obě karty Bang! jsou zaplacené (leží v odhozu) → útok. Bez barelového checku (R4):
+    // ubránit se lze VÝHRADNĚ dvěma kartami Vedle!, Barel ani Jourdonnais nepomůžou.
+    // Do limitu se počítá jako JEDNO zahrání Bang! (R4).
+    _sniperAttack(playerIdx, targetIdx, mainCard, extraCard) {
+        const attacker = this.players[playerIdx];
+        const target = this.players[targetIdx];
+        const done = () => { this.phase = "PLAY"; this._processSpecialQueue(); };
+        if (!attacker || !target || targetIdx === playerIdx || !isInPlay(target)) { done(); return; }
+
+        attacker.bangsPlayedThisTurn++;
+        attacker.stats.bangsFired++;
+        this.currentAttacker = playerIdx;
+        this.logEvent('event', { card: 'Odstřelovač', who: attacker.name, target: target.name });
+
+        // Apache Kid: útok je složený ze DVOU karet, takže ho mine jen tehdy, když jsou
+        // kárové obě – jinak ta druhá dopadne (a bránit se pak stejně musí dvěma Vedle!).
+        const bothDiamonds = this._effSuit(mainCard) === Suits.DIAMONDS &&
+                             this._effSuit(extraCard) === Suits.DIAMONDS;
+        if (bothDiamonds && this._apacheImmune(targetIdx, Suits.DIAMONDS, playerIdx)) { done(); return; }
+
+        this.missesPlayed = 0;
+        this.waitForMissed(targetIdx, playerIdx, CardType.BANG, false, 'Odstřelovač');
+        // Až ZA waitForMissed – ta si missesRequired nastavuje podle Slaba (taky 2).
+        this.missesRequired = 2;
+        this._processSpecialQueue();
+    },
+
+    // ── Odražená střela: „Hráči smí hrát karty Bang! proti kartám vyloženým ─────
+    //     před ostatními hráči. Zasažený hráč smí kartu zachránit kartou Vedle!,
+    //     jinak je karta odhozena."
+    // Chová se jako normální Bang! (R3), takže se beze zbytku recykluje
+    // `_beginBangResolution`: Barel i Jourdonnais mohou kartu zachránit, Slab vyžaduje
+    // 2× Vedle! a kárová střela na Apache Kida nemá efekt. Navíc se protáhne jen
+    // `ricochet` – podle něj se ve chvíli „hráč neuhnul" místo zásahu zničí cílová karta.
+    // Do limitu 1× Bang!/tah se to NEpočítá (R2).
+    //
+    // `area` = 'weapon' | 'board', `cardId` = konkrétní karta (ne index – stůl se mohl
+    // mezi klikem a doručením přeskládat).
+    playRicochet(attackerIdx, targetIdx, area, cardId, cardIdx) {
+        if (this.phase !== "PLAY" || attackerIdx !== this.currentPlayerIndex) return;
+        const attacker = this.players[attackerIdx];
+        const card = attacker?.hand[cardIdx];
+        if (!card || card.id == null) return;
+        if (!ricochetOffer(this, attacker, attackerIdx, card)) return;
+        if (!ricochetTargetOk(this, attackerIdx, targetIdx)) return;
+
+        const target = this.players[targetIdx];
+        const hit = area === 'weapon'
+            ? ((target.weapon && target.weapon.id !== -1 && target.weapon.id === cardId) ? target.weapon : null)
+            : (target.board || []).find(c => c && c.id === cardId) || null;
+        if (!hit) return;
+
+        attacker.stats.bangsFired++;
+        this._trackCard(attackerIdx, card.type);
+        this.logEvent('bang', { who: attacker.name, target: target.name, card: `Odražená střela → ${hit.name}` });
+        this.deck.discard(attacker.hand.splice(cardIdx, 1)[0]);
+        this.currentAttacker = attackerIdx;
+        this.checkSuzyLafayette(attacker);
+
+        // Apache Kid: kárový Bang! na něj nemá efekt ani přes Odraženou střelu (R3).
+        if (this._apacheImmune(targetIdx, this._effSuit(card), attackerIdx)) {
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+            return;
+        }
+
+        this._beginBangResolution(attackerIdx, targetIdx, false, card.name,
+            { targetIdx, area, cardId: hit.id });
+        this._processSpecialQueue();
+    },
+
+    // Hráč se neubránil → cílová karta jde do odhozu. Dohledává se podle ID, ne indexu:
+    // mezi zahráním střely a koncem obrany se stůl mohl přeskládat (Suzy, Molly…).
+    // Zasažené Vězení hráče osvobodí, sestřelená zbraň se vrací na Colt .45 – obojí
+    // vyplyne samo z toho, že karta prostě zmizí ze stolu.
+    _ricochetDestroy(ric) {
+        if (!ric) return;
+        const p = this.players[ric.targetIdx];
+        if (!p) return;
+        let card = null, visBoardIdx = 0;
+        if (ric.area === 'weapon') {
+            if (p.weapon && p.weapon.id !== -1 && p.weapon.id === ric.cardId) {
+                card = p.weapon;
+                p.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+            }
+        } else {
+            const i = (p.board || []).findIndex(c => c && c.id === ric.cardId);
+            if (i !== -1) { card = p.board.splice(i, 1)[0]; visBoardIdx = 1 + i; }
+        }
+        if (!card) return;
+        this.deck.discard(card);
+        // Vizuální slot v konvenci „slot 0 = zbraň" (stejně jako u dynamitu/vězení).
+        this.lastAnimEvent = { type: 'board_to_discard', fromPlayerIdx: ric.targetIdx,
+                               cardId: card.id, boardIdx: visBoardIdx };
+        this.logEvent('event', { card: 'Odražená střela', who: p.name, msg: `přišel o ${card.name}` });
+    },
+
     // ── Mrtvý muž: „Hráč vyřazený jako první se ve svém tahu vrací se 2 životy ──
     //     a 2 kartami."
     // Kdo se vrací (nebo -1). Ptá se tím `nextTurn` (logic.js), aby ho v pořadí

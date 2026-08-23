@@ -62,6 +62,9 @@ const ResponseMixin = {
         if (this.phase === "RESPOND") {
             const pr = this.pendingResponse;
             if (!pr?.active || pr.targetIdx !== playerIdx) return false;
+            // Fistful – Odražená střela neohrožuje život, ale kartu na stole. Pivo (ani
+            // Sid) ji zachránit nemůže – jinak by šlo za jedno Pivo ubránit cokoli.
+            if (pr.ricochet) return false;
 
             this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
@@ -83,6 +86,8 @@ const ResponseMixin = {
         const aliveCount = this.players.filter(pl => pl.health > 0).length;
         if (aliveCount <= 2) return false;
         if (p.hand.length < 2) return false;
+        // Fistful – Odražená střela ohrožuje kartu na stole, ne život (viz beerLastLifeSave).
+        if (this.phase === "RESPOND" && this.pendingResponse?.ricochet) return false;
 
         const indices = [cardIdx1, cardIdx2].sort((a, b) => b - a);
         if (indices[0] >= p.hand.length || indices[1] < 0 || indices[0] === indices[1]) return false;
@@ -195,21 +200,28 @@ const ResponseMixin = {
                     orig.stats.bangsHit++;
                 }
             }
-            this.handleDamage(playerIdx, this.pendingResponse.originatorIdx);
+            // Fistful – Odražená střela: hráč neuhnul → místo zásahu se zničí zasažená
+            // karta na jeho stole (životy se nehýbou, takže se nic z toho, co na zásah
+            // navazuje, nespouští – ani Bart Cassidy, ani El Gringo, ani smrt).
+            if (this.pendingResponse.ricochet) {
+                this._ricochetDestroy(this.pendingResponse.ricochet);
+            } else {
+                this.handleDamage(playerIdx, this.pendingResponse.originatorIdx);
 
-            // Zásah hráče vyřadil → líznutí za Úhyb už nemá kdo vybrat (stejná podmínka
-            // jako u Suzy v _pruneSuzyQueue). Duch (Město duchů) hraje s 0 životy, ale
-            // ve hře je, takže si lízne.
-            if (!isInPlay(this.players[playerIdx])) {
-                for (let i = this.specialActionQueue.length - 1; i >= 0; i--) {
-                    const a = this.specialActionQueue[i];
-                    if (a.type === 'UHYB_DRAW' && a.playerIdx === playerIdx) this.specialActionQueue.splice(i, 1);
+                // Zásah hráče vyřadil → líznutí za Úhyb už nemá kdo vybrat (stejná podmínka
+                // jako u Suzy v _pruneSuzyQueue). Duch (Město duchů) hraje s 0 životy, ale
+                // ve hře je, takže si lízne.
+                if (!isInPlay(this.players[playerIdx])) {
+                    for (let i = this.specialActionQueue.length - 1; i >= 0; i--) {
+                        const a = this.specialActionQueue[i];
+                        if (a.type === 'UHYB_DRAW' && a.playerIdx === playerIdx) this.specialActionQueue.splice(i, 1);
+                    }
                 }
-            }
 
-            if (this.winner) {
-                this.pendingResponse.active = false;
-                return;
+                if (this.winner) {
+                    this.pendingResponse.active = false;
+                    return;
+                }
             }
 
             this.pendingResponse.responded.push(playerIdx);

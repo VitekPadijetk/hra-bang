@@ -408,6 +408,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.playerIdx, cardId: card?.id });
                 }
                 gs.handleResponse(d.playerIdx, d.cardIndex, d.boardCardId ?? null);
+                // Fistful – Odražená střela: obrana kartou střelu odrazí, takže tudy
+                // nikdy nic nepřijde. Emit je tu jen proto, aby event nezůstal viset
+                // (druhá větev níž ho potřebuje).
+                if (gs.lastAnimEvent) { emitAnim(room, gs.lastAnimEvent); gs.lastAnimEvent = null; }
                 // Úhyb / Bible líznutí NEřešíme tady – handleResponse zařadí UHYB_DRAW do fronty,
                 // hráč si pak klikne na balíček (viz handler 'uhyb_draw').
                 if (gs.players[d.playerIdx]?.health <= 0) {
@@ -429,6 +433,14 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // Rozehraná Vedle! (proti Slabovi to první ze dvou) zůstávají v odhozu –
                 // hráči se nevracejí, takže tu není co animovat (viz logic/response.js).
                 let hasAnimations = false;
+
+                // Fistful – Odražená střela: hráč se neubránil → zasažená karta letí ze
+                // stolu do odhozu (board_to_discard přes lastAnimEvent, jako u dynamitu).
+                if (gs.lastAnimEvent) {
+                    hasAnimations = true;
+                    emitAnim(room, gs.lastAnimEvent);
+                    gs.lastAnimEvent = null;
+                }
 
                 const beerAfter = targetPlayer?.hand?.filter(c => c.type === 'Pivo').map(c => c.id) || [];
                 const usedBeerIds = beerBefore.filter(id => !beerAfter.includes(id));
@@ -581,6 +593,43 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
 
             gs.discardAnotherCard(attackerIdx, d.extraCardIdx);
             handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    // ── A Fistful of Cards – Odstřelovač: 2 karty Bang! naráz ───────────────────
+    // Krok 1: hráč zvolil první kartu Bang! a cíl → přejde se na výběr té druhé (ceny)
+    // úplně stejnou cestou jako u „odhoď další kartu" (fáze DISCARD_ANOTHER), takže
+    // druhý krok obslouží už existující handler `discard_another_card`.
+    on('sniper_choose', (d) => {
+        withRoom((room, p, gs) => {
+            gs.startSniper(d.cardIdx, d.targetIdx);
+            if (gs.phase === 'DISCARD_ANOTHER' && d.targetIdx !== gs.currentPlayerIndex) {
+                ctx.recordBehavior?.(room, { actorIdx: gs.currentPlayerIndex, targetIdx: d.targetIdx, kind: 'hostile' });
+            }
+            broadcastRoom(room);
+        });
+    });
+
+    // ── A Fistful of Cards – Odražená střela: Bang! na vyloženou kartu ──────────
+    // Karta Bang! letí z ruky na cílovou kartu a odtud do odhozu; jestli cílová karta
+    // přežije, se rozhodne až ve fázi RESPOND (obrana kartou Vedle!).
+    on('play_ricochet', (d) => {
+        withRoom((room, p, gs) => {
+            const attacker = gs.players[d.attackerIdx];
+            const card = attacker?.hand[d.cardIdx];
+            const before = gs.phase;
+            const target = gs.players[d.targetIdx];
+            const visBoardIdx = d.area === 'weapon' ? 0 : 1 + (target?.board || []).findIndex(c => c && c.id === d.cardId);
+            gs.playRicochet(d.attackerIdx, d.targetIdx, d.area, d.cardId, d.cardIdx);
+            // Neplatný pokus (tichý no-op v pravidlech) – nic se nezahrálo, neanimuj.
+            if (gs.phase === before && attacker?.hand.some(c => c && c.id === card?.id)) {
+                broadcastRoom(room);
+                return;
+            }
+            emitAnim(room, { type: 'ricochet_shot', attackerIdx: d.attackerIdx, targetIdx: d.targetIdx,
+                             cardId: card?.id, targetCardId: d.cardId, boardIdx: visBoardIdx });
+            ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
+            broadcastRoomDelayed(room);
         });
     });
 

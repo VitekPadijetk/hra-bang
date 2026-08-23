@@ -69,6 +69,10 @@ const DodgeCityMixin = {
         const mainIdx = player.hand.findIndex(c => c.id === pending.mainCardId);
         if (mainIdx === -1) return;
         if (extraCardIdx === mainIdx || !player.hand[extraCardIdx]) return;
+        // Fistful – Odstřelovač: „cenou" musí být DRUHÁ karta Bang! (u Calamity Janet
+        // i Vedle!). Neplatný klik radši ignoruj, ať se hráči nespotřebuje karta, kterou
+        // platit nesmí – klient ani bot jinou nenabídnou (viz bangCardFromHand).
+        if (pending.effect === 'sniper' && !this._sniperPayValid(playerIdx, player.hand[extraCardIdx])) return;
 
         const { effect, target } = pending;
         this._trackCard(playerIdx, player.hand[mainIdx].type);
@@ -82,11 +86,13 @@ const DodgeCityMixin = {
 
         this.pendingDiscardAnother = null;
         this.checkSuzyLafayette(player);
-        this._dispatchDiscardExtraEffect(playerIdx, effect, target, mainCard?.name);
+        this._dispatchDiscardExtraEffect(playerIdx, effect, target, mainCard?.name, { main: mainCard, extra: extraCard });
     },
 
     // `mainName` = jméno hrané karty (Springfield/Tequila/…) – jen pro UI popisky.
-    _dispatchDiscardExtraEffect(playerIdx, effect, target, mainName = null) {
+    // `cards` = obě právě odhozené karty; potřebuje je jen Odstřelovač (Fistful), který
+    // se skládá ze dvou karet Bang! a musí u nich znát barvu (Apache Kid).
+    _dispatchDiscardExtraEffect(playerIdx, effect, target, mainName = null, cards = {}) {
         const player = this.players[playerIdx];
         if (effect === 'heal_self_2') {
             // Whisky: +2 sobě (do maxima). Přes _heal: mrtvý se neléčí, duch (Město duchů) ano.
@@ -126,6 +132,10 @@ const DodgeCityMixin = {
             this.pendingSelection = { attackerIdx: playerIdx, targetIdx, sourceCardType: CardType.PANIC, ignoreDistance: true };
             this.phase = "SELECTING_TARGET_CARD";
             this.resolveCardSelection(playerIdx, target.area, target.boardIdx);
+        } else if (effect === 'sniper') {
+            // Fistful – Odstřelovač: obě karty Bang! jsou zaplacené → útok, který jde
+            // odrazit jen dvěma kartami Vedle! (viz _sniperAttack v logic/fistful.js).
+            this._sniperAttack(playerIdx, target?.targetIdx, cards.main, cards.extra);
         } else if (effect === 'brawl') {
             // Rvačka: teprve teď (po zaplacení) si hráč vybírá po směru komu a co zahodí.
             this._startBrawl(playerIdx);

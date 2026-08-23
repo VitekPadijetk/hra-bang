@@ -199,7 +199,7 @@ const ChecksMixin = {
                 if (slabBonus > 0 && (this.missesPlayed || 0) < 1 && check.sourceCard !== CardType.GATLING) {
                     this.missesRequired = 1;
                     this.missesPlayed = 1;
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName);
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet);
                 } else {
                     if (check.sourceCard === CardType.GATLING || check.sourceCard === CardType.INDIANS) {
                         this._advanceMassAttack(check.playerIdx, check.attackerIdx, check.sourceCard);
@@ -220,11 +220,12 @@ const ChecksMixin = {
                         reason: check.reason === "JOURDONNAIS" ? "BARREL" : check.reason,
                         sourceCard: check.sourceCard,
                         sourceCardName: check.sourceCardName,
-                        bangEffect: check.bangEffect
+                        bangEffect: check.bangEffect,
+                        ricochet: check.ricochet
                     };
                     this.phase = "BARREL_DRAW";
                 } else {
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName);
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet);
                 }
             }
         }

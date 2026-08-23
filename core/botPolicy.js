@@ -43,6 +43,17 @@ if (typeof require === 'function') {
     if (typeof rouletteDiscardable === 'undefined') {
         globalThis.rouletteDiscardable = require('./playability.js').rouletteDiscardable;
     }
+    // Odstřelovač a Odražená střela (Fistful) – tytéž helpery jako server i klient.
+    if (typeof sniperOffer === 'undefined') {
+        const __pl2 = require('./playability.js');
+        globalThis.sniperOffer = __pl2.sniperOffer;
+        globalThis.ricochetOffer = __pl2.ricochetOffer;
+        globalThis.ricochetTargetOk = __pl2.ricochetTargetOk;
+        globalThis.ricochetAvailable = __pl2.ricochetAvailable;
+        globalThis.bangCardFromHand = __pl2.bangCardFromHand;
+        globalThis.bangLimitFree = __pl2.bangLimitFree;
+        globalThis.bangAtPlayerOk = __pl2.bangAtPlayerOk;
+    }
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
@@ -276,6 +287,38 @@ function chooseTargetCardArea(target, sourceType, friendly = false) {
     return { area: 'hand', cardIdx: null };
 }
 
+// ── A Fistful of Cards – Odražená střela ────────────────────────────────────
+// Kterou vyloženou kartu sestřelit? Bere se ta nejcennější PRO MAJITELE (boardCardValue),
+// a jen když mu opravdu pomáhá: Vězení ani Dynamit se nestřílí, tím bychom nepříteli
+// jen posloužili (stejná úvaha jako u Cat Balou v chooseTargetCardArea).
+function bestRicochetShot(state, myIndex, beliefs) {
+    let best = null;
+    rankEnemies(state, myIndex, beliefs, false).forEach(e => {
+        if (!ricochetTargetOk(state, myIndex, e.idx)) return;
+        const p = state.players[e.idx];
+        const take = (area, card) => {
+            if (!card) return;
+            const v = boardCardValue(card);
+            if (v <= 1) return;   // Colt/Vězení/Dynamit a jiné drobnosti nestojí za kartu
+            if (!best || v > best.value) best = { idx: e.idx, area, cardId: card.id, value: v };
+        };
+        if (p.weapon && p.weapon.id !== -1) take('weapon', p.weapon);
+        (p.board || []).forEach(c => take('board', c));
+    });
+    return best;
+}
+
+// Stojí ohrožená karta za to, aby se za ni obětovalo Vedle!? Vězení a Dynamit záměrně
+// ne – ty ať klidně odletí (majiteli tím prospějí). Zrcadlí bestRicochetShot.
+function ricochetWorthDefending(state, ric) {
+    const p = state.players[ric.targetIdx];
+    if (!p) return false;
+    const card = ric.area === 'weapon'
+        ? (p.weapon && p.weapon.id !== -1 ? p.weapon : null)
+        : (p.board || []).find(c => c && c.id === ric.cardId);
+    return !!card && boardCardValue(card) >= 2;
+}
+
 // Daltonové (High Noon): kterou ze SVÝCH modrých karet bot odhodí. Modrá = výzbroj +
 // karty na stole kromě zelených; jde ta s nejnižší hodnotou pro majitele, takže Dynamit
 // (−3) a Vězení (−2) odletí jako první – což je i takticky správně.
@@ -392,6 +435,27 @@ function decidePlay(state, myIndex, beliefs) {
         const action = getActionForCard(card, effectiveCharacter(me));
 
         if (action === 'SHOOT') {
+            // Fistful – Odstřelovač: dvě karty Bang! naráz, ubránit se lze JEN dvěma
+            // Vedle!. Vyplatí se na nepřítele s chudou rukou – tam je šance, že dvě
+            // Vedle! nemá. Přebíjí obyčejný výstřel (vyšší skóre).
+            if (sniperOffer(state, me, myIndex, card)) {
+                const st = rankEnemies(state, myIndex, beliefs, false)
+                    .find(e => e.hand <= 2 && computeCanHit(state, myIndex, e.idx));
+                if (st) consider(56 + (5 - Math.min(st.health, 5)),
+                    { event: 'sniper_choose', payload: { cardIdx: i, targetIdx: st.idx } });
+            }
+            // Fistful – Odražená střela: sestřel nepříteli barel/zbraň/vybavení. Do limitu
+            // 1× Bang!/tah se to nepočítá (R2), takže je to samostatná možnost – a jediná,
+            // která zbývá, když už limit padl (proto je karta hratelná, viz cardPlayability).
+            if (ricochetOffer(state, me, myIndex, card)) {
+                const shot = bestRicochetShot(state, myIndex, beliefs);
+                if (shot) consider(28 + shot.value, { event: 'play_ricochet',
+                    payload: { attackerIdx: myIndex, targetIdx: shot.idx, area: shot.area,
+                               cardId: shot.cardId, cardIdx: i } });
+            }
+            // Výstřel na POSTAVU jen s volným limitem – cardPlayability kartu pouští i bez
+            // něj (kvůli Odražené střele), server by ale play_bang mlčky zahodil.
+            if (!bangAtPlayerOk(state, me, myIndex, card)) return;
             const reach = bangEffectReach(card);
             const tgt = rankEnemies(state, myIndex, beliefs, false)
                 .find(e => computeCanHit(state, myIndex, e.idx, reach));
@@ -618,6 +682,14 @@ function decideBotAction(state, myIndex, beliefs) {
 
         case 'RESPOND': {
             const req = state.pendingResponse.requiredCard;
+            // Fistful – Odražená střela: v sázce není život, ale konkrétní vyložená karta.
+            // Vedle! je cennější než většina z nich, takže se brání jen to, co za to stojí
+            // (Vězení/Dynamit ať klidně odletí). Pivo ani Sid tady zachránit nemůžou –
+            // server je odmítne (viz beerLastLifeSave), takže se o ně ani nepokoušej.
+            const _rico = state.pendingResponse.ricochet;
+            if (_rico && !ricochetWorthDefending(state, _rico)) {
+                return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null } };
+            }
             // Kazatel (High Noon): ve svém tahu nesmí hráč zahrát Bang! ani jako odpověď
             // v duelu (FAQ H2) – server by kartu odmítl a bot by to zkoušel donekonečna.
             const bangBanned = req === T.BANG && bangBlockedFor(state, myIndex);
@@ -643,7 +715,7 @@ function decideBotAction(state, myIndex, beliefs) {
 
             // Pořád nelze uhnout — záchrana při posledním životě (Pivo / Sid Ketchum).
             const aliveCount = state.players.filter(p => p.health > 0).length;
-            if (me.health === 1 && aliveCount > 2) {
+            if (me.health === 1 && aliveCount > 2 && !_rico) {
                 const beerIdx = beerBlockedFor(state) ? -1
                     : me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
                 if (beerIdx !== -1) return { event: 'respond_with_beer', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
@@ -879,13 +951,19 @@ function decideBotAction(state, myIndex, beliefs) {
         // Dodge City „odhoď další kartu" – dokončení výběru ceny (bota tam přivede DE_* akce).
         case 'DISCARD_ANOTHER': {
             const mainId = state.pendingDiscardAnother?.mainCardId;
+            // Fistful – Odstřelovač: cenou smí být JEN druhá karta Bang! (server jinou
+            // ignoruje). Kdyby v ruce mezitím žádná nezbyla, akci radši zruš – jinak by
+            // bot posílal odmítaný klik donekonečna a hra by se zasekla.
+            const _snPay = state.pendingDiscardAnother?.effect === 'sniper';
             let worst = -1, worstScore = Infinity;
             me.hand.forEach((c, i) => {
                 if (c.id === mainId) return;
+                if (_snPay && !bangCardFromHand(state, me, myIndex, c)) return;
                 const s = keepScore(c);
                 if (s < worstScore) { worstScore = s; worst = i; }
             });
-            if (worst === -1) worst = me.hand.findIndex(c => c.id !== mainId);
+            if (worst === -1 && !_snPay) worst = me.hand.findIndex(c => c.id !== mainId);
+            if (worst === -1) return { event: 'cancel_discard_another' };
             return { event: 'discard_another_card', payload: { playerIdx: myIndex, extraCardIdx: worst } };
         }
 

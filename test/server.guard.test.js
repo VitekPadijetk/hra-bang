@@ -187,3 +187,42 @@ test('roulette_discard od hráče mimo pořadí se zahodí', () => {
     assert.equal(gs.pendingRoulette.playerIdx, 1);
     assert.equal(s0.rejected.length, 0);
 });
+
+// A Fistful of Cards – fáze 8: obě nové akce posouvají hru za hráče na tahu, takže je
+// od kohokoli jiného potřeba zahodit (opožděný/duplicitní klik z pomalé linky).
+test('sniper_choose a play_ricochet od hráče mimo tah se zahodí', () => {
+    const { gs, sock } = mkEnv();
+    gs.activeFistful = { key: 'ODSTRELOVAC', name: 'Odstřelovač' };
+    give(gs, 0, CardType.BANG, { name: 'Bang!' });
+    give(gs, 0, CardType.BANG, { name: 'Bang!' });
+
+    const s1 = sock(1);
+    s1.fire('sniper_choose', { cardIdx: 0, targetIdx: 1 });
+    assert.equal(gs.phase, 'PLAY', 'za cizí místo se nic nerozehrálo');
+    assert.equal(s1.rejected.length, 1);
+
+    const s0 = sock(0);
+    s0.fire('sniper_choose', { cardIdx: 0, targetIdx: 1 });
+    assert.equal(gs.phase, 'DISCARD_ANOTHER');
+    assert.equal(s0.rejected.length, 0);
+});
+
+test('play_ricochet od hráče mimo tah se zahodí', () => {
+    const { gs, sock } = mkEnv();
+    gs.activeFistful = { key: 'ODRAZENA_STRELA', name: 'Odražená střela' };
+    give(gs, 0, CardType.BANG, { name: 'Bang!' });
+    const scope = mkCard(CardType.EQUIPMENT, { name: 'Dalekohled' });
+    scope.effect = 'scope';
+    gs.players[1].board.push(scope);
+
+    const s2 = sock(2);
+    s2.fire('play_ricochet', { attackerIdx: 0, targetIdx: 1, area: 'board', cardId: scope.id, cardIdx: 0 });
+    assert.equal(gs.players[1].board.length, 1);
+    assert.equal(gs.phase, 'PLAY');
+    assert.equal(s2.rejected.length, 1);
+
+    const s0 = sock(0);
+    s0.fire('play_ricochet', { attackerIdx: 0, targetIdx: 1, area: 'board', cardId: scope.id, cardIdx: 0 });
+    assert.equal(gs.phase, 'RESPOND');
+    assert.equal(s0.rejected.length, 0);
+});

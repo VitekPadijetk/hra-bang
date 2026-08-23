@@ -21,6 +21,7 @@ module.exports = function installAnimService(ctx) {
     const MINE_LAND_TYPES = new Set([
         'discard', 'hand_to_discard', 'board_to_discard', 'dynamite_explode',
         'duel_exchange', 'beer_auto_save', 'panic_sequence', 'catbalou_sequence',
+        'ricochet_shot',
     ]);
 
     // Podrž boty po dobu doběhu, jinak by hráli „přes" něj a klientská fronta animací

@@ -132,6 +132,18 @@ function describePendingResponse(state, viewerIdx) {
         need = pr.requiredCard || 'Vedle!';
     }
 
+    // Fistful – Odražená střela: neohrožuje život, ale konkrétní vyloženou kartu. UI
+    // podle toho mění výzvu („nech kartu zničit" místo „schytej zásah") a zvýrazní ji.
+    let ricochet = null;
+    if (pr.ricochet) {
+        const owner = state.players[pr.ricochet.targetIdx];
+        const card = pr.ricochet.area === 'weapon'
+            ? (owner?.weapon && owner.weapon.id !== -1 ? owner.weapon : null)
+            : (owner?.board || []).find(c => c && c.id === pr.ricochet.cardId) || null;
+        ricochet = { targetIdx: pr.ricochet.targetIdx, area: pr.ricochet.area,
+                     cardId: pr.ricochet.cardId, cardName: card ? card.name : null };
+    }
+
     return {
         forMe: pr.targetIdx === viewerIdx,
         attackerName: attacker ? attacker.name : (pr.originatorIdx == null ? null : '?'),
@@ -139,6 +151,7 @@ function describePendingResponse(state, viewerIdx) {
         sourceLabel: _sourceLabel(pr),
         requiredCard: pr.requiredCard,
         need,
+        ricochet,
     };
 }
 

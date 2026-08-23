@@ -61,6 +61,10 @@ function clausTargetIdx() {
 // ať je hned jasné, proč jedno Vedle! nestačí. Bang-efekt (Úder) Slabův bonus
 // nemá, takže tam missesRequired zůstane 1 a nebliká se.
 const ATTACK_TINT = 0xff6666;
+// Terč Odražené střely (Fistful): vyložená karta, na kterou jde vystřelit. Červená
+// odlišuje útok od žluté „vezmu/zničím ti kartu" (Panika/Cat Balou/Ragtime).
+const RICOCHET_TINT = 0xff8866;
+
 function attackHighlight() {
     if (!state || state.phase !== 'RESPOND') return null;
     const pr = state.pendingResponse;
@@ -71,8 +75,10 @@ function attackHighlight() {
         ? pr.initialTargetIdx : pr.originatorIdx;
     if (idx == null || idx === pr.targetIdx) return null;
     const atk = state.players[idx];
-    const blink = !!atk && effectiveCharacter(atk) === 'Slab the Killer' &&
-        pr.requiredCard === CardType.MISSED && (state.missesRequired || 1) > 1;
+    // Blikání = „jedno Vedle! nestačí". Rozhoduje POČET potřebných Vedle!, ne jméno
+    // postavy: kromě Slaba the Killer to platí i pro Odstřelovače (Fistful), kde
+    // útočník žádnou zvláštní schopnost mít nemusí.
+    const blink = !!atk && pr.requiredCard === CardType.MISSED && (state.missesRequired || 1) > 1;
     return { idx, blink };
 }
 
@@ -166,6 +172,29 @@ function renderGameBoard() {
         // kartu". Pošleme cíl (hráč + konkrétní karta); server přejde na výběr ceny.
         if (selectedState.action === 'DE_STEAL' && selectedState.cardIndex !== null) {
             socket.emit('discard_extra_choose', { cardIdx: selectedState.cardIndex, targetIdx, area, boardIdx });
+            selectedState = { cardIndex: null, action: null };
+            App.blockInput = true;
+            renderUI();
+            return true;
+        }
+        // Fistful – Odražená střela: s vybraným Bang! se klikem na CIZÍ vyloženou kartu
+        // střílí na ni (klikatelná je jen tehdy, viz isRicochetTarget v drawOpponents).
+        if (area !== 'hand' && targetIdx !== myIndex && selectedState.action === 'SHOOT' &&
+            selectedState.cardIndex !== null && !selectedState.sniper &&
+            ricochetOffer(state, me, myIndex, me.hand[selectedState.cardIndex])) {
+            const victim = state.players[targetIdx];
+            const shotId = area === 'weapon' ? victim?.weapon?.id : victim?.board?.[boardIdx]?.id;
+            if (shotId == null) return false;
+            const capturedIdx = selectedState.cardIndex;
+            socket.emit('play_ricochet', { attackerIdx: myIndex, targetIdx, area, cardId: shotId, cardIdx: capturedIdx });
+            // Slot, ze kterého Bang! vzlétá (jako u Paniky/Cat Balou) – kdyby kartu z ruky
+            // odebral dřív room_update, ať vyletí přesně odtud, ne z obecné kotvy ruky.
+            const shotCard = state?.players?.[myIndex]?.hand?.[capturedIdx];
+            if (shotCard?.id != null) {
+                App.playedCardFromPos[shotCard.id] =
+                    getHandSlotPos(myIndex, capturedIdx, state.players[myIndex].hand.length);
+            }
+            state.phase = "RESPOND";
             selectedState = { cardIndex: null, action: null };
             App.blockInput = true;
             renderUI();
@@ -438,6 +467,22 @@ function drawOpponents(ctx) {
     const _attack = attackHighlight();
 
     const renderMyIndex = myIndex ?? 0;
+    // Fistful – Odražená střela / Odstřelovač: obojí se rozehrává z VYBRANÉ karty Bang!
+    // v ruce, takže se kontext spočítá jednou pro celý okruh.
+    //   _selCard        = právě vybraná karta z ruky (u zelených karet / Doca je null),
+    //   _ricoArmed      = smí ta karta letět na vyloženou kartu soupeře (R1: dostřel platí),
+    //   _shootAtPlayer  = smí letět na POSTAVU. Odražená střela se do limitu 1× Bang!/tah
+    //                     nepočítá (R2), takže karta může být vybraná i s vyčerpaným
+    //                     limitem – tehdy svítí jen vyložené karty, postavy ne.
+    const _selMe = myIndex != null ? state.players[myIndex] : null;
+    const _selCard = (_selMe && selectedState.cardIndex != null) ? _selMe.hand[selectedState.cardIndex] : null;
+    // Odstřelovač je nabitý jen tehdy, když ho pravidla pořád nabízejí – stav se mohl
+    // mezi nabitím a klikem změnit a server by akci mlčky zahodil.
+    const _sniperArmed = !!selectedState.sniper && !!_selCard && selectedState.action === 'SHOOT' &&
+        sniperOffer(state, _selMe, myIndex, _selCard);
+    const _ricoArmed = !App.blockInput && !_sniperArmed && selectedState.action === 'SHOOT' &&
+        !!_selCard && ricochetOffer(state, _selMe, myIndex, _selCard);
+    const _shootAtPlayer = !_selCard || bangAtPlayerOk(state, _selMe, myIndex, _selCard);
     let oppIdx = 0;
     for (let i = 1; i < state.players.length; i++) {
         let actualIdx = (renderMyIndex + i) % state.players.length;
@@ -467,6 +512,8 @@ function drawOpponents(ctx) {
         const canTargetThisPlayer = !App.blockInput && (
             (isPanicCBActive && panicInRange && player.health > 0) ||
             (isDeSteal && player.health > 0) || isServerCardSelect);
+        // Fistful – Odražená střela: klikatelné jsou VYLOŽENÉ karty soupeře v dostřelu.
+        const isRicochetTarget = _ricoArmed && ricochetTargetOk(state, myIndex, actualIdx);
         // Fistful – Pokrevní bratři: na začátku svého tahu smí hráč darovat 1 život
         // zraněnému spoluhráči. Cíl se vybírá klikem na jeho postavu; seznam platných
         // cílů posílá server (pendingBlood.targets), ať se klient s pravidly nerozejde.
@@ -553,7 +600,7 @@ function drawOpponents(ctx) {
                 ? player.health > 0
                 : (isInPlay(player) && player.health < player.maxHealth));   // duch (Město duchů) se léčit smí
             const canActuallyTarget = (
-                (isShoot && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ||
+                (isShoot && _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ||
                 isDuel ||
                 (isJail && player.role !== "Sheriff" && !(player.board||[]).some(c => c.type === "Vězení")) ||
                 (deMode && deValid)
@@ -563,7 +610,7 @@ function drawOpponents(ctx) {
             sprite._zoomKey = 'char:' + actualIdx;   // stabilní klíč zoomu (přežije překreslení)
 
             if (isShoot) {
-                    const canShoot = computeCanHit(state, myIndex, actualIdx, selectedState.reach);
+                    const canShoot = _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach);
                     sprite.setTint(canShoot ? 0x88ff88 : 0xff6666);
                 } else if (isDuel) {
                     sprite.setTint(0x88ff88);
@@ -579,8 +626,12 @@ function drawOpponents(ctx) {
 
             sprite.on('pointerdown', () => {
                 if (selectedState.action === 'SHOOT' && (selectedState.cardIndex !== null || selectedState.greenCardId != null || selectedState.doc)) {
-                    if (computeCanHit(state, myIndex, actualIdx, selectedState.reach)) {
-                        if (selectedState.doc) {
+                    if (_shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) {
+                        if (_sniperArmed) {
+                            // Fistful – Odstřelovač: cíl je zvolený, druhou kartu Bang!
+                            // (cenu) vybere hráč ve fázi DISCARD_ANOTHER.
+                            socket.emit('sniper_choose', { cardIdx: selectedState.cardIndex, targetIdx: actualIdx });
+                        } else if (selectedState.doc) {
                             // Doc Holyday: 2 odhozené karty + cíl → bang-efekt.
                             socket.emit('doc_holyday', { cardIndices: selectedState.doc.staged, targetIdx: actualIdx });
                         } else if (selectedState.greenCardId != null) {
@@ -591,7 +642,9 @@ function drawOpponents(ctx) {
                             socket.emit('play_bang', { attackerIdx: myIndex, targetIdx: actualIdx, cardIdx: capturedIdx });
                             optimisticRemoveCard(capturedIdx);
                         }
-                        state.phase = "RESPOND";
+                        // Odstřelovač jde nejdřív na výběr druhé karty (DISCARD_ANOTHER),
+                        // ne rovnou do obrany – fázi si tedy dopředu nepřepisuj.
+                        if (!_sniperArmed) state.phase = "RESPOND";
                         selectedState = { cardIndex: null, action: null };
                         App.blockInput = true;
                         renderUI();
@@ -623,7 +676,7 @@ function drawOpponents(ctx) {
             sprite.on('pointerover', () => {
                 startCardZoom(getCharTex(player.character), 'char:' + actualIdx);
                 if (selectedState.action === 'SHOOT') {
-                    sprite.setTint(computeCanHit(state, myIndex, actualIdx, selectedState.reach) ? 0x00ff00 : 0xff0000);
+                    sprite.setTint((_shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ? 0x00ff00 : 0xff0000);
                     sprite.setScale(scaleOpp * 1.1);
                 } else if (selectedState.action === 'Duel') {
                     sprite.setTint(0x00ff00);
@@ -641,7 +694,7 @@ function drawOpponents(ctx) {
             sprite.on('pointerout', () => {
                 scheduleZoomFade();
                 sprite.setScale(scaleOpp);
-                if (selectedState.action === 'SHOOT') sprite.setTint(computeCanHit(state, myIndex, actualIdx, selectedState.reach) ? 0x88ff88 : 0xff6666);
+                if (selectedState.action === 'SHOOT') sprite.setTint((_shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ? 0x88ff88 : 0xff6666);
                 else if (selectedState.action === 'Duel') sprite.setTint(0x88ff88);
                 else if (selectedState.action === 'Vězení') {
                     const aj = (player.board || []).some(c => c.type === "Vězení");
@@ -694,7 +747,7 @@ function drawOpponents(ctx) {
             const tex = card._isRole ? card._roleTex : getTex(card.id);
             let bCard = gameScene.add.image(x, y, tex).setScale(scaleOpp).setAngle(angle);
 
-            bCard.setInteractive({ useHandCursor: (canTargetThisPlayer || isPatDraw) && !card._isRole });
+            bCard.setInteractive({ useHandCursor: (canTargetThisPlayer || isPatDraw || isRicochetTarget) && !card._isRole });
             // Zvětšit jde i karta role (vyřazený hráč / hra pro 3) – text na ní je vysázený
             // drobně a v herní velikosti se nedá přečíst. Klik na ni nikdy nejde (kurzor
             // zůstává šipkou), klíč zoomu je stejný jako u mojí role v drawMyArea.
@@ -723,6 +776,19 @@ function drawOpponents(ctx) {
                     socket.emit('draw_card', { source: 'board', sourceIdx: actualIdx, area: isWeapon ? 'weapon' : 'board', cardIdx: boardIdx });
                     App.blockInput = true;
                     renderUI();
+                });
+            } else if (isRicochetTarget && !card._isRole) {
+                // Fistful – Odražená střela: klik na vyloženou kartu = vystřel na NI.
+                // Terč se od žluté krádeže odlišuje červenou (je to útok, ne braní karty).
+                bCard.setTint(RICOCHET_TINT);
+                bCard.on('pointerover', () => bCard.setTint(0xff5555));
+                bCard.on('pointerout', () => bCard.setTint(RICOCHET_TINT));
+                bCard.on('pointerdown', () => {
+                    const realBIdx = bIdx - (_roleSlot ? 1 : 0);
+                    const hasWeapon = player.weapon && player.weapon.id !== -1;
+                    const isWeapon = hasWeapon && realBIdx === 0;
+                    const boardIdx = isWeapon ? null : (hasWeapon ? realBIdx - 1 : realBIdx);
+                    handlePanicCBClick(actualIdx, isWeapon ? 'weapon' : 'board', boardIdx);
                 });
             }
             gameScene.cardsSprites.add(bCard);
@@ -1103,6 +1169,15 @@ function drawMyArea(ctx) {
     // _lawLocked) i bot – rozejít se nesmí, jinak by UI slibovalo akce, které server
     // tiše odmítá.
     const _lawForced = lawForcedCard(state, me, myIndex);
+    // Fistful – Odstřelovač: s vybranou kartou Bang! jde nabídnout útok dvěma kartami
+    // naráz (cíl se pak ubrání JEN dvěma Vedle!). Tlačítko obsadí slot schopností, takže
+    // se v tu chvíli Sid/Chuck/José/Doc/Will nekreslí – hráč zrovna míří.
+    const _selHandCard = selectedState.cardIndex != null ? me.hand[selectedState.cardIndex] : null;
+    const _sniperCan = selectedState.action === 'SHOOT' && !!_selHandCard &&
+        sniperOffer(state, me, myIndex, _selHandCard);
+    // Fistful – Odražená střela: v obraně nejde o život, ale o konkrétní vyloženou kartu.
+    const _ricoDefend = (state.phase === "RESPOND" && state.pendingResponse?.active &&
+        state.pendingResponse.targetIdx === myIndex) ? (state.pendingResponse.ricochet || null) : null;
 
         const livesX = L.livesX;
         const myBaseY = L.myBaseY;
@@ -1435,6 +1510,16 @@ function drawMyArea(ctx) {
             bSprite.on('pointerout', scheduleZoomFade);
         });
 
+        // Fistful – Odražená střela: karta, o kterou právě jde. Ať hráč vidí, co brání
+        // (životy zůstávají netknuté – Pivo ani Sid ji zachránit nemůžou).
+        if (_ricoDefend) {
+            myBoardSprites.forEach(({ sprite, card }) => {
+                if (card._isColt || card.id !== _ricoDefend.cardId) return;
+                sprite.setTint(RICOCHET_TINT);
+                App.attackPulse.push(sprite);
+            });
+        }
+
         if (isPanicCBMyTurn) {
             myBoardSprites.forEach(({ sprite, card, i }) => {
                 if (card._isColt) return;
@@ -1635,6 +1720,11 @@ function drawMyArea(ctx) {
                 // Sida Ketchuma, hráč pak klikne na jinou kartu (cenu). Ostatní se zvýrazní.
                 const isDiscardAnother = state.phase === "DISCARD_ANOTHER" && state.pendingDiscardAnother?.playerIdx === myIndex;
                 const isDAmain = isDiscardAnother && card.id === state.pendingDiscardAnother.mainCardId;
+                // Fistful – Odstřelovač: „cenou" smí být JEN druhá karta Bang! (u Calamity
+                // Janet i Vedle!) – server jiný klik ignoruje, takže se ani nesmí nabízet.
+                const _sniperPayOk = !isDiscardAnother || isDAmain ||
+                    state.pendingDiscardAnother.effect !== 'sniper' ||
+                    bangCardFromHand(state, me, myIndex, card);
                 // Uncle Will: nabitá schopnost čeká na kartu, kterou zahraje jako
                 // Hokynářství (stejný režim jako José/Doc).
                 // (Claus "The Saint" tudy NECHODÍ – rozděluje odkrytou řadu uprostřed
@@ -1675,7 +1765,7 @@ function drawMyArea(ctx) {
 
                 // „Odhoď další kartu": hlavní (zmenšená) karta zašedne, ostatní červeně
                 // (vyber cenu) – stejné zvýraznění jako u odhazování Sida Ketchuma.
-                if (isDiscardAnother) cSprite.setTint(isDAmain ? 0xbbbbbb : 0xff6666);
+                if (isDiscardAnother) cSprite.setTint(isDAmain ? 0xbbbbbb : (_sniperPayOk ? 0xff6666 : 0x777777));
                 // Doc: vybrané (2) karty zašednou; José Delgado: modré karty žlutě.
                 if (isDocStaged) cSprite.setTint(0xbbbbbb);
                 if (isJoseBlue) cSprite.setTint(0xffff44);
@@ -1688,7 +1778,8 @@ function drawMyArea(ctx) {
                 const _aliveNow = state.players.filter(p => p.health > 0).length;
                 const _isLastLifeBeer = card.type === "Pivo" && me.health === 1 && _aliveNow > 2 && !isMySidActive &&
                     !beerBlockedFor(state) &&
-                    ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex) ||
+                    ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex
+                      && !state.pendingResponse.ricochet) ||
                      (state.phase === "DYNAMITE_DAMAGE" && state.pendingDynamiteDamage?.playerIdx === myIndex) ||
                      (state.phase === "NOON_DAMAGE" && state.pendingNoonDamage?.playerIdx === myIndex));
                 if (_isLastLifeBeer) cSprite.setTint(0xffff44);
@@ -1789,6 +1880,7 @@ function drawMyArea(ctx) {
                             renderUI();
                             return;
                         }
+                        if (!_sniperPayOk) return;   // Odstřelovač: jen druhý Bang!
                         socket.emit('discard_another_card', { playerIdx: myIndex, extraCardIdx: index });
                         App.blockInput = true;
                         renderUI();
@@ -1922,6 +2014,10 @@ function drawMyArea(ctx) {
                         case 'SELECT':
                             selectedState.cardIndex = intent.index;
                             selectedState.action = intent.action;
+                            // Fistful – Odstřelovač: nabití patří KONKRÉTNÍ kartě, výběr
+                            // jiné ho ruší (jinak by zůstalo viset u karty, se kterou už
+                            // pravidla Odstřelovače nenabízejí).
+                            delete selectedState.sniper;
                             // Dostřel pro míření: u karet s bang-efektem (Úder) se liší od
                             // zbraně (undefined = dostřel zbraně, číslo, nebo Infinity).
                             selectedState.reach = bangEffectReach(card);
@@ -2015,7 +2111,7 @@ function drawMyArea(ctx) {
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
-            && !_lawForced
+            && !_lawForced && !_sniperCan
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
@@ -2040,7 +2136,8 @@ function drawMyArea(ctx) {
             const _aliveForSid = state.players.filter(p => p.health > 0).length;
             const _sidLastLifeCtx = effectiveCharacter(me) === "Sid Ketchum" && me.health === 1 &&
                 me.hand.filter(c => !c._placeholder).length >= 2 && _aliveForSid > 2 &&
-                ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex) ||
+                ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex
+                  && !state.pendingResponse.ricochet) ||
                  (state.phase === "DYNAMITE_DAMAGE" && state.pendingDynamiteDamage?.playerIdx === myIndex) ||
                  (state.phase === "NOON_DAMAGE" && state.pendingNoonDamage?.playerIdx === myIndex));
             if (_sidLastLifeCtx) {
@@ -2152,13 +2249,31 @@ function drawMyArea(ctx) {
             if (App.blockInput) { _bbSkip.setAlpha(0.45); _bbSkip.disableInteractive(); }
         }
 
+        // ── A Fistful of Cards – Odstřelovač: 2 karty Bang! naráz ──────────────
+        // Nabídne se jen s vybranou kartou Bang! v ruce (a druhou v záloze). Nabitý
+        // režim pak čeká na klik na postavu cíle; cenu vybere hráč až ve fázi
+        // DISCARD_ANOTHER (stejná cesta jako „odhoď další kartu" z Dodge City).
+        if (_sniperCan) {
+            const _snArmed = !!selectedState.sniper;
+            const { bg: _snBtn } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH,
+                _snArmed ? 'ODSTŘELOVAČ: zrušit ↩' : '🎯 ODSTŘELOVAČ: 2× BANG!', {
+                ...themeToggleStyle(_snArmed), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    if (_snArmed) delete selectedState.sniper; else selectedState.sniper = true;
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _snBtn.setAlpha(0.45); _snBtn.disableInteractive(); }
+        }
+
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────
         {
             // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
             // jiného (server to odmítne, viz _lawLocked) – tlačítka schopností se proto
             // vůbec nekreslí. Po zahrání vynucené karty jsou zase k dispozici.
             const myPlayTurn = state.phase === "PLAY" && state.currentPlayerIndex === myIndex &&
-                !App.blockInput && !_lawForced;
+                !App.blockInput && !_lawForced && !_sniperCan;
             const BTN_Y = L.btnAbilY;   // stejné místo jako [ SID: … ]
             // Chuck Wengam: klik → nabít (zvýrazní se životy); klik na životy = −1 ❤ → 2 karty.
             if (myPlayTurn && effectiveCharacter(me) === "Chuck Wengam" && me.health > 1) {
@@ -2170,7 +2285,7 @@ function drawMyArea(ctx) {
             }
             // José Delgado: odhoď modrou → 2 karty (max 2×). Aktivní režim vybere modrou v ruce.
             if (effectiveCharacter(me) === "José Delgado" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
-                (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput) {
+                (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput && !_sniperCan) {
                 const active = !!selectedState.jose;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
                     ...themeToggleStyle(active), fontSize: '21px',
@@ -2179,7 +2294,7 @@ function drawMyArea(ctx) {
             }
             // Doc Holyday: odhoď 2 karty → bang-efekt na cíl v dostřelu (1×/tah).
             if (effectiveCharacter(me) === "Doc Holyday" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
-                !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput) {
+                !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput && !_sniperCan) {
                 const active = !!selectedState.doc;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
                     ...themeToggleStyle(active), fontSize: '21px',
@@ -2341,16 +2456,24 @@ function drawPhaseOverlays(ctx) {
             const _pf = state.pendingFistful;
             const _ffLeft = (_pf && _pf.playerIdx === state.pendingResponse.targetIdx) ? _pf.hitsLeft : 0;
             const _more = _ffLeft > 0 ? ` (pak ještě ${_ffLeft}×)` : '';
+            // Fistful – Odražená střela: neohrožuje život, ale konkrétní vyloženou kartu
+            // (ta se zároveň rozsvítí, viz _ricoDefend v drawMyArea).
+            const _rcName = d.ricochet ? (d.ricochet.cardName || 'vyloženou kartu') : null;
             if (d.forMe) {
-                let l1 = gameScene.add.text(960, 66, `⚔️ ${d.sourceLabel}${_from}!${_more}`,
+                let l1 = gameScene.add.text(960, 66,
+                    _rcName ? `⚔️ Odražená střela${_from} – ${_rcName}!` : `⚔️ ${d.sourceLabel}${_from}!${_more}`,
                     { fontSize: '34px', color: '#ff6666', fontStyle: 'bold' }).setOrigin(0.5);
                 mAdd(l1, 206);
-                let l2 = gameScene.add.text(960, 112, `Zahraj ${d.need}, nebo klikni na své životy a schytej zásah`,
+                let l2 = gameScene.add.text(960, 112,
+                    _rcName ? `Zahraj ${d.need}, nebo klikni na své životy a nech kartu zničit`
+                            : `Zahraj ${d.need}, nebo klikni na své životy a schytej zásah`,
                     { fontSize: '23px', color: '#ffdddd' }).setOrigin(0.5);
                 mAdd(l2, 206);
             } else {
                 let l1 = gameScene.add.text(960, 92,
-                    `⏳ Čeká se na hráče ${d.targetName} – brání se proti ${d.sourceLabel}${_from ? ' (' + _from.trim() + ')' : ''}${_more}`,
+                    _rcName
+                        ? `⏳ Čeká se na hráče ${d.targetName} – brání ${_rcName} před Odraženou střelou${_from ? ' (' + _from.trim() + ')' : ''}`
+                        : `⏳ Čeká se na hráče ${d.targetName} – brání se proti ${d.sourceLabel}${_from ? ' (' + _from.trim() + ')' : ''}${_more}`,
                     { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
                 mAdd(l1, 206);
             }
@@ -2581,7 +2704,11 @@ function drawPhaseOverlays(ctx) {
 
     // „Odhoď další kartu" (Dodge City): banner. Zrušení = klik zpět na hlavní (hranou) kartu.
     if (state.phase === "DISCARD_ANOTHER" && state.pendingDiscardAnother?.playerIdx === myIndex) {
-        let l1 = gameScene.add.text(960, 70, 'Klikni na kartu, kterou odhodíš jako cenu',
+        // Fistful – Odstřelovač: cenou je DRUHÁ karta Bang!, ne libovolná karta.
+        const _daSniper = state.pendingDiscardAnother.effect === 'sniper';
+        let l1 = gameScene.add.text(960, 70,
+            _daSniper ? '🎯 Odstřelovač – klikni na druhou kartu Bang!'
+                      : 'Klikni na kartu, kterou odhodíš jako cenu',
             { fontSize: '26px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
         mAdd(l1, 206);
     }

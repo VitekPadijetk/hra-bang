@@ -641,6 +641,49 @@ test('20 her jen botů jede i s balíčkem samých Ruských ruletí a Vendet', (
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u fáze 7');
 });
 
+// Cílená zátěž na fázi 8 Fistfulu: v balíčku jsou JEN Odstřelovač a Odražená střela.
+// Obě mění, co smí bot s kartou Bang! udělat – Odstřelovač jde přes fázi DISCARD_ANOTHER
+// (cenou MUSÍ být druhá karta Bang!, jinak server klik ignoruje) a Odražená střela dělá
+// z karty Bang! hratelnou kartu i s vyčerpaným limitem, což je přesně to, na čem se
+// klient/bot a server můžou rozejít = zaseknutá hra.
+test('20 her jen botů jede i s balíčkem samých Odstřelovačů a Odražených střel', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const ffEv = (key) => {
+        const c = fistfulCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: true, fistful: true },
+                           highNoonExtra: true };
+            const room = { id: 'ff8_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Líže se pop() z konce → karta „vespod" zůstává na indexu 0.
+            const deck = [ffEv('FISTFUL_OF_CARDS')];
+            for (let i = 0; i < 12; i++) deck.push(ffEv(i % 2 ? 'ODSTRELOVAC' : 'ODRAZENA_STRELA'));
+            gs.ffDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `FF8 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `FF8 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            if (gs.ffPile.length) flipped++;
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 15, `události se opravdu odkrývaly (jen ${flipped} z 20 her)`);
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani u fáze 8');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

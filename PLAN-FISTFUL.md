@@ -6,8 +6,8 @@ se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 **Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · ✅ Fáze 2 (Léčka,
 Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · ✅ Fáze 4 (Peyote, Ranč) ·
 ✅ Fáze 5 (Opuštěný důl) · ✅ Fáze 6 (Pokrevní bratři, Fistful of Cards, Mrtvý muž) ·
-✅ Fáze 7 (Ruská ruleta, Vendeta) · další na řadě je Fáze 8 (Odstřelovač, Odražená
-střela). Výklady pravidel viz sekce 2.
+✅ Fáze 7 (Ruská ruleta, Vendeta) · ✅ Fáze 8 (Odstřelovač, Odražená střela) ·
+další na řadě je Fáze 9 (bot, zátěž, dokumentace). Výklady pravidel viz sekce 2.
 
 Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
@@ -82,6 +82,31 @@ Odchylky od plánu, které vyplynuly z implementace:
   `DYNAMITE_DAMAGE` – tam už zvýrazněné životy, záchrana Pivem i Sidem, guard, klient
   i bot fungují beze změny. `pendingActor` ve fázi `ROULETTE_DISCARD` je tím pádem VŽDY
   hráč, který kartu má, takže se hra nemá jak zaseknout na kliku, který nikdo neudělá.
+- **Odražená střela dělá z karty Bang! hratelnou kartu i s vyčerpaným limitem.** R2 říká,
+  že se do limitu nepočítá – aby si ji hráč vůbec mohl vybrat, musí ji `cardPlayability`
+  pustit. Přibyl proto `bangAtPlayerOk`: klient s ním zhasne POSTAVY (ty už se s vyčerpaným
+  limitem střílet nedají) a bot přeskočí větev `play_bang`. Bez toho by klient nabízel
+  výstřel, který server mlčky zahodí, a bot by ho posílal donekonečna.
+- **Odražená střela se protahuje celým řetězem vyhodnocení Bang!**, ne přes globální
+  pole na `GameState`: `_beginBangResolution(..., ricochet)` → `pendingBarrelCheck` →
+  `startBarrelCheck` → `currentCheck` (i checkContext Lucky Duka) → `waitForMissed` →
+  `pendingResponse`. Díky tomu barel, Jourdonnais i Slabovy dvě Vedle! fungují samy
+  a v `handleResponse` stačí jediná odbočka „místo zásahu znič kartu".
+- **Pivo ani Sid Ketchum před Odraženou střelou nezachrání.** Ohrožený není život, ale
+  karta – bez gate v `beerLastLifeSave`/`sidLastLifeSave` by šlo za jedno Pivo ubránit
+  cokoli. Zrcadla: `cardPlayability`, zvýraznění v `drawMyArea` i větev bota.
+- **Odstřelovač recykluje „odhoď další kartu" beze zbytku** – `startSniper` postaví stejný
+  `pendingDiscardAnother` (jen `effect: 'sniper'`), takže fáze DISCARD_ANOTHER, klientský
+  výběr ceny, guard i větev bota fungují bez úprav. Doplnily se jen dva háky v
+  `logic/dodgeCity.js`: validace ceny (`_sniperPayValid`) a dispatch (`_sniperAttack`).
+- **Apache Kid vs. Odstřelovač: imunní jen když jsou kárové OBĚ karty.** Útok je složený
+  ze dvou karet Bang!; jedna kárová ho nezruší (a bránit se stejně musí dvěma Vedle!).
+  Klient ani bot to nemusí zrcadlit – útok naprázdno je legální terminální stav.
+- **Blikání útočníka se odpojilo od jména postavy.** Doteď viselo na Slabovi; teď
+  rozhoduje jen `missesRequired > 1` u požadavku Vedle!, takže bliká i Odstřelovač
+  (jehož útočník žádnou zvláštní schopnost mít nemusí).
+- **Tlačítko Odstřelovače obsadí slot schopností** (Sid/Chuck/José/Doc/Will se po dobu
+  míření nekreslí) – stejná dohoda, jaká už platí pro Peyote a Ranč.
 - **Odhod v Ruské ruletě není zahrání karty, ale JE to odhoz z ruky.** Vlastní efekt
   karty se nespustí (Úhyb ani Bible nelížou – „hraje se jako Vedle!" se na odhoz
   nevztahuje), zato schopnosti postav vázané na odhoz z ruky platí:

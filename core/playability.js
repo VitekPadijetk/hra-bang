@@ -65,8 +65,11 @@ function cardPlayability(state, me, myIndex, card) {
     if (isMyResponseTurn) {
         const req = state.pendingResponse.requiredCard;
         const _aliveForBeer = state.players.filter(p => p.health > 0).length;
-        // Pivo jako záchrana při posledním životě (Reverend ho zakazuje – High Noon)
-        if (card.type === "Pivo" && me.health === 1 && _aliveForBeer > 2) return !beerBlockedFor(state);
+        // Pivo jako záchrana při posledním životě (Reverend ho zakazuje – High Noon).
+        // Fistful – Odražená střela neohrožuje život, ale kartu na stole: zachraňovat
+        // se před ní Pivem (ani Sidem) nejde, jinak by šlo za jedno Pivo ubránit kartu.
+        if (card.type === "Pivo" && me.health === 1 && _aliveForBeer > 2 && !state.pendingResponse.ricochet)
+            return !beerBlockedFor(state);
         // Elena Fuente (Dodge City): libovolná karta z ruky funguje jako Vedle!.
         if (req === "Vedle!") return card.type === "Vedle!" || card.type === "Úhyb" ||
             (effectiveCharacter(me) === "Calamity Janet" && card.type === "Bang!") || effectiveCharacter(me) === "Elena Fuente";
@@ -93,10 +96,11 @@ function cardPlayability(state, me, myIndex, card) {
         }
         if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
             if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
-            const isWilly = effectiveCharacter(me) === "Willy the Kid";
-            // Laso (Fistful): zbraň na stole nemá efekt → ani Volcanic nedovolí Bang! bez limitu.
-            const hasVolcanic = !boardDeadFor(state) && me.weapon?.name?.includes("Volcanic");
-            return isWilly || hasVolcanic || me.bangsPlayedThisTurn < bangLimitFor(state);
+            if (bangLimitFree(state, me)) return true;
+            // Fistful – Odražená střela se do limitu 1× Bang!/tah NEpočítá (R2): i s
+            // vyčerpaným limitem je karta hratelná, jen s ní jde střílet výhradně na
+            // vyloženou kartu soupeře (klient podle bangAtPlayerOk zhasne postavy).
+            return ricochetAvailable(state, me, myIndex);
         }
         if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
         // Zelené karty se vykládají na stůl; nelze mít 2 stejného jména (D7).
@@ -238,7 +242,83 @@ function rouletteHasCard(state, p) {
            (p.board || []).some(c => rouletteDiscardable(state, p, c, true));
 }
 
+// ── A Fistful of Cards – Odstřelovač a Odražená střela ──────────────────────
+// Obě karty pracují s „kartou Bang!" v ruce, takže výčet co se za ni počítá je jeden
+// jediný: Bang!, u Calamity Janet i Vedle!. Karta se HRAJE z ruky, proto přes ni musí
+// projít i Želízka (High Noon). Karty s bang-EFEKTEM (Úder, Nůž…) kartami Bang! nejsou,
+// a protože mají vlastní typ, vypadnou samy.
+function bangCardFromHand(state, me, myIndex, card) {
+    if (!card || card._placeholder) return false;
+    if (suitBlockedFor(state, myIndex, card)) return false;
+    return card.type === "Bang!" ||
+        (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!");
+}
+
+// Zbývá hráči volný limit karet Bang! na tenhle tah? (Willy the Kid a Volcanic ho nemají;
+// Laso zbraň na stole vypíná, takže s ním Volcanic neplatí. Přestřelka zvedá limit na 2.)
+function bangLimitFree(state, me) {
+    if (effectiveCharacter(me) === "Willy the Kid") return true;
+    if (!boardDeadFor(state) && me.weapon?.name?.includes("Volcanic")) return true;
+    return me.bangsPlayedThisTurn < bangLimitFor(state);
+}
+
+// Smí vybraná karta letět na POSTAVU (klasický výstřel)? Odražená střela se do limitu
+// nepočítá (R2), takže karta Bang! může být hratelná i s vyčerpaným limitem – tehdy jde
+// zamířit jen na vyloženou kartu. Klient se tím řídí při zvýrazňování postav, server
+// stejné pravidlo vynucuje v playBang.
+function bangAtPlayerOk(state, me, myIndex, card) {
+    if (!card || card.bangEffect) return true;   // Úder a spol. limit neřeší
+    if (!bangCardFromHand(state, me, myIndex, card)) return true;   // není to karta Bang!
+    return bangLimitFree(state, me);
+}
+
+// Odražená střela: „Hráči smí hrát karty Bang! proti kartám vyloženým před ostatními
+// hráči." Smí hráč TOUHLE kartou střílet na vyložené karty? (Do limitu se to nepočítá –
+// R2; Kazatel ale zakazuje kartu Bang! zahrát vůbec.)
+function ricochetOffer(state, me, myIndex, card) {
+    if (!eventActive(state, 'ODRAZENA_STRELA')) return false;
+    if (!isPlayTurn(state, myIndex)) return false;
+    if (!bangCardFromHand(state, me, myIndex, card)) return false;
+    if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
+    // Právo západu: dokud drží vynucenou kartu, smí ven jen ona (zrcadlo _lawLocked).
+    return !lawLocksOther(state, me, myIndex, card);
+}
+
+// Je vyložená karta hráče `targetIdx` platným cílem Odražené střely? Dostřel platí jako
+// u normálního Bang! (R1) a na vlastní karty se střílet nedá.
+function ricochetTargetOk(state, myIndex, targetIdx) {
+    if (targetIdx === myIndex) return false;
+    const t = state.players[targetIdx];
+    return !!t && isInPlay(t) && computeCanHit(state, myIndex, targetIdx);
+}
+
+// Je vůbec na co střílet? (Jediné, kvůli čemu je karta Bang! hratelná i s vyčerpaným
+// limitem – bez cíle by šla vybrat a nedala se s ní udělat vůbec nic.)
+function ricochetAvailable(state, me, myIndex) {
+    if (!eventActive(state, 'ODRAZENA_STRELA')) return false;
+    return state.players.some((p, i) => ricochetTargetOk(state, myIndex, i) &&
+        ((p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
+}
+
+// Odstřelovač: „Hráč smí ve svém tahu odhodit 2 karty Bang! najednou proti jinému hráči."
+// Smí hráč TEĎ nabídnout Odstřelovače s touhle kartou jako první ze dvou? Počítá se jako
+// zahrání Bang! (R4), takže platí limit i Kazatel – a v ruce musí být druhá karta Bang!
+// a v dostřelu někdo, na koho zamířit.
+function sniperOffer(state, me, myIndex, card) {
+    if (!eventActive(state, 'ODSTRELOVAC')) return false;
+    if (!isPlayTurn(state, myIndex)) return false;
+    if (!bangCardFromHand(state, me, myIndex, card)) return false;
+    if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
+    if (!bangLimitFree(state, me)) return false;
+    if (lawLocksOther(state, me, myIndex, card)) return false;   // Právo západu
+    const other = (me.hand || []).some(c => c && c.id !== card.id && bangCardFromHand(state, me, myIndex, c));
+    if (!other) return false;
+    return state.players.some((p, i) => i !== myIndex && isInPlay(p) && computeCanHit(state, myIndex, i));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther,
-                       rouletteDiscardable, rouletteHasCard };
+                       rouletteDiscardable, rouletteHasCard,
+                       bangCardFromHand, bangLimitFree, bangAtPlayerOk,
+                       ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer };
 }
