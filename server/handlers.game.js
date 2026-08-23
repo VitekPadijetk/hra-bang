@@ -45,6 +45,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // správný slot (dřív odebíral poslední → viditelné přeskládání a špatná pozice).
             const victimBefore = (data.source === 'opponent_hand' && gs.players[data.sourceIdx])
                 ? gs.players[data.sourceIdx].hand.map(c => c.id) : null;
+            // Opuštěný důl (Fistful) se mohl líznutím sám vypnout (odhoz došel), takže si
+            // stav zapamatuj PŘED ním – karta se brala ještě z odhozu.
+            const mineBefore = !!gs.deck.mineMode;
             const phaseBefore = gs.phase, drawnBefore = ds?.cardsDrawn ?? -1;
             const handBefore = gs.players[playerIdx]?.hand.length ?? -1;
             gs.drawCard(data.source, data.sourceIdx, data.area, data.cardIdx);
@@ -99,6 +102,12 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 if (drawn && gs.players[playerIdx]._lawCardId === drawnId) {
                     emitAnim(room, { type: 'law_reveal', playerIdx, card: drawn });
                     room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + lawRevealMs());
+                } else if (mineBefore) {
+                    // Opuštěný důl: líže se z ODHOZU, kde karta ležela lícem nahoru – celý
+                    // stůl ji viděl dopředu (to je pointa karty), takže se posílá veřejně.
+                    // Klient ji díky tomu u soupeře přetočí za letu na rub, místo aby mu
+                    // z veřejné hromádky odletěl rub neznámé karty.
+                    emitAnim(room, { type: 'draw', playerIdx, cardId: drawnId });
                 } else {
                     emitAnimPrivate(room, playerIdx,
                         { type: 'draw', playerIdx, cardId: drawnId },

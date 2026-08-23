@@ -1436,8 +1436,16 @@ function _playCardAnim(data) {
             break;
         }
         case 'draw': {
+            // Opuštěný důl (Fistful): líže se z ODHOZU, kde karta leží lícem nahoru. Musí
+            // z něj proto zmizet hned se startem letu (jinak tam viditelně leží celý let)
+            // a nikde se nepřeklápí rub→líc – server ji v dolu posílá VŠEM, protože ji
+            // celý stůl viděl dopředu. Bez dolu se `mineDone` ani `_mineFace` neuplatní.
+            const mineDone = mineTakeFromPile(mineOn() ? data.cardId : null);
+            const _mineFace = mineOn() && data.cardId != null;
             // Majitel: reveal flip do finálního slotu + staging (objeví se po dosednutí).
-            if (!animateDrawToMyHand(data.playerIdx, data.cardId, deck.x, deck.y)) {
+            // Pod dolem bez překlápění (faceUp) – karta z odhozu už lícem nahoru je.
+            if (!animateDrawToMyHand(data.playerIdx, data.cardId, deck.x, deck.y,
+                                     _mineFace ? { faceUp: true, onComplete: mineDone } : {})) {
                 // Soupeřova karta zůstává skrytá (rub), míří do jeho vějíře ruky – a dotočí
                 // se z orientace balíčku (0°) do orientace jeho ruky (bok = ±90°, protější = 180°).
                 // Rychlá líznutí za sebou: než dorazí room_update, posílají se na STEJNÝ slot
@@ -1458,10 +1466,27 @@ function _playCardAnim(data) {
                 // startScale/endScale: karta vzlétne ve velikosti balíčku a za letu se
                 // zmenší na velikost vějíře v soupeřově ruce (na mobilu je jeho vějíř
                 // výrazně menší než balíček – bez toho karta dosedla a teprve pak skočila).
-                animateCard(deck.x, deck.y, target.x, target.y, 'card_back', 380,
-                    () => { App.oppDrawPending[pIdx] = Math.max(0, (App.oppDrawPending[pIdx] || 1) - 1); },
-                    { startAngle: 0, endAngle: sideAngle(pIdx), exactAngle: true, depth: 800 + pending,
-                      startScale: pileScale(), endScale: sideScale(pIdx, 'hand') });
+                const oppDone = () => {
+                    App.oppDrawPending[pIdx] = Math.max(0, (App.oppDrawPending[pIdx] || 1) - 1);
+                    mineDone();
+                };
+                if (_mineFace) {
+                    // Důl: soupeř bere VEŘEJNOU vrchní kartu odhozu (líc) do SKRYTÉ ruky,
+                    // takže se za letu musí přetočit lícem→rub (reverse) – stejně jako
+                    // u Pedra Ramireze. Bez toho by z hromádky, na které karta viditelně
+                    // ležela lícem nahoru, odletěl rub a přetočení by nebylo vidět vůbec.
+                    animateCardFlip(deck.x, deck.y, target.x, target.y, 'card_back', getCardTex(data.cardId),
+                        { flip: true, reverse: true, startAngle: 0, endAngle: sideAngle(pIdx),
+                          startScale: pileScale(), endScale: sideScale(pIdx, 'hand'),
+                          duration: 380, onComplete: oppDone,
+                          // Drž, dokud karta z odhozu opravdu nezmizí ve stavu – jinak by ji
+                          // opožděný broadcast po zhasnutí brány na okamžik vrátil na hromádku.
+                          holdUntil: () => !inDiscard(data.cardId) });
+                } else {
+                    animateCard(deck.x, deck.y, target.x, target.y, 'card_back', 380, oppDone,
+                        { startAngle: 0, endAngle: sideAngle(pIdx), exactAngle: true, depth: 800 + pending,
+                          startScale: pileScale(), endScale: sideScale(pIdx, 'hand') });
+                }
             }
             break;
         }
@@ -1733,8 +1758,10 @@ function _playCardAnim(data) {
             // Karta se vrací z odhozu do ruky (Sid Ketchum – zrušené léčení).
             // U mě letí na svůj SKUTEČNÝ slot (staging přes pendingDrawIds, jako líznutí),
             // ne na fixní kotvu ruky – proto animateDrawToMyHand (líc nahoru, bez otáčení).
+            // Opuštěný důl (Fistful) je výjimka: odhazuje se lícem DOLŮ na dobírací balíček,
+            // takže se karta vracející se z něj musí za letu překlopit rub→líc.
             if (data.toPlayerIdx === myIndex &&
-                animateDrawToMyHand(data.toPlayerIdx, data.cardId, discard.x, discard.y, { faceUp: true, duration: 400 })) {
+                animateDrawToMyHand(data.toPlayerIdx, data.cardId, discard.x, discard.y, { faceUp: !mineOn(), duration: 400 })) {
                 break;
             }
             const handPos = getPlayerHandPos(data.toPlayerIdx);

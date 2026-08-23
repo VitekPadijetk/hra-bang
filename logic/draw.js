@@ -271,8 +271,13 @@ const DrawMixin = {
     _revealAnim(deckBefore, dealt) {
         const before = Math.max(0, deckBefore | 0);
         const n = Math.max(0, dealt | 0);
-        const mode = before < n ? 'blocking' : (before === n ? 'proactive' : 'none');
         const shuffleCount = this.deck._reshuffleOccurred ? (this.deck._reshuffleCount || 0) : 0;
+        // 'blocking'/'proactive' POPISUJÍ MÍCHÁNÍ – bez něj musí být 'none', jinak klient
+        // přehraje míchací cinematiku, která se nikdy nestala. Nastane to pod Opuštěným
+        // dolem (Fistful): odhoz dojde uprostřed odkrývání, důl se vypne a zbytek řady se
+        // dolízne z dobíracího balíčku – karet je dost, takže se nic nemíchá.
+        const mode = !shuffleCount ? 'none'
+                   : (before < n ? 'blocking' : (before === n ? 'proactive' : 'none'));
         this.deck._reshuffleOccurred = false;
         this.deck._reshuffleCount = 0;
         this.deck._reshuffleWasProactive = false;

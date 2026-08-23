@@ -428,6 +428,32 @@ místo, takže se při aktivním dole prostě prohodí a všechny animace („le
 bez `setTint`, proto `tintPile`. `discardNeedsCursor` se musí ptát obou důvodů naráz –
 `setInteractive({useHandCursor})` jde na sprite nastavit jen jednou.
 
+**Lízání z veřejné hromádky.** Pod dolem se líže z odhozu, kde karta leží **lícem
+nahoru**. Z rubového balíčku není co vidět, takže tohle se dřív nikde řešit nemuselo –
+teď platí na KAŽDÉ cestě, kudy karta z hromádky odchází:
+
+- **Zmizet z hromádky musí HNED se startem letu** (`mineTakeFromPile` v game.js, brána
+  `App.discardFlyHideIds`), jinak tam viditelně leží celý let. Týká se to jen běžného
+  líznutí (`draw`): u Kita, Clause, Lucky Duka, hokynářství i kontrolního sejmutí je
+  karta z hromádky odebraná už ve stavu, který s fází dorazil.
+- **Nepřeklápí se rub→líc.** Sejmutí i Black Jack letí doprostřed rovnou lícem, řady
+  Kita/Clause/Lucky Duka a hokynářství se rozdávají bez `flip`, a `deckTopPos()` je
+  jediný zdroj toho, ODKUD vzlétají – `startCheckReveal` a `dealStoreCards` proto nesmí
+  sahat na `DECK_X/DECK_Y` napřímo.
+- **K soupeři se karta přetáčí LÍCEM→RUB** (`reverse: true`) – mizí mu do skryté ruky,
+  přesně jako u Pedra Ramireze. Aby to šlo, posílá server líznutí pod dolem **veřejně**
+  (`emitAnim` s `cardId` místo `emitAnimPrivate`): celý stůl kartu viděl dopředu, takže
+  se tím nic neprozrazuje. Rozhoduje `mineBefore` sebraný PŘED `gs.drawCard` – líznutí
+  si důl mohlo samo vypnout.
+- **Opačný směr platí taky:** karta vracející se z „odhozu" do ruky (Sid Ketchum, zrušené
+  léčení) přichází z dobíracího balíčku, kde leží lícem DOLŮ → `faceUp: !mineOn()`.
+
+**Vyčerpání odhozu uprostřed dávky.** Vypnutí dolu spadne doprostřed operace, která bere
+víc karet naráz (Kit 3, hokynářství 1 na hráče): zbytek se dobere z dobíracího balíčku.
+Karet je dost, takže se **nic nemíchá** – `mode` v `_revealAnim` i `storeAnim` proto musí
+zůstat `'none'`, kdykoli `shuffleCount === 0`. Bez toho by klient přehrál míchací
+cinematiku, která se nikdy nestala (a boti by se o ni podrželi).
+
 **Doběh letu do odhozu.** Karta by pod dolem zmizela lícem dolů dřív, než by kdokoli
 přečetl, co se zahrálo. Dosedne proto lícem nahoru, vydrží `MINE_ANIM.holdMs` a teprve
 pak se překlopí na rub (`mineLandThen` v game.js, nasazuje se přes `mineLandOpts()`).

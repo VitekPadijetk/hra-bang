@@ -258,6 +258,48 @@ test('Opuštěný důl: Ranč odhodí na balíček a dolízne z odhozu', () => {
     assert.deepEqual(g.players[0].hand.map(c => c.value), ['4', '3']);
 });
 
+// ── Vyčerpání odhozu uprostřed dávky ────────────────────────────────────────
+// Vypnutí dolu spadne doprostřed operace, která bere víc karet naráz. Karet je pořád
+// dost (dobírací balíček je plný), takže se NESMÍ nic míchat – a kdyby `mode` zůstalo
+// 'blocking'/'proactive', klient by přehrál míchací cinematiku, která se nestala.
+
+test('Opuštěný důl: Kit dobere zbytek řady z balíčku a nemíchá se', () => {
+    const g = mkMine([{ role: 'Sheriff', character: 'Kit Carlson' }, {}]);
+    g.deck.discardPile = [C('2')];                       // na řadu 3 karet chybí dvě
+    g.deck.cards = [C('K'), C('Q'), C('J'), C('T')];
+    g.startDrawPhase();
+    g.drawCard('deck');
+    assert.equal(g.phase, 'KIT_CARLSON');
+    assert.deepEqual(g.kitCarlsonState.revealed.map(c => c.value), ['2', 'T', 'J'],
+                     'první z odhozu, zbytek už z balíčku');
+    assert.equal(g.deck.mineMode, false, 'důl se prázdným odhozem vypnul');
+    assert.equal(g.kitCarlsonState.anim.mode, 'none', 'nic se nemíchalo → žádná cinematika');
+    assert.equal(g.kitCarlsonState.anim.shuffleCount, 0);
+});
+
+test('Opuštěný důl: hokynářství dorozdá z balíčku a nemíchá se', () => {
+    const g = mkMine([{ role: 'Sheriff' }, {}, {}]);
+    g.deck.discardPile = [C('2')];                       // na 3 hráče chybí dvě karty
+    g.deck.cards = [C('K'), C('Q'), C('J')];
+    g.openStore();
+    assert.deepEqual(g.storeCards.map(c => c.value), ['2', 'J', 'Q']);
+    assert.equal(g.deck.mineMode, false);
+    assert.equal(g.storeAnim.mode, 'none', 'nic se nemíchalo → žádná cinematika');
+    assert.equal(g.storeAnim.shuffleCount, 0);
+});
+
+test('Opuštěný důl: vypnutí padne přesně na líznutí, které odhoz našlo prázdný', () => {
+    // Poslední karta odhozu se ještě bere z něj; teprve DALŠÍ líznutí důl vypne.
+    const g = mkMine([{ role: 'Sheriff' }, {}]);
+    g.deck.discardPile = [C('2')];
+    g.deck.cards = [C('K')];
+    assert.equal(g.deck.draw().value, '2');
+    assert.equal(g.deck.mineMode, true, 'kartu ještě vydal odhoz');
+    assert.equal(g.deck.draw().value, 'K');
+    assert.equal(g.deck.mineMode, false, 'až tady se přepnulo');
+    assert.equal(g.deck.discardPile.length, 0);
+});
+
 // ── Bot ─────────────────────────────────────────────────────────────────────
 
 test('Opuštěný důl: bot líže i z hromádky, na které neleží Bang!/Pivo/Vedle!', () => {

@@ -252,10 +252,13 @@ class GameState {
         // 'blocking' = málo karet → zbytek se rozdá až po zamíchání (výběr zamčen).
         const dealt = this.storeCards.filter(c => c).length;
         const k = Math.min(origCount, dealt);
-        let mode = 'none';
-        if (origCount < aliveCount) mode = 'blocking';
-        else if (origCount === aliveCount) mode = 'proactive';
         const shuffleCount = this.deck._reshuffleOccurred ? (this.deck._reshuffleCount || 0) : 0;
+        // 'blocking'/'proactive' POPISUJÍ MÍCHÁNÍ – bez něj musí zůstat 'none', jinak klient
+        // přehraje míchací cinematiku, která se nikdy nestala (Opuštěný důl: odhoz dojde
+        // uprostřed rozdávání, důl se vypne a zbytek se rozdá z dobíracího balíčku).
+        let mode = 'none';
+        if (shuffleCount && origCount < aliveCount) mode = 'blocking';
+        else if (shuffleCount && origCount === aliveCount) mode = 'proactive';
         // origCount = kolik karet měl balíček PŘED rozdáním. Klient podle něj kreslí
         // hromádku po dobu rozdávání (stav už obsahuje případně zamíchaný balíček).
         this.storeAnim = { dealtBefore: k, mode, shuffleCount, total: dealt, origCount };

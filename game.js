@@ -666,6 +666,20 @@ function mineLandThen(sprite, opts, next) {
 // Letí karta do „odhozu"? Pak jí pod aktivním dolem přidej doběh s překlopením na rub.
 // Rozprostírá se na každý let, který míří na discardTopPos() – mimo důl vrací {}.
 function mineLandOpts() { return mineOn() ? { mineLand: true } : {}; }
+
+// Druhá strana téhož: pod dolem se LÍŽE z odhozu, kde karta leží LÍCEM NAHORU. Znamená
+// to dvě věci, které se bez dolu řešit nemusely, protože z rubového balíčku není co vidět:
+//   • karta musí z hromádky zmizet HNED se startem letu (jinak tam viditelně leží celý
+//     let a zmizí, až dorazí stav) – přesně jako u Pedra Ramireze,
+//   • nesmí se překlápět rub→líc: k majiteli letí lícem nahoru rovnou, k soupeři se
+//     naopak musí přetočit LÍCEM→RUB (mizí mu do skryté ruky).
+// Vrací funkci „karta dosedla", kterou volající zavolá v onComplete; mimo důl no-op.
+function mineTakeFromPile(cardId) {
+    if (!mineOn() || cardId == null) return () => {};
+    App.discardFlyHideIds.add(cardId);
+    renderUI();
+    return () => { App.discardFlyHideIds.delete(cardId); renderUI(); };
+}
 // Varianta pro cinematiky, které kartu PŘEDTÍM ukázaly zvětšenou uprostřed (sejmutí,
 // Lucky Duke): držet ji podruhé nemá smysl, jde jen o to, aby lícem nahoru dosednutá
 // karta nepřeskočila na rub bez přechodu.
@@ -1092,7 +1106,11 @@ function dealStoreCards(cards, from, to, onDone) {
     if (!indices.length) { if (onDone) onDone(); return; }
     const count = cards.length;
     const lift = App.storePileLiftY || 0;
-    const deckX = DECK_X, deckY = DECK_Y - lift;
+    // Opuštěný důl: rozdává se z ODHOZU (a karty na něm ležely lícem nahoru, takže se
+    // za letu nemají co překlápět). deckTopPos() vrací roli, ne místo – viz mineOn().
+    const _src = deckTopPos();
+    const deckX = _src.x, deckY = _src.y - lift;
+    const _faceUp = mineOn();
     indices.forEach((i, n) => {
         setTimeout(() => {
             const card = cards[i];
@@ -1101,7 +1119,7 @@ function dealStoreCards(cards, from, to, onDone) {
             if (!gameScene) { App.storeDealIds.delete(card.id); return; }
             const slot = getStoreSlotPos(i, count, App.storePileLiftY || 0);
             animateCardFlip(deckX, deckY, slot.x, slot.y, 'card_back', getCardTex(card.id),
-                { flip: true, startScale: 0.26, endScale: 0.3, duration: STORE_DEAL_MS,
+                { flip: !_faceUp, startScale: 0.26, endScale: 0.3, duration: STORE_DEAL_MS,
                   onComplete: () => { App.storeDealIds.delete(card.id); renderUI(); } });
             renderUI();   // hromádka o kartu nižší (s poslední rozdanou kartou zmizí úplně)
         }, n * STORE_DEAL_STAGGER);
@@ -1289,15 +1307,25 @@ function startCheckReveal(check) {
         pulse.marks.forEach(m => m.destroy());
         pulse = null;
     };
-    const sprite = gameScene.add.image(DECK_X, DECK_Y, 'card_back')
+    // Opuštěný důl (Fistful): snímá se z ODHOZU, ne z dobíracího balíčku – vzlétnout
+    // se proto musí odtamtud. Karta tam navíc ležela lícem nahoru, takže se nemá co
+    // překlápět (celý stůl ji viděl dopředu, to je pointa karty): letí rovnou lícem.
+    const _from = deckTopPos();
+    const _faceUp = mineOn();
+    const sprite = gameScene.add.image(_from.x, _from.y, _faceUp ? faceTex : 'card_back')
         .setScale(PILE_SCALE).setDepth(820).setAlpha(0.98);
-    // 1) balíček → střed: posun + růst + flip rub→líc
+    // 1) hromádka → střed: posun + růst (+ flip rub→líc, mimo důl)
     gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: 450, ease: 'Cubic.easeOut' });
     gameScene.tweens.add({ targets: sprite, scaleY: REVEAL_BIG, duration: 450, ease: 'Cubic.easeOut' });
+    if (_faceUp) {
+        gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 450, ease: 'Cubic.easeOut',
+            onComplete: () => { if (sprite.active) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, check.card); } });
+    } else {
     gameScene.tweens.add({ targets: sprite, scaleX: 0, duration: 225, ease: 'Sine.easeIn',
         onComplete: () => { if (!sprite.active) return; sprite.setTexture(faceTex);
             gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 225, ease: 'Sine.easeOut',
                 onComplete: () => { pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, check.card); } }); } });
+    }
     // 2) po 3 s drhu se zmenší a odletí do odhozu. Sprite po dosednutí podrž na místě,
     // dokud kontrolní karta na vrcholu odhozu není VIDITELNÁ (fáze už není CHECKING, kde ji
     // board.js schovává) – jinak po zániku spritu problikne předchozí vrchní karta odhozu.
@@ -1334,7 +1362,10 @@ function startBlackJackReveal(ds) {
     const hand = state.players[playerIdx]?.hand ?? [];
     const handTarget = getHandSlotPos(playerIdx, hand.length, hand.length + 1);
     const endScale = isOwner ? 0.4 : 0.3;
-    const sprite = gameScene.add.image(DECK_X, DECK_Y, 'card_back')
+    // Opuštěný důl: líže se z odhozu (lícem nahoru) – vzlétni odtamtud a nepřeklápěj.
+    const _from = deckTopPos();
+    const _faceUp = mineOn();
+    const sprite = gameScene.add.image(_from.x, _from.y, _faceUp ? faceTex : 'card_back')
         .setScale(0.28).setDepth(820).setAlpha(0.98);
     // Black Jack zkoumá BARVU druhé karty úplně stejně jako kdokoli při sejmutí, takže
     // musí i stejně blikat hodnota+barva (bez toho stůl nevěděl, na co se vlastně kouká).
@@ -1345,13 +1376,18 @@ function startBlackJackReveal(ds) {
         pulse.marks.forEach(m => m.destroy());
         pulse = null;
     };
-    // 1) balíček → střed (karta je veřejná – všichni vidí líc)
+    // 1) hromádka → střed (karta je veřejná – všichni vidí líc)
     gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: 450, ease: 'Cubic.easeOut' });
     gameScene.tweens.add({ targets: sprite, scaleY: REVEAL_BIG, duration: 450, ease: 'Cubic.easeOut' });
+    if (_faceUp) {
+        gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 450, ease: 'Cubic.easeOut',
+            onComplete: () => { if (sprite.active) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card); } });
+    } else {
     gameScene.tweens.add({ targets: sprite, scaleX: 0, duration: 225, ease: 'Sine.easeIn',
         onComplete: () => { if (!sprite.active) return; sprite.setTexture(faceTex);
             gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 225, ease: 'Sine.easeOut',
                 onComplete: () => { if (sprite.active) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card); } }); } });
+    }
     if (isOwner) App.pendingDrawIds.add(card.id);   // skryj v ruce do doletu (staging)
     const flyDelay = 450 + 3000;
     // 2) po 3 s letí do ruky Black Jacka
@@ -1464,8 +1500,9 @@ function startKitCarlsonDeal() {
         const card = revealed[i];
         if (!card) return;
         const _deckTop = deckTopPos();
+        // Opuštěný důl: karty se berou z odhozu, kde ležely lícem nahoru → bez překlápění.
         animateCardFlip(_deckTop.x, _deckTop.y, startX + i * spacing, slotY, 'card_back', getCardTex(card.id),
-            { flip: true, startScale: 0.28, endScale: slotScale, duration: KIT_TEMPO.fly,
+            { flip: !mineOn(), startScale: 0.28, endScale: slotScale, duration: KIT_TEMPO.fly,
               onComplete: () => { App.kitDealIds.delete(card.id); renderUI(); } });
     });
 }
@@ -1534,8 +1571,9 @@ function startClausDeal() {
         const to = clausSlotPos(i);
         const done = () => { App.clausDealSlots?.delete(i); renderUI(); };
         if (card?.id != null) {
+            // Opuštěný důl: z odhozu jdou karty lícem nahoru → nepřeklápět.
             animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(card.id),
-                { flip: true, startScale: pileScale, endScale: P.scale, duration: CLAUS_TEMPO.fly, onComplete: done });
+                { flip: !mineOn(), startScale: pileScale, endScale: P.scale, duration: CLAUS_TEMPO.fly, onComplete: done });
         } else {
             animateCard(from.x, from.y, to.x, to.y, 'card_back', CLAUS_TEMPO.fly, done,
                 { startScale: pileScale, endScale: P.scale });
@@ -1604,17 +1642,25 @@ function startKitCarlsonDealSpectator() {
     for (let i = 0; i < n; i++) {
         const off = (i - (n - 1) / 2) * spread;
         const tx = ax + perpx * off, ty = ay + perpy * off;
-        const sp = gameScene.add.image(DECK_X, DECK_Y, 'card_back')
+        // Opuštěný důl: karty se berou z ODHOZU, kde je celý stůl viděl lícem nahoru
+        // (kitCarlsonState.revealed chodí v room_update všem). Vzlétnou proto lícem
+        // a u Kita se přetočí na rub – jinak by z veřejné hromádky odletěl rub.
+        const _mineFace = mineOn() && state.kitCarlsonState?.revealed?.[i]?.id != null;
+        const sp = gameScene.add.image(DECK_X, DECK_Y,
+                _mineFace ? getCardTex(state.kitCarlsonState.revealed[i].id) : 'card_back')
             .setScale(0.28).setAngle(0).setDepth(805 + i).setAlpha(0);
         App.kitSpecParked.push({ sprite: sp, x: tx, y: ty, angle });
-        slots.push({ sp, tx, ty });
+        slots.push({ sp, tx, ty, mineFace: _mineFace });
     }
     dealRevealRow(n, state.kitCarlsonState?.anim, KIT_TEMPO, (i) => {
         const sl = slots[i];
         if (!sl || !sl.sp.active) return;
         sl.sp.setPosition(deckTopPos().x, deckTopPos().y).setAlpha(1);
         gameScene.tweens.add({ targets: sl.sp, x: sl.tx, y: sl.ty, scaleX: scale, scaleY: scale,
-            angle, duration: KIT_TEMPO.fly, ease: 'Cubic.easeOut' });
+            angle, duration: KIT_TEMPO.fly, ease: 'Cubic.easeOut',
+            // Pod dolem karta vzlétla lícem (viz výš) – na místě se překlopí na rub, ať
+            // ostatní dál vidí jen to, co vidět mají (identitu si pamatuje jen Kit).
+            onComplete: () => mineLandThen(sl.sp, sl.mineFace ? { mineLand: true, mineLandHold: 0 } : {}, () => {}) });
     });
 }
 
@@ -1703,8 +1749,9 @@ function startLuckyDukeDeal() {
     cards.forEach((card, i) => {
         setTimeout(() => {
             if (!gameScene) return;
+            // Opuštěný důl: snímá se z odhozu, kde karty ležely lícem nahoru → bez překlápění.
             animateCardFlip(_from.x, _from.y, xOf(i), slotY, 'card_back', getCardTex(card.id),
-                { flip: true, startScale: PILE_SCALE, endScale: slotScale, duration: 420,
+                { flip: !mineOn(), startScale: PILE_SCALE, endScale: slotScale, duration: 420,
                   onComplete: () => { App.luckyDealIds.delete(card.id); renderUI(); } });
         }, i * 160);
     });
