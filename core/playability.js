@@ -97,10 +97,11 @@ function cardPlayability(state, me, myIndex, card) {
         if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
             if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
             if (bangLimitFree(state, me)) return true;
-            // Fistful – Odražená střela se do limitu 1× Bang!/tah NEpočítá (R2): i s
-            // vyčerpaným limitem je karta hratelná, jen s ní jde střílet výhradně na
-            // vyloženou kartu soupeře (klient podle bangAtPlayerOk zhasne postavy).
-            return ricochetAvailable(state, me, myIndex);
+            // Fistful – Odražená střela ani Odstřelovač se do limitu 1× Bang!/tah NEpočítají
+            // (FAQ Q07/Q09): i s vyčerpaným limitem je karta hratelná, jen s ní pak nejde
+            // klasicky vystřelit na postavu (klient podle bangAtPlayerOk zhasne postavy) –
+            // zbývá střela na vyloženou kartu nebo zaplacení Odstřelovače.
+            return ricochetAvailable(state, me, myIndex) || sniperOffer(state, me, myIndex, card);
         }
         if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
         // Zelené karty se vykládají na stůl; nelze mít 2 stejného jména (D7).
@@ -284,12 +285,14 @@ function ricochetOffer(state, me, myIndex, card) {
     return !lawLocksOther(state, me, myIndex, card);
 }
 
-// Je vyložená karta hráče `targetIdx` platným cílem Odražené střely? Dostřel platí jako
-// u normálního Bang! (R1) a na vlastní karty se střílet nedá.
+// Je vyložená karta hráče `targetIdx` platným cílem Odražené střely? Na vlastní karty se
+// střílet nedá, ale VZDÁLENOST NEHRAJE ROLI (FAQ Q15): střílí se na kteroukoli vyloženou
+// kartu u stolu bez ohledu na dostřel zbraně. Jediný zdroj pravdy pro server (playRicochet),
+// klienta (zvýraznění vyložených karet) i bota.
 function ricochetTargetOk(state, myIndex, targetIdx) {
     if (targetIdx === myIndex) return false;
     const t = state.players[targetIdx];
-    return !!t && isInPlay(t) && computeCanHit(state, myIndex, targetIdx);
+    return !!t && isInPlay(t);
 }
 
 // Je vůbec na co střílet? (Jediné, kvůli čemu je karta Bang! hratelná i s vyčerpaným
@@ -301,15 +304,16 @@ function ricochetAvailable(state, me, myIndex) {
 }
 
 // Odstřelovač: „Hráč smí ve svém tahu odhodit 2 karty Bang! najednou proti jinému hráči."
-// Smí hráč TEĎ nabídnout Odstřelovače s touhle kartou jako první ze dvou? Počítá se jako
-// zahrání Bang! (R4), takže platí limit i Kazatel – a v ruce musí být druhá karta Bang!
-// a v dostřelu někdo, na koho zamířit.
+// Smí hráč TEĎ nabídnout Odstřelovače s touhle kartou jako první ze dvou? Obě karty se
+// ODHAZUJÍ, nehrají (FAQ Q07), takže se to do limitu 1× Bang!/tah NEpočítá a jde to
+// opakovat, dokud jsou v ruce karty Bang! – hráč navíc smí ve stejném tahu vystřelit
+// i svůj normální Bang!. Kazatel (High Noon) kartu Bang! zakazuje zahrát vůbec, takže
+// platí i tady. V ruce musí být druhá karta Bang! a v dostřelu někdo, na koho zamířit.
 function sniperOffer(state, me, myIndex, card) {
     if (!eventActive(state, 'ODSTRELOVAC')) return false;
     if (!isPlayTurn(state, myIndex)) return false;
     if (!bangCardFromHand(state, me, myIndex, card)) return false;
     if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
-    if (!bangLimitFree(state, me)) return false;
     if (lawLocksOther(state, me, myIndex, card)) return false;   // Právo západu
     const other = (me.hand || []).some(c => c && c.id !== card.id && bangCardFromHand(state, me, myIndex, c));
     if (!other) return false;

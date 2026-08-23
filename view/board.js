@@ -512,7 +512,8 @@ function drawOpponents(ctx) {
         const canTargetThisPlayer = !App.blockInput && (
             (isPanicCBActive && panicInRange && player.health > 0) ||
             (isDeSteal && player.health > 0) || isServerCardSelect);
-        // Fistful – Odražená střela: klikatelné jsou VYLOŽENÉ karty soupeře v dostřelu.
+        // Fistful – Odražená střela: klikatelné jsou VYLOŽENÉ karty kteréhokoli soupeře
+        // (vzdálenost nehraje roli, FAQ Q15).
         const isRicochetTarget = _ricoArmed && ricochetTargetOk(state, myIndex, actualIdx);
         // Fistful – Pokrevní bratři: na začátku svého tahu smí hráč darovat 1 život
         // zraněnému spoluhráči. Cíl se vybírá klikem na jeho postavu; seznam platných

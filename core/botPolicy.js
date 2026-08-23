@@ -287,6 +287,21 @@ function chooseTargetCardArea(target, sourceType, friendly = false) {
     return { area: 'hand', cardIdx: null };
 }
 
+// Nouzový cíl Odražené střely: KTERÁKOLI vyložená karta u stolu. Používá se jen tam,
+// kde pravidlo bota do výstřelu nutí (Právo západu) a bestRicochetShot nic nevrátil,
+// protože žádná karta nestojí za sestřelení – ale odmítnout se nedá.
+function anyRicochetShot(state, myIndex) {
+    const from = (i) => {
+        const p = state.players[i];
+        if (!ricochetTargetOk(state, myIndex, i)) return null;
+        if (p.weapon && p.weapon.id !== -1) return { idx: i, area: 'weapon', cardId: p.weapon.id };
+        const c = (p.board || [])[0];
+        return c ? { idx: i, area: 'board', cardId: c.id } : null;
+    };
+    for (let i = 0; i < state.players.length; i++) { const r = from(i); if (r) return r; }
+    return null;
+}
+
 // ── A Fistful of Cards – Odražená střela ────────────────────────────────────
 // Kterou vyloženou kartu sestřelit? Bere se ta nejcennější PRO MAJITELE (boardCardValue),
 // a jen když mu opravdu pomáhá: Vězení ani Dynamit se nestřílí, tím bychom nepříteli
@@ -356,6 +371,25 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
 
     switch (getActionForCard(card, effectiveCharacter(me))) {
         case 'SHOOT': {
+            // Vyčerpaný limit 1× Bang!/tah: na POSTAVU se střílet nedá (playBang by akci
+            // mlčky zahodil), karta je ale pořád vynucená. Zbývají Odstřelovač a Odražená
+            // střela – ani jedno se do limitu nepočítá (FAQ Q07/Q09), a právě kvůli nim
+            // ji cardPlayability vůbec pustila. Bez téhle větve by bot posílal odmítaný
+            // play_bang donekonečna a hra by se zasekla.
+            // Pojistka do budoucna: Právo západu je ze stejného balíčku jako obě karty,
+            // takže dnes naráz aktivní být nemůžou a tahle větev je nedosažitelná.
+            if (!bangAtPlayerOk(state, me, myIndex, card)) {
+                if (sniperOffer(state, me, myIndex, card)) {
+                    const st = pick(i => alive(i) && computeCanHit(state, myIndex, i));
+                    if (st !== -1) return { event: 'sniper_choose', payload: { cardIdx, targetIdx: st } };
+                }
+                if (ricochetOffer(state, me, myIndex, card)) {
+                    const shot = bestRicochetShot(state, myIndex, beliefs) || anyRicochetShot(state, myIndex);
+                    if (shot) return { event: 'play_ricochet', payload: { attackerIdx: myIndex,
+                        targetIdx: shot.idx, area: shot.area, cardId: shot.cardId, cardIdx } };
+                }
+                return null;
+            }
             const reach = bangEffectReach(card);
             const t = pick(i => alive(i) && computeCanHit(state, myIndex, i, reach));
             // Právo západu: když nedosáhne na NIKOHO jiného, musí střelit sám na sebe

@@ -193,13 +193,18 @@ const ChecksMixin = {
         } else if (check.reason === "BARREL" || check.reason === "JOURDONNAIS") {
             if (suit === Suits.HEARTS) {
                 const attacker = this.players[check.attackerIdx];
+                // Kolik karet Vedle! si útok žádá celkem. Obvykle to nese sám check
+                // (`missesNeeded` – Odstřelovač z Fistfulu = 2); dopočet ze Slaba the Killer
+                // je záloha pro cesty, které check staví bez něj (Kulomet).
                 // Bang-efekt: Slabův bonus neplatí (barel = uhnul napoprvé).
-                const slabBonus = (!check.bangEffect && effectiveCharacter(attacker) === "Slab the Killer") ? 1 : 0;
+                const needed = check.missesNeeded ||
+                    ((!check.bangEffect && effectiveCharacter(attacker) === "Slab the Killer") ? 2 : 1);
 
-                if (slabBonus > 0 && (this.missesPlayed || 0) < 1 && check.sourceCard !== CardType.GATLING) {
-                    this.missesRequired = 1;
-                    this.missesPlayed = 1;
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet);
+                // Úspěšný barel se počítá za JEDNU kartu Vedle! – u dvojnásobné obrany
+                // (Slab the Killer, Odstřelovač) tedy zbytek musí hráč ještě dohrát.
+                if (needed > 1 && (this.missesPlayed || 0) < 1 && check.sourceCard !== CardType.GATLING) {
+                    this.missesPlayed = 0;
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet, needed - 1);
                 } else {
                     if (check.sourceCard === CardType.GATLING || check.sourceCard === CardType.INDIANS) {
                         this._advanceMassAttack(check.playerIdx, check.attackerIdx, check.sourceCard);
@@ -221,11 +226,14 @@ const ChecksMixin = {
                         sourceCard: check.sourceCard,
                         sourceCardName: check.sourceCardName,
                         bangEffect: check.bangEffect,
-                        ricochet: check.ricochet
+                        ricochet: check.ricochet,
+                        missesNeeded: check.missesNeeded
                     };
                     this.phase = "BARREL_DRAW";
                 } else {
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet);
+                    // Barel neuhnul → obrana pokračuje s PŮVODNÍM počtem karet Vedle!.
+                    // Bez `missesNeeded` by Odstřelovač spadl na 1 (útočník Slab být nemusí).
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet, check.missesNeeded);
                 }
             }
         }

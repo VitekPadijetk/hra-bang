@@ -576,11 +576,19 @@ jen dvěma kartami Vedle!."
   klientský výběr ceny, guard i větev bota fungují **bez úprav**. V
   [logic/dodgeCity.js](logic/dodgeCity.js) přibyly jen dva háky: validace ceny
   (`_sniperPayValid`) a dispatch (`_sniperAttack`).
-- **Bez barelového checku** (R4): `_sniperAttack` jde rovnou přes `waitForMissed`
-  a přepíše `missesRequired = 2`. Barel ani Jourdonnais nepomůžou.
-- **Počítá se jako JEDNO zahrání Bang!** (R4): `bangsPlayedThisTurn++`, platí limit
-  i Kazatel. Inkrementuje se až v dispatchi, ne při volbě cíle – hráč to smí zrušit
-  (`cancel_discard_another`) a hlavní karta mu zůstane v ruce.
+- **Barel i Jourdonnais fungují**: `_sniperAttack` jde obyčejnou cestou
+  `_beginBangResolution` s `missesNeeded = 2`. Úspěšné sejmutí se počítá za JEDNU ze dvou
+  karet Vedle!, druhou musí hráč dohrát; neúspěšné nechá obranu na dvou. `missesNeeded`
+  se proto protahuje celým řetězem (`_beginBangResolution` → `pendingBarrelCheck` →
+  `startBarrelCheck` → `currentCheck` → `_applyCheckResult` → `waitForMissed`) – **bez
+  něj by po neúspěšném barelu spadla obrana na jedno Vedle!**, protože útočník Slab
+  být nemusí. Slabův bonus se s dvojkou nesčítá.
+- **Nepočítá se jako zahraný Bang!** (FAQ Q07): `bangsPlayedThisTurn` se nezvyšuje, takže
+  jde Odstřelovače opakovat, dokud jsou v ruce karty Bang!, a hráč si k tomu ve stejném
+  tahu ještě vystřelí normální Bang!. Kazatel (High Noon) ho zakazuje dál – ten zakazuje
+  kartu Bang! zahrát vůbec. Kvůli tomu musí `cardPlayability` (stejně jako u Odražené
+  střely) kartu Bang! pustit i s vyčerpaným limitem; `bangAtPlayerOk` pak klientovi
+  zhasne postavy a botovi zakáže větev `play_bang`.
 - **Apache Kida mine jen tehdy, když jsou kárové OBĚ karty** – útok je z nich složený.
   Klient ani bot to nemusí zrcadlit: útok naprázdno je legální terminální stav.
 - **UI:** tlačítko „🎯 ODSTŘELOVAČ: 2× BANG!" obsadí slot schopností (Sid/Chuck/José/
@@ -599,7 +607,10 @@ smí kartu zachránit kartou Vedle!, jinak je karta odhozena."
   `_beginBangResolution` → `pendingBarrelCheck` → `startBarrelCheck` (i checkContext
   Lucky Duka) → `currentCheck` → `waitForMissed` → `pendingResponse`. V `handleResponse`
   pak stačí jediná odbočka: místo `handleDamage` se volá `_ricochetDestroy`.
-- **Dostřel platí** (R1), **do limitu 1× Bang!/tah se to nepočítá** (R2). Kvůli R2 musí
+- **Dostřel NEPLATÍ** (FAQ Q15): střílí se na kteroukoli vyloženou kartu u stolu bez
+  ohledu na vzdálenost – `ricochetTargetOk` se ptá jen „je to někdo jiný a je ve hře".
+  Mustang/Skrýš, Paul Regret ani Laso proto cílení nijak nemění.
+  **Do limitu 1× Bang!/tah se to nepočítá** (R2). Kvůli R2 musí
   `cardPlayability` pustit kartu Bang! i s vyčerpaným limitem – jinak by ji nešlo ani
   vybrat. Přibyl proto **`bangAtPlayerOk`**: klient s ním zhasne POSTAVY (na ty už se
   střílet nedá, svítí jen vyložené karty) a bot přeskočí větev `play_bang`. **Bez toho

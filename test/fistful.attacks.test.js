@@ -10,6 +10,7 @@ const { pendingActor, describePendingResponse } = require('../core/pending.js');
 const { cardPlayability, sniperOffer, ricochetOffer, ricochetTargetOk,
         ricochetAvailable, bangCardFromHand, bangAtPlayerOk } = require('../core/playability.js');
 const { decideBotAction } = require('../core/botPolicy.js');
+const { computeCanHit } = require('../core/distance.js');
 
 before(() => { console.log = () => {}; });
 
@@ -90,7 +91,7 @@ test('Odstřelovač: cíl → cena → útok, který jde odrazit jen dvěma Vedl
     assert.equal(g.missesRequired, 2);
     assert.equal(g.players[0].hand.length, 0);
     assert.equal(g.deck.discardPile.length, 2);
-    assert.equal(g.players[0].bangsPlayedThisTurn, 1, 'počítá se jako jedno zahrání Bang!');
+    assert.equal(g.players[0].bangsPlayedThisTurn, 0, 'nepočítá se jako zahrání Bang! (FAQ Q07)');
     assert.equal(describePendingResponse(g, 1).need, '2× Vedle!');
 });
 
@@ -122,25 +123,93 @@ test('Odstřelovač: bez druhého Vedle! hráč schytá zásah', () => {
     assert.equal(g.phase, 'PLAY');
 });
 
-test('Odstřelovač: Barel ani Jourdonnais nepomůžou (R4)', () => {
-    const g = mkEv([{ role: 'Sheriff' }, { character: 'Jourdonnais' }, {}], 'ODSTRELOVAC');
+test('Odstřelovač: Barel se počítá za jedno Vedle!, druhé musí hráč dohrát', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODSTRELOVAC');
+    board(g, 1, CardType.BARREL, { name: 'Barel' });
+    bang(g, 0); bang(g, 0);
+    miss(g, 1);
+    g.startSniper(0, 1);
+    g.discardAnotherCard(0, 1);
+    assert.equal(g.phase, 'BARREL_DRAW', 'sejmutí na barel proběhne');
+    topDeck(g, Suits.HEARTS);   // barel uhne
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'RESPOND', 'barel = jedno Vedle!, druhé se pořád čeká');
+    assert.equal(g.missesRequired, 1);
+    g.handleResponse(1, 0);
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[1].health, 4, 'barel + jedno Vedle! zásah odvrátily');
+});
+
+test('Odstřelovač: neúspěšný barel nechá obranu na dvou Vedle!', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODSTRELOVAC');
     board(g, 1, CardType.BARREL, { name: 'Barel' });
     bang(g, 0); bang(g, 0);
     g.startSniper(0, 1);
     g.discardAnotherCard(0, 1);
-    assert.equal(g.phase, 'RESPOND', 'žádné sejmutí na barel – rovnou obrana');
-    assert.equal(g.missesRequired, 2);
+    topDeck(g, Suits.SPADES);   // barel neuhne
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.missesRequired, 2, 'útočník není Slab – dvojka musí přijít z karty');
 });
 
-test('Odstřelovač: limit 1× Bang!/tah platí (podruhé už se nenabídne)', () => {
+test('Odstřelovač: Jourdonnais snímá dvakrát a úspěch mu ubere jedno Vedle!', () => {
+    const g = mkEv([{ role: 'Sheriff' }, { character: 'Jourdonnais' }, {}], 'ODSTRELOVAC');
+    board(g, 1, CardType.BARREL, { name: 'Barel' });
+    bang(g, 0); bang(g, 0);
+    topDeck(g, Suits.HEARTS);
+    topDeck(g, Suits.SPADES);   // první sejmutí mine
+    g.startSniper(0, 1);
+    g.discardAnotherCard(0, 1);
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'BARREL_DRAW', 'Jourdonnais + Barel = dvě sejmutí');
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.missesRequired, 1);
+});
+
+test('Odstřelovač: nepočítá se do limitu 1× Bang!/tah a jde opakovat (FAQ Q07)', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODSTRELOVAC');
     bang(g, 0); bang(g, 0); bang(g, 0); bang(g, 0);
     g.startSniper(0, 1);
     g.discardAnotherCard(0, 1);
     g.handleResponse(1, null);
+    assert.equal(g.players[0].bangsPlayedThisTurn, 0);
+    // Druhý Odstřelovač ze zbylých dvou karet Bang!
+    assert.equal(sniperOffer(g, g.players[0], 0, g.players[0].hand[0]), true);
+    assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[0]), true);
+    g.startSniper(0, 1);
+    g.discardAnotherCard(0, 1);
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.missesRequired, 2);
+    g.handleResponse(1, null);
+    assert.equal(g.players[1].health, 2, 'dva odstřelovači = dva zásahy');
+});
+
+test('Odstřelovač: po něm jde v tomtéž tahu ještě normální Bang! (FAQ Q07)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODSTRELOVAC');
+    bang(g, 0); bang(g, 0); bang(g, 0);
+    g.startSniper(0, 1);
+    g.discardAnotherCard(0, 1);
+    g.handleResponse(1, null);
+    assert.equal(g.players[0].bangsPlayedThisTurn, 0);
+    g.playBang(0, 1, 0);
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.missesRequired, 1, 'obyčejný Bang! chce jen jedno Vedle!');
     assert.equal(g.players[0].bangsPlayedThisTurn, 1);
-    assert.equal(sniperOffer(g, g.players[0], 0, g.players[0].hand[0]), false);
-    assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[0]), false);
+});
+
+test('Odstřelovač: vyčerpaný limit Bang! ho nezakáže', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODSTRELOVAC');
+    bang(g, 0); bang(g, 0);
+    g.players[0].bangsPlayedThisTurn = 1;
+    assert.equal(sniperOffer(g, g.players[0], 0, g.players[0].hand[0]), true);
+    assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[0]), true);
+    assert.equal(bangAtPlayerOk(g, g.players[0], 0, g.players[0].hand[0]), false,
+        'klasicky na postavu už střílet nejde');
 });
 
 test('Odstřelovač: cenou musí být druhá karta Bang! – jiná karta se ignoruje', () => {
@@ -202,7 +271,7 @@ test('Odražená střela: karta Bang! zůstává hratelná i s vyčerpaným limi
         'na POSTAVU se s vyčerpaným limitem střílet nedá');
 });
 
-test('Odražená střela: bez vyložené karty v dostřelu není na co střílet', () => {
+test('Odražená střela: bez vyložené karty u stolu není na co střílet', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODRAZENA_STRELA');
     bang(g, 0);
     g.players[0].bangsPlayedThisTurn = 1;
@@ -210,13 +279,21 @@ test('Odražená střela: bez vyložené karty v dostřelu není na co střílet
     assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[0]), false);
 });
 
-test('Odražená střela: dostřel platí (R1) a na vlastní karty se nestřílí', () => {
+test('Odražená střela: vzdálenost nehraje roli (FAQ Q15), na vlastní karty se nestřílí', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}, {}, {}], 'ODRAZENA_STRELA');
     board(g, 2, CardType.BARREL, { name: 'Barel' });
-    assert.equal(ricochetTargetOk(g, 0, 2), false, 'vzdálenost 2, Colt .45 nedosáhne');
-    assert.equal(ricochetTargetOk(g, 0, 0), false, 'na sebe ne');
-    weapon(g, 0, 'Remington', 3);
+    // Colt .45 (dostřel 1) na vzdálenost 2 nedosáhne, Odražená střela přesto smí.
+    assert.equal(computeCanHit(g, 0, 2), false, 'předpoklad: obyčejný Bang! by nedosáhl');
     assert.equal(ricochetTargetOk(g, 0, 2), true);
+    assert.equal(ricochetTargetOk(g, 0, 0), false, 'na sebe ne');
+});
+
+test('Odražená střela: Skrýš ani Paul Regret cíl neochrání – dostřel se neřeší', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}, {}, {}], 'ODRAZENA_STRELA');
+    board(g, 2, CardType.EQUIPMENT, { name: 'Skrýš', effect: 'mustang' });
+    g.players[2].character = 'Paul Regret';
+    assert.equal(ricochetTargetOk(g, 0, 2), true);
+    assert.equal(ricochetAvailable(g, g.players[0], 0), true);
 });
 
 // ── Odražená střela: průběh ──────────────────────────────────────────────────
@@ -365,12 +442,14 @@ test('Odražená střela: bez události se nic nestane', () => {
     assert.equal(g.players[1].board.length, 1);
 });
 
-test('Odražená střela: Laso (Fistful) hraje současně – dostřel klesne na 1', () => {
+test('Odražená střela: Laso (Fistful) hraje současně – cílení se nemění', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}, {}, {}], 'ODRAZENA_STRELA');
-    weapon(g, 0, 'Remington', 3);
+    board(g, 2, CardType.BARREL, { name: 'Barel' });
     assert.equal(ricochetTargetOk(g, 0, 2), true);
+    // Laso vypíná EFEKT vyložených karet, ale ve hře pořád leží → střílet na ně jde dál
+    // (a dostřel stejně nikoho nezajímá).
     g.activeEvent = hn('LASO') || { key: 'LASO' };
-    assert.equal(ricochetTargetOk(g, 0, 2), false, 'zbraň na stole nemá efekt');
+    assert.equal(ricochetTargetOk(g, 0, 2), true, 'karta ve hře pořád leží');
 });
 
 // ── Zrcadla pro bota ─────────────────────────────────────────────────────────
@@ -420,4 +499,35 @@ test('bot: Odstřelovač na nepřítele s chudou rukou přebije obyčejný výst
         { 1: { Outlaw: 1 }, 2: { Outlaw: 1 } });
     assert.equal(act.event, 'sniper_choose');
     assert.equal(act.payload.targetIdx, 1);
+});
+
+// Právo západu je ze STEJNÉHO balíčku jako Odstřelovač i Odražená střela, takže naráz
+// aktivní být nemůžou – obě následující dvojice se proto nastavují uměle (vynucená karta
+// se dá do slotu High Noonu, `hasEvent` se ptá obou). Jde o pojistku invariantu „bot se
+// nikdy nezasekne": s vyčerpaným limitem 1× Bang!/tah by `play_bang` server tiše zahodil,
+// a kdyby to Právo západu vynucovalo, bot by ho posílal donekonečna.
+test('bot: vynucená karta Bang! + vyčerpaný limit → Odstřelovač, ne odmítaný play_bang', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODSTRELOVAC');
+    g.activeEvent = ff('PRAVO_ZAPADU');
+    bang(g, 0); bang(g, 0);
+    g.players[0].bangsPlayedThisTurn = 1;
+    g.players[0]._lawCardId = g.players[0].hand[0].id;
+    const act = decideBotAction(JSON.parse(JSON.stringify(g)), 0,
+        { 1: { Outlaw: 1 }, 2: { Outlaw: 1 } });
+    assert.equal(act.event, 'sniper_choose', 'play_bang by server s vyčerpaným limitem zahodil');
+    assert.equal(act.payload.cardIdx, 0);
+});
+
+test('bot: vynucená karta Bang! + vyčerpaný limit → Odražená střela i na kartu bez ceny', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ODRAZENA_STRELA');
+    g.activeEvent = ff('PRAVO_ZAPADU');
+    // Vězení si bot dobrovolně nesestřelí (pomohl by nepříteli), ale pravidlo ho nutí.
+    const jail = board(g, 1, CardType.JAIL, { name: 'Vězení' });
+    bang(g, 0);
+    g.players[0].bangsPlayedThisTurn = 1;
+    g.players[0]._lawCardId = g.players[0].hand[0].id;
+    const act = decideBotAction(JSON.parse(JSON.stringify(g)), 0,
+        { 1: { Outlaw: 1 }, 2: { Outlaw: 1 } });
+    assert.equal(act.event, 'play_ricochet');
+    assert.equal(act.payload.cardId, jail.id);
 });

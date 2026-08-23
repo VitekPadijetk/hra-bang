@@ -162,9 +162,15 @@ const PlayMixin = {
     // `ricochet` = { targetIdx, area, cardId } u Odražené střely (Fistful): vyhodnocení
     // je úplně stejné jako u Bang! (R3), jen ve chvíli „hráč neuhnul" se místo zásahu
     // zničí zasažená karta. Protahuje se proto celým řetězem až do pendingResponse.
-    _beginBangResolution(attackerIdx, targetIdx, isEffect = false, sourceName = null, ricochet = null) {
+    // `missesNeeded` = kolik karet Vedle! si útok žádá, když to neurčuje útočník
+    // (Odstřelovač z Fistfulu = 2). null → spočítá se ze Slaba the Killer jako vždycky.
+    // Protahuje se stejně jako `ricochet`, protože barelový check ho potřebuje na OBOU
+    // stranách: při ♥ se za jednu kartu Vedle! počítá sám barel, jinak platí celé číslo.
+    _beginBangResolution(attackerIdx, targetIdx, isEffect = false, sourceName = null, ricochet = null, missesNeeded = null) {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
+        const needed = missesNeeded ||
+            ((!isEffect && effectiveCharacter(attacker) === "Slab the Killer") ? 2 : 1);
 
         let barrelChecksLeft = 0;
         let barrelReason = "BARREL";
@@ -195,8 +201,10 @@ const PlayMixin = {
                 sourceCard: CardType.BANG,
                 sourceCardName: sourceName || CardType.BANG,
                 bangEffect: isEffect,
-                ricochet
+                ricochet,
+                missesNeeded: needed
             };
+            this.missesPlayed = 0;
             this.phase = "BARREL_DRAW";
         } else {
             this.pendingResponse = {
@@ -211,7 +219,7 @@ const PlayMixin = {
                 responded: []
             };
             this.phase = "RESPOND";
-            this.missesRequired = (!isEffect && effectiveCharacter(attacker) === "Slab the Killer") ? 2 : 1;
+            this.missesRequired = needed;
             this.missesPlayed = 0;
             this.currentAttacker = attackerIdx;
         }
@@ -318,7 +326,7 @@ const PlayMixin = {
         if (this.phase !== "BARREL_DRAW" || !this.pendingBarrelCheck?.active) return;
         const pbc = this.pendingBarrelCheck;
         this.pendingBarrelCheck = null;
-        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName, pbc.ricochet);
+        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName, pbc.ricochet, pbc.missesNeeded);
     },
 
     // Vyloží kartu (modrou i zelenou) na stůl. Nelze mít 2 karty stejného jména (D7).
@@ -337,11 +345,11 @@ const PlayMixin = {
         return false;
     },
 
-    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null) {
+    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null) {
         const target = this.players[targetIdx];
 
         if (effectiveCharacter(target) === "Lucky Duke") {
-            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet };
+            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded };
             this.startLuckyDukeCheck(checkContext);
             return;
         }
@@ -349,7 +357,7 @@ const PlayMixin = {
         const checkCard = this.deck.draw();
         this.deck.discard(checkCard);
         this.phase = "CHECKING";
-        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet };
+        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded };
     },
 
     resolveCardSelection(attackerIdx, targetCardArea, targetCardIdx) {
@@ -495,7 +503,9 @@ const PlayMixin = {
         }
     },
 
-    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false, sourceCardName = null, ricochet = null) {
+    // `missesNeeded` = explicitní počet karet Vedle! (Odstřelovač 2, zbytek po úspěšném
+    // barelu 1). null → spočítá se ze Slaba the Killer.
+    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null) {
         const attacker = this.players[attackerIdx];
         this.pendingResponse = {
             active: true,
@@ -510,7 +520,8 @@ const PlayMixin = {
         };
         if (!this.missesPlayed || this.missesPlayed === 0) {
             // Bang-efekt: Slabův bonus (2× Vedle!) neplatí → vždy 1.
-            this.missesRequired = (!bangEffect && effectiveCharacter(attacker) === "Slab the Killer" && sourceCard !== CardType.GATLING) ? 2 : 1;
+            this.missesRequired = missesNeeded ||
+                ((!bangEffect && effectiveCharacter(attacker) === "Slab the Killer" && sourceCard !== CardType.GATLING) ? 2 : 1);
             this.missesPlayed = 0;
         }
         this.phase = "RESPOND";

@@ -612,16 +612,16 @@ const FistfulMixin = {
         return bangCardFromHand(this, this.players[playerIdx], playerIdx, card);
     },
 
-    // Obě karty Bang! jsou zaplacené (leží v odhozu) → útok. Bez barelového checku (R4):
-    // ubránit se lze VÝHRADNĚ dvěma kartami Vedle!, Barel ani Jourdonnais nepomůžou.
-    // Do limitu se počítá jako JEDNO zahrání Bang! (R4).
+    // Obě karty Bang! jsou zaplacené (leží v odhozu) → útok.
+    // Do limitu 1× Bang!/tah se to NEPOČÍTÁ (FAQ Q07): obě karty se odhazují, nehrají,
+    // takže Odstřelovače jde opakovat, dokud jsou v ruce karty Bang!, a hráč si k tomu
+    // ve stejném tahu ještě může vystřelit svůj normální Bang!.
     _sniperAttack(playerIdx, targetIdx, mainCard, extraCard) {
         const attacker = this.players[playerIdx];
         const target = this.players[targetIdx];
         const done = () => { this.phase = "PLAY"; this._processSpecialQueue(); };
         if (!attacker || !target || targetIdx === playerIdx || !isInPlay(target)) { done(); return; }
 
-        attacker.bangsPlayedThisTurn++;
         attacker.stats.bangsFired++;
         this.currentAttacker = playerIdx;
         this.logEvent('event', { card: 'Odstřelovač', who: attacker.name, target: target.name });
@@ -632,10 +632,12 @@ const FistfulMixin = {
                              this._effSuit(extraCard) === Suits.DIAMONDS;
         if (bothDiamonds && this._apacheImmune(targetIdx, Suits.DIAMONDS, playerIdx)) { done(); return; }
 
+        // Jde to obyčejnou cestou Bang! (`_beginBangResolution`), jen s `missesNeeded = 2`:
+        // Barel i Jourdonnais tedy fungují a úspěšné sejmutí se počítá za jednu ze dvou
+        // karet Vedle! (druhou musí hráč dohrát). Slabův bonus se s tím nesčítá – dvojka
+        // je pevná a přichází ze samotné karty Odstřelovač.
         this.missesPlayed = 0;
-        this.waitForMissed(targetIdx, playerIdx, CardType.BANG, false, 'Odstřelovač');
-        // Až ZA waitForMissed – ta si missesRequired nastavuje podle Slaba (taky 2).
-        this.missesRequired = 2;
+        this._beginBangResolution(playerIdx, targetIdx, false, 'Odstřelovač', null, 2);
         this._processSpecialQueue();
     },
 
