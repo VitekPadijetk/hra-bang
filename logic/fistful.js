@@ -162,8 +162,10 @@ const FistfulMixin = {
     // ── Peyote: „Místo lízání hádej barvu vrchní karty; uhodneš – ber a hádej dál." ─
     // Nahrazuje CELOU fázi lízání včetně postav, které si ji upravují (Kit Carlson,
     // Jesse Jones, Pedro Ramirez, Pat Brennan, Black Jack, Claus) – ptáme se proto
-    // hned v `startDrawPhase`, ještě před jejich větvemi. Počet karet se neřeší vůbec:
-    // líže se, dokud hráč hádá, takže Žízeň ani Příjezd vlaku (High Noon) nic nemění.
+    // hned v `startDrawPhase`, ještě před jejich větvemi. Počet karet se v hádání neřeší
+    // vůbec: líže se, dokud hráč hádá, takže Žízeň (High Noon) nemá co ubrat. Příjezd
+    // vlaku ale kartu navíc dává i tady – lízne se klasicky z balíčku až po hádání,
+    // přesně jako u Kita Carlsona (kitExtra). Viz _endPeyote.
     // Vrací true → fáze lízání se rozjela po svém a volající už nic nestaví.
     startPeyote() {
         if (!this.hasEvent('PEYOTE')) return false;
@@ -215,8 +217,26 @@ const FistfulMixin = {
         return { card, red: !!red, hit };
     },
 
+    // Konec hádání (netrefa nebo došlé karty). Příjezd vlaku (High Noon) přidává kartu
+    // navíc i k Peyote: hádáním se dobrat nedá (počet karet je na hráči), takže se líže
+    // úplně klasicky klikem na balíček – stejný ocásek, jaký má Kit Carlson (kitExtra).
+    // Pořád je to lízání na začátku tahu, takže se Želízka i Ranč ptají až za ním.
     _endPeyote() {
         this.pendingPeyote = null;
+        // Došly obě hromádky → není co dolízat a fáze by se nedala dokončit.
+        const anyCard = this.deck._drawPile.length > 0 || this.deck._discardPile.length > 0;
+        if (this.hasEvent('PRIJEZD_VLAKU') && anyCard) {
+            this._setDrawPhase({
+                active: true,
+                playerIdx: this.currentPlayerIndex,
+                cardsNeeded: 1,
+                cardsDrawn: 0,
+                options: ['deck'],
+                isStartOfTurn: true,
+            });
+            this.phase = "DRAW";
+            return;
+        }
         this._finishDraw();
     },
 
@@ -284,9 +304,11 @@ const FistfulMixin = {
 
     // ── Pokrevní bratři: „Na začátku svého tahu, před lízáním, smí hráč ztratit ──
     //     1 život a dát ho jinému hráči. Nesmí se tím zabít."
-    // Ptá se `startDrawPhase` (logic/draw.js), tedy AŽ ZA kontrolami na Dynamit/Vězení:
-    // kdo zůstal ve vězení, tah přeskakuje a nedaruje nic. Vzor je pauza Very Custer –
-    // vrací true → fáze lízání se rozjede až po rozhodnutí (resolveBloodBrothers).
+    // Je to POSLEDNÍ krok startu tahu (`_runBeginTurn` v logic/highNoon.js), tedy ještě
+    // PŘED kontrolami na Dynamit/Vězení – ty už k fázi lízání patří. Život tak stihne
+    // darovat i ten, koho vzápětí vyhodí do vzduchu dynamit nebo komu vězení tah vezme.
+    // Vrací true → start tahu se pozastaví a dotočí se až po rozhodnutí hráče
+    // (resolveBloodBrothers → _resumeBeginTurn).
     // Nabidne se jen když je co dát (health ≥ 2 – „nesmí se tím zabít") a je komu
     // (R9: cíl musí být ve hře a zraněný; duch Města duchů se léčit smí, proto isInPlay).
     _startBloodBrothers() {
@@ -311,8 +333,9 @@ const FistfulMixin = {
         return out;
     },
 
-    // `targetIdx === null` (nebo neplatný cíl) = „Ne, děkuji". Fáze lízání se rozjede
-    // v obou případech; `_bbOfferedTurn` zajišťuje, že se nabídka v tomhle tahu nevrátí.
+    // `targetIdx === null` (nebo neplatný cíl) = „Ne, děkuji". Start tahu se v obou
+    // případech dotočí (kontroly na Dynamit/Vězení a fáze lízání); `_bbOfferedTurn`
+    // zajišťuje, že se nabídka v tomhle tahu nevrátí.
     resolveBloodBrothers(playerIdx, targetIdx) {
         if (this.phase !== "BLOOD_BROTHERS" || !this.pendingBlood) return false;
         if (this.pendingBlood.playerIdx !== playerIdx) return false;
@@ -322,7 +345,7 @@ const FistfulMixin = {
         this.pendingBlood = null;
         p._bbOfferedTurn = this.turnId;
         this.phase = "PLAY";
-        if (!give) { this.startDrawPhase(); return true; }
+        if (!give) { this._resumeBeginTurn(); return true; }
 
         const t = this.players[targetIdx];
         this.logEvent('event', { card: 'Pokrevní bratři', who: p.name, target: t.name });
@@ -332,15 +355,15 @@ const FistfulMixin = {
         this.handleDamage(playerIdx, null);
         this._heal(t, 1);
         // Zranění mohlo do fronty přidat odloženou akci (Bart Cassidy). Ta musí doběhnout
-        // dřív, než se rozjede fáze lízání – frontu je proto nutné nejdřív pročistit
+        // dřív, než se dotočí start tahu – frontu je proto nutné nejdřív pročistit
         // (viz „nejdřív doběhne efekt zahrané karty" v CLAUDE.md).
         this._pruneSuzyQueue();
         if (this.specialActionQueue.length > 0) {
-            this._startDrawAfterQueue = true;
+            this._resumeBeginTurnAfterQueue = true;
             this._processSpecialQueue();
             return true;
         }
-        this.startDrawPhase();
+        this._resumeBeginTurn();
         return true;
     },
 

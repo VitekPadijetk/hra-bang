@@ -157,6 +157,61 @@ test('Peyote: duch (Město duchů) hádá taky', () => {
     assert.equal(g.players[0].hand.length, 1);
 });
 
+test('Peyote + Příjezd vlaku: po hádání se líže jedna karta klasicky', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'PEYOTE');
+    g.activeEvent = hn('PRIJEZD_VLAKU');
+    stack(g, [RED(), BLACK(), RED()]);
+    g.startDrawPhase();
+    assert.equal(g.peyoteGuess(0, true).hit, true, 'první tip sedí');
+    assert.equal(g.peyoteGuess(0, true).hit, false, 'druhý ne → konec hádání');
+    assert.equal(g.phase, 'DRAW', 'karta navíc se líže klasicky z balíčku');
+    assert.equal(g.drawPhaseState.active, true);
+    assert.equal(g.drawPhaseState.cardsNeeded, 1);
+    assert.deepEqual(g.drawPhaseState.options, ['deck']);
+    g.drawCard('deck');
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[0].hand.length, 2, '1 uhodnutá + 1 za Příjezd vlaku');
+});
+
+test('Peyote + Příjezd vlaku: karta navíc jde až za lízáním (Želízka pak taky)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'PEYOTE');
+    g.activeEvent = hn('PRIJEZD_VLAKU');
+    stack(g, [BLACK(), RED()]);
+    g.startDrawPhase();
+    g.peyoteGuess(0, true);          // netrefa hned prvním tipem
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.isStartOfTurn, true, 'pořád lízání na začátku tahu');
+});
+
+test('Peyote + Žízeň: nemá co ubrat, po hádání se nelíže nic', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'PEYOTE');
+    g.activeEvent = hn('ZIZEN');
+    stack(g, [RED(), BLACK()]);
+    g.startDrawPhase();
+    g.peyoteGuess(0, true);
+    g.peyoteGuess(0, true);
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[0].hand.length, 1);
+});
+
+test('Peyote: bez Příjezdu vlaku končí hádání rovnou fází PLAY', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'PEYOTE');
+    stack(g, [BLACK(), RED()]);
+    g.startDrawPhase();
+    g.peyoteGuess(0, true);
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Peyote + Příjezd vlaku: došlé karty fázi nezaseknou', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'PEYOTE');
+    g.activeEvent = hn('PRIJEZD_VLAKU');
+    g.deck.cards = [];
+    g.deck.discardPile = [];
+    g.startDrawPhase();
+    assert.equal(g.peyoteGuess(0, true), null, 'není z čeho lízat');
+    assert.equal(g.phase, 'PLAY');
+});
+
 test('Peyote: po netrefě navazují Želízka (High Noon)', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}], 'PEYOTE');
     g.activeEvent = hn('ZELIZKA');

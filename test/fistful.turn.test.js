@@ -90,20 +90,33 @@ test('Pokrevní bratři: v jednom tahu jen jednou', () => {
     const g = mkEv([{ role: 'Sheriff', health: 4 }, { health: 2 }], 'POKREVNI_BRATRI');
     startTurn(g);
     g.resolveBloodBrothers(0, null);
-    g.startDrawPhase();             // druhý průchod (jako po Vendetě uvnitř téhož tahu)
-    assert.equal(g.phase, 'DRAW', 'nabídka se nevrací');
+    assert.equal(g._startBloodBrothers(), false, 'nabídka se v témže tahu nevrací');
+    assert.equal(g.phase, 'DRAW');
 });
 
-test('Pokrevní bratři: ve vězení se nenabídnou (tah se přeskočí)', () => {
+test('Pokrevní bratři: nabídnou se PŘED vězením (i když pak tah propadne)', () => {
     const g = mkEv([{ role: 'Sheriff', health: 4 }, { health: 2 }], 'POKREVNI_BRATRI');
     board(g, 0, CardType.JAIL);
     topDeck(g, Suits.SPADES, '5');   // ne srdce → vězení tah bere
     startTurn(g);
-    assert.equal(g.phase, 'CHECK_DRAW');
+    assert.equal(g.phase, 'BLOOD_BROTHERS', 'nabídka je dřív než sejmutí na Vězení');
+    g.resolveBloodBrothers(0, 1);
+    assert.equal(g.players[0].health, 3);
+    assert.equal(g.players[1].health, 3);
+    assert.equal(g.phase, 'CHECK_DRAW', 'teprve teď se snímá na Vězení');
     g.triggerCheckDraw();
     g.resolveCheck();
     assert.equal(g.currentPlayerIndex, 1, 'tah přeskočen');
-    assert.notEqual(g.phase, 'BLOOD_BROTHERS');
+});
+
+test('Pokrevní bratři: nabídnou se PŘED dynamitem', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 4 }, { health: 2 }], 'POKREVNI_BRATRI');
+    board(g, 0, CardType.DYNAMITE);
+    topDeck(g, Suits.SPADES, '5');   // ♠ 2–9 → výbuch
+    startTurn(g);
+    assert.equal(g.phase, 'BLOOD_BROTHERS');
+    g.resolveBloodBrothers(0, 1);
+    assert.equal(g.phase, 'CHECK_DRAW', 'teprve teď se snímá na Dynamit');
 });
 
 test('Pokrevní bratři: Bart Cassidy si za darovaný život lízne PŘED fází lízání', () => {

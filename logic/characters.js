@@ -200,17 +200,12 @@ const CharactersMixin = {
             this.interruptedPhase = null;
             if (!this.winner) this.nextTurn();
         } else if (this._resumeBeginTurnAfterQueue) {
-            // High Noon – ztráta života od Pravého poledne mohla do fronty přidat líznutí
-            // (Bart Cassidy). Až doběhne, dokonči start tahu (kontroly Dynamit/Vězení).
+            // High Noon – ztráta života od Pravého poledne (a stejně tak darovaný život
+            // od Pokrevních bratrů) mohla do fronty přidat líznutí (Bart Cassidy).
+            // Až doběhne, dokonči start tahu (kontroly Dynamit/Vězení).
             this._resumeBeginTurnAfterQueue = false;
             this.interruptedPhase = null;
             if (!this.winner) this._resumeBeginTurn();
-        } else if (this._startDrawAfterQueue) {
-            // Fistful – Pokrevní bratři: darovaný život mohl do fronty přidat líznutí
-            // (Bart Cassidy). Až doběhne, rozjeď fázi lízání (viz resolveBloodBrothers).
-            this._startDrawAfterQueue = false;
-            this.interruptedPhase = null;
-            if (!this.winner) this.startDrawPhase();
         } else if (this._advanceRouletteAfterQueue) {
             // Fistful – Ruská ruleta: odhod mohl do fronty přidat líznutí (Suzy Lafayette
             // s prázdnou rukou, Molly Stark za odhozenou kartu). Až doběhne, jde na řadu

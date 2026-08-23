@@ -26,7 +26,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `logic/response.js` | **Mixin GameState.** Fáze RESPOND: `handleResponse` (Vedle!/Bang!, duel, hromadné útoky), záchrana posledního života `beerLastLifeSave`/`sidLastLifeSave`, `_advanceAfterLastLifeSave`. |
 | `logic/characters.js` | **Mixin GameState.** Schopnosti postav + fronta odložených akcí: `_processSpecialQueue`/`_resumeAfterSpecial`, `checkSuzyLafayette`/`suzyLafayetteDraw`, `bartCassidyDraw`, `elGringoSteal`, `sidKetchumDiscardOne`/`useSidKetchum`, `startLuckyDukeCheck`/`luckyDukePick` + **dělení karet mezi víc Vulture Samů** (`_nextVultureSplitPick`/`_advanceVultureSplit`/`_finishVultureSplit`, viz níže) a **pravidlo „nejdřív doběhne efekt zahrané karty"** (`_pruneSuzyQueue`, viz níže). |
 | `logic/checks.js` | **Mixin GameState.** Kontrolní líznutí na začátku tahu (Dynamit/Vězení) a vyhodnocení checků: `handleStartOfTurnChecks`, `triggerCheckDraw`, `_applyCheckResult` (Dynamit/Vězení/Barel/Jourdonnais), `resolveCheck`. |
-| `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (7 kroků, viz „Start tahu (Fistful)" níže), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit`, **Daltonové** (`_startDaltons`/`_advanceDaltons`/`_resumeDaltons`/`_daltonsBlueCount`, viz níže) a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/`_turnStep`/**`_effSuit`**. `_turnStep()` = krok pro `nextTurn` (Zlatá horečka jede proti směru, tj. `players.length - 1`); **jediné místo, kde se směr obrací** – posun dynamitu, hokynářství, hromadné útoky, Rvačka i samotní Daltonové zůstávají po směru (FAQ H3). **Kocovina** nemá vlastní metodu: `_applyEventOnEnter` při KAŽDÉ výměně události přepíše všem hráčům `p._noAbility`, což čte `effectiveCharacter` (core/distance.js). `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí – **jedinou výjimkou je Peyote** (A Fistful of Cards): tip na barvu se schválně vyhodnocuje proti VYTIŠTĚNÉ barvě, jinak by pod Požehnáním/Prokletím každý tip sedl a hráč by si lízl celý balíček (`peyoteGuess` v logic/fistful.js a jeho zrcadlo ve větvi `PEYOTE` v core/botPolicy.js). **Město duchů**: `_teardownGhost()` (konec tahu ducha – volá ho `nextTurn` jako první krok, viz níže). **Přibalené karty** (`options.highNoonExtra`): `_dealSecondIdentities`/`_newIdentityOffer`/`resolveNewIdentity` (Nová identita) a `_startHandcuffs`/`chooseHandcuffsSuit`/`_suitBlocked` (Želízka). |
+| `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (8 kroků, viz „Start tahu (Fistful)" níže), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit`, **Daltonové** (`_startDaltons`/`_advanceDaltons`/`_resumeDaltons`/`_daltonsBlueCount`, viz níže) a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/`_turnStep`/**`_effSuit`**. `_turnStep()` = krok pro `nextTurn` (Zlatá horečka jede proti směru, tj. `players.length - 1`); **jediné místo, kde se směr obrací** – posun dynamitu, hokynářství, hromadné útoky, Rvačka i samotní Daltonové zůstávají po směru (FAQ H3). **Kocovina** nemá vlastní metodu: `_applyEventOnEnter` při KAŽDÉ výměně události přepíše všem hráčům `p._noAbility`, což čte `effectiveCharacter` (core/distance.js). `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí – **jedinou výjimkou je Peyote** (A Fistful of Cards): tip na barvu se schválně vyhodnocuje proti VYTIŠTĚNÉ barvě, jinak by pod Požehnáním/Prokletím každý tip sedl a hráč by si lízl celý balíček (`peyoteGuess` v logic/fistful.js a jeho zrcadlo ve větvi `PEYOTE` v core/botPolicy.js). **Město duchů**: `_teardownGhost()` (konec tahu ducha – volá ho `nextTurn` jako první krok, viz níže). **Přibalené karty** (`options.highNoonExtra`): `_dealSecondIdentities`/`_newIdentityOffer`/`resolveNewIdentity` (Nová identita) a `_startHandcuffs`/`chooseHandcuffsSuit`/`_suitBlocked` (Želízka). |
 | `logic/fistful.js` | **Mixin GameState.** Rozšíření **A Fistful of Cards** – DRUHÝ balíček událostí, hraje se SOUČASNĚ s High Noonem (viz „Dva balíčky událostí" níže). `_setupFistfulDeck` (Fistful of Cards vespod), `_flipFistfulEvent`, `_applyFfEventOnEnter`. Dál karty, které nemají domov jinde: **Laso** `_boardDead` (jediný dotaz „karty na stole nemají efekt"), **Soudce** `_judgeBlocks`, **Opuštěný důl** `_syncMine`, **Peyote** `startPeyote`/`peyoteGuess`, **Ranč** `_startRanch`/`ranchExchange`, **Právo západu** `_lawMark`/`_lawForced`/`_lawLocked`/`_lawSelfShootOnly`, **Pokrevní bratři** `_startBloodBrothers`/`resolveBloodBrothers`, **Fistful of Cards** `_fistfulHits`/`_afterFistfulHit`, **Ruská ruleta** `_startRoulette`/`_advanceRoulette`/`rouletteDiscard`, **Vendeta** `_vendettaCheck`/`_vendettaExtraTurn`, **Mrtvý muž** `_deadManReturnIdx`/`_deadManReturn`, **Odstřelovač** `startSniper`/`_sniperAttack` a **Odražená střela** `playRicochet`/`_ricochetDestroy`. Léčka vlastní metodu nemá – ptá se na ni přímo `computeDistance` (core/distance.js). |
 | `server.js` | **Socket.IO bootstrap (~76 ř.).** Express/io setup → poskládá sdílený `ctx` (`require('./server/*')(ctx)` v pořadí rooms→gamelog→ledger→guard→intro→anim→lifecycle→bots) → `io.on('connection')` jen definuje per-connection `withRoom` a zavolá `register*Handlers(socket, ctx, withRoom)` → `server.listen`. Veškerá logika je v `server/*`. |
 | `server/rooms.js` | Factory `installRoomService(ctx)` – vlastní `rooms` Map + roomCounter, vystaví na `ctx`: `makeRoom`, `roomPayload`, `broadcastRoom(+Delayed)`, `broadcastLobbyList`, `getLobbyList`, `getGameList`, `findRoomBySocket`, `leaveRoom`, `leaveSpectate`, `disbandRoom`, **`closeRoom`/`roomAlive`**. Bez listenu → testovatelné s fake io (`test/server.rooms.test.js`). **Rozpuštění místnosti = `closeRoom(room)`, nikdy holé `rooms.delete`**: intro sekvence (`server/intro.js`), odložený broadcast, tick botů, čekání na assety i odpočet navazující hry jsou naplánované timeouty držící referenci na `room` – po pouhém smazání z registru emitovaly dál a hráč, který je zpátky v menu, se z něj překlopil zpátky do zrušené hry („jsem v ní a zároveň nejsem", tlačítko ✕ Ukončit hru). `closeRoom` je všechny zruší a označí místnost za mrtvou; `broadcastRoom(+Delayed)`, `emitIntro*` (intro.js) i `emitAnim*` (anim.js) se pak ptají přes `roomAlive(room)`. **Divák je jen v socket.io kanálu `<roomId>_spectators`, ne v `room.players`** – `findRoomBySocket`/`leaveRoom` ho tedy nevidí a odhlásit ho umí jen `leaveSpectate(socket)` (volá se z `leave_spectate`, `go_to_menu`, `spectate`, `create_room`/`join_room`/`rejoin`/`create_bot_game`). Bez odhlášení mu chodí dál `room_update`/`card_animation`/`intro_phase` a klient ho z menu překlopí zpátky do hry. |
@@ -168,9 +168,8 @@ běžet naráz**:
 | příznak | pokračuje se do | typický spouštěč |
 |---|---|---|
 | `_nextTurnAfterQueue` | `nextTurn()` | odchod ducha (Město duchů), smrt uprostřed série |
-| `_resumeBeginTurnAfterQueue` | krokovač startu tahu (`_resumeBeginTurn`) | Mrtvý muž, Daltonové, zásah Fistfulu, Pravé poledne |
+| `_resumeBeginTurnAfterQueue` | krokovač startu tahu (`_resumeBeginTurn`) | Mrtvý muž, Daltonové, zásah Fistfulu, Pravé poledne, Pokrevní bratři |
 | `_startChecksAfterQueue` | kontroly Dynamit/Vězení | výbuch dynamitu (Bart Cassidy si líže za každý život) |
-| `_startDrawAfterQueue` | fáze lízání | Pokrevní bratři (darovaný život probudí Barta) |
 | `_advanceRouletteAfterQueue` | další hráč v kolečku Ruské rulety | odhoz probudil Suzy Lafayette / Molly Stark |
 
 Bez toho, aby líznutí doběhlo **dřív** než pokračování, se schopnost obrátí proti svému
@@ -500,10 +499,16 @@ a hádá znovu. Neuhodl → karta jde do odhozu a fáze lízání končí."
 - **Přebíjí všechny postavy, které si lízání upravují** (Kit Carlson, Jesse Jones, Pedro
   Ramirez, Pat Brennan, Black Jack, Claus – R8), proto se `startPeyote()` ptá hned na
   začátku `startDrawPhase` ([logic/draw.js](logic/draw.js)), ještě před jejich větvemi.
-- **Počet karet se neřeší vůbec.** Líže se, dokud hráč hádá, takže Žízeň ani Příjezd
-  vlaku (High Noon) nic nemění a fáze vždy skončí jednou kartou v odhozu (přestat
-  dobrovolně nejde). `drawPhaseState` existuje jen kvůli `_finishDraw` (Želízka, Ranč)
-  a má `active: false` – hádá se tlačítky, ne klikem na hromádku.
+- **Počet karet se v hádání neřeší vůbec.** Líže se, dokud hráč hádá, takže Žízeň
+  (High Noon) nemá co ubrat a fáze vždy skončí jednou kartou v odhozu (přestat dobrovolně
+  nejde). `drawPhaseState` existuje jen kvůli `_finishDraw` (Želízka, Ranč) a má
+  `active: false` – hádá se tlačítky, ne klikem na hromádku.
+- **Příjezd vlaku (High Noon) kartu navíc dává i tady** – hádáním se k ní dobrat nedá
+  (kolik karet padne, je na hráči), takže se líže úplně klasicky klikem na balíček až
+  ZA hádáním (`_endPeyote` v [logic/fistful.js](logic/fistful.js) nastaví novou
+  `drawPhaseState` s `cardsNeeded: 1`). Je to stejný ocásek, jaký má Kit Carlson
+  (`kitExtra`), a pořád je to lízání na začátku tahu, takže se Želízka i Ranč ptají až
+  za ním. Když došel balíček i odhoz, fáze prostě skončí – jinak by se nedala dokončit.
 - **Jediné místo v kódu, kde se čte VYTIŠTĚNÁ `card.suit`.** Pod Požehnáním/Prokletím
   (High Noon) by přes `_effSuit` každý tip sedl a hráč by si lízl celý balíček; výjimka
   je proto i v klientské cinematice (`pulseCheckMark(..., { printedSuit: true })`)
@@ -965,7 +970,7 @@ akce (`options` je jen snímek z okamžiku, kdy fáze začala).
 ## Start tahu (Fistful): Mrtvý muž, Fistful of Cards, Pokrevní bratři
 
 Tři karty, které sahají do startu tahu. Krokovač `_runBeginTurn`
-([logic/highNoon.js](logic/highNoon.js)) je proto sedmikrokový a **pořadí je pravidlo**:
+([logic/highNoon.js](logic/highNoon.js)) je proto osmikrokový a **pořadí je pravidlo**:
 
 ```
 0. _deadManReturn        ← Mrtvý muž: návrat prvního vyřazeného      (Fistful)
@@ -975,11 +980,13 @@ Tři karty, které sahají do startu tahu. Krokovač `_runBeginTurn`
 4. _noonDamage           ← Pravé poledne                             (High Noon)
 5. _fistfulHits          ← Fistful of Cards: N× Bang!                (Fistful)
 6. _newIdentityOffer     ← Nová identita                             (High Noon, přibalené)
+7. _startBloodBrothers   ← Pokrevní bratři: daruj 1 život            (Fistful)
 ```
 
-**Pokrevní bratři v seznamu nejsou** – patří až ZA kontroly na Dynamit/Vězení (kdo zůstal
-ve vězení, tah přeskakuje a nedaruje nic), takže visí na začátku `startDrawPhase`
-([logic/draw.js](logic/draw.js)) stejným vzorem, jaký tam už používá Vera Custer.
+**Pokrevní bratři jsou poslední, ale pořád PŘED kontrolami na Dynamit/Vězení** – „na
+začátku svého tahu, před lízáním", a sejmutí na Dynamit i Vězení už k fázi lízání patří.
+Život tedy stihne darovat i ten, koho vzápětí vyhodí do vzduchu dynamit nebo komu vězení
+tah vezme.
 
 ### Mrtvý muž (`MRTVY_MUZ`)
 
@@ -1048,8 +1055,8 @@ Nesmí se tím zabít."
 - **Seznam platných cílů posílá server** (`pendingBlood.targets`) – klient i bot si podle
   něj svítí/vybírají, takže se s pravidly nemůžou rozejít.
 - Ztráta jde přes `handleDamage(idx, null)` → **Bart Cassidy si lízne, El Gringo nekrade**.
-  Když se tím naplní fronta, fáze lízání se rozjede až po ní – nový příznak
-  **`_startDrawAfterQueue`** v `_resumeAfterSpecial` ([logic/characters.js](logic/characters.js)).
+  Když se tím naplní fronta, start tahu se dotočí až po ní – příznak
+  **`_resumeBeginTurnAfterQueue`** v `_resumeAfterSpecial` ([logic/characters.js](logic/characters.js)).
 - **UI:** cíl se vybírá klikem na postavu soupeře (vlastní blok v `addCharInteraction`,
   vzor „odhoď další kartu"), odmítnutí je tlačítko v místě „Ukončit tah"; slot schopností
   proto v téhle fázi nedostane Sid Ketchum (stejně jako u Peyote/Ranče).
