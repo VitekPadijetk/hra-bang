@@ -127,6 +127,8 @@ test('Ruská ruleta: ducha (Město duchů) se netýká', () => {
 
 // ── Ruská ruleta: co se počítá za kartu Vedle! ───────────────────────────────
 
+// Vlastní efekt karty (Úhyb, Bible) se neaktivuje – karta se odhazuje, nehraje.
+// Schopnosti postav vázané na odhoz z ruky (Suzy, Molly) naopak platí, viz níž.
 test('Ruská ruleta: Úhyb platí, ale líznutí za něj se nespustí (odhazuje se, nehraje)', () => {
     const g = mkEv([{ role: 'Sheriff' }], null);
     const c = mkCard(CardType.UHYB, { name: 'Úhyb' });
@@ -189,22 +191,61 @@ test('Ruská ruleta: neplatný klik výběr neposune', () => {
     assert.equal(g.pendingRoulette.playerIdx, 0);
 });
 
-test('Ruská ruleta: Suzy Lafayette si lízne až po celém kolečku', () => {
+test('Ruská ruleta: Suzy Lafayette si lízne HNED, ještě než se kolečko posune', () => {
     const g = mkEv([{ role: 'Sheriff', character: 'Suzy Lafayette' }, {}], null);
+    missIdx(g, 0); missIdx(g, 1); missIdx(g, 1);
+    enterFf(g, 'RUSKA_RULETA');
+    g.rouletteDiscard(0, { cardId: g.players[0].hand[0].id });
+    // Prázdná ruka → líznutí se odbaví okamžitě, teprve pak jde na řadu další hráč.
+    assert.equal(g.phase, 'SUZY_DRAW');
+    assert.equal(g.pendingRoulette.playerIdx, 0, 'kolečko se zatím neposunulo');
+    g.deck.cards.push(mkCard(CardType.MISSED, { name: 'Vedle!' }));
+    g.suzyLafayetteDraw(0);
+    assert.equal(g.players[0].hand.length, 1);
+    assert.equal(g.phase, 'ROULETTE_DISCARD');
+    assert.equal(g.pendingRoulette.playerIdx, 1, 'až po líznutí jde na řadu další');
+    // Druhé kolo: Suzy má díky schopnosti zase čím odhodit.
+    g.rouletteDiscard(1, { cardId: g.players[1].hand[0].id });
+    assert.equal(g.pendingRoulette.playerIdx, 0);
+    assert.equal(g.phase, 'ROULETTE_DISCARD');
+});
+
+test('Ruská ruleta: Molly Stark si za odhozenou kartu lízne (mimo svůj tah)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, { character: 'Molly Stark' }], null);
+    missIdx(g, 0); missIdx(g, 0); missIdx(g, 1);
+    enterFf(g, 'RUSKA_RULETA');
+    g.rouletteDiscard(0, { cardId: g.players[0].hand[0].id });
+    assert.equal(g.pendingRoulette.playerIdx, 1);
+    g.rouletteDiscard(1, { cardId: g.players[1].hand[0].id });
+    // Náhrada za odhozenou kartu je klikací líznutí; kolečko čeká.
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.isKillReward, true);
+    assert.equal(g.drawPhaseState.playerIdx, 1);
+    assert.equal(g.pendingRoulette.playerIdx, 1, 'kolečko se zatím neposunulo');
+    g.drawCard('deck');
+    assert.equal(g.players[1].hand.length, 1, 'ruka se Molly nezmenšila');
+    assert.equal(g.phase, 'ROULETTE_DISCARD');
+    assert.equal(g.pendingRoulette.playerIdx, 0);
+});
+
+test('Ruská ruleta: Molly ve VLASTNÍM tahu si nelíže a zelená karta ze stolu se jí nepočítá', () => {
+    // Molly je šerif → kolečko běží v jejím tahu, schopnost tedy neplatí.
+    const g = mkEv([{ role: 'Sheriff', character: 'Molly Stark' }, {}], null);
     missIdx(g, 0);
     enterFf(g, 'RUSKA_RULETA');
     g.rouletteDiscard(0, { cardId: g.players[0].hand[0].id });
-    // Suzy má prázdnou ruku, ale líznutí čeká ve frontě – nejdřív doběhne kolečko
-    // (na dalším kole by tedy o Ruskou ruletu mohla přijít o životy).
-    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
-    assert.equal(g.specialActionQueue.filter(a => a.type === 'SUZY_DRAW').length, 1);
-    g.takeDynamiteHit(1);
-    assert.equal(g.phase, 'SUZY_DRAW', 'fronta se dobírá až za kolečkem');
-    g.suzyLafayetteDraw(0);
-    assert.equal(g.players[0].hand.length, 1);
-    assert.equal(g.phase, 'DYNAMITE_DAMAGE', 'zbývá druhý zásah');
-    g.takeDynamiteHit(1);
-    assert.equal(g.phase, 'DRAW', 'start tahu se dotočil');
+    assert.equal(g.specialActionQueue.length, 0);
+    assert.equal(g.players[0].hand.length, 0);
+
+    // Zelená Vedle!-karta je ze STOLU, ne z ruky – Molly za ni nelíže.
+    const h = mkEv([{ role: 'Sheriff' }, { character: 'Molly Stark' }], null);
+    missIdx(h, 0);
+    const gc = board(h, 1, CardType.EQUIPMENT, { name: 'Železný plát' });
+    gc.green = true; gc.activate = 'miss';
+    enterFf(h, 'RUSKA_RULETA');
+    h.rouletteDiscard(0, { cardId: h.players[0].hand[0].id });
+    h.rouletteDiscard(1, { cardId: gc.id, fromBoard: true });
+    assert.equal(h.specialActionQueue.length, 0);
 });
 
 test('Ruská ruleta: Bart Cassidy si za zásahy lízne, start tahu počká', () => {

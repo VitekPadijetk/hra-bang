@@ -136,6 +136,7 @@ class GameState {
         this._firstDeadIdx = null;      // Mrtvý muž: kdo byl vyřazen jako první
         this._deadManUsed = false;      // Mrtvý muž: návrat je jednorázový
         this.pendingRoulette = null;    // Ruská ruleta: kolečko odhazování karet Vedle!
+        this._advanceRouletteAfterQueue = false;   // …a jeho posun až po frontě odložených akcí
         this._vendettaDone = false;     // Vendeta: sejmutí je v jednom tahu jen jednou
         this._extraTurn = false;        // Vendeta: běží tah navíc (nová událost se neodkrývá)
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do

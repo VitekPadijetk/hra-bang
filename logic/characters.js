@@ -211,6 +211,13 @@ const CharactersMixin = {
             this._startDrawAfterQueue = false;
             this.interruptedPhase = null;
             if (!this.winner) this.startDrawPhase();
+        } else if (this._advanceRouletteAfterQueue) {
+            // Fistful – Ruská ruleta: odhod mohl do fronty přidat líznutí (Suzy Lafayette
+            // s prázdnou rukou, Molly Stark za odhozenou kartu). Až doběhne, jde na řadu
+            // další hráč v kolečku – Suzy do něj tak nastupuje zase s kartou v ruce.
+            this._advanceRouletteAfterQueue = false;
+            this.interruptedPhase = null;
+            if (!this.winner) this._continueRoulette();
         } else if (this._startChecksAfterQueue) {
             // Výbuch dynamitu: Bartova líznutí za ztracené životy jsou dobraná → teprve
             // teď kontrola Vězení a fáze lízání (viz takeDynamiteHit).

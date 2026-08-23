@@ -82,12 +82,20 @@ Odchylky od plánu, které vyplynuly z implementace:
   `DYNAMITE_DAMAGE` – tam už zvýrazněné životy, záchrana Pivem i Sidem, guard, klient
   i bot fungují beze změny. `pendingActor` ve fázi `ROULETTE_DISCARD` je tím pádem VŽDY
   hráč, který kartu má, takže se hra nemá jak zaseknout na kliku, který nikdo neudělá.
-- **Odhod v Ruské ruletě není zahrání karty.** Líznutí za Úhyb/Bibli se nespustí a Molly
-  Stark si nelíže – karta se odhazuje, ne hraje.
-- **Suzy Lafayette může na Ruskou ruletu doplatit.** Líznutí za prázdnou ruku jde do
-  fronty odložených akcí a ta se dobírá až za celým kolečkem (pravidlo „nejdřív doběhne
-  efekt zahrané karty"), takže na dalším kole nemusí mít co odhodit. Zároveň je to
-  jediné, co kolečku zaručuje konec – jinak by si Suzy doplňovala ruku donekonečna.
+- **Odhod v Ruské ruletě není zahrání karty, ale JE to odhoz z ruky.** Vlastní efekt
+  karty se nespustí (Úhyb ani Bible nelížou – „hraje se jako Vedle!" se na odhoz
+  nevztahuje), zato schopnosti postav vázané na odhoz z ruky platí:
+  **Suzy Lafayette** si za prázdnou ruku lízne a **Molly Stark** za odhozenou kartu mimo
+  svůj tah taky („zahraje NEBO ODHODÍ kartu z ruky" – proto ne u zelené karty ze stolu).
+- **Obě líznutí musí doběhnout DŘÍV, než se kolečko posune.** Kdyby čekala až za celým
+  kolečkem, Suzy by do dalšího kola nastoupila s prázdnou rukou a na vlastní schopnost by
+  doplatila. Přibyl proto pátý „resume" příznak `_advanceRouletteAfterQueue` (rodina
+  `_nextTurnAfterQueue` / `_resumeBeginTurnAfterQueue` / `_startDrawAfterQueue` /
+  `_startChecksAfterQueue`) a `_continueRoulette()`, který kolečko dotočí i ve chvíli,
+  kdy už není kdo (jinak by fáze zůstala viset s `pendingActor === null`).
+- **Kolečko končí, protože ostatním ruka ubývá.** Suzy i Molly si ji doplňují, ale jen
+  dokud lížou karty s efektem Vedle!; ostatní účastníci ztrácejí kartu každé kolo, takže
+  někdo dojde. Ověřeno 500 hrami jen botů s balíčkem samých Ruských ruletí a Vendet.
 - **Zásahy z Ruské rulety musí umět vrátit se do KROKOVAČE startu tahu.** `pendingDynamiteDamage`
   dostalo `resume: 'BEGIN_TURN'` a nový trychtýř `_afterDamageClicks` (logic/combat.js),
   kterým prochází i obě záchrany posledního života. Bez toho by po dobrání zásahů běžely

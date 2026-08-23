@@ -33,6 +33,7 @@ const FistfulMixin = {
         this.pendingFistful = null;
         this.pendingBlood = null;
         this.pendingRoulette = null;
+        this._advanceRouletteAfterQueue = false;
         // Vendeta: sejmutí na konci tahu je jednou za tah, tah navíc neodkrývá událost.
         this._vendettaDone = false;
         this._extraTurn = false;
@@ -459,14 +460,26 @@ const FistfulMixin = {
         return false;
     },
 
+    // Kolečko pokračuje dalším hráčem. Když už není kdo (všichni účastníci mezitím
+    // odešli ze hry), dotoč start tahu – jinak by fáze zůstala viset bez `pendingRoulette`,
+    // tedy s `pendingActor === null`, a nešlo by na ni kliknout.
+    _continueRoulette() {
+        if (!this._advanceRoulette()) this._resumeBeginTurn();
+    },
+
     // Hráč odhodil kartu. `fromBoard` = zelená Vedle!-karta ze stolu, jinak karta z ruky
     // (podle ID – ruka se mezi klikem a doručením mohla přeskládat). Vrací odhozenou
     // kartu pro animaci, nebo null u neplatného kliku (výběr se pak NEposune dál).
     //
-    // Karta se odhazuje, nehraje – líznutí za Úhyb/Bibli se tedy nespustí a Molly Stark
-    // si nelíže. Suzy Lafayette s prázdnou rukou si počká: líznutí jde do fronty a ta se
-    // dobírá až po celém kolečku (viz „nejdřív doběhne efekt zahrané karty" v CLAUDE.md),
-    // takže o kolo dál může na Ruskou ruletu doplatit.
+    // Karta se odhazuje, nehraje – její VLASTNÍ efekt (líznutí za Úhyb nebo Bibli) se
+    // tedy nespustí. Schopnosti postav vázané na odhoz karty z ruky ale platí a musí
+    // doběhnout HNED, ještě než se kolečko posune dál:
+    //   • Suzy Lafayette – „jakmile nemá v ruce karty, hned si jednu lízne", takže do
+    //     dalšího kola nastupuje zase s kartou (jinak by na svoji schopnost doplatila),
+    //   • Molly Stark – „kdykoli zahraje NEBO ODHODÍ kartu z ruky mimo svůj tah, lízne si"
+    //     (proto jen z ruky, ne u zelené karty ze stolu).
+    // Obojí je klikací líznutí ve frontě odložených akcí; na řadu jde další hráč až po ní
+    // (`_advanceRouletteAfterQueue`, viz _resumeAfterSpecial v logic/characters.js).
     rouletteDiscard(playerIdx, opts = {}) {
         if (this.phase !== "ROULETTE_DISCARD" || !this.pendingRoulette) return null;
         if (this.pendingRoulette.playerIdx !== playerIdx) return null;
@@ -483,8 +496,18 @@ const FistfulMixin = {
         this.deck.discard(card);
         this.logEvent('event', { card: 'Ruská ruleta', who: p.name, msg: `odhazuje ${card.name}` });
         this.checkSuzyLafayette(p);
+        if (!fromBoard) this._mollyPlayedOutOfTurn(playerIdx, false);
         const boardIdx = fromBoard ? 1 + i : null;
-        this._advanceRoulette();
+        // Frontu je nutné pročistit DŘÍV, než se podle její délky rozhoduje – jinak by
+        // `length > 0` prošlo, `_processSpecialQueue` by nic nerozeběhlo a kolečko by se
+        // nikdy neposunulo (viz „nejdřív doběhne efekt zahrané karty" v CLAUDE.md).
+        this._pruneSuzyQueue();
+        if (this.specialActionQueue.length > 0) {
+            this._advanceRouletteAfterQueue = true;
+            this._processSpecialQueue();
+        } else {
+            this._continueRoulette();
+        }
         return { card, fromBoard, boardIdx };
     },
 
