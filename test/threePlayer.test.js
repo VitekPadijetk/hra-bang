@@ -172,6 +172,30 @@ test('3P: kolo počítá tah pomocníka (odkrytí události až od jeho 2. tahu)
     assert.equal(g.activeEvent?.key, 'B');
 });
 
+test('3P: po vyřazení pomocníka odkrývá události další žijící hráč', () => {
+    // Bez toho by se události přestaly odkrývat NAPOŘÁD (hra pro 3 běží dál i bez
+    // pomocníka) a poslední karta by platila do konce hry – s Opuštěným dolem to
+    // znamenalo nekonečné kolečko „líznu z odhozu, co soupeř právě zahrál“.
+    const g = mk3p();
+    g.eventDeck = [{ key: 'A', name: 'Udalost A' }, { key: 'B', name: 'Udalost B' }];
+    const depIdx = g.players.findIndex(p => p.role === 'Deputy');
+    g.players[depIdx].health = 0;
+    const nextIdx = (depIdx + 1) % 3;
+
+    g.currentPlayerIndex = (depIdx + 2) % 3;   // ten druhý živý → zatím nic
+    g._flipEvent();
+    assert.equal(g.activeEvent, null);
+    assert.equal(g._sheriffTurns ?? 0, 0);
+
+    g.currentPlayerIndex = nextIdx;            // 1. tah nového „prvního“ → jen počítá
+    g._flipEvent();
+    assert.equal(g.activeEvent, null);
+    assert.equal(g._sheriffTurns, 1);
+
+    g._flipEvent();                            // 2. tah → odkryje
+    assert.equal(g.activeEvent?.key, 'B');
+});
+
 test('3P: Daltonové začínají u pomocníka', () => {
     const g = mk3p();
     const depIdx = g.players.findIndex(p => p.role === 'Deputy');

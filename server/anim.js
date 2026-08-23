@@ -13,22 +13,15 @@ module.exports = function installAnimService(ctx) {
     // nefiltruje nic.
     const roomAlive = (room) => typeof ctx.roomAlive !== 'function' || ctx.roomAlive(room);
 
-    // A Fistful of Cards – Opuštěný důl: lety končící v „odhozu" (= lícem dolů na
-    // dobíracím balíčku) mají navíc výdrž lícem nahoru a překlopení na rub. Seznam MUSÍ
-    // sedět s MINE_LAND_TYPES v net/handlers.js, jinak se boti podrží jinak dlouho, než
-    // trvá klientská animace. Cinematiky, které kartu předtím ukázaly zvětšenou uprostřed
-    // (sejmutí, Lucky Duke, vyřazení hráče), mají doběh bez výdrže a vlastní držení botů.
-    const MINE_LAND_TYPES = new Set([
-        'discard', 'hand_to_discard', 'board_to_discard', 'dynamite_explode',
-        'duel_exchange', 'beer_auto_save', 'panic_sequence', 'catbalou_sequence',
-        'ricochet_shot',
-    ]);
-
+    // A Fistful of Cards – Opuštěný důl: odhoz nad limit karet (FÁZE 3) letí lícem
+    // nahoru na dobírací balíček, chvíli tam leží a teprve pak se překlopí na rub.
+    // Pozná se to podle `toDeck` v datech animace – přesně jako na klientu
+    // (_animDurationMs v net/handlers.js), takže se držení nemůže rozejít s tím,
+    // jak dlouho animace opravdu trvá. Ostatní odhozy důl nemění.
     // Podrž boty po dobu doběhu, jinak by hráli „přes" něj a klientská fronta animací
     // by zaostala natolik, že by je zahodila – tedy právě to, kvůli čemu důl je.
     function holdForMineLand(room, data) {
-        const gs = room && room.gameState;
-        if (!gs || !gs.deck || !gs.deck.mineMode || !data || !MINE_LAND_TYPES.has(data.type)) return;
+        if (!room || !data || !data.toDeck) return;
         room._mineBlockUntil = Math.max(room._mineBlockUntil || 0, Date.now() + mineLandMs(true));
     }
 

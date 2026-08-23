@@ -2859,9 +2859,13 @@ function drawDrawPiles(ctx) {
                         state.drawPhaseState?.playerIdx === myIndex &&
                         (state.drawPhaseState?.options || []).includes('discard') &&
                         state.deck.discardPile.length > 0;
-    // A Fistful of Cards – Opuštěný důl: hromádky si po celé kolo vymění role, takže
-    // se z pravé (odhoz) LÍŽE a na levou (balíček) se ODHAZUJE. Prohazují se tím i kliky.
-    const _mine = !!state.deck?.mineMode;
+    // A Fistful of Cards – Opuštěný důl: z odhozu se líže JEN ve fázi 1 hráče na tahu
+    // (FAQ Q03/Q04, viz mineOn v game.js). Jen tehdy se prohodí, na kterou hromádku se
+    // kliká a která svítí; sejmutí, hokynářství i zahrané karty zůstávají na svých
+    // místech. Odhoz nad limit karet na konci tahu sice pod dolem letí na balíček, ale
+    // ten se klika z RUKY, takže se zvýraznění hromádek netýká.
+    const _mine = !!state._mineTurn && state.phase === "DRAW" &&
+                  !!state.drawPhaseState?.isStartOfTurn;
     // POZOR: setInteractive lze na sprite nastavit jen JEDNOU – opakované volání už
     // `useHandCursor` nepřepíše. Všechny důvody, proč má pravá hromádka ručičku, proto
     // musí být tady (níž se sprite jen tintuje a věší se na něj klik). DE_DECK = „odhoď
@@ -2953,11 +2957,12 @@ function drawDrawPiles(ctx) {
     const deck    = { x: deckX,    y: _deckTopY    };
     const discard = { x: discardX, y: _discardTopY };
 
-    // Od téhle chvíle se pracuje s ROLÍ hromádky, ne s jejím místem – pod Opuštěným dolem
-    // (Fistful) jsou prohozené. Zrcadlí to deckTopPos()/discardTopPos() v game.js, takže
-    // klik i cíl animace míří na totéž. Prázdný odhoz je obdélník bez setTint, proto tintPile.
+    // Od téhle chvíle se pracuje s ROLÍ hromádky, ne s jejím místem: ve fázi 1 pod
+    // Opuštěným dolem se líže z odhozu. Zrcadlí to minePhase1Pos() v game.js, takže klik
+    // i cíl animace míří na totéž. Odhazuje se pořád na odhoz (fázi 3 řeší klik z ruky).
+    // Prázdný odhoz je obdélník bez setTint, proto tintPile.
     const drawPileSprite = _mine ? discardSprite : deckSprite;
-    const discPileSprite = _mine ? deckSprite : discardSprite;
+    const discPileSprite = discardSprite;
     const tintPile = (sp, color) => {
         if (!sp) return;
         if (sp.setTint) sp.setTint(color); else sp.setStrokeStyle(3, color, 1);

@@ -228,20 +228,20 @@ test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => 
     assert.equal(room.gameState.deck.cards[0].name, 'Dynamit', 'skutečný stav se nezměnil');
 });
 
-// A Fistful of Cards – Opuštěný důl: `deck.mineMode` je JEDINÉ, podle čeho klient pozná,
-// že jsou hromádky prohozené (deckTopPos/discardTopPos, klikatelná hromádka, doběh letu
-// s překlopením na rub). Redakce ho tedy musí propustit – a redakce dolu zároveň sedí
-// sama od sebe: `cards` (kam se odhazuje lícem dolů) zůstávají skryté a `discardPile`
-// (odkud se líže) veřejný, což je přesně pointa karty.
-test('redakce: aktivní Opuštěný důl (deck.mineMode) se ke klientovi dostane', () => {
+// A Fistful of Cards – Opuštěný důl: `_mineTurn` je JEDINÉ, podle čeho klient pozná, že
+// se v tomhle tahu líže z odhozu (minePhase1Pos, klikatelná hromádka ve fázi 1). Redakce
+// ho tedy musí propustit – a redakce dolu zároveň sedí sama od sebe: dobírací balíček
+// zůstává skrytý a `discardPile` (odkud se ve fázi 1 líže) veřejný, což je přesně pointa
+// karty.
+test('redakce: aktivní Opuštěný důl (_mineTurn) se ke klientovi dostane', () => {
     const { ctx, addSocket, emits } = setup();
     ['s1', 's2', 's3'].forEach(addSocket);
     const room = mkPlaying(ctx);
-    room.gameState.deck.mineMode = true;
+    room.gameState._mineTurn = true;
     ctx.broadcastRoom(room);
     const gsA = payloadFor(emits, 's1');
-    assert.equal(gsA.deck.mineMode, true);
-    assert.ok(gsA.deck.cards.every(c => c._placeholder), 'kam se odhazuje, zůstává skryté');
+    assert.equal(gsA._mineTurn, true);
+    assert.ok(gsA.deck.cards.every(c => c._placeholder), 'dobírací balíček zůstává skrytý');
     assert.deepEqual(gsA.deck.discardPile.map(c => c.name), ['Salón'], 'odkud se líže, je veřejné');
 });
 

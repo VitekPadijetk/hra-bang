@@ -36,6 +36,12 @@ const DrawMixin = {
         // volí na tenhle tah, i když se v něm nakonec nelíže z balíčku.
         if (this.startPeyote()) return;
 
+        // A Fistful of Cards – Opuštěný důl: rozhodne se JEDNOU za tah, jestli se ve
+        // fázi 1 líže z odhozu (a na jejím konci odhazuje lícem dolů na balíček).
+        // Musí to být PŘED větvemi postav – ptá se ho už _getDrawOptions (Pedro Ramirez)
+        // i každé líznutí. Viz _startMineTurn v logic/fistful.js.
+        this._startMineTurn();
+
         if (effectiveCharacter(player) === "Kit Carlson") {
             this.startKitCarlsonDraw();
             return;
@@ -84,7 +90,9 @@ const DrawMixin = {
         // Opuštěný důl (Fistful): odhoz JE dobírací balíček, takže by Pedro bral tutéž
         // kartu jako „z balíčku" – volba nic nepřidává a jen by obešla trychtýř draw()
         // (a s ním vypnutí dolu, až odhoz dojde).
-        if (effectiveCharacter(player) === "Pedro Ramirez" && !this.deck.mineMode) opts.push('discard');
+        // Pod Opuštěným dolem se ve fázi 1 líže z odhozu tak jako tak, takže by Pedrova
+        // volba brala tutéž kartu – nenabízí se.
+        if (effectiveCharacter(player) === "Pedro Ramirez" && !this._mineTurn) opts.push('discard');
         // Dodge City: Pat Brennan smí místo lízání vzít 1 kartu ze stolu libovolného hráče.
         if (effectiveCharacter(player) === "Pat Brennan") opts.push('board');
         return opts;
@@ -173,10 +181,12 @@ const DrawMixin = {
             ds.options = ['deck'];
         }
         else if (source === 'deck') {
-            // Kolik karet měl balíček PŘED líznutím – potřebují to odkryté řady
-            // (Kit Carlson / Claus), viz _revealAnim.
-            const deckBefore = this.deck._drawPile.length;
-            const card = this.deck.draw();
+            // Kolik karet měla hromádka PŘED líznutím – potřebují to odkryté řady
+            // (Kit Carlson / Claus), viz _revealAnim. Pod Opuštěným dolem (Fistful) se
+            // ve fázi 1 líže z odhozu, takže se počítá on.
+            const fromDiscard = this._mineTurn && ds.isStartOfTurn;
+            const deckBefore = fromDiscard ? this.deck.discardPile.length : this.deck._drawPile.length;
+            const card = this._mineDrawCard(ds);
             if (!card) return;
 
             this.drawPhaseState.options = ['deck'];
@@ -187,7 +197,7 @@ const DrawMixin = {
                 // si 2 a kartu navíc si pak lízne klasicky z balíčku (ds.kitExtra, viz
                 // kitCarlsonPick).
                 const rest = [];
-                for (let i = 0; i < KIT_REVEAL - 1; i++) rest.push(this.deck.draw());
+                for (let i = 0; i < KIT_REVEAL - 1; i++) rest.push(this._mineDrawCard(ds));
                 const revealed = [card, ...rest].filter(Boolean);
                 this.kitCarlsonState = {
                     revealed,
@@ -214,7 +224,7 @@ const DrawMixin = {
                 const total = (ds.clausKeep || 2) + order.length;
                 const revealed = [card];
                 for (let i = 1; i < total; i++) {
-                    const c = this.deck.draw();
+                    const c = this._mineDrawCard(ds);
                     if (c) revealed.push(c);
                 }
                 // Došlý balíček: co si nechává má přednost, teprve zbytek se rozdává –
@@ -388,7 +398,10 @@ const DrawMixin = {
             // Nevybrané zpátky na balíček ve STEJNÉM pořadí, v jakém ležely (FAQ H6):
             // draw() bere z konce pole, takže se vrací odzadu (poslední odkrytá jde dolů).
             for (let i = kc.revealed.length - 1; i >= 0; i--) {
-                if (!pickedSet.has(i)) this.deck.returnToTop(kc.revealed[i]);
+                if (pickedSet.has(i)) continue;
+                // Pod Opuštěným dolem (Fistful) si je vzal z odhozu, takže se tam i vrací.
+                if (this._mineTurn) this.deck.returnToDiscardTop(kc.revealed[i]);
+                else this.deck.returnToTop(kc.revealed[i]);
             }
             const extra = kc.extra || 0;
             this.kitCarlsonState = null;

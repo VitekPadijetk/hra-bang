@@ -45,9 +45,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // správný slot (dřív odebíral poslední → viditelné přeskládání a špatná pozice).
             const victimBefore = (data.source === 'opponent_hand' && gs.players[data.sourceIdx])
                 ? gs.players[data.sourceIdx].hand.map(c => c.id) : null;
-            // Opuštěný důl (Fistful) se mohl líznutím sám vypnout (odhoz došel), takže si
-            // stav zapamatuj PŘED ním – karta se brala ještě z odhozu.
-            const mineBefore = !!gs.deck.mineMode;
+            // Opuštěný důl (Fistful): z odhozu se líže jen ve FÁZI 1 (viz _mineDrawCard).
+            // Zapamatuj si to PŘED líznutím – karta už z hromádky odešla.
+            const mineBefore = !!gs._mineTurn && !!ds?.isStartOfTurn;
             const phaseBefore = gs.phase, drawnBefore = ds?.cardsDrawn ?? -1;
             const handBefore = gs.players[playerIdx]?.hand.length ?? -1;
             gs.drawCard(data.source, data.sourceIdx, data.area, data.cardIdx);
@@ -103,11 +103,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     emitAnim(room, { type: 'law_reveal', playerIdx, card: drawn });
                     room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + lawRevealMs());
                 } else if (mineBefore) {
-                    // Opuštěný důl: líže se z ODHOZU, kde karta ležela lícem nahoru – celý
-                    // stůl ji viděl dopředu (to je pointa karty), takže se posílá veřejně.
-                    // Klient ji díky tomu u soupeře přetočí za letu na rub, místo aby mu
-                    // z veřejné hromádky odletěl rub neznámé karty.
-                    emitAnim(room, { type: 'draw', playerIdx, cardId: drawnId });
+                    // Opuštěný důl: ve fázi 1 se líže z ODHOZU, kde karta ležela lícem
+                    // nahoru – celý stůl ji viděl dopředu (to je pointa karty), takže se
+                    // posílá veřejně. Klient ji díky tomu u soupeře přetočí za letu na rub,
+                    // místo aby mu z veřejné hromádky odletěl rub neznámé karty.
+                    emitAnim(room, { type: 'draw', playerIdx, cardId: drawnId, fromDiscard: true });
                 } else {
                     emitAnimPrivate(room, playerIdx,
                         { type: 'draw', playerIdx, cardId: drawnId },
@@ -655,7 +655,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const discardingIdx = gs.currentPlayerIndex;
             const player = gs.players[discardingIdx];
             const card = player?.hand[i];
-            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: discardingIdx, cardId: card?.id });
+            // Fistful – Opuštěný důl: odhoz nad limit karet je FÁZE 3, takže pod dolem
+            // letí lícem dolů na DOBÍRACÍ balíček. `toDeck` je jediné, podle čeho to
+            // klient (cíl letu i doběh s překlopením) a držení botů poznají.
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: discardingIdx,
+                             cardId: card?.id, toDeck: !!gs._mineTurn });
             gs.discardCard(i);
             if (gs.phase !== 'DISCARD') {
                 broadcastRoomDelayed(room, 420);

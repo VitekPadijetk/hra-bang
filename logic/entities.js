@@ -126,19 +126,36 @@ class Player {
 }
 
 class Deck {
-    constructor() { this.cards = []; this.discardPile = []; this.mineMode = false; }
+    constructor() { this.cards = []; this.discardPile = []; }
+
+    // Kanonické názvy hromádek. Zůstávají jako getery, protože se na ně ptá spousta
+    // míst; obě role jsou pevné (dřív je Opuštěný důl prohazoval, viz níž).
+    get _drawPile()    { return this.cards; }
+    get _discardPile() { return this.discardPile; }
 
     // ── Opuštěný důl (A Fistful of Cards) ─────────────────────────────────────
-    // Po celé kolo si obě hromádky vymění role: líže se z ODHOZU a odhazuje se lícem
-    // dolů na DOBÍRACÍ balíček. Prohození sedí tady, a ne v pravidlech, protože
-    // draw()/discard() jsou jediné dvě cesty, kterými karta z hromádek odchází
-    // a přichází – pravidla se tím pádem nemusí ptát vůbec.
-    // Přepínač zapíná GameState (_syncMine v logic/fistful.js) při odkrytí nové
-    // události; mezi koly se s ním nehýbe a draw() si ho sám shodí, až odhoz dojde.
-    // Getery jsou na prototypu, takže je JSON.stringify do room_update nepošle
-    // (klient si aktivní důl pozná z `mineMode`, které vlastní property je).
-    get _drawPile()    { return this.mineMode ? this.discardPile : this.cards; }
-    get _discardPile() { return this.mineMode ? this.cards : this.discardPile; }
+    // „Ve fázi lízání si hráč líže z odhazovacího balíčku; odhazované karty se pokládají
+    // lícem dolů na dobírací balíček." Podle FAQ (Q03/Q04) to NENÍ prosté prohození
+    // hromádek – platí to jen na dvě přesná místa v tahu HRÁČE NA TAHU:
+    //   • fáze 1 (lízání)            → drawFromDiscard(),
+    //   • fáze 3 (odhoz nad limit)   → discardToDrawPile().
+    // Všechno ostatní (zahrané i odhozené karty ve fázi 2, Dostavník/Krytý vůz/
+    // hokynářství, kontrolní sejmutí, schopnosti postav, pozůstalost vyřazeného
+    // i celé tahy ostatních hráčů) jede úplně normálně přes draw()/discard().
+    // Jestli se důl v tomhle tahu vůbec uplatní, rozhoduje `GameState._mineTurn`
+    // (logic/fistful.js) – nejsou-li v odhozu karty na celé lízání, tah jede bez dolu.
+
+    // Fáze 1 pod dolem: karta se bere z odhozu (leží tam lícem nahoru, takže je veřejná).
+    // Nemíchá se – `_mineTurn` zaručuje, že je karet dost.
+    drawFromDiscard() { return this.discardPile.length ? this.discardPile.pop() : null; }
+
+    // Fáze 3 pod dolem: odhozené karty jdou lícem dolů NAVRCH dobíracího balíčku, takže
+    // je někdo hned zase lízne. draw() bere z konce pole → push() je „navrch".
+    discardToDrawPile(...cards) { cards.forEach(c => { if (c) this.cards.push(c); }); }
+
+    // Nevybraná karta z odkryté řady (Kit Carlson) zpátky navrch ODHOZU – pod dolem si
+    // ji odtud vzal, takže se tam i vrací.
+    returnToDiscardTop(card) { if (card) this.discardPile.push(card); }
 
     // Jediná cesta, kudy karta jde do odhozu. Bere i víc karet naráz (pozůstalost
     // vyřazeného hráče). Prázdné/undefined se ignoruje – volající si pak nemusí
@@ -206,16 +223,6 @@ class Deck {
     }
 
     draw() {
-        // Opuštěný důl: líže se z odhozu a NEMÍCHÁ se – dobírací balíček během kola
-        // jen roste (chodí na něj odhazované karty), odhoz se vyprazdňuje. Jakmile
-        // dojde, důl pro zbytek kola končí („dokud je to možné") a pokračuje se
-        // normálně; zpátky ho zapne až _syncMine při odkrytí další události, takže
-        // se příznak nemusí nikde uklízet.
-        if (this.mineMode) {
-            if (this.discardPile.length > 0) return this.discardPile.pop();
-            this.mineMode = false;
-            if (this._log) this._log('mine_exhausted', { deck: this.cards.length });
-        }
         if (this.cards.length === 0) {
             if (!this._reshuffle()) {
                 if (this._log) this._log('deck_empty', {});

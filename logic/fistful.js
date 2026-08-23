@@ -40,8 +40,8 @@ const FistfulMixin = {
         // Mrtvý muž: kdo byl vyřazen jako první a jestli se návrat už použil.
         this._firstDeadIdx = null;
         this._deadManUsed = false;
-        // Nová (i navazující) hra začíná bez události, takže i bez prohozených hromádek.
-        if (this.deck) this.deck.mineMode = false;
+        // Nová (i navazující) hra začíná bez události, takže i bez Opuštěného dolu.
+        this._mineTurn = false;
         // Navazující hra přebírá hráče z předchozí – vynucená karta Práva západu, odkrytá
         // role vyřazeného ani nabídka Pokrevních bratrů po nich zůstat nesmí (redakce
         // ukazuje `_roleRevealed` celému stolu, viz server/rooms.js).
@@ -85,17 +85,66 @@ const FistfulMixin = {
         return false;
     },
 
-    // ── Opuštěný důl: „Líže se z odhozu, odhazuje se lícem dolů na balíček." ───
-    // Samotné prohození hromádek umí Deck (logic/entities.js) – tady se jen zapíná.
-    // Volá se z `_flipEvent` (logic/highNoon.js) HNED ZA odkrytím karet obou balíčků,
-    // tedy dřív, než si start tahu sáhne na hromádky (kontrolní sejmutí na Dynamit
-    // a Vězení už z prohozených líže – R7 nezná výjimky).
+    // ── Opuštěný důl: „Ve fázi lízání si hráč líže z odhazovacího balíčku; ────
+    //     odhazované karty se pokládají lícem dolů na dobírací balíček."
+    // NENÍ to prosté prohození hromádek (FAQ Q03/Q04). Platí to jen na dvě přesná místa
+    // v tahu hráče na tahu – fázi 1 (lízání) a fázi 3 (odhoz nad limit karet) – a jen
+    // na NĚJ: ostatní hráči lížou i odhazují normálně. Ve fázi 2 jde všechno na odhoz
+    // jako vždycky (včetně Dostavníku, Krytého vozu a hokynářství, které naopak lížou
+    // z dobíracího balíčku), stejně tak kontrolní sejmutí na Dynamit/Vězení/Barel
+    // (to nejsou karty lízané ve fázi 1 a Dynamit s Vězením běží ještě před ní),
+    // schopnosti postav (FAQ Q04: José Delgado odhazuje na odhoz a líže z balíčku)
+    // i pozůstalost vyřazeného hráče.
     //
-    // Mimo odkrývání se s příznakem nehýbe, a to je celé „dokud je to možné":
-    // když odhoz během kola dojde, shodí si `mineMode` sám `Deck.draw()` a pro zbytek
-    // kola se hraje normálně. Zpátky ho zapne až tenhle sync na začátku dalšího kola.
-    _syncMine() {
-        this.deck.mineMode = this.hasEvent('OPUSTENY_DUL');
+    // Rozhoduje se JEDNOU za tah, na začátku fáze lízání (`_startMineTurn`): nejsou-li
+    // v odhozu karty na celé lízání, hráč si podle FAQ Q03 lízne všechno z dobíracího
+    // balíčku a odhazuje normálně – tedy důl se pro tenhle tah neuplatní vůbec.
+    // `_mineTurn` je prosté pole stavu → doteče přes room_update i ke klientovi, který
+    // podle něj kreslí, ze které hromádky se ve fázi lízání bere.
+    // Nuluje ho `_beginTurn` (logic/highNoon.js), takže platí přesně jeden tah.
+    _startMineTurn() {
+        this._mineTurn = false;
+        if (!this.hasEvent('OPUSTENY_DUL')) return;
+        const p = this.getCurrentPlayer();
+        if (!p) return;
+        this._mineTurn = this.deck.discardPile.length >= this._mineNeeded(p);
+    },
+
+    // Kolik karet si fáze lízání z hromádky vezme. Kit Carlson a Claus "The Saint"
+    // odkrývají celou řadu naráz, takže potřebují víc, než si nechají; Jesse Jones
+    // a Pat Brennan naopak můžou vzít míň (jednu berou odjinud) – počítá se ta horní
+    // hranice, protože se rozhoduje dřív, než si hráč zvolí.
+    _mineNeeded(player) {
+        const ch = effectiveCharacter(player);
+        if (ch === "Kit Carlson") return 3;   // KIT_REVEAL (logic/draw.js)
+        if (ch === "Black Jack") return this._drawCountFor(player) + 1;   // ♥/♦ → karta navíc
+        if (ch === "Claus the Saint") {
+            const others = this.players.filter((q, i) => i !== this.currentPlayerIndex && isInPlay(q)).length;
+            return this._drawCountFor(player) + others;
+        }
+        return this._drawCountFor(player);
+    },
+
+    // Jedna karta pro fázi lízání. Z odhozu se bere JEN ve fázi 1 (`isStartOfTurn`);
+    // Dostavník, Krytý vůz, odměny za banditu i líznutí schopností postav (Bart Cassidy,
+    // Suzy Lafayette, Chuck Wengam, José Delgado…) lížou z dobíracího balíčku i pod dolem
+    // (FAQ Q04: „Karty po Dostavníku a Krytém vozu líznete vždycky z dobíracího balíčku").
+    // Bez toho vznikne nekonečná pumpa: hráč zahraje Dostavník, ten dosedne do odhozu –
+    // a on si ho odtud hned lízne zpátky. Balíček se tím přelije do jedné ruky a hra
+    // uvázne ve fázi DRAW s prázdnými hromádkami.
+    _mineDrawCard(ds) {
+        if (!this._mineTurn || !ds?.isStartOfTurn) return this.deck.draw();
+        // Pojistka: fáze lízání MUSÍ vždycky dojít do konce, jinak zůstane hra viset ve
+        // fázi DRAW (bot klika donekonečna). Odhoz sice `_startMineTurn` na celou fázi
+        // spočítal, ale úplně přesně to jít nemusí – proto se zbytek v nouzi dobere
+        // klasicky z balíčku.
+        return this.deck.discardPile.length ? this.deck.drawFromDiscard() : this.deck.draw();
+    },
+
+    // Odhoz nad limit karet na konci tahu (fáze 3). Pod dolem lícem dolů na balíček.
+    _mineDiscardEndTurn(card) {
+        if (this._mineTurn) this.deck.discardToDrawPile(card);
+        else this.deck.discard(card);
     },
 
     // ── Laso: „Karty vyložené před hráči nemají žádný efekt." ──────────────────

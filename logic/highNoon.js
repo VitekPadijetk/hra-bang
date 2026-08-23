@@ -91,7 +91,31 @@ const HighNoonMixin = {
         // se lízla. Zahodit ji je nutné hned tady (ne až ve fázi lízání) – kontroly na
         // Dynamit/Vězení a s nimi i „Ukončit tah" běží dřív.
         if (cp) cp._lawCardId = null;
+        // A Fistful of Cards – Opuštěný důl platí přesně jeden tah a rozhodne se až ve
+        // fázi lízání (_startMineTurn). Zahodit ho je nutné tady: fáze 3 předchozího tahu
+        // už proběhla a kontroly na Dynamit/Vězení pod důl nespadají.
+        this._mineTurn = false;
         return this._runBeginTurn();
+    },
+
+    // Kdo v tomhle kole otáčí kartu události. Normálně první hráč (šerif; ve hře pro 3
+    // pomocník) – jenže ve hře pro 3 může být vyřazený a hra běží dál, takže by se
+    // události přestaly odkrývat NAPOŘÁD a poslední karta by platila do konce hry.
+    // (V ostatních počtech to nastat nemůže: smrt šerifa hru ukončí.) Kartu pak otáčí
+    // první ŽIJÍCÍ hráč za ním v pořadí tahů – duch (Město duchů) se nepočítá, ten
+    // v kole jen na svůj tah nakoukne.
+    _eventFlipperIdx() {
+        const list = this.players || [];
+        const n = list.length;
+        if (!n) return -1;
+        const from = this._firstPlayerIndex();
+        if (list[from] && list[from].health > 0) return from;
+        const step = this._turnStep();
+        for (let k = 1; k < n; k++) {
+            const i = (from + k * step) % n;
+            if (list[i] && list[i].health > 0) return i;
+        }
+        return -1;
     },
 
     _resumeBeginTurn() {
@@ -126,7 +150,7 @@ const HighNoonMixin = {
     // server podle `_pendingHighNoonReveal` (vyzvedne ji hák před broadcastem, server/anim.js).
     _flipEvent() {
         const p = this.getCurrentPlayer();
-        if (!p || this.currentPlayerIndex !== this._firstPlayerIndex()) return false;
+        if (!p || this.currentPlayerIndex !== this._eventFlipperIdx()) return false;
         // Fistful – Vendeta: na tahu navíc se nová událost NEodkrývá (R6). Musí to být
         // ještě před počítadlem kol, jinak by tah navíc jedno kolo „spotřeboval".
         if (this._extraTurn) return false;
@@ -146,9 +170,6 @@ const HighNoonMixin = {
         // Balíček Fistful of Cards se otáčí ve stejný okamžik, hned za High Noonem – i když
         // High Noon už došel (proto se sem nesmí vracet dřív). Viz logic/fistful.js.
         this._flipFistfulEvent();
-        // Opuštěný důl (Fistful) prohazuje dobírací balíček s odhozem – přepínač se
-        // musí přepočítat TEĎ, ještě před kontrolním sejmutím na Dynamit a Vězení.
-        this._syncMine();
         return false;
     },
 

@@ -12,11 +12,11 @@
 // jednoho okamžiku a karta „už je v odhozu", zatímco ještě letí. Podrobně viz
 // hlavička core/animQueue.js.
 const _animQ = createAnimQueue({
-    // Opuštěný důl (Fistful) prodlužuje KAŽDÝ let do odhozu o výdrž lícem nahoru
-    // a překlopení na rub. Dvě odhozené karty za sebou (běžná věc: zahraná karta
-    // + odhoz na konci tahu) by s pevným prahem 1400 ms fronta vyhodnotila jako
-    // zaostávání a zahodila – tedy právě tu animaci, kvůli které důl je. Práh proto
-    // s dolem povyroste přesně o to, oč jsou lety delší.
+    // Opuštěný důl (Fistful) prodlužuje odhoz nad limit karet o výdrž lícem nahoru
+    // a překlopení na rub (letí na dobírací balíček). Odhazovaných karet může být
+    // za sebou víc, takže by je pevný práh 1400 ms vyhodnotil jako zaostávání
+    // a zahodil – tedy právě ty animace, kvůli kterým důl je. Práh proto s dolem
+    // povyroste přesně o to, oč jsou lety delší.
     maxLagMs: () => 1400 + 2 * mineLandMs(mineOn()),
     onDrop: (n) => clog('warn', `animační fronta zaostala – přeskočeno ${n} animací`),
 });
@@ -703,10 +703,6 @@ function _fadeOutColt(pos) {
 
 // Jeden let do odhozu: já vidím vše lícem, modré vidí lícem všichni (bez otáčení),
 // karty z ruky se ostatním za letu odhalí (rub→líc).
-// Pod Opuštěným dolem (Fistful) karty padají lícem dolů na dobírací balíček. Odhoz při
-// vyřazení má ale vlastní choreografii i serverové držení botů (deathSequenceMs), takže
-// se do něj 900ms výdrž nevkládá – karty jsou vidět za letu a stačí překlopení na rub
-// (mineLandOptsRevealed). Přechod pod spritem zakryje sám sprite, takže neprobliká.
 function _deathFlyToDiscard(it, o) {
     const { isMine, ang, discard } = o;
     const sc = it.kind === 'hand' ? o.scHand : o.sc;   // z vějíře ruky vs. ze stolu
@@ -722,13 +718,11 @@ function _deathFlyToDiscard(it, o) {
         // nearestCardAngle „srovnal" na 180° (rotace by se vůbec nespustila) a modré karty
         // (typicky Vězení) by dosedly do odhozu vzhůru nohama.
         animateCard(it.from.x, it.from.y, discard.x, discard.y, getCardTex(it.id), 380, reveal,
-            { startAngle: ang, endAngle: 0, exactAngle: true, startScale: sc, endScale: 0.3, holdUntil: hold,
-              ...mineLandOptsRevealed() });
+            { startAngle: ang, endAngle: 0, exactAngle: true, startScale: sc, endScale: 0.3, holdUntil: hold });
     } else {
         // Cizí karta z ruky se za letu odhalí (rub→líc) – stejně jako běžný odhoz z ruky.
         animateCardFlip(it.from.x, it.from.y, discard.x, discard.y, 'card_back', getCardTex(it.id),
-            { flip: true, startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, duration: 400, onComplete: reveal, holdUntil: hold,
-              ...mineLandOptsRevealed() });
+            { flip: true, startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, duration: 400, onComplete: reveal, holdUntil: hold });
     }
 }
 
@@ -1436,15 +1430,18 @@ function _playCardAnim(data) {
             break;
         }
         case 'draw': {
-            // Opuštěný důl (Fistful): líže se z ODHOZU, kde karta leží lícem nahoru. Musí
-            // z něj proto zmizet hned se startem letu (jinak tam viditelně leží celý let)
-            // a nikde se nepřeklápí rub→líc – server ji v dolu posílá VŠEM, protože ji
-            // celý stůl viděl dopředu. Bez dolu se `mineDone` ani `_mineFace` neuplatní.
-            const mineDone = mineTakeFromPile(mineOn() ? data.cardId : null);
-            const _mineFace = mineOn() && data.cardId != null;
+            // Opuštěný důl (Fistful): ve FÁZI 1 se líže z ODHOZU, kde karta leží lícem
+            // nahoru. Musí z něj proto zmizet hned se startem letu (jinak tam viditelně
+            // leží celý let) a nikde se nepřeklápí rub→líc – server ji v tom případě
+            // posílá VŠEM, protože ji celý stůl viděl dopředu. Že to byla fáze 1, říká
+            // `fromDiscard` od serveru; sám klient by to z (opožděného) stavu nepoznal.
+            const _fromDiscard = !!data.fromDiscard;
+            const mineDone = mineTakeFromPile(_fromDiscard ? data.cardId : null);
+            const _mineFace = _fromDiscard && data.cardId != null;
             // Majitel: reveal flip do finálního slotu + staging (objeví se po dosednutí).
             // Pod dolem bez překlápění (faceUp) – karta z odhozu už lícem nahoru je.
-            if (!animateDrawToMyHand(data.playerIdx, data.cardId, deck.x, deck.y,
+            const _src = _fromDiscard ? discard : deck;
+            if (!animateDrawToMyHand(data.playerIdx, data.cardId, _src.x, _src.y,
                                      _mineFace ? { faceUp: true, onComplete: mineDone } : {})) {
                 // Soupeřova karta zůstává skrytá (rub), míří do jeho vějíře ruky – a dotočí
                 // se z orientace balíčku (0°) do orientace jeho ruky (bok = ±90°, protější = 180°).
@@ -1475,7 +1472,7 @@ function _playCardAnim(data) {
                     // takže se za letu musí přetočit lícem→rub (reverse) – stejně jako
                     // u Pedra Ramireze. Bez toho by z hromádky, na které karta viditelně
                     // ležela lícem nahoru, odletěl rub a přetočení by nebylo vidět vůbec.
-                    animateCardFlip(deck.x, deck.y, target.x, target.y, 'card_back', getCardTex(data.cardId),
+                    animateCardFlip(_src.x, _src.y, target.x, target.y, 'card_back', getCardTex(data.cardId),
                         { flip: true, reverse: true, startAngle: 0, endAngle: sideAngle(pIdx),
                           startScale: pileScale(), endScale: sideScale(pIdx, 'hand'),
                           duration: 380, onComplete: oppDone,
@@ -1483,7 +1480,7 @@ function _playCardAnim(data) {
                           // opožděný broadcast po zhasnutí brány na okamžik vrátil na hromádku.
                           holdUntil: () => !inDiscard(data.cardId) });
                 } else {
-                    animateCard(deck.x, deck.y, target.x, target.y, 'card_back', 380, oppDone,
+                    animateCard(_src.x, _src.y, target.x, target.y, 'card_back', 380, oppDone,
                         { startAngle: 0, endAngle: sideAngle(pIdx), exactAngle: true, depth: 800 + pending,
                           startScale: pileScale(), endScale: sideScale(pIdx, 'hand') });
                 }
@@ -1495,6 +1492,12 @@ function _playCardAnim(data) {
             const fromIdx = data.fromPlayerIdx ?? data.playerIdx;
             const from = getMyPlayedCardPos(fromIdx, data.cardId);
             const faceTex = getCardTex(data.cardId);
+            // Fistful – Opuštěný důl: odhoz nad limit karet (FÁZE 3) jde lícem dolů na
+            // DOBÍRACÍ balíček. Říká to server (`toDeck`), ne klientský dohad – jen on ví,
+            // jestli se důl v tomhle tahu vůbec uplatnil. Všechny ostatní odhozy (zahrané
+            // karty, obrana, Ruská ruleta, schopnosti) letí do odhozu jako vždycky.
+            const toDeck = !!data.toDeck;
+            const dest = toDeck ? deckTopPos() : discard;
             // Kartu odeber z ruky odesílatele TEĎ, se startem animace (pozici `from` už máme) –
             // ať zmizí z ruky přesně když karta vzlétne (dřív mizela pozdě, až po doletu, když
             // dorazil room_update). Platí pro soupeře i pro mě.
@@ -1509,10 +1512,11 @@ function _playCardAnim(data) {
             // startScale = velikost karty v ruce odesílatele (soupeř 0.27, já 0.36), ať karta
             // nevzlétne o kus větší než ostatní karty v ruce.
             const isMine = fromIdx === myIndex;
-            animateCardFlip(from.x, from.y, discard.x, discard.y, 'card_back', faceTex,
+            animateCardFlip(from.x, from.y, dest.x, dest.y, 'card_back', faceTex,
                 { flip: !isMine, startScale: sideScale(fromIdx, 'hand'), endScale: 0.3, duration: 380, onComplete: done,
-                  startAngle: sideAngle(fromIdx), endAngle: 0, holdUntil: () => inDiscard(data.cardId),
-                  ...mineLandOpts() });
+                  startAngle: sideAngle(fromIdx), endAngle: 0,
+                  holdUntil: toDeck ? null : () => inDiscard(data.cardId),
+                  ...(toDeck ? { mineLand: true } : {}) });
             break;
         }
         case 'hand_to_board': {
@@ -1572,7 +1576,7 @@ function _playCardAnim(data) {
                 // nohama (a v odhozu by pak po room_update „přeskočila" do správné orientace).
                 animateCard(from.x, from.y, discard.x, discard.y, panicTex, 250, null,
                     { startAngle: tgtAngle, endAngle: 0, exactAngle: true, scale: 0.3,
-                      holdUntil: () => inDiscard(data.cardId), ...mineLandOpts() });
+                      holdUntil: () => inDiscard(data.cardId) });
                 // Ukradenou kartu z výzbroje/stolu skryj AŽ TEĎ, když se odlepuje (jinak
                 // by z boardu zmizela hned a teprve po doletu paniky vylétla z prázdna).
                 if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
@@ -1640,7 +1644,7 @@ function _playCardAnim(data) {
                 // u cíle naproti by jinak dosedla vzhůru nohama; viz panic_sequence).
                 animateCard(from.x, from.y, discard.x, discard.y, cbTex, 250, null,
                     { startAngle: tgtAngle, endAngle: 0, exactAngle: true, scale: 0.3,
-                      holdUntil: () => inDiscard(data.cardId), ...mineLandOpts() });
+                      holdUntil: () => inDiscard(data.cardId) });
                 // Zničenou kartu z výzbroje/stolu skryj AŽ TEĎ, když se odlepuje.
                 if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
                 // Cat Balou z RUKY: kartu uber cíli TEĎ, když letí do odhozu – ať ji nedrží
@@ -1653,7 +1657,7 @@ function _playCardAnim(data) {
                     { flip: !isBoard, startAngle: tgtAngle, endAngle: 0, startScale: 0.3, endScale: 0.3,
                       duration: 320, onComplete: revealStolen,
                       holdUntil: data.stolenCardId ? () => inDiscard(data.stolenCardId) : undefined,
-                      ...mineLandOpts() });
+                      });
             };
             // 1. leg: svou CB znám (líc); cizí (botí) se za letu odhalí (rub→líc). Otočí se
             // z orientace útočníka do orientace cíle.
@@ -1686,7 +1690,7 @@ function _playCardAnim(data) {
                 animateCard(to.x, to.y, discard.x, discard.y, rcTex, 250, null,
                     { startAngle: tgtAngle, endAngle: 0, exactAngle: true,
                       startScale: sideScale(data.targetIdx), endScale: pileScale(),
-                      holdUntil: () => inDiscard(data.cardId), ...mineLandOpts() });
+                      holdUntil: () => inDiscard(data.cardId) });
             };
             // 1. leg: svůj Bang! znám (líc); cizí se za letu odhalí (rub→líc).
             if (isMyShot) {
@@ -1796,10 +1800,10 @@ function _playCardAnim(data) {
             // Karta se vrací z odhozu do ruky (Sid Ketchum – zrušené léčení).
             // U mě letí na svůj SKUTEČNÝ slot (staging přes pendingDrawIds, jako líznutí),
             // ne na fixní kotvu ruky – proto animateDrawToMyHand (líc nahoru, bez otáčení).
-            // Opuštěný důl (Fistful) je výjimka: odhazuje se lícem DOLŮ na dobírací balíček,
-            // takže se karta vracející se z něj musí za letu překlopit rub→líc.
+            // Opuštěného dolu se to netýká: zahrané ani odhozené karty ve fázi 2 na
+            // dobírací balíček nechodí, takže se karta vrací z odhozu lícem nahoru.
             if (data.toPlayerIdx === myIndex &&
-                animateDrawToMyHand(data.toPlayerIdx, data.cardId, discard.x, discard.y, { faceUp: !mineOn(), duration: 400 })) {
+                animateDrawToMyHand(data.toPlayerIdx, data.cardId, discard.x, discard.y, { faceUp: true, duration: 400 })) {
                 break;
             }
             const handPos = getPlayerHandPos(data.toPlayerIdx);
@@ -1872,7 +1876,7 @@ function _playCardAnim(data) {
                 renderUI();
             }
             animateCard(fromX, fromY, discard.x, discard.y, getCardTex(data.cardId), 380, null,
-                { startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: pileScale(), ...mineLandOpts() });
+                { startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: pileScale() });
             break;
         }
         case 'beer_blocked': {
@@ -1955,7 +1959,7 @@ function _playCardAnim(data) {
             animateCard(from.x, from.y, discard.x, discard.y, getCardTex(data.cardId), 350, () => {
                 if (App.discardAnimHideId === data.cardId) { App.discardAnimHideId = null; renderUI(); }
             }, { startAngle: sideAngle(data.playerIdx), endAngle: 0, exactAngle: true, startScale: 0.42, endScale: 0.3,
-                 ...mineLandOpts() });
+                 });
             break;
         }
         case 'board_to_discard': {
@@ -1976,13 +1980,13 @@ function _playCardAnim(data) {
                 renderUI();
             }, { startAngle: sideAngle(data.fromPlayerIdx), endAngle: 0, exactAngle: true,
                  startScale: sideScale(data.fromPlayerIdx), endScale: 0.3,
-                 holdUntil: () => inDiscard(data.cardId), ...mineLandOpts() });
+                 holdUntil: () => inDiscard(data.cardId) });
             break;
         }
         case 'duel_exchange':
             animateCard(getPlayerHandPos(data.fromPlayerIdx).x, getPlayerHandPos(data.fromPlayerIdx).y,
                         discard.x, discard.y, 'card_back', 280, null,
-                        { startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: pileScale(), ...mineLandOpts() });
+                        { startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: pileScale() });
             break;
         // A Fistful of Cards – Peyote: hráč tipnul barvu vrchní karty, teď se odkryje.
         case 'peyote_reveal':
@@ -2194,10 +2198,6 @@ const ANIM_MS = {
     lucky_duke_result: 3850,
 };
 
-// Doběh s překlopením na rub u cinematik, které kartu předtím ukázaly uprostřed –
-// jen samo překlopení, bez výdrže (viz mineLandOptsRevealed v game.js).
-const MINE_REVEALED_TYPES = new Set(['lucky_duke_result']);
-
 function _animDurationMs(data) {
     // Smrt: celá cinematika vyřazení (pokles na nulu → odhoz karet → odhalení role).
     // Počet položek odhozu = modré + zbraň/Colt (vždy jedna) + ruka, viz _deathCardSeq;
@@ -2224,23 +2224,12 @@ function _animDurationMs(data) {
     if (data.type === 'player_death_reveal') {
         return deathRevealMs(!!state?.mode3p || state?.players?.[data.playerIdx]?.role === 'Sheriff');
     }
-    // A Fistful of Cards – Opuštěný důl: let končící v „odhozu" (= na dobíracím balíčku)
-    // má navíc doběh, ve kterém karta leží lícem nahoru a pak se překlopí na rub. Stav
-    // se o tu dobu musí zdržet, jinak by hromádka přeskočila dřív, než se karta otočí.
-    // Seznam MUSÍ sedět s tím, kde se ve _playCardAnim rozdává mineLandOpts().
-    const on = mineOn();
-    if (on && MINE_REVEALED_TYPES.has(data.type)) return (ANIM_MS[data.type] ?? 400) + mineLandMs(true, 0);
-    return (ANIM_MS[data.type] ?? 400) + mineLandMs(on && MINE_LAND_TYPES.has(data.type));
+    // A Fistful of Cards – Opuštěný důl: odhoz nad limit karet (FÁZE 3) letí lícem
+    // nahoru na dobírací balíček, chvíli tam leží a teprve pak se překlopí na rub.
+    // Stav se o tu dobu musí zdržet, jinak by hromádka přeskočila dřív, než se karta
+    // otočí. Pozná se to podle `toDeck`, které posílá server – jiné odhozy důl nemění.
+    return (ANIM_MS[data.type] ?? 400) + mineLandMs(!!data.toDeck);
 }
-
-// Animace, které končí v odhozu (viz mineLandOpts v game.js). Cinematiky, které kartu
-// předtím ukázaly zvětšenou uprostřed (sejmutí, Lucky Duke), mají doběh bez výdrže –
-// jejich délka je v ANIM_MS/CHECK_REVEAL_MS a přičítá se jim jen překlopení.
-const MINE_LAND_TYPES = new Set([
-    'discard', 'hand_to_discard', 'board_to_discard', 'dynamite_explode',
-    'duel_exchange', 'beer_auto_save', 'panic_sequence', 'catbalou_sequence',
-    'ricochet_shot',
-]);
 
 socket.on('card_animation', (data) => {
     // Mimo scénu/hru není co přehrát – nezařazuj, ať fronta nedrží následující stav.

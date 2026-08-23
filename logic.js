@@ -147,6 +147,7 @@ class GameState {
         this.pendingRanch = null;       // Ranč: čeká se na výměnu karet (po fázi lízání)
         this.pendingBlood = null;       // Pokrevní bratři: nabídka darovat 1 život (před lízáním)
         this.pendingFistful = null;     // Fistful of Cards: rozdělaná série zásahů na začátku tahu
+        this._mineTurn = false;         // Opuštěný důl: líže tenhle tah z odhozu? (fáze 1 a 3)
         this._firstDeadIdx = null;      // Mrtvý muž: kdo byl vyřazen jako první
         this._deadManUsed = false;      // Mrtvý muž: návrat je jednorázový
         this.pendingRoulette = null;    // Ruská ruleta: kolečko odhazování karet Vedle!
@@ -224,7 +225,9 @@ class GameState {
         const p = this.getCurrentPlayer();
         if (this.phase !== "DISCARD") return;
         const card = p.hand.splice(cardIdx, 1)[0];
-        if (card) this.deck.discard(card);
+        // A Fistful of Cards – Opuštěný důl: odhoz nad limit karet je FÁZE 3, takže pod
+        // dolem jde lícem dolů navrch dobíracího balíčku (viz _mineDiscardEndTurn).
+        if (card) this._mineDiscardEndTurn(card);
         p.stats.cardsDiscarded++;
         if (p.hand.length <= this._handLimit(p)) {
             this.nextTurn();
