@@ -226,3 +226,26 @@ test('play_ricochet od hráče mimo tah se zahodí', () => {
     assert.equal(gs.phase, 'RESPOND');
     assert.equal(s0.rejected.length, 0);
 });
+
+// Guard je poslední pojistka proti opožděným a duplicitním klikům. Nová akce, která
+// v jeho seznamech chybí, projde bez kontroly – a přesně tím vznikaly staré chyby
+// (dvojklik na „Ukončit tah" přeskočil hráče). Test drží seznamy synchronní s tím,
+// co umí bot: bot posílá tytéž eventy jako člověk, takže je to úplný výčet herních akcí.
+test('každá herní akce bota je v guardu (TURN_ACTIONS nebo SELF_ACTIONS)', () => {
+    const guardSrc = fs.readFileSync(__dirname + '/../server/guard.js', 'utf8');
+    const setOf = (name) => {
+        const m = guardSrc.match(new RegExp(name + '\\s*=\\s*new Set\\(\\[([\\s\\S]*?)\\]\\)'));
+        assert.ok(m, `${name} se v server/guard.js našel`);
+        return new Set([...m[1].matchAll(/'([a-z_]+)'/g)].map(x => x[1]));
+    };
+    const known = new Set([...setOf('TURN_ACTIONS'), ...setOf('SELF_ACTIONS')]);
+
+    const botSrc = fs.readFileSync(__dirname + '/../core/botPolicy.js', 'utf8');
+    const botEvents = [...new Set([...botSrc.matchAll(/event: '([a-z_]+)'/g)].map(m => m[1]))];
+    // Výběr postav běží PŘED hrou a registruje ho handlers.nextgame.js, který guardem
+    // schválně neprochází (pendingActor tam rozhoduje podle hráče, ne podle tahu).
+    const UNGUARDED = new Set(['select_character', 'keep_character']);
+
+    const missing = botEvents.filter(e => !known.has(e) && !UNGUARDED.has(e));
+    assert.deepEqual(missing, [], 'herní akce mimo guard = neautorizovaný posun hry');
+});

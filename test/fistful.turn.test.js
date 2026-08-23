@@ -198,6 +198,42 @@ test('Fistful of Cards: ducha (Město duchů) míjí (R10)', () => {
     assert.equal(g.pendingFistful, null);
 });
 
+// Dvě události, které obě sahají do startu tahu, a jde o jejich POŘADÍ: Pravé poledne je
+// krok 4, Fistful of Cards krok 5 (viz _runBeginTurn). Nejdřív se tedy ztratí život a až
+// pak přijdou zásahy – a série se nesmí ztratit ani tehdy, když se hráč o krok dřív
+// zachránil Pivem (to vrací krokovač zpátky přes _resumeBeginTurn).
+test('Fistful of Cards × Pravé poledne: nejdřív ztráta života, pak série zásahů', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'FISTFUL_OF_CARDS');
+    g.activeEvent = hn('PRAVE_POLEDNE');
+    give(g, 0, CardType.BANG); give(g, 0, CardType.BANG);
+    startTurn(g);
+    // Krok 4: Pravé poledne – čeká se na klik na životy, série ještě neběží.
+    assert.equal(g.phase, 'NOON_DAMAGE');
+    assert.equal(g.pendingFistful, null);
+    g.takeNoonHit(0);
+    assert.equal(g.players[0].health, 2);
+    // Krok 5: teprve teď série dvou zásahů (ruka měla 2 karty).
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.pendingFistful.hitsLeft, 1, 'první zásah už letí, druhý čeká');
+    g.handleResponse(0, null);
+    assert.equal(g.players[0].health, 1);
+    g.handleResponse(0, null);
+    assert.equal(g.players[0].health, 0, 'oba zásahy dopadly');
+});
+
+test('Fistful of Cards × Pravé poledne: záchrana Pivem sérii nezahodí', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 1 }, {}, {}], 'FISTFUL_OF_CARDS');
+    g.activeEvent = hn('PRAVE_POLEDNE');
+    const beerIdx = give(g, 0, CardType.BEER, { name: 'Pivo' });
+    startTurn(g);
+    assert.equal(g.phase, 'NOON_DAMAGE');
+    assert.equal(g.beerLastLifeSave(0, beerIdx), true);
+    assert.equal(g.players[0].health, 1, 'Pivo ztrátu života zrušilo');
+    // Ruku Pivo vyprázdnilo, takže série má nula zásahů a tah pokračuje lízáním.
+    assert.equal(g.players[0].hand.length, 0);
+    assert.equal(g.phase, 'DRAW', 'krokovač startu tahu doběhl až k fázi lízání');
+});
+
 test('Fistful of Cards: smrt uprostřed série zahodí zbytek a posune tah', () => {
     const g = mkEv([{ role: 'Outlaw', health: 1 }, { role: 'Sheriff' }, { role: 'Renegade' }],
                    'FISTFUL_OF_CARDS');

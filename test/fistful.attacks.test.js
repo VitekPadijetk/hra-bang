@@ -1,4 +1,4 @@
-// Rozšíření A Fistful of Cards – fáze 8: nové útoky.
+// Rozšíření A Fistful of Cards – nové způsoby, jak zahrát Bang!.
 //   Odstřelovač     – 2 karty Bang! naráz, ubránit se lze JEN dvěma kartami Vedle!,
 //   Odražená střela – Bang! proti kartě vyložené před soupeřem (ta se odhodí).
 const { test, before } = require('node:test');

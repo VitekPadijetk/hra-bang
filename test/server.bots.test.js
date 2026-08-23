@@ -357,6 +357,53 @@ test('20 her jen botů se všemi rozšířeními (vč. Fistfulu) vždy doběhne'
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s Fistfulem');
 });
 
+// Úplná matice rozšíření × počty hráčů. Testy výš míří na KONKRÉTNÍ karty; tenhle hlídá,
+// že se hra vůbec rozjede a doběhne v každé z osmi kombinací zapnutých rozšíření pro
+// 3–8 hráčů – včetně těch, které dosud vlastní test neměly (Fistful sám, Fistful+DC,
+// Fistful+HN). Nejtěsnější je 8 hráčů bez rozšíření: 8×2 nabídky = přesně 16 postav,
+// tedy nulová rezerva. Zároveň se ověřuje, že zapnuté rozšíření opravdu doteklo do stavu
+// (velikost obou balíčků událostí), ne že by bylo tiše vypnuté a hra „prošla" naprázdno.
+test('matice rozšíření × 3–8 hráčů: každá kombinace doběhne bez stallu', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (const dodge_city of [false, true])
+        for (const high_noon of [false, true])
+            for (const fistful of [false, true]) COMBOS.push({ dodge_city, high_noon, fistful });
+
+    try {
+        COMBOS.forEach((exp, ci) => {
+            for (let n = 3; n <= 8; n++) {
+                const gs = new GameState();
+                gs.cardData = cardData;
+                gs.dodgeCityCardData = dodgeCityCardData;
+                gs.highNoonCardData = highNoonCardData;
+                gs.fistfulCardData = fistfulCardData;
+                // highNoonExtra schválně vypnuté: se zapnutým Fistfulem se přibalené
+                // karty přidávají samy (_hnExtraOn), což je tímhle taky pokryté.
+                const opts = { expansions: { ...exp }, highNoonExtra: false };
+                const tag = Object.keys(exp).filter(k => exp[k]).join('+') || 'základ';
+                const room = { id: `mx${ci}_${n}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+                ctx.rooms.set(room.id, room);
+                gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+
+                // Rozšíření opravdu doteklo do stavu (jinak by test „procházel" naprázdno).
+                assert.equal(gs.ffDeck.length, exp.fistful ? 15 : 0, `${tag} (${n}p): balíček Fistfulu`);
+                assert.equal(gs.eventDeck.length, exp.high_noon ? (exp.fistful ? 15 : 13) : 0,
+                    `${tag} (${n}p): balíček High Noon (s Fistfulem i přibalené karty)`);
+
+                gs.players.forEach(p => ctx.createBot(room, p.name));
+                const guard = pumpToWinner(ctx, room);
+                assert.ok(gs.winner, `${tag} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+                assert.ok(guard < 8000, `${tag} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            }
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci v žádné kombinaci');
+});
+
 // Cílená zátěž na fázi 2 Fistfulu: v balíčku jsou JEN Léčka, Laso a Soudce, takže platí
 // po celou partii. Právě tady hrozí, že bot bude posílat akci, kterou server odmítne
 // (aktivace zelené karty nebo obrana zelenou Vedle! pod Lasem, vyložení modré pod

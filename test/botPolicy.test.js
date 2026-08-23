@@ -2,6 +2,7 @@
 // Stav stavíme přes sdílené _helpers (ruční GameState) – policy běží nad stejným tvarem.
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { mkGame, give, board, CardType, Suits } = require('./_helpers.js');
 const { pendingActor, decideBotAction, roleHostility } = require('../core/botPolicy.js');
 
@@ -336,4 +337,38 @@ test('PLAY: nouzové cílení nikdy nesáhne na JISTÉHO spojence (šerif ↔ po
     give(g, 0, CardType.BANG);
     const a = decideBotAction(g, 0);
     assert.notEqual(a.event, 'play_bang', 'na jistého pomocníka šerif nestřílí ani v nouzi');
+});
+
+// ── Invariant „bot se nikdy nezasekne" ───────────────────────────────────────
+// Historicky nejčastější chyba v projektu: nové pravidlo dostane vlastní fázi, ale bot
+// pro ni nemá větev → decideBotAction vrátí null, stav se nezmění, driver posílá totéž
+// donekonečna a hra jen botů zamrzne. Test to hlídá strukturálně nad zdrojem, takže na
+// nové pravidlo upozorní hned, ne až zátěžová hra náhodou trefí tu správnou kartu.
+test('každý kind z pendingActor má v decideBotAction svou větev', () => {
+    const pendingSrc = fs.readFileSync(__dirname + '/../core/pending.js', 'utf8');
+    const botSrc = fs.readFileSync(__dirname + '/../core/botPolicy.js', 'utf8');
+
+    // Jen tělo pendingActor – describePendingCheck níž má vlastní `kind` (DYNAMITE,
+    // JAIL, BARREL, VENDETTA), což jsou popisky pro UI, ne rozhodnutí, na které se čeká.
+    const from = pendingSrc.indexOf('function pendingActor');
+    const to = pendingSrc.indexOf('function waitingStatus');
+    assert.ok(from !== -1 && to > from, 'pendingActor/waitingStatus se v pending.js našly');
+    const kinds = [...new Set([...pendingSrc.slice(from, to).matchAll(/kind: '([A-Z_]+)'/g)].map(m => m[1]))];
+    assert.ok(kinds.length > 25, `kindů je rozumný počet (${kinds.length})`);
+
+    const branches = new Set([...botSrc.matchAll(/case '([A-Z_]+)'/g)].map(m => m[1]));
+    // Výběr postavy řeší decideBotAction ještě PŘED switchem (rozhoduje se podle
+    // konkrétního hráče, ne podle toho, na koho se čeká) – viz začátek funkce.
+    const PRE_SWITCH = new Set(['CHARACTER_SELECT', 'KEEP_CHOICE']);
+    const missing = kinds.filter(k => !branches.has(k) && !PRE_SWITCH.has(k));
+    assert.deepEqual(missing, [], 'každá fáze musí mít větev bota, jinak se hra jen botů zasekne');
+
+    // A obráceně: PRE_SWITCH větve opravdu existují (ať se allowlist nestane výmluvou).
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { phase: 'CHARACTER_SELECT' });
+    g.players[0].charChoices = ['Slab the Killer', 'Vulture Sam'];
+    assert.equal(decideBotAction(g, 0).event, 'select_character');
+    g.players[0].charChoices = [];
+    g.players[0]._awaitingKeepChoice = true;
+    g.players[0]._survivorChar = 'Slab the Killer';
+    assert.equal(decideBotAction(g, 0).event, 'keep_character');
 });

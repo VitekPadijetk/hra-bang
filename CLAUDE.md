@@ -27,6 +27,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `logic/characters.js` | **Mixin GameState.** Schopnosti postav + fronta odložených akcí: `_processSpecialQueue`/`_resumeAfterSpecial`, `checkSuzyLafayette`/`suzyLafayetteDraw`, `bartCassidyDraw`, `elGringoSteal`, `sidKetchumDiscardOne`/`useSidKetchum`, `startLuckyDukeCheck`/`luckyDukePick` + **dělení karet mezi víc Vulture Samů** (`_nextVultureSplitPick`/`_advanceVultureSplit`/`_finishVultureSplit`, viz níže) a **pravidlo „nejdřív doběhne efekt zahrané karty"** (`_pruneSuzyQueue`, viz níže). |
 | `logic/checks.js` | **Mixin GameState.** Kontrolní líznutí na začátku tahu (Dynamit/Vězení) a vyhodnocení checků: `handleStartOfTurnChecks`, `triggerCheckDraw`, `_applyCheckResult` (Dynamit/Vězení/Barel/Jourdonnais), `resolveCheck`. |
 | `logic/highNoon.js` | **Mixin GameState.** Rozšíření **High Noon** (balíček událostí): `_setupEventDeck` (Pravé poledne vespod), `hasEvent`, krokovaný start tahu `_beginTurn`/`_resumeBeginTurn`/`_runBeginTurn` (7 kroků, viz „Start tahu (Fistful)" níže), `_flipEvent` (jen šerif, až od 2. tahu; nastaví `_pendingHighNoonReveal` pro animaci), `takeNoonHit`, **Daltonové** (`_startDaltons`/`_advanceDaltons`/`_resumeDaltons`/`_daltonsBlueCount`, viz níže) a sdílené dotazy pravidel `_bangLimit`/`_bangBlocked`/`_beerBlocked`/`_turnStep`/**`_effSuit`**. `_turnStep()` = krok pro `nextTurn` (Zlatá horečka jede proti směru, tj. `players.length - 1`); **jediné místo, kde se směr obrací** – posun dynamitu, hokynářství, hromadné útoky, Rvačka i samotní Daltonové zůstávají po směru (FAQ H3). **Kocovina** nemá vlastní metodu: `_applyEventOnEnter` při KAŽDÉ výměně události přepíše všem hráčům `p._noAbility`, což čte `effectiveCharacter` (core/distance.js). `_effSuit(card)` je **jediný zdroj pravdy pro barvu karty** – Požehnání dělá ze všeho srdce, Prokletí piky (hodnota se nemění). Ptají se přes něj checks (Dynamit/Vězení/Barel), Black Jack, Apache Kid a Doc Holyday; nikde jinde se `card.suit` číst nesmí – **jedinou výjimkou je Peyote** (A Fistful of Cards): tip na barvu se schválně vyhodnocuje proti VYTIŠTĚNÉ barvě, jinak by pod Požehnáním/Prokletím každý tip sedl a hráč by si lízl celý balíček (`peyoteGuess` v logic/fistful.js a jeho zrcadlo ve větvi `PEYOTE` v core/botPolicy.js). **Město duchů**: `_teardownGhost()` (konec tahu ducha – volá ho `nextTurn` jako první krok, viz níže). **Přibalené karty** (`options.highNoonExtra`): `_dealSecondIdentities`/`_newIdentityOffer`/`resolveNewIdentity` (Nová identita) a `_startHandcuffs`/`chooseHandcuffsSuit`/`_suitBlocked` (Želízka). |
+| `logic/fistful.js` | **Mixin GameState.** Rozšíření **A Fistful of Cards** – DRUHÝ balíček událostí, hraje se SOUČASNĚ s High Noonem (viz „Dva balíčky událostí" níže). `_setupFistfulDeck` (Fistful of Cards vespod), `_flipFistfulEvent`, `_applyFfEventOnEnter`. Dál karty, které nemají domov jinde: **Laso** `_boardDead` (jediný dotaz „karty na stole nemají efekt"), **Soudce** `_judgeBlocks`, **Opuštěný důl** `_syncMine`, **Peyote** `startPeyote`/`peyoteGuess`, **Ranč** `_startRanch`/`ranchExchange`, **Právo západu** `_lawMark`/`_lawForced`/`_lawLocked`/`_lawSelfShootOnly`, **Pokrevní bratři** `_startBloodBrothers`/`resolveBloodBrothers`, **Fistful of Cards** `_fistfulHits`/`_afterFistfulHit`, **Ruská ruleta** `_startRoulette`/`_advanceRoulette`/`rouletteDiscard`, **Vendeta** `_vendettaCheck`/`_vendettaExtraTurn`, **Mrtvý muž** `_deadManReturnIdx`/`_deadManReturn`, **Odstřelovač** `startSniper`/`_sniperAttack` a **Odražená střela** `playRicochet`/`_ricochetDestroy`. Léčka vlastní metodu nemá – ptá se na ni přímo `computeDistance` (core/distance.js). |
 | `server.js` | **Socket.IO bootstrap (~76 ř.).** Express/io setup → poskládá sdílený `ctx` (`require('./server/*')(ctx)` v pořadí rooms→gamelog→ledger→guard→intro→anim→lifecycle→bots) → `io.on('connection')` jen definuje per-connection `withRoom` a zavolá `register*Handlers(socket, ctx, withRoom)` → `server.listen`. Veškerá logika je v `server/*`. |
 | `server/rooms.js` | Factory `installRoomService(ctx)` – vlastní `rooms` Map + roomCounter, vystaví na `ctx`: `makeRoom`, `roomPayload`, `broadcastRoom(+Delayed)`, `broadcastLobbyList`, `getLobbyList`, `getGameList`, `findRoomBySocket`, `leaveRoom`, `leaveSpectate`, `disbandRoom`, **`closeRoom`/`roomAlive`**. Bez listenu → testovatelné s fake io (`test/server.rooms.test.js`). **Rozpuštění místnosti = `closeRoom(room)`, nikdy holé `rooms.delete`**: intro sekvence (`server/intro.js`), odložený broadcast, tick botů, čekání na assety i odpočet navazující hry jsou naplánované timeouty držící referenci na `room` – po pouhém smazání z registru emitovaly dál a hráč, který je zpátky v menu, se z něj překlopil zpátky do zrušené hry („jsem v ní a zároveň nejsem", tlačítko ✕ Ukončit hru). `closeRoom` je všechny zruší a označí místnost za mrtvou; `broadcastRoom(+Delayed)`, `emitIntro*` (intro.js) i `emitAnim*` (anim.js) se pak ptají přes `roomAlive(room)`. **Divák je jen v socket.io kanálu `<roomId>_spectators`, ne v `room.players`** – `findRoomBySocket`/`leaveRoom` ho tedy nevidí a odhlásit ho umí jen `leaveSpectate(socket)` (volá se z `leave_spectate`, `go_to_menu`, `spectate`, `create_room`/`join_room`/`rejoin`/`create_bot_game`). Bez odhlášení mu chodí dál `room_update`/`card_animation`/`intro_phase` a klient ho z menu překlopí zpátky do hry. |
 | `server/intro.js` | Factory `installIntroService(ctx)` (bere `io`, `broadcastRoom`) – serverová intro sekvence přes timeouty: `emitIntro`/`emitIntroRole`/`emitIntroChars`, `runIntroSequence`, `introAfterRoles`, `introStartCharPhase`, `introStartDeckPhase`. **Navazující hra** má vlastní vstup `runNextGameIntro` + `introKeepResult` (viz „Intro navazující hry“ níže). **High Noon** má v deck fázi tři beaty v řadě: `highnoon_top` (z kompletního balíčku vyletí vrchní karta a ukáže se – Pravé poledne, ve velikosti balíčků) → `shuffle_highnoon` (zamíchá se zbytek) → `highnoon_bottom` (odložená karta sjede pod hromádku). Test: `test/server.intro.test.js`. |
@@ -64,19 +65,20 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `core/cardRules.js` | `getActionForCard`, **`isBlueCard`** | jakou akci spustit po výběru karty + **co je modrá karta**. `isBlueCard` je jediný zdroj pravdy pro schopnost Josého Delgada (server `logic/characters.js`, klient `view/board.js`, bot `core/botPolicy.js`) – **Vězení a Dynamit jsou modré** (Vězení se jen vykládá před soupeře), zelené karty Dodge City mají vlastní typy + `green: true`, takže sem nespadají. |
 | `core/phaseInfo.js` | `isResponseTurn`, `isPlayTurn`, `canActOnHand` | čí je tah / co smí hráč |
 | `core/pending.js` | `pendingActor`, `waitingStatus`, `describePendingResponse` | **na koho a na jaké rozhodnutí hra čeká** (jedna větev na fázi). Jediný zdroj pravdy pro UI štítek, bota (`botPolicy`), log i serverový guard (`server/guard.js`). Vrátí `null` u přechodných fází – kdo to používá jako autoritu, musí `null` ošetřit. |
-| `core/playability.js` | `cardPlayability` | smí se karta teď zahrát? |
+| `core/playability.js` | `cardPlayability`, `lawForcedCard`/`lawSelfShootOnly`/`lawLocksOther`, `rouletteDiscardable`/`rouletteHasCard`, `bangCardFromHand`/`bangLimitFree`/`bangAtPlayerOk`, `ricochetOffer`/`ricochetTargetOk`/`ricochetAvailable`, `sniperOffer` | smí se karta teď zahrát? Sem patří **každé pravidlo, které se musí ptát server, klient i bot naráz** – rozejít se nesmí, jinak server akci mlčky odmítne, bot ji pošle znovu a hra se zasekne. Fistful si sem přidal Právo západu (co hráče drží v tahu), Ruskou ruletu (co se počítá za „kartu Vedle!") a Odstřelovače/Odraženou střelu (co se počítá za „kartu Bang!" a kam s ní smí letět). |
 | `core/selection.js` | `decideCardClick` | reducer kliknutí na kartu → „intent" (bez vedlejších efektů) |
 | `core/roles.js` | `rolesForPlayerCount`, `healthForCharacter`, `baseHealthForCharacter`, **`roleNameCz`/`ROLE_CZ`**, **`TARGET_3P`/`isThreePlayerMode`**, **`firstPlayerIndex`** | rozdělení rolí (**3–8 hráčů**), startovní životy a **český název role** – role se v kódu i ve stavu jmenují anglicky, hráč je ale nikde nesmí vidět anglicky (debug, statistiky, výběr postavy). **`firstPlayerIndex(players)`** = kdo je na „šerifově pozici" (začíná hru, od něj jdou po směru efekty karet, na jeho tah se odkrývá karta High Noon) – šerif, a ve hře pro 3 pomocník. `TARGET_3P`/`isThreePlayerMode` viz „Hra pro 3 hráče" níže. |
 | `core/winCondition.js` | `evaluateWinner(players, opts)`, `evaluateWinner3p` | kdo vyhrál z pole hráčů (nebo null). Za živého se počítá i duch (`_ghost`, Město duchů) – FAQ H7. `opts = { mode3p, winClaimIdx }` přepne na pravidla pro 3 hráče (viz níže). Odpadlík vyhrává jen jako JEDINÝ žijící, takže **při 8 hráčích (dva odpadlíci) dá mrtvý šerif proti dvěma živým odpadlíkům výhru banditům** – přesně jak pravidlo pro 8 říká. |
-| `core/botPolicy.js` | `pendingActor`, `decideBotAction(state, i, beliefs)` | „mozek" bota: na koho hra čeká + jednu akci bota. **Nezná cizí role** – cílí přes `beliefs` (dedukce z chování), takže nestřílí na pravděpodobné spojence. Umí zahrát **všechny karty** (dynamit, zelené DC + jejich aktivace, „odhoď další kartu", aktivní schopnosti Chuck/José/Doc). Znovupoužívá `cardPlayability`/`computeCanHit`/`getActionForCard`. **Karty na stole má obodované (`boardCardValue`) podle toho, jestli MAJITELI pomáhají, nebo škodí**: Vězení/Dynamit nepříteli nesundá (pomohl by mu – proto si ani nezahodí vlastní Vězení Cat Balouem hned po zahrání), spojenci je Rvačkou naopak sundá přednostně; `_hasWorthTaking` takové „hodnoty" nepočítá, takže se na ně ani necílí. Zbraně: max **jedna za tah** (`weapon._playedTurn === turnId`), z ruky ta nejlepší podle `weaponValue` (Volcanic = 2.5, ne dostřel 1). Ponechání postavy do navazující hry je náhodné (`decideKeepCharacter`, šance dle `CHAR_RANK`). **Nouzové cílení (`rankEnemies`):** když práh `ENEMY_EPS` nepřekročí NIKDO, propustí se i záporná nepřátelskost (pořadí zůstává „od nejpravděpodobnějšího nepřítele"), jen s podmínkou `enemyProbability >= DESPERATE_ENEMY_P`. Bez toho se koncovka „šerif + pomocníci vs. odpadlík" zasekne: nepřítelem je každý jen z 1/3, takže by strana šerifa nikdy nezaútočila a boti by jen lízali a odhazovali. Jistý spojenec (šance 0) zůstává nedotknutelný vždy. |
+| `core/botPolicy.js` | `pendingActor`, `decideBotAction(state, i, beliefs)` | „mozek" bota: na koho hra čeká + jednu akci bota. **Nezná cizí role** – cílí přes `beliefs` (dedukce z chování), takže nestřílí na pravděpodobné spojence. Umí zahrát **všechny karty** (dynamit, zelené DC + jejich aktivace, „odhoď další kartu", aktivní schopnosti Chuck/José/Doc). Znovupoužívá `cardPlayability`/`computeCanHit`/`getActionForCard`. **Karty na stole má obodované (`boardCardValue`) podle toho, jestli MAJITELI pomáhají, nebo škodí**: Vězení/Dynamit nepříteli nesundá (pomohl by mu – proto si ani nezahodí vlastní Vězení Cat Balouem hned po zahrání), spojenci je Rvačkou naopak sundá přednostně; `_hasWorthTaking` takové „hodnoty" nepočítá, takže se na ně ani necílí. Zbraně: max **jedna za tah** (`weapon._playedTurn === turnId`), z ruky ta nejlepší podle `weaponValue` (Volcanic = 2.5, ne dostřel 1). Ponechání postavy do navazující hry je náhodné (`decideKeepCharacter`, šance dle `CHAR_RANK`). **Nouzové cílení (`rankEnemies`):** když práh `ENEMY_EPS` nepřekročí NIKDO, propustí se i záporná nepřátelskost (pořadí zůstává „od nejpravděpodobnějšího nepřítele"), jen s podmínkou `enemyProbability >= DESPERATE_ENEMY_P`. Bez toho se koncovka „šerif + pomocníci vs. odpadlík" zasekne: nepřítelem je každý jen z 1/3, takže by strana šerifa nikdy nezaútočila a boti by jen lízali a odhazovali. Jistý spojenec (šance 0) zůstává nedotknutelný vždy. **A Fistful of Cards** přidal větve `PEYOTE`/`RANCH`/`BLOOD_BROTHERS`/`CLAUS_GIVE`/`ROULETTE_DISCARD` a v `PLAY` volbu mezi obyčejným výstřelem, Odstřelovačem (nepřítel s ≤ 2 kartami) a Odraženou střelou (`bestRicochetShot` = nejcennější vyložená karta nepřítele; Vězení ani Dynamit se nestřílí). **Že žádná větev nechybí, hlídá strukturální test** „každý kind z pendingActor má v decideBotAction svou větev" (test/botPolicy.test.js). |
 | `core/beliefs.js` | `computeBeliefs`, `expectedHostility`, **`enemyProbability`**, `roleHostility`, `estimateOutlawsAlive` | dedukce skrytých rolí z VEŘEJNÝCH informací (počty rolí, veřejný šerif, mrtví) + ledgeru chování; „očekávaná nepřátelskost" pro cílení (jistý spojenec ≤0, ořez -100 proti paralýze z nejistoty). `enemyProbability` = neváženě „jaká je šance, že je to nepřítel" – pojistka nouzového cílení (viz `rankEnemies`), aby se ani v koncovce nesáhlo na JISTÉHO spojence. |
 | `core/assetLoad.js` | `shouldRetryAsset`, `isPermanentlyMissing`, `retryAssetUrl`, `missingAssets` | **opakované načtení assetů**: co má smysl zkusit znovu (výpadek spojení / 5xx ano, 4xx ne) a co ještě chybí, než se hra smí sestavit. Používá `preload`/`create` v game.js (registr `AssetLoads`, `ensureAssetsLoaded`) – bez toho Phaser chybný soubor jen přeskočí a hra jede se zelenými placeholdery až do F5. |
 | `core/animQueue.js` | `createAnimQueue` | **prezentační fronta klienta**: `card_animation` a `room_update` se nepřehrávají hned při doručení, ale jdou frontou – animace za sebou, stav se aplikuje až doběhne to, co mu předcházelo. Bez ní se na pomalé lince oba eventy slijí a karta „už je v odhozu", zatímco ještě letí. Pořadí = pořadí příjmu (Socket.IO doručuje eventy jednoho socketu v pořadí odeslání), nic se nečísluje. Zaostávání se nekumuluje: víc než jedna čekající animace přes `maxLagMs` → čekající animace se zahodí a dojede poslední stav (plný snímek). Instance + tabulka trvání `ANIM_MS` je v `net/handlers.js`; **při změně `duration` animace srovnej i `ANIM_MS`**. Dokud fronta něco drží (`animQueueBusy()`), letící sprite se nevzdá držení na cíli (`holdThenFinish` v game.js) – jinak by dlouhá cinematika zařazená mezi let a jeho stav (vězení do odhozu → odkrytí karty High Noon) nechala sprite zaniknout dřív, než stav dorazí, a karta by problikla zpátky na původní místo. |
 | `core/deathAnim.js` | `DEATH_ANIM`, `deathAnimTimeline`, `deathSequenceMs`, `deathFallMs`, `deathRevealMs`, `penaltyDiscardMs` | **časování cinematiky vyřazení hráče** (pokles na 0 životů → pauza → karty odlétají po jedné → postava se posune vedle místa role → rubová karta role letí doprostřed, překlopí se, vydrží a odletí na místo). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `playDeathSequence`, fáze drží `App.deathSeq`/`App.deathHandHide`, board.js podle nich kreslí), server o stejnou dobu drží boty (`room._deathBlockUntil` v `server/anim.js`, respektuje `scheduleBotTick`). Stav se do konce sekvence nepustí – animace jde frontou jako `essential` (nezahoditelná). **Varianty:** `skipReveal` (šerif roli neodhaluje – zná ji celý stůl, sekvence končí odhozením karet); `deathFallMs`+`deathRevealMs` = sekvence rozpůlená dělením karet mezi víc Vulture Samů; `penaltyDiscardMs` = šerifova ztráta karet za zabití pomocníka (stejné odhazování, ale bez poklesu životů, bez role a Colt .45 zůstává). |
 | `core/drawCounter.js` | `nextDrawCounters` | **počítadlo naklikaných, ještě nepotvrzených líznutí** (`App.pendingDrawCount`/`lastConfirmedDrawn`/`lastDrawOwner`/`lastDrawId`). Drží dva rychlé kliky na balíček a zároveň brání kliku navíc. Klíčové je, že počítadlo patří JEDNÉ fázi lízání a při předělu (DRAW → jiné DRAW) se nuluje – jinak vyjde „zbývá ≤ 0", balíček nejde rozkliknout a hra uvázne. Předěl pozná **`drawPhaseState.drawId`** (přiděluje ho `GameState._setDrawPhase`, jediná cesta, jak se fáze lízání zakládá – **nová se nesmí přiřadit napřímo**): navazující lízání téhož hráče (Herb Hunter 2 + odměna za banditu 3, návrat Mrtvého muže 2 + vlastní fáze lízání) má `playerIdx` stejný a `cardsDrawn` v obou 0, takže se jinak nepozná – oba broadcasty jsou odložené o dobu animace a doručí až ten druhý stav. |
 | `core/gameLog.js` | `snapshotState`, `formatEvent`, `LogEvent` | čistý formát strukturovaného herního logu: `snapshotState(gs)` = kompaktní stav (role/ruce/board/HP/phase/pendingActor), `formatEvent(evt)` = jednořádkový český popis pro konzoli. Persistenci do souboru řeší `server/gamelog.js`; není v index.html (server-only). |
-| `core/highNoon.js` | `eventActive`, `bangLimitFor`, `bangBlockedFor`, `beerBlockedFor`, `effSuit`, `suitBlockedFor` | **zrcadlo dotazů na aktivní událost High Noon nad prostým JSON stavem** – server se ptá přes `GameState.hasEvent`/`_effSuit`, klient (`core/playability.js`, `view/*`) a bot (`core/botPolicy.js`) přes tenhle helper. `effSuit(state, card)` = barva, která PLATÍ (Požehnání srdce / Prokletí piky). `suitBlockedFor(state, i, card)` zrcadlí Želízka (`GameState._suitBlocked`). |
+| `core/highNoon.js` | `eventActive`, `bangLimitFor`, `bangBlockedFor`, `beerBlockedFor`, `effSuit`, `suitBlockedFor`, **`boardDeadFor`/`judgeBlocksFor`** | **zrcadlo dotazů na aktivní událost nad prostým JSON stavem** – ptá se OBOU balíčků (High Noon i A Fistful of Cards), klíče karet jsou napříč nimi unikátní – server se ptá přes `GameState.hasEvent`/`_effSuit`, klient (`core/playability.js`, `view/*`) a bot (`core/botPolicy.js`) přes tenhle helper. `effSuit(state, card)` = barva, která PLATÍ (Požehnání srdce / Prokletí piky). `suitBlockedFor(state, i, card)` zrcadlí Želízka (`GameState._suitBlocked`), `boardDeadFor` Laso (`_boardDead`) a `judgeBlocksFor` Soudce (`_judgeBlocks`). |
 | `core/highNoonAnim.js` | `HN_ANIM`, `hnRevealMs`, `NI_ANIM`, `niResultMs` | **časování odkrytí karty události High Noon** + dojezdu Nové identity (`niResultMs(take)`; drží ho `room._niBlockUntil` a fronta animací) (pauza `preMs` → let z balíčku doprostřed → výdrž na rubu → překlopení → výdrž lícem → zmenšení na místo platné karty). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `high_noon_reveal`), server o stejnou dobu drží boty (`room._hnBlockUntil`) a fronta si podle `hnRevealMs()` spočítá zdržení stavu. Animace nese i `playerIdx` (šerif je na tahu už během odkrývání – stav dorazí až po ní) a `remaining` (balíček ubývá se startem letu → `App.hnDeckLeft`, ne až se stavem; jinak by u poslední karty zůstal ležet prázdný rub). |
+| `core/fistfulAnim.js` | `MINE_ANIM`/`mineLandMs`, `PEYOTE_ANIM`/`peyoteRevealMs`, `LAW_ANIM`/`lawRevealMs` | **časování cinematik A Fistful of Cards**: doběh letu do „odhozu" pod Opuštěným dolem (dosednutí lícem nahoru → výdrž → překlopení na rub), odkrytí karty u Peyote a veřejné ukázání vynucené karty Práva západu. Jediný zdroj pravdy pro klienta (`net/handlers.js`, `game.js`), frontu animací (`_animDurationMs`) i serverové držení botů (`room._mineBlockUntil` v `server/anim.js`). |
 | `core/shuffleAnim.js` | `SHUFFLE_ANIM`, `shuffleLayers`, **`shuffleCutHalf`/`shuffleRiffleOrder`**, `shufflePerCard`, `shuffleSettleMs`, `shuffleDurationMs` | **časování riffle míchání balíčku** (klid → horní polovina se jako celek oddělí stranou → riffle, kdy karty střídavě zleva/zprava padají doprostřed a hromádka se skládá ODSPODU NAHORU → doznění). Jediný zdroj pravdy: klient ji přehrává (`view/intro.js` `_animateIntroShuffle` pro všechny čtyři balíčky intra, `game.js` `playReshuffleCinematic` pro domíchání ve hře), server podle STEJNÉHO vzorce odkládá další beat intra (`server/intro.js`, `shuffleDurationMs(n) + SHUFFLE_PAD_MS`). Bez sdíleného vzorce se rozdávání rozjelo dřív, než míchání doběhlo (8 hráčů = 16 karet postav). `shuffleLayers(n)` = kolik vrstev se vůbec kreslí – **stejný strop (80) jako statická hromádka**, takže se hotový balíček s tím statickým pixelově kryje a nic „nenaroste o xy karet". **`shuffleRiffleOrder(n)`** = pořadí, ve kterém karty padají doprostřed (indexy do hromádky, 0 = vrchní karta, výstup odspodu nahoru) – **u lichého počtu začíná ta VĚTŠÍ půlka**, jinak na konci spadnou dvě karty z jedné strany za sebou (A B A B … A A). Používá ho intro i domíchání ve hře, aby se choreografie nerozešly. |
 
 **`core/` je vzor, kam patří nová čistá logika** — jde testovat v Node bez prohlížeče.
@@ -155,6 +157,25 @@ takže `pendingActor` vrátil `null` a **na dynamit nešlo ani kliknout**. Řeš
 pročisti (`_pruneSuzyQueue()`) PŘED tím, než se podle její délky rozhoduješ** – po
 pročištění je `length > 0` ekvivalentní tomu, co `_processSpecialQueue` vrátí. Padalo to
 ~1× z 2700 partií botů, tedy jako flaky test.
+
+### Rodina „resume" příznaků: kam se pokračuje, až fronta doběhne
+
+Fronta odložených akcí umí přerušit skoro cokoli, takže si volající musí zapamatovat, kam
+se má hra vrátit. Dělá to **pět příznaků čtených v `_resumeAfterSpecial`**
+([logic/characters.js](logic/characters.js)) – každý je jedna větev a **žádné dva nesmí
+běžet naráz**:
+
+| příznak | pokračuje se do | typický spouštěč |
+|---|---|---|
+| `_nextTurnAfterQueue` | `nextTurn()` | odchod ducha (Město duchů), smrt uprostřed série |
+| `_resumeBeginTurnAfterQueue` | krokovač startu tahu (`_resumeBeginTurn`) | Mrtvý muž, Daltonové, zásah Fistfulu, Pravé poledne |
+| `_startChecksAfterQueue` | kontroly Dynamit/Vězení | výbuch dynamitu (Bart Cassidy si líže za každý život) |
+| `_startDrawAfterQueue` | fáze lízání | Pokrevní bratři (darovaný život probudí Barta) |
+| `_advanceRouletteAfterQueue` | další hráč v kolečku Ruské rulety | odhoz probudil Suzy Lafayette / Molly Stark |
+
+Bez toho, aby líznutí doběhlo **dřív** než pokračování, se schopnost obrátí proti svému
+majiteli: Suzy Lafayette by do dalšího kola Ruské rulety nastoupila s prázdnou rukou
+a vypadla by jako první.
 
 ## Kompaktní soupeři (mobilní profil rozložení)
 
@@ -326,7 +347,11 @@ v Dodge City je 7–10 karet na stole běžné, takže to šlo vidět už při 6
   takže vystředění skupiny karty životů je beze změny.
 - **Výjimka:** cinematika hokynářství zvedá balíčky o `storeLift` (120), takže druhou řadu
   horního soupeře po tu chvíli překryje – stejná dohoda, jaká už platí pro kompaktní
-  sloupce na mobilu. Test proto měří proti **klidové** výšce balíčků.
+  sloupce na mobilu. Test proto měří proti **klidové** výšce balíčků. Se dvěma řadami
+  událostí (High Noon + Fistful) navíc zvednutí nejde nastavit tak, aby vyhovělo oběma
+  sousedům naráz (rozdaná řada zdola, karty horního soupeře shora) – omezení se kříží
+  o 5 px, takže se rozdíl dělí na půl a na obou stranách zbyde necelý 3px překryv
+  (`EVENT_STORE_SLACK` v [core/layout.js](core/layout.js)).
 
 Testy: `boardBand` v `test/layout.test.js` (pixelová identita do kapacity, konstantní
 půdorys nad ní) a v `test/positions.test.js` invariant „pás nedosáhne na balíčky ani na
@@ -390,6 +415,220 @@ Cinematika vyřazení je proto rozpůlená: `vulture_split_death` (pokles na nul
 zůstávají ležet) → jednotlivé `ragtime_steal` → `player_death_reveal` (úklid + odhalení role).
 Klient po tu dobu drží `App.vultureSplitIdx` – podle něj `deathCardsStillShown` kreslí
 karty mrtvého dál a slot pro kartu role zatím nerezervuje.
+
+## A Fistful of Cards: dva balíčky událostí vedle sebe
+
+Druhé rozšíření událostí. **Hraje se SOUČASNĚ s High Noonem**, ne místo něj – na začátku
+tahu prvního hráče se odkryje karta z obou balíčků, nejdřív z High Noonu a hned za ní
+z Fistfulu. Klíčové rozhodnutí bylo **nesahat na existující High Noon**: `GameState` má
+druhou sadu polí místo přepisu na obecnou strukturu.
+
+| High Noon | A Fistful of Cards |
+|---|---|
+| `eventDeck` / `eventPile` / `activeEvent` | `ffDeck` / `ffPile` / `activeFistful` |
+| `_pendingHighNoonReveal` / `_eventEntering` | `_pendingFistfulReveal` / `_ffEntering` |
+| [logic/highNoon.js](logic/highNoon.js) | [logic/fistful.js](logic/fistful.js) |
+
+**Slévají se jen na dvou místech**, a proto zůstala všechna existující volání beze změny:
+
+- `GameState.hasEvent(key)` → `activeEvent?.key === key || activeFistful?.key === key`,
+- `eventActive(state, key)` ([core/highNoon.js](core/highNoon.js)) → totéž nad prostým
+  JSON stavem (klient a bot).
+
+Klíče karet jsou napříč oběma balíčky unikátní, takže se pravidla nikdy nemusí ptát, ze
+kterého balíčku karta je. `_sheriffTurns` (počítadlo kol) je **společné** – oba balíčky se
+otáčejí ve stejný okamžik.
+
+- **Karta „Fistful of Cards" leží vespod** (jako Pravé poledne v High Noonu): přijde
+  poslední a platí do konce hry. `_setupFistfulDeck` ji proto dává na index 0 – líže se
+  přes `pop()` z konce.
+- **Přibalené karty (Nová identita, Želízka) jsou původem z Fistfulu**, takže se se
+  zapnutým Fistfulem přidávají do balíčku High Noonu samy (`_hnExtraOn`) a zaškrtávátko
+  v „Pokročilých možnostech" se v tom případě vůbec nekreslí.
+- **Dvě aktivní události najednou** je stav, který dřív nemohl nastat. Vlastní testy proto
+  dostaly dvojice, které se kříží: Peyote × Požehnání, Mrtvý muž × Město duchů,
+  Vendeta × Město duchů, Fistful of Cards × Pravé poledne, Laso × Vězení/Dynamit,
+  Ranč × Želízka.
+
+**Testy** jsou rozdělené po tématech: `fistful.test.js` (příprava balíčku a odkrývání),
+`fistful.events.test.js`, `fistful.characters.test.js`, `fistful.draw.test.js`,
+`fistful.peyote.test.js`, `fistful.mine.test.js`, `fistful.turn.test.js`,
+`fistful.roulette.test.js`, `fistful.attacks.test.js` + zátěžové hry jen botů
+(`server.bots.test.js`, „balíček samých X" pro každou rizikovou kartu).
+
+### Invariant „bot se nikdy nezasekne" a jak ho hlídají testy
+
+Historicky nejčastější chyba v projektu: nové pravidlo dostane vlastní fázi nebo něco
+zakáže, ale zrcadlo v `core/playability.js` / `core/botPolicy.js` chybí. Server akci
+mlčky odmítne, bot ji pošle znovu, stav se nezmění → **hra jen botů zamrzne**. Tři
+strukturální testy to hlídají, aniž by musela zátěž trefit tu správnou kartu:
+
+- „každý kind z pendingActor má v decideBotAction svou větev" (`test/botPolicy.test.js`),
+- „každou akci, kterou bot umí poslat, obsluhuje nějaký handler" (`test/server.handlers.test.js`),
+- „každá herní akce bota je v guardu" (`test/server.guard.test.js`).
+
+K tomu „matice rozšíření × 3–8 hráčů" (`test/server.bots.test.js`) – všech osm kombinací
+`dodge_city × high_noon × fistful` pro každý počet hráčů.
+
+## Laso, Soudce, Léčka (Fistful): tři karty, které mění pravidla plošně
+
+Všechny tři jsou „pasivní" – žádná fáze, jen jeden dotaz, kterým se ptají všechna
+dotčená místa.
+
+- **Laso** („karty vyložené před hráči nemají žádný efekt") = `_boardDead()`
+  ([logic/fistful.js](logic/fistful.js)), zrcadlo `boardDeadFor` ([core/highNoon.js](core/highNoon.js)).
+  Je to totéž, co už uměl vypínač karet na stole u Belle Star (`_belleIgnoresBoard`), jen
+  platí pro VŠECHNY hráče a i na karty vlastní. Vypnuté jsou: dostřel zbraně (→ 1 jako
+  s Coltem, **takže ani Volcanic nedovolí Bang! bez limitu**), Mustang/Skrýš i Dalekohled/
+  Hledí, Barel (Jourdonnaisova VROZENÁ schopnost platí dál – není to karta), Dynamit
+  i Vězení (žádné sejmutí, dynamit se neposouvá, vězení tah nebere) a zelené karty včetně
+  zelených Vedle! ze stolu. Karty přitom zůstávají ležet, takže po skončení kola fungují zase.
+- **Soudce** („hráči nesmí vykládat karty před sebe ani před ostatní") = `_judgeBlocks(card)`,
+  zrcadlo `judgeBlocksFor`. Blokuje jen cestu karty **z ruky na stůl** (výzbroj, modré,
+  zelené a Vězení). Co už leží, funguje dál – aktivace zelené karty i Hokynářství
+  Uncle Willa jsou povolené.
+- **Léčka** („vzdálenost mezi kterýmikoli dvěma hráči je 1") **nemá vlastní metodu**:
+  ptá se na ni přímo `computeDistance` ([core/distance.js](core/distance.js)). Základ ze
+  sedadel se zahodí, modifikátory (Paul Regret, Rose Doolan, Mustang/Skrýš, Dalekohled/
+  Hledí) se počítají od jedničky dál.
+
+## Peyote (Fistful): hádání barvy místo fáze lízání
+
+„Místo klasického lízání hráč hádá barvu vrchní karty a odkryje ji. Uhodl → bere si ji
+a hádá znovu. Neuhodl → karta jde do odhozu a fáze lízání končí."
+
+- **Přebíjí všechny postavy, které si lízání upravují** (Kit Carlson, Jesse Jones, Pedro
+  Ramirez, Pat Brennan, Black Jack, Claus – R8), proto se `startPeyote()` ptá hned na
+  začátku `startDrawPhase` ([logic/draw.js](logic/draw.js)), ještě před jejich větvemi.
+- **Počet karet se neřeší vůbec.** Líže se, dokud hráč hádá, takže Žízeň ani Příjezd
+  vlaku (High Noon) nic nemění a fáze vždy skončí jednou kartou v odhozu (přestat
+  dobrovolně nejde). `drawPhaseState` existuje jen kvůli `_finishDraw` (Želízka, Ranč)
+  a má `active: false` – hádá se tlačítky, ne klikem na hromádku.
+- **Jediné místo v kódu, kde se čte VYTIŠTĚNÁ `card.suit`.** Pod Požehnáním/Prokletím
+  (High Noon) by přes `_effSuit` každý tip sedl a hráč by si lízl celý balíček; výjimka
+  je proto i v klientské cinematice (`pulseCheckMark(..., { printedSuit: true })`)
+  a v botově větvi `PEYOTE`. Jakmile karta dosedne do ruky, přebarvení pro ni platí normálně.
+- **Obě tlačítka (červená/černá) obsadí oba slotky**, takže se ve fázi `PEYOTE` nekreslí
+  tlačítko Sida Ketchuma – stejně jako u Ranče a Pokrevních bratrů.
+
+## Ruská ruleta (Fistful): kolečko „odhoď kartu Vedle!"
+
+„Když přijde karta do hry, počínaje šerifem každý hráč odhodí kartu Vedle!. První, kdo
+nemůže, ztrácí 2 životy a efekt končí."
+
+- Okamžitý efekt při příchodu karty (krok 3 startu tahu) – `_startRoulette` vrací `true`,
+  takže se start tahu pozastaví. Kolečko se **opakuje dokola**, dokud někdo neselže;
+  pořadí je po směru od šerifa (ve hře pro 3 od pomocníka, `_firstPlayerIndex`) i při
+  Zlaté horečce – efekty karet jdou vždy po směru (FAQ H3). Duch (Město duchů) se
+  neúčastní (R10).
+- **Kdo nemá čím, se do fáze `ROULETTE_DISCARD` vůbec nedostane**: `rouletteHasCard` to
+  pozná na serveru a pošle ho rovnou do existující klikací fáze zásahů
+  (`pendingDynamiteDamage` se `source: 'ROULETTE'` a `resume: 'BEGIN_TURN'`). Tím zdarma
+  fungují zvýrazněné životy, záchrana Pivem i Sidem, guard, klient i bot – a `pendingActor`
+  ve fázi `ROULETTE_DISCARD` je VŽDY hráč, který kartu má, takže se hra nemá jak zaseknout
+  na kliku, který nikdo neudělá.
+- **Co se počítá za „kartu Vedle!"** rozhoduje jediný helper `rouletteDiscardable`
+  ([core/playability.js](core/playability.js)): z ruky Vedle!, Úhyb, u Calamity Janet
+  i Bang!, u **Eleny Fuente libovolná karta** – a ze stolu zelená Vedle!-karta
+  (Železný plát/Sombrero/Bible; s Lasem ne). Odhod je **povinný**, dobrovolně životy
+  ztratit nejde.
+- **Odhod není zahrání karty, ale JE to odhoz z ruky.** Vlastní efekt karty se nespustí
+  (Úhyb ani Bible nelížou), zato schopnosti vázané na odhoz z ruky platí: **Suzy
+  Lafayette** si za prázdnou ruku lízne a **Molly Stark** za odhozenou kartu mimo svůj
+  tah taky (proto ne u zelené karty ze stolu). Obojí je klikací líznutí ve frontě
+  odložených akcí – kolečko se posune až po ní (`_advanceRouletteAfterQueue`).
+
+## Vendeta (Fistful): sejmutí na konci tahu, při ♥ tah navíc
+
+- **Gate úplně nahoře v `nextTurn`** ([logic.js](logic.js)), a to **PŘED `_teardownGhost`** –
+  duch (Město duchů) Vendetu dostává taky. Sejmutí jde existující cestou
+  `CHECK_DRAW → CHECKING → _applyCheckResult` přes nové pole `pendingCheckDraw.reason`,
+  takže se zdarma veze **Lucky Duke**, klientská cinematika odkrytí i větev bota.
+- **`_vendettaDone` se nastaví hned na začátku sejmutí**: „jen jednou za tah" pak platí
+  i pro tah navíc (nový tah, ale týž hráč) a nemůže vzniknout smyčka. Nuluje ho až
+  přechod na jiného hráče.
+- **Tah navíc je plnohodnotný**: nové `turnId` (zelené karty jdou zase aktivovat), znovu
+  celý start tahu i kontroly na Dynamit a Vězení – **včetně dynamitu, který si hráč
+  vyložil v první půlce tahu** (R6). `_extraTurn` jen zajistí, že se NEodkryje nová
+  událost a nezapočítá se kolo.
+- **Ukončení tahu smrtí Vendetu nespouští** (hráč už není ve hře). Duch si díky ní zahraje
+  znovu jako duch: ruku odhodil už v `tryEndTurn` (limit = 0 životů), `_ghost` mu zůstal
+  a `_teardownGhost` se nespustil (R10).
+
+## Odstřelovač a Odražená střela (Fistful): dva nové způsoby, jak zahrát Bang!
+
+Co se počítá za „kartu Bang!" (Bang!, u Calamity Janet i Vedle!, a musí projít Želízky)
+je jediný helper **`bangCardFromHand`** ([core/playability.js](core/playability.js)) –
+ptá se jím server, klient i bot.
+
+### Odstřelovač (`ODSTRELOVAC`)
+
+„Hráč smí ve svém tahu odhodit 2 karty Bang! najednou proti jinému hráči: ten se ubrání
+jen dvěma kartami Vedle!."
+
+- **Recykluje „odhoď další kartu" z Dodge City.** `startSniper` postaví tentýž
+  `pendingDiscardAnother` (jen `effect: 'sniper'`), takže fáze `DISCARD_ANOTHER`,
+  klientský výběr ceny, guard i větev bota fungují **bez úprav**. V
+  [logic/dodgeCity.js](logic/dodgeCity.js) přibyly jen dva háky: validace ceny
+  (`_sniperPayValid`) a dispatch (`_sniperAttack`).
+- **Bez barelového checku** (R4): `_sniperAttack` jde rovnou přes `waitForMissed`
+  a přepíše `missesRequired = 2`. Barel ani Jourdonnais nepomůžou.
+- **Počítá se jako JEDNO zahrání Bang!** (R4): `bangsPlayedThisTurn++`, platí limit
+  i Kazatel. Inkrementuje se až v dispatchi, ne při volbě cíle – hráč to smí zrušit
+  (`cancel_discard_another`) a hlavní karta mu zůstane v ruce.
+- **Apache Kida mine jen tehdy, když jsou kárové OBĚ karty** – útok je z nich složený.
+  Klient ani bot to nemusí zrcadlit: útok naprázdno je legální terminální stav.
+- **UI:** tlačítko „🎯 ODSTŘELOVAČ: 2× BANG!" obsadí slot schopností (Sid/Chuck/José/
+  Doc/Will se po dobu míření nekreslí – stejná dohoda jako u Peyote a Ranče), pak klik
+  na postavu cíle a nakonec výběr druhé karty Bang! v ruce (ostatní jsou zašedlé).
+
+### Odražená střela (`ODRAZENA_STRELA`)
+
+„Hráči smí hrát karty Bang! proti kartám vyloženým před ostatními hráči. Zasažený hráč
+smí kartu zachránit kartou Vedle!, jinak je karta odhozena."
+
+- **Chová se jako normální Bang!** (R3), takže se beze zbytku recykluje
+  `_beginBangResolution`: Barel i Jourdonnais mohou kartu zachránit, Slab vyžaduje
+  2× Vedle! a kárová střela na Apache Kida nemá efekt. Nový je jen objekt
+  `ricochet = { targetIdx, area, cardId }`, který se **protahuje celým řetězem**:
+  `_beginBangResolution` → `pendingBarrelCheck` → `startBarrelCheck` (i checkContext
+  Lucky Duka) → `currentCheck` → `waitForMissed` → `pendingResponse`. V `handleResponse`
+  pak stačí jediná odbočka: místo `handleDamage` se volá `_ricochetDestroy`.
+- **Dostřel platí** (R1), **do limitu 1× Bang!/tah se to nepočítá** (R2). Kvůli R2 musí
+  `cardPlayability` pustit kartu Bang! i s vyčerpaným limitem – jinak by ji nešlo ani
+  vybrat. Přibyl proto **`bangAtPlayerOk`**: klient s ním zhasne POSTAVY (na ty už se
+  střílet nedá, svítí jen vyložené karty) a bot přeskočí větev `play_bang`. **Bez toho
+  by klient nabízel výstřel, který server mlčky zahodí, a bot by ho posílal donekonečna.**
+- **Pivo ani Sid Ketchum kartu nezachrání** – ohrožený není život, ale karta. Gate je
+  v `beerLastLifeSave`/`sidLastLifeSave` a zrcadlí ho `cardPlayability`, zvýraznění
+  v `drawMyArea` i větev bota; bez něj by šlo za jedno Pivo ubránit cokoli.
+- **Zasažené Vězení hráče osvobodí, sestřelená zbraň se vrací na Colt .45** – obojí
+  vyplyne samo z toho, že karta prostě zmizí ze stolu.
+- **Blikání útočníka se odpojilo od jména postavy**: `attackHighlight`
+  ([view/board.js](view/board.js)) rozhoduje jen podle `missesRequired > 1` u požadavku
+  Vedle!, takže bliká i Odstřelovač (jehož útočník žádnou zvláštní schopnost mít nemusí).
+- **Animace** `ricochet_shot` ([net/handlers.js](net/handlers.js)): karta Bang! letí
+  z ruky na zasaženou kartu a odtud do odhozu (320 + 250 ms). Se zasaženou kartou se
+  přitom nehýbe – její případný odlet přijde zvlášť jako `board_to_discard` přes
+  `lastAnimEvent`. Typ je i v `MINE_LAND_TYPES` (končí v odhozu → pod Opuštěným dolem
+  má doběh s překlopením na rub).
+
+## Claus the Saint, Uncle Will a Johnny Kisch (postavy z Fistfulu)
+
+- **Claus the Saint** (3 životy) – ve fázi lízání odkryje o kartu víc, než je hráčů ve
+  hře, pak dá po jedné každému ostatnímu a 2 si nechá. **Odkrývá celou fázi jedním klikem**
+  na balíček (při 8 hráčích by jinak klikal devětkrát) a rozděluje z odkryté řady:
+  nejdřív si vezme svoje, pak po jedné ostatním. Komu se právě vybírá, drží
+  `clausState.toIdx` – tomu hráči svítí postava. Kde ta řada leží a co s ní udělá došlý
+  balíček, řeší sekce „Odkrytá řada (Kit Carlson / Claus)" níž.
+- **Uncle Will** (4 životy) – jednou za svůj tah smí zahrát libovolnou kartu z ruky jako
+  Hokynářství. Aktivní režim (tlačítko „WILL: karta → 🏪") čeká na klik na kartu v ruce,
+  stejně jako José/Doc.
+- **Johnny Kisch** (4 životy) – kdykoli vyloží kartu do hry, všechny ostatní vyložené
+  karty se stejným jménem se odhodí. Jediný trychtýř je `_johnnyKischPurge(ownerIdx,
+  cardName, justPlayed)` ([logic/characters.js](logic/characters.js)), volaný ze všech
+  tří míst, kudy karta na stůl doputuje: `playBoardCard`, výměna zbraně
+  ([logic/play.js](logic/play.js)) a vyložení Vězení před soupeře.
 
 ## Opuštěný důl (Fistful): hromádky si na celé kolo vymění role
 
@@ -960,11 +1199,20 @@ v `server/rooms.js`, kterým prochází každý `roomPayload`.
 
 - **Skryje se**: role ostatních, jejich ruce (nahradí je `{ id: null, _placeholder: true }`,
   takže **délka ruky zůstává** — jen podle ní se kreslí vějíř rubů), pořadí balíčku
-  (`deck.cards` → stejný počet zástupných karet) a odložené identity (`_secondChar`).
+  (`deck.cards` → stejný počet zástupných karet), pořadí OBOU balíčků událostí
+  (`eventDeck`/`ffDeck`), odložené identity (`_secondChar`), **vynucená karta Práva
+  západu** (`_lawCardId` — ukázala se veřejně cinematikou `law_reveal` a pak leží v ruce
+  rubem nahoru jako každá jiná) a **odkrytá řada Clause the Saint** (`clausState` vidí
+  jen on; ostatním z ní zbývá počet karet a `picked`).
 - **Veřejné zůstává**: šerifova role (zná ji celý stůl), role vyřazených (odhalí se při
-  smrti — duch má `health 0`, takže spadne pod stejnou podmínku), **všechny role ve hře pro
-  3** (`gs.mode3p` — leží lícem nahoru), odhoz, vyložené karty, zbraně, životy, postavy
-  a `charChoices` (podle jejich počtu pozná `pendingActor` fázi výběru postav i na klientovi).
+  smrti — duch má `health 0`, takže spadne pod stejnou podmínku, a **vrácený Mrtvý muž**
+  přes `_roleRevealed`, protože ten už žije), **všechny role ve hře pro 3** (`gs.mode3p` —
+  leží lícem nahoru), odhoz, vyložené karty, zbraně, životy, postavy, **odkryté karty
+  událostí** (`eventPile`/`ffPile`) a `charChoices` (podle jejich počtu pozná
+  `pendingActor` fázi výběru postav i na klientovi).
+- **Redakce Opuštěného dolu sedí sama od sebe**: `deck.cards` (kam se pod ním odhazuje
+  lícem dolů) jsou skryté, `discardPile` (odkud se líže) veřejný. Že všichni vidí dopředu,
+  co si kdo lízne — včetně kontrolní karty — **je pointa karty, ne chyba**.
 - **Neredaguje se vůbec**: debug hra (jeden socket ovládá všechna místa), stav po konci
   hry (`gs.winner` — výherní obrazovka i statistiky role ukazují) a divák u hry jen botů.
 - **Divák běžné hry vidí jen veřejné informace.** Bez toho by stačilo otevřít si hru ve
@@ -1030,7 +1278,12 @@ Server k tomu v `server.js`:
 - Testuje se **`GameState`, `core/*`** (čistá logika) a **`server/*`** (factory s fake `io` – `test/server.*.test.js`), ne render.
 - `test/_helpers.js`: `mkGame`/`mkCard`/`give`/`board`/`topDeck`. **Hru stav build ručně** (ne `setupGame` — míchá; ne `setupDebugGame` — `isDebug=true` vypne vyhodnocení výhry).
 - Pravidla pro 3 hráče jsou v `test/threePlayer.test.js`; zátěžové hry jen botů
-  (`test/server.bots.test.js`) jedou **3–8 hráčů** ve všech kombinacích rozšíření.
+  (`test/server.bots.test.js`) jedou **3–8 hráčů** ve všech kombinacích rozšíření
+  (test „matice rozšíření × 3–8 hráčů") a k tomu varianty „balíček samých X" pro
+  každou rizikovou kartu událostí.
+- **Tři strukturální testy hlídají, že se hra jen botů nemůže zaseknout** na chybějícím
+  zrcadle – viz „Invariant ‚bot se nikdy nezasekne'" výš. Když přidáváš pravidlo s vlastní
+  fází nebo novou akci, spadnou dřív, než na to přijde zátěž.
 - `draw()` popuje z **konce** `deck.cards`. Pro deterministický balíček nastav `g.deck.cards` přímo.
 - Testy umlčí log: `before(() => { console.log = () => {}; })`.
 

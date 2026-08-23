@@ -1,5 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 
 const registerLobby = require('../server/handlers.lobby.js');
 const registerNextGame = require('../server/handlers.nextgame.js');
@@ -73,4 +74,22 @@ test('všechny moduly dohromady pokrývají 78 unikátních eventů', () => {
     }
     assert.equal(all.length, 78);
     assert.equal(new Set(all).size, 78, 'žádný event se nesmí registrovat dvakrát');
+});
+
+// Druhá polovina invariantu „bot se nikdy nezasekne" (první je v test/botPolicy.test.js):
+// akce, kterou bot umí vystřelit, musí mít na serveru handler. Bez něj by socket event
+// spadl do prázdna, stav by se nezměnil a driver by tutéž akci posílal donekonečna.
+test('každou akci, kterou bot umí poslat, obsluhuje nějaký handler', () => {
+    const botSrc = fs.readFileSync(__dirname + '/../core/botPolicy.js', 'utf8');
+    const botEvents = [...new Set([...botSrc.matchAll(/event: '([a-z_]+)'/g)].map(m => m[1]))];
+    assert.ok(botEvents.length > 30, `bot umí rozumný počet akcí (${botEvents.length})`);
+
+    const registered = new Set();
+    for (const { reg } of Object.values(GROUPS)) {
+        const socket = mkSocket();
+        reg(socket, mkCtx(), () => {});
+        socket._events.forEach(e => registered.add(e));
+    }
+    const missing = botEvents.filter(e => !registered.has(e));
+    assert.deepEqual(missing, [], 'akce bota bez handleru = zaseknutá hra jen botů');
 });
