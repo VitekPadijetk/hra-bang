@@ -811,6 +811,22 @@ function decideBotAction(state, myIndex, beliefs) {
             return { event: 'ranch_exchange', payload: { cardIds: ids } };
         }
 
+        // Fistful – Pokrevní bratři: 1 život zraněnému SPOJENCI. Dává se jen z přebytku
+        // (zůstanou mi aspoň 3 životy) a jen tomu, kdo je jistý spojenec – nepřítele bych
+        // tím posílil. Pořadí spojenců: kdo je zraněný nejvíc. Jinak „Ne, děkuji".
+        case 'BLOOD_BROTHERS': {
+            const targets = state.pendingBlood?.targets || [];
+            let best = null, bestH = Infinity;
+            if (me.health >= 3) {
+                targets.forEach(i => {
+                    const p = state.players[i];
+                    if (!p || hostilityOf(state, myIndex, i, beliefs) > -ENEMY_EPS) return;
+                    if (p.health < bestH) { bestH = p.health; best = i; }
+                });
+            }
+            return { event: 'blood_brothers', payload: { targetIdx: best } };
+        }
+
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom
         // se životy hůř, než kolik jich výměnou dostanu (jinak by to byl čistý propad).
         case 'NEW_IDENTITY': {

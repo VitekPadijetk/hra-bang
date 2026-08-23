@@ -467,6 +467,12 @@ function drawOpponents(ctx) {
         const canTargetThisPlayer = !App.blockInput && (
             (isPanicCBActive && panicInRange && player.health > 0) ||
             (isDeSteal && player.health > 0) || isServerCardSelect);
+        // Fistful – Pokrevní bratři: na začátku svého tahu smí hráč darovat 1 život
+        // zraněnému spoluhráči. Cíl se vybírá klikem na jeho postavu; seznam platných
+        // cílů posílá server (pendingBlood.targets), ať se klient s pravidly nerozejde.
+        const isBloodMine = state.phase === 'BLOOD_BROTHERS' && !App.blockInput &&
+            state.pendingBlood?.playerIdx === myIndex;
+        const bloodValid = isBloodMine && (state.pendingBlood.targets || []).includes(actualIdx);
         // Pat Brennan (Dodge City): ve své fázi lízání smí místo balíčku vzít 1 kartu ze
         // stolu libovolného hráče do ruky (klik na kartu na stole soupeře).
         // !App.blockInput: jakmile Pat kliknutím vezme kartu (nastaví blockInput), zvýraznění
@@ -644,6 +650,22 @@ function drawOpponents(ctx) {
                 else if (isWaiting) sprite.setTint(WAIT_TINT);
                 else sprite.clearTint();
             });
+
+            // Fistful – Pokrevní bratři: klik na zraněného spoluhráče mu daruje 1 život.
+            // Stejný vzor jako u „odhoď další kartu" níž – vlastní blok, aby se nemíchal
+            // s cílením karet (ve fázi BLOOD_BROTHERS se stejně žádná karta hrát nedá).
+            if (isBloodMine) {
+                sprite.setInteractive({ useHandCursor: bloodValid });
+                sprite.setTint(bloodValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (bloodValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(bloodValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!bloodValid || App.blockInput) return;
+                    socket.emit('blood_brothers', { targetIdx: actualIdx });
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
 
             // Klik na cíl efektu „odhoď další kartu" (Tequila léčí / Springfield bang).
             // (Ragtime = klik na kartu soupeře, viz handlePanicCBClick.) Kurzor už řeší
@@ -1967,7 +1989,7 @@ function drawMyArea(ctx) {
             // PEYOTE/RANCH (Fistful) mají OBA slotky tlačítek obsazené (tip na barvu,
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
-                 'NOON_DAMAGE', 'PEYOTE', 'RANCH'].includes(state.phase)
+                 'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced
@@ -2088,6 +2110,23 @@ function drawMyArea(ctx) {
                 fontSize: '22px', onClick: () => _ranchSend([]),
             });
             if (App.blockInput) { _skipBtn.setAlpha(0.45); _skipBtn.disableInteractive(); }
+        }
+
+        // ── A Fistful of Cards – Pokrevní bratři: darovat 1 život ────────────────
+        // Cíl se vybírá klikem na postavu soupeře (viz drawOpponents), tady je jen
+        // odmítnutí. Sedí v místě „Ukončit tah" – to se v téhle fázi nekreslí.
+        if (state.phase === "BLOOD_BROTHERS" && state.pendingBlood?.playerIdx === myIndex) {
+            const { bg: _bbSkip } = themeButton(gameScene, L.btnEndX, L.btnEndY, 280, L.btnH, 'NE, DĚKUJI ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('blood_brothers', { targetIdx: null });
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _bbSkip.setAlpha(0.45); _bbSkip.disableInteractive(); }
         }
 
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────
@@ -2273,8 +2312,14 @@ function drawPhaseOverlays(ctx) {
             let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
             bg.setStrokeStyle(3, d.forMe ? 0xff5555 : 0xffaa33);
             mAdd(bg, 205);
+            // Fistful of Cards útočí BEZ útočníka (jako dynamit) → „od hráče X" vynech
+            // a místo toho ukaž, kolik zásahů ze série ještě zbývá.
+            const _from = d.attackerName ? ` od hráče ${d.attackerName}` : '';
+            const _pf = state.pendingFistful;
+            const _ffLeft = (_pf && _pf.playerIdx === state.pendingResponse.targetIdx) ? _pf.hitsLeft : 0;
+            const _more = _ffLeft > 0 ? ` (pak ještě ${_ffLeft}×)` : '';
             if (d.forMe) {
-                let l1 = gameScene.add.text(960, 66, `⚔️ ${d.sourceLabel} od hráče ${d.attackerName}!`,
+                let l1 = gameScene.add.text(960, 66, `⚔️ ${d.sourceLabel}${_from}!${_more}`,
                     { fontSize: '34px', color: '#ff6666', fontStyle: 'bold' }).setOrigin(0.5);
                 mAdd(l1, 206);
                 let l2 = gameScene.add.text(960, 112, `Zahraj ${d.need}, nebo klikni na své životy a schytej zásah`,
@@ -2282,10 +2327,32 @@ function drawPhaseOverlays(ctx) {
                 mAdd(l2, 206);
             } else {
                 let l1 = gameScene.add.text(960, 92,
-                    `⏳ Čeká se na hráče ${d.targetName} – brání se proti ${d.sourceLabel} (od ${d.attackerName})`,
+                    `⏳ Čeká se na hráče ${d.targetName} – brání se proti ${d.sourceLabel}${_from ? ' (' + _from.trim() + ')' : ''}${_more}`,
                     { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
                 mAdd(l1, 206);
             }
+        }
+    }
+
+    // ── A Fistful of Cards – Pokrevní bratři: banner s výzvou ────────────────
+    if (state.phase === "BLOOD_BROTHERS" && state.pendingBlood) {
+        const _bbMine = state.pendingBlood.playerIdx === myIndex;
+        const _bbName = state.players[state.pendingBlood.playerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _bbMine ? 0xff5555 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_bbMine) {
+            let l1 = gameScene.add.text(960, 66, '🩸 Pokrevní bratři – dát 1 život?',
+                { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, 'Klikni na zraněného spoluhráče, kterému ho dáš (ty o něj přijdeš)',
+                { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_bbName} – Pokrevní bratři (rozdává život)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
         }
     }
 

@@ -205,6 +205,12 @@ const CharactersMixin = {
             this._resumeBeginTurnAfterQueue = false;
             this.interruptedPhase = null;
             if (!this.winner) this._resumeBeginTurn();
+        } else if (this._startDrawAfterQueue) {
+            // Fistful – Pokrevní bratři: darovaný život mohl do fronty přidat líznutí
+            // (Bart Cassidy). Až doběhne, rozjeď fázi lízání (viz resolveBloodBrothers).
+            this._startDrawAfterQueue = false;
+            this.interruptedPhase = null;
+            if (!this.winner) this.startDrawPhase();
         } else if (this._startChecksAfterQueue) {
             // Výbuch dynamitu: Bartova líznutí za ztracené životy jsou dobraná → teprve
             // teď kontrola Vězení a fáze lízání (viz takeDynamiteHit).

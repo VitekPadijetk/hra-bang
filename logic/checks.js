@@ -174,7 +174,8 @@ const ChecksMixin = {
                         this._processSpecialQueue();
                     } else {
                         this.phase = "PLAY";
-                        this._processSpecialQueue();
+                        // Fistful of Cards: barel uhnul jednomu ze série zásahů → další.
+                        if (!this._afterFistfulHit()) this._processSpecialQueue();
                     }
                 }
             } else {

@@ -138,7 +138,8 @@ const ResponseMixin = {
             this._processSpecialQueue();
         } else {
             this.phase = "PLAY";
-            this._processSpecialQueue();
+            // Fistful of Cards: běží-li série zásahů, pošli hned další (viz logic/fistful.js).
+            if (!this._afterFistfulHit()) this._processSpecialQueue();
             this.targetPlayer = null;
             this.currentAttacker = null;
         }
@@ -319,7 +320,8 @@ const ResponseMixin = {
         else {
             this.pendingResponse.active = false;
             this.phase = "PLAY";
-            this._processSpecialQueue();
+            // Fistful of Cards: běží-li série zásahů, pošli hned další (viz logic/fistful.js).
+            if (!this._afterFistfulHit()) this._processSpecialQueue();
             this.targetPlayer = null;
             this.currentAttacker = null;
         }

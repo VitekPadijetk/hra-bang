@@ -76,8 +76,9 @@ const HighNoonMixin = {
     // do handleStartOfTurnChecks(), o to se postará _resumeBeginTurn().
     //
     // Kroky jsou očíslované (`_beginTurnStep`), aby se dalo kdykoli pauznout a vrátit
-    // se přesně sem: 0 = odkrytí událostí (obou balíčků), 1 = okamžitý efekt karty
-    // High Noon, 2 = okamžitý efekt karty Fistful, 3 = Pravé poledne, 4 = Nová identita.
+    // se přesně sem: 0 = návrat Mrtvého muže (Fistful), 1 = odkrytí událostí (obou
+    // balíčků), 2 = okamžitý efekt karty High Noon, 3 = okamžitý efekt karty Fistful,
+    // 4 = Pravé poledne, 5 = zásahy od Fistful of Cards, 6 = Nová identita.
     _beginTurn() {
         this._beginTurnStep = 0;
         // Želízka (High Noon) platí přesně jeden tah. Barvu je nutné zahodit hned na
@@ -101,8 +102,12 @@ const HighNoonMixin = {
         // Pořadí vyhodnocení: nejdřív High Noon, pak Fistful of Cards (viz logic/fistful.js).
         // Okamžité efekty obou karet jsou proto DVA kroky – když si ten první vyžádá
         // rozhodnutí hráče (Daltonové), musí se druhý spustit až po jeho dokončení.
-        const steps = [this._flipEvent, this._applyEventOnEnter, this._applyFfEventOnEnter,
-                       this._noonDamage, this._newIdentityOffer];
+        // Mrtvý muž (Fistful) je krok 0 schválně: vyřazený hráč musí být zpátky ve hře
+        // dřív, než se odkryje nová událost a než na něj dopadne Pravé poledne nebo
+        // Fistful of Cards. Zásahy od Fistful of Cards jsou naopak až za Pravým polednem.
+        const steps = [this._deadManReturn, this._flipEvent, this._applyEventOnEnter,
+                       this._applyFfEventOnEnter, this._noonDamage, this._fistfulHits,
+                       this._newIdentityOffer];
         while (this._beginTurnStep < steps.length) {
             const step = steps[this._beginTurnStep++];
             if (step.call(this)) return true;

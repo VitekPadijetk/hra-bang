@@ -781,6 +781,19 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // A Fistful of Cards – Pokrevní bratři: hráč se na začátku tahu rozhodl, jestli
+    // někomu daruje 1 život (`targetIdx: null` = „Ne, děkuji"). Přesun životů je vidět
+    // rovnou ze stavu, animace k tomu žádná není.
+    on('blood_brothers', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingBlood?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const target = (d && d.targetIdx !== undefined) ? d.targetIdx : null;
+            gs.resolveBloodBrothers(idx, target);
+            broadcastRoom(room);
+        });
+    });
+
     // High Noon (přibalené) – Želízka: hráč po lízání zvolil barvu pro tenhle tah.
     on('handcuffs_suit', (d) => {
         withRoom((room, p, gs) => {

@@ -125,6 +125,10 @@ class GameState {
         this._ffEntering = null;
         this.pendingPeyote = null;      // Peyote: čeká se na tip červená/černá
         this.pendingRanch = null;       // Ranč: čeká se na výměnu karet (po fázi lízání)
+        this.pendingBlood = null;       // Pokrevní bratři: nabídka darovat 1 život (před lízáním)
+        this.pendingFistful = null;     // Fistful of Cards: rozdělaná série zásahů na začátku tahu
+        this._firstDeadIdx = null;      // Mrtvý muž: kdo byl vyřazen jako první
+        this._deadManUsed = false;      // Mrtvý muž: návrat je jednorázový
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do
         // klienta (řídí zobrazení karet rolí i redakci stavu), _winClaim3p drží seat, který
         // osobně vyřadil svého určeného nepřítele, a tím hru vyhrál.
@@ -216,13 +220,17 @@ class GameState {
         // v pořadí NEpřeskakují. Událost se mění jen na šerifově tahu (uvnitř _beginTurn),
         // takže v tomhle bodě už platí ta správná.
         const ghostTown = this.hasEvent('MESTO_DUCHU');
+        // Fistful – Mrtvý muž: první vyřazený se na svůj tah vrací do hry NATRVALO, takže
+        // se v pořadí taky nepřeskakuje. Test je dřív než `_ghost` – když běží obě události,
+        // vrací se doopravdy, ne jako duch (návrat pak dokončí krok 0 startu tahu).
+        const deadManIdx = this._deadManReturnIdx();
         this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
         let p = this.players[this.currentPlayerIndex];
-        while (p.health <= 0 && !ghostTown) {
+        while (p.health <= 0 && !ghostTown && this.currentPlayerIndex !== deadManIdx) {
             this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
             p = this.players[this.currentPlayerIndex];
         }
-        if (ghostTown && p.health <= 0) {
+        if (ghostTown && p.health <= 0 && this.currentPlayerIndex !== deadManIdx) {
             p._ghost = true;
             this.logEvent('event', { card: 'Město duchů', who: p.name, msg: 'vrací se na jeden tah do hry' });
         }

@@ -30,11 +30,17 @@ const FistfulMixin = {
         this.ffPile = [];
         this.activeFistful = null;
         this._ffEntering = null;
+        this.pendingFistful = null;
+        this.pendingBlood = null;
+        // Mrtvý muž: kdo byl vyřazen jako první a jestli se návrat už použil.
+        this._firstDeadIdx = null;
+        this._deadManUsed = false;
         // Nová (i navazující) hra začíná bez události, takže i bez prohozených hromádek.
         if (this.deck) this.deck.mineMode = false;
-        // Navazující hra přebírá hráče z předchozí – vynucená karta Práva západu po nich nesmí
-        // zůstat (redakce ji ukazuje celému stolu, viz server/rooms.js).
-        (this.players || []).forEach(p => { p._lawCardId = null; });
+        // Navazující hra přebírá hráče z předchozí – vynucená karta Práva západu, odkrytá
+        // role vyřazeného ani nabídka Pokrevních bratrů po nich zůstat nesmí (redakce
+        // ukazuje `_roleRevealed` celému stolu, viz server/rooms.js).
+        (this.players || []).forEach(p => { p._lawCardId = null; p._roleRevealed = false; p._bbOfferedTurn = null; });
         const on = options.expansions && options.expansions.fistful;
         if (!on || !Array.isArray(this.fistfulCardData)) return;
 
@@ -268,6 +274,158 @@ const FistfulMixin = {
         };
         this.phase = "DRAW";
         return { discarded };
+    },
+
+    // ── Pokrevní bratři: „Na začátku svého tahu, před lízáním, smí hráč ztratit ──
+    //     1 život a dát ho jinému hráči. Nesmí se tím zabít."
+    // Ptá se `startDrawPhase` (logic/draw.js), tedy AŽ ZA kontrolami na Dynamit/Vězení:
+    // kdo zůstal ve vězení, tah přeskakuje a nedaruje nic. Vzor je pauza Very Custer –
+    // vrací true → fáze lízání se rozjede až po rozhodnutí (resolveBloodBrothers).
+    // Nabidne se jen když je co dát (health ≥ 2 – „nesmí se tím zabít") a je komu
+    // (R9: cíl musí být ve hře a zraněný; duch Města duchů se léčit smí, proto isInPlay).
+    _startBloodBrothers() {
+        if (!this.hasEvent('POKREVNI_BRATRI')) return false;
+        const p = this.getCurrentPlayer();
+        if (!p || !isInPlay(p) || p.health < 2) return false;
+        if (p._bbOfferedTurn === this.turnId) return false;   // 1× za tah
+        const targets = this._bloodBrothersTargets(this.currentPlayerIndex);
+        if (!targets.length) return false;
+        this.pendingBlood = { playerIdx: this.currentPlayerIndex, targets };
+        this.phase = "BLOOD_BROTHERS";
+        return true;
+    },
+
+    // Komu se dá život darovat: kdokoli jiný ve hře, kdo má co léčit (R9).
+    _bloodBrothersTargets(fromIdx) {
+        const out = [];
+        this.players.forEach((p, i) => {
+            if (i === fromIdx || !isInPlay(p) || p.health >= p.maxHealth) return;
+            out.push(i);
+        });
+        return out;
+    },
+
+    // `targetIdx === null` (nebo neplatný cíl) = „Ne, děkuji". Fáze lízání se rozjede
+    // v obou případech; `_bbOfferedTurn` zajišťuje, že se nabídka v tomhle tahu nevrátí.
+    resolveBloodBrothers(playerIdx, targetIdx) {
+        if (this.phase !== "BLOOD_BROTHERS" || !this.pendingBlood) return false;
+        if (this.pendingBlood.playerIdx !== playerIdx) return false;
+        const give = targetIdx !== null && targetIdx !== undefined &&
+                     this.pendingBlood.targets.includes(targetIdx);
+        const p = this.players[playerIdx];
+        this.pendingBlood = null;
+        p._bbOfferedTurn = this.turnId;
+        this.phase = "PLAY";
+        if (!give) { this.startDrawPhase(); return true; }
+
+        const t = this.players[targetIdx];
+        this.logEvent('event', { card: 'Pokrevní bratři', who: p.name, target: t.name });
+        // Ztráta jde přes handleDamage BEZ útočníka: Bart Cassidy si za ni lízne,
+        // El Gringo nekrade (není komu) a nikdo za případnou smrt nedostane odměnu.
+        // Zabít se tím nejde – nabídka se dělá jen od 2 životů výš.
+        this.handleDamage(playerIdx, null);
+        this._heal(t, 1);
+        // Zranění mohlo do fronty přidat odloženou akci (Bart Cassidy). Ta musí doběhnout
+        // dřív, než se rozjede fáze lízání – frontu je proto nutné nejdřív pročistit
+        // (viz „nejdřív doběhne efekt zahrané karty" v CLAUDE.md).
+        this._pruneSuzyQueue();
+        if (this.specialActionQueue.length > 0) {
+            this._startDrawAfterQueue = true;
+            this._processSpecialQueue();
+            return true;
+        }
+        this.startDrawPhase();
+        return true;
+    },
+
+    // ── Fistful of Cards: „Na začátku svého tahu je hráč zasažen tolika kartami ──
+    //     Bang!, kolik má karet v ruce."
+    // Krok 5 startu tahu (`_runBeginTurn` v logic/highNoon.js). Zásahy jdou po jednom
+    // přes obyčejné vyhodnocení Bang! (`_beginBangResolution` bez útočníka), takže Barel,
+    // Vedle!, zelené Vedle! i Pivo na posledním životě fungují na každý z nich zvlášť.
+    // Bez útočníka navíc `effectiveCharacter(undefined)` vrací null → Slab ani Belle Star
+    // se nechytnou a El Gringo nekrade (stejně jako u dynamitu).
+    //
+    // Krokovač startu tahu se po každém zásahu vrací SEM (`_beginTurnStep--`), takže se
+    // další zásah pošle hned, jak ten předchozí doběhne – viz `_afterFistfulHit`.
+    _fistfulHits() {
+        if (!this.pendingFistful) {
+            if (!this.hasEvent('FISTFUL_OF_CARDS')) return false;
+            const p = this.getCurrentPlayer();
+            // Ducha (Město duchů) se karta netýká (R10); prázdná ruka = žádný zásah.
+            if (!p || p.health <= 0 || p._ghost || !p.hand.length) return false;
+            // Počet zásahů se ZMRAZÍ na začátku – hraním Vedle! se ruka zmenšuje.
+            this.pendingFistful = { playerIdx: this.currentPlayerIndex, hitsLeft: p.hand.length };
+            this.logEvent('event', { card: 'Fistful of Cards', who: p.name, msg: `${p.hand.length}× Bang!` });
+        }
+        const pf = this.pendingFistful;
+        const target = this.players[pf.playerIdx];
+        if (this.winner) { this.pendingFistful = null; return true; }
+        // Smrt uprostřed série → zbytek zásahů se zahodí a tah se posune. Nejde použít
+        // _autoEndTurnPending: handlePlayerDeath ho nastavuje jen ve fázi PLAY/DRAW,
+        // kdežto zásah dopadl ve fázi RESPOND (stejný důvod má i takeDynamiteHit).
+        if (!isInPlay(target)) {
+            this.pendingFistful = null;
+            this.nextTurn();
+            return true;
+        }
+        if (pf.hitsLeft <= 0) { this.pendingFistful = null; return false; }
+        pf.hitsLeft--;
+        this._beginTurnStep--;   // po vyřízení zásahu se krokovač vrátí sem
+        this._beginBangResolution(null, pf.playerIdx, false, 'Fistful of Cards');
+        return true;
+    },
+
+    // Jeden ze série zásahů doběhl (uhnul / schytal / zachránil ho Barel nebo Pivo).
+    // Volá se ze všech tří míst, kde se obyčejný Bang! uzavírá – vrací true, když si
+    // pokračování vzala na starost tahle cesta (volající pak už nesmí sahat na frontu).
+    _afterFistfulHit() {
+        if (!this.pendingFistful) return false;
+        // Fronta odložených akcí (Bart Cassidy za ztracený život, Suzy s prázdnou rukou)
+        // musí doběhnout dřív než další zásah; dojede přes _resumeBeginTurnAfterQueue.
+        // Pročistit ji je nutné DŘÍV, než se podle její délky rozhoduje (viz CLAUDE.md).
+        this._pruneSuzyQueue();
+        if (this.specialActionQueue.length > 0) {
+            this.phase = "PLAY";
+            this._resumeBeginTurnAfterQueue = true;
+            this._processSpecialQueue();
+            return true;
+        }
+        this._resumeBeginTurn();
+        return true;
+    },
+
+    // ── Mrtvý muž: „Hráč vyřazený jako první se ve svém tahu vrací se 2 životy ──
+    //     a 2 kartami."
+    // Kdo se vrací (nebo -1). Ptá se tím `nextTurn` (logic.js), aby ho v pořadí
+    // NEPŘESKOČILA, i krok 0 startu tahu. Návrat je jednorázový (`_deadManUsed`).
+    _deadManReturnIdx() {
+        if (!this.hasEvent('MRTVY_MUZ') || this._deadManUsed) return -1;
+        const i = this._firstDeadIdx;
+        if (i === null || i === undefined) return -1;
+        return (this.players[i] && this.players[i].health <= 0) ? i : -1;
+    },
+
+    // Krok 0 startu tahu – schválně PŘED odkrytím událostí: hráč musí být zpátky ve hře
+    // dřív, než na něj dopadne Pravé poledne nebo Fistful of Cards. Vrací se natrvalo,
+    // ne jako duch (test na návrat je proto v nextTurn dřív než `_ghost`).
+    // Dvě karty si líže RUČNĚ (klikáním na balíček) přes existující frontu KILL_REWARD;
+    // start tahu se dotočí až po ní (`_resumeBeginTurnAfterQueue`).
+    _deadManReturn() {
+        const idx = this._deadManReturnIdx();
+        if (idx === -1 || idx !== this.currentPlayerIndex) return false;
+        const p = this.players[idx];
+        this._deadManUsed = true;
+        p._ghost = false;
+        p.health = Math.min(2, p.maxHealth);
+        this.logEvent('event', { card: 'Mrtvý muž', who: p.name, msg: 'vrací se do hry se 2 životy' });
+        this.checkWinCondition();
+        if (this.winner) return true;
+        this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: idx, cardsNeeded: 2 });
+        this.phase = "PLAY";
+        this._resumeBeginTurnAfterQueue = true;
+        this._processSpecialQueue();
+        return true;
     },
 };
 

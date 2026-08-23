@@ -5,8 +5,8 @@ se přesunou do `CLAUDE.md` a tenhle soubor se smaže.
 
 **Stav:** ✅ Fáze 0 (infrastruktura balíčku) · ✅ Fáze 1 (postavy) · ✅ Fáze 2 (Léčka,
 Laso, Soudce) · ✅ Fáze 3 (Pálenka, Právo západu) · ✅ Fáze 4 (Peyote, Ranč) ·
-✅ Fáze 5 (Opuštěný důl) · další na řadě je Fáze 6 (Pokrevní bratři, Fistful of Cards,
-Mrtvý muž). Výklady pravidel viz sekce 2.
+✅ Fáze 5 (Opuštěný důl) · ✅ Fáze 6 (Pokrevní bratři, Fistful of Cards, Mrtvý muž) ·
+další na řadě je Fáze 7 (Ruská ruleta, Vendeta). Výklady pravidel viz sekce 2.
 
 Odchylky od plánu, které vyplynuly z implementace:
 - **Zvednutí sloupců při hokynářství** nejde nastavit tak, aby vyhovělo oběma sousedům
@@ -58,6 +58,23 @@ Odchylky od plánu, které vyplynuly z implementace:
   Lucky Duke) ani odhoz při vyřazení hráče (má vlastní choreografii a serverové držení
   botů přes `deathSequenceMs`). Překlopení na rub tam proběhne bez výdrže, jen aby karta
   nepřeskočila bez přechodu.
+- **Fistful of Cards nepotřebuje vlastní fázi.** Plán počítal s `pendingFistful` jako
+  s vlastním pendingem; stačilo ale zásahy posílat přes obyčejné `_beginBangResolution`
+  a **krokovač startu tahu po každém zásahu vrátit na krok 5** (`_beginTurnStep--`).
+  Návrat obstarává `_afterFistfulHit()` volaný ze tří míst, kde se obyčejný Bang! uzavírá
+  (handleResponse, `_advanceAfterLastLifeSave`, větev BARREL v `_applyCheckResult`).
+- **Smrt uprostřed série posouvá tah sama** (`nextTurn()` ve `_fistfulHits`). Plán čekal
+  `_autoEndTurnPending`, jenže ten `handlePlayerDeath` nastavuje jen ve fázi PLAY/DRAW –
+  zásah dopadá v RESPOND. Stejný důvod má i `takeDynamiteHit`.
+- **Pokrevní bratři si vyžádali čtvrtý „resume" příznak.** Darovaný život může naplnit
+  frontu odložených akcí (Bart Cassidy), takže přibyl `_startDrawAfterQueue` – ve stejné
+  rodině jako `_nextTurnAfterQueue` / `_resumeBeginTurnAfterQueue` / `_startChecksAfterQueue`.
+- **Seznam cílů Pokrevních bratrů posílá server** (`pendingBlood.targets`), takže se
+  klientské zvýraznění ani bot nemůžou s pravidly rozejít – žádné zrcadlo R9 nevzniklo.
+- **`_roleRevealed` se zapisuje vždycky**, i bez zapnutého rozšíření. Je to jeden řádek
+  v `handlePlayerDeath` a řeší tím zároveň redakci role vráceného Mrtvého muže.
+- **Guard dostal i chybějící akce z fází 1–4** (`peyote_guess`, `ranch_exchange`,
+  `claus_give`, `uncle_will`) – plán je odkládal do fáze 9, ale je to jeden řádek.
 
 ---
 
@@ -471,6 +488,10 @@ Podrobnosti jsou v CLAUDE.md, sekce „Opuštěný důl".
 ---
 
 ### FÁZE 6 — Start tahu: Pokrevní bratři, Fistful of Cards, Mrtvý muž · L
+
+✅ **Hotovo.** `test/fistful.turn.test.js` (25) + „20 her jen botů s balíčkem samých
+Pokrevních bratrů / Mrtvých mužů / Fistfulů" (`test/server.bots.test.js`).
+Podrobnosti jsou v CLAUDE.md, sekce „Start tahu (Fistful)".
 
 #### Pokrevní bratři (`POKREVNI_BRATRI`)
 - **Kde:** začátek `startDrawPhase` (tedy až po kontrolách na Dynamit/Vězení – ve vězení hráč tah přeskakuje a nedaruje nic), vzor pauzy Very Custer. Fáze `BLOOD_BROTHERS`, akce `blood_brothers { targetIdx | null }`.

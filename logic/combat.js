@@ -64,6 +64,13 @@ const CombatMixin = {
 
         this._deathAnimPlayerIdx = deadIdx;
 
+        // A Fistful of Cards – Mrtvý muž: kdo padl jako PRVNÍ (ten se ve svém tahu vrací).
+        // Zapisuje se nezávisle na zapnutém rozšíření – je to laciné a `_roleRevealed`
+        // zároveň řeší redakci: jednou odhalená role zůstane veřejná i po návratu do hry
+        // (`health <= 0` už tehdy neplatí, viz redactState v server/rooms.js).
+        if (this._firstDeadIdx === null || this._firstDeadIdx === undefined) this._firstDeadIdx = deadIdx;
+        deadPlayer._roleRevealed = true;
+
         // Snapshot karet PŘED přesunem (animace odhozu/krádeže – Návrh 2): modré karty
         // (player.board, pořadí nejstarší→nejnovější), zbraň (jen skutečná, ne Colt),
         // a ruka. Identity jsou po odhození/sebrání veřejné → posílají se všem.

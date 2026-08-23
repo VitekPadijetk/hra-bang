@@ -58,9 +58,12 @@ module.exports = function installRoomService(ctx) {
         const players = (gs.players || []).map((p, i) => {
             if (i === viewerIdx) return p;
             // Duch (Město duchů) má roli odkrytou od svého vyřazení – i ve chvíli, kdy si
-            // během svého tahu naléčil životy (a `health <= 0` tedy neplatí).
+            // během svého tahu naléčil životy (a `health <= 0` tedy neplatí). Totéž platí
+            // pro Mrtvého muže (Fistful), který se vrací do hry natrvalo: `_roleRevealed`
+            // se nastaví při vyřazení a už nezmizí.
             // Hra pro 3 (Město duchů): všechny tři role leží od začátku lícem nahoru.
-            const roleVisible = gs.mode3p || p.role === 'Sheriff' || p.health <= 0 || !!p._ghost;
+            const roleVisible = gs.mode3p || p.role === 'Sheriff' || p.health <= 0 ||
+                                !!p._ghost || !!p._roleRevealed;
             // A Fistful of Cards – Právo západu: vynucená karta se ukáže VEŘEJNĚ hned při
             // líznutí (cinematika law_reveal, viz server/handlers.game.js) a pak leží v ruce
             // jako každá jiná – rubem nahoru. Ve stavu proto zůstat nesmí ani její ID:

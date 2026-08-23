@@ -13,6 +13,12 @@ const DrawMixin = {
         player._joseUses = 0;      // Dodge City: José Delgado max 2×/tah
         player._docUsed = false;   // Dodge City: Doc Holyday 1×/tah
 
+        // A Fistful of Cards – Pokrevní bratři: „na začátku svého tahu, PŘED lízáním".
+        // Až tady, tedy za kontrolami na Dynamit/Vězení – kdo zůstal ve vězení, tah
+        // přeskakuje a nedaruje nic. Po rozhodnutí se sem vrátíme (resolveBloodBrothers),
+        // podruhé se už nenabídne (_bbOfferedTurn).
+        if (this._startBloodBrothers()) return;
+
         // Vera Custer (Dodge City): postavu ke kopírování si volí TĚSNĚ PŘED fází lízání,
         // tedy AŽ PO kontrolních líznutích na Dynamit/Vězení. Kopie z minulého tahu tady
         // vyprší (drží přesně jedno kolo – od tohoto bodu do stejného bodu příštího tahu),

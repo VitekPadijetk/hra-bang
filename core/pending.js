@@ -36,6 +36,8 @@ function pendingActor(state) {
         // Fistful – Peyote: hádá barvu místo lízání; Ranč: po lízání mění karty z ruky.
         case 'PEYOTE':           return state.pendingPeyote ? { idx: state.pendingPeyote.playerIdx, kind: 'PEYOTE' } : null;
         case 'RANCH':            return state.pendingRanch ? { idx: state.pendingRanch.playerIdx, kind: 'RANCH' } : null;
+        // Fistful – Pokrevní bratři: na začátku tahu smí hráč darovat 1 život zraněnému.
+        case 'BLOOD_BROTHERS':   return state.pendingBlood ? { idx: state.pendingBlood.playerIdx, kind: 'BLOOD_BROTHERS' } : null;
         case 'NEW_IDENTITY':     return state.pendingNewIdentity ? { idx: state.pendingNewIdentity.playerIdx, kind: 'NEW_IDENTITY' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
@@ -72,6 +74,7 @@ const _WAIT_LABELS = {
     HANDCUFFS_SUIT:        'Želízka – volí barvu',
     PEYOTE:                'Peyote – hádá barvu',
     RANCH:                 'Ranč – vyměňuje karty',
+    BLOOD_BROTHERS:        'Pokrevní bratři – rozdává život',
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
@@ -111,7 +114,9 @@ function waitingStatus(state) {
 function describePendingResponse(state, viewerIdx) {
     const pr = state.pendingResponse;
     if (!pr || !pr.active) return null;
-    const attacker = state.players[pr.originatorIdx];
+    // Fistful of Cards útočí BEZ útočníka (jako dynamit) → attackerName zůstane null
+    // a UI větu „od hráče X" vynechá.
+    const attacker = pr.originatorIdx == null ? null : state.players[pr.originatorIdx];
     const target = state.players[pr.targetIdx];
 
     let need;
@@ -126,7 +131,7 @@ function describePendingResponse(state, viewerIdx) {
 
     return {
         forMe: pr.targetIdx === viewerIdx,
-        attackerName: attacker ? attacker.name : '?',
+        attackerName: attacker ? attacker.name : (pr.originatorIdx == null ? null : '?'),
         targetName: target ? target.name : '?',
         sourceLabel: _sourceLabel(pr),
         requiredCard: pr.requiredCard,
