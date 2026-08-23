@@ -1732,24 +1732,27 @@ function _playCardAnim(data) {
             // do ruky příjemce. Líc znají jen Claus a příjemce (cardId), ostatní rub.
             const src = clausSlotPos(data.slot);
             const sc = (App.clausPanel && App.clausPanel.scale) || 0.3;
+            // Úhel, pod kterým karta v řadě LEŽÍ: Clausovi rovně uprostřed stolu, ostatním
+            // pod úhlem jeho sedadla (řada jim parkuje u něj – viz clausPanelLayout).
+            const srcAngle = (App.clausPanel && App.clausPanel.angle) || 0;
             App.clausTakenSlots = App.clausTakenSlots || new Set();
             App.clausTakenSlots.add(data.slot);
             renderUI();
             // Sobě: karta letí na SVŮJ slot ve vějíři (staging jako u líznutí).
             if (animateDrawToMyHand(data.toIdx, data.cardId, src.x, src.y,
-                    { faceUp: true, duration: 420, startScale: sc })) break;
+                    { faceUp: true, duration: 420, startScale: sc, startAngle: srcAngle })) break;
             const dLen = state?.players?.[data.toIdx]?.hand?.length ?? 0;
             const to = getHandSlotPos(data.toIdx, dLen, dLen + 1);
             const endScale = sideScale(data.toIdx, 'hand');
             if (data.cardId != null) {
                 // Claus svou kartu zná → vidí ji odletět lícem a cestou se schovat.
                 animateCardFlip(src.x, src.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
-                    { reverse: true, startAngle: 0, endAngle: sideAngle(data.toIdx),
+                    { reverse: true, startAngle: srcAngle, endAngle: sideAngle(data.toIdx),
                       startScale: sc, endScale, duration: 420 });
             } else {
                 // exactAngle: příjemce naproti (180°) by se bez něj srovnal na 0°.
                 animateCard(src.x, src.y, to.x, to.y, 'card_back', 420, null,
-                    { startAngle: 0, endAngle: sideAngle(data.toIdx), exactAngle: true,
+                    { startAngle: srcAngle, endAngle: sideAngle(data.toIdx), exactAngle: true,
                       startScale: sc, endScale });
             }
             break;
@@ -2015,6 +2018,9 @@ function startLawReveal(data) {
     if (data.from === 'claus') {
         opts.from = clausSlotPos(data.slot);
         opts.fromScale = (App.clausPanel && App.clausPanel.scale) || 0.3;
+        // Ostatním řada leží u Clausova místa, tedy na boku nastojato – karta se za letu
+        // doprostřed narovná (Claus sám má řadu rovně, takže je to u něj no-op).
+        opts.fromAngle = (App.clausPanel && App.clausPanel.angle) || 0;
         App.clausTakenSlots = App.clausTakenSlots || new Set();
         App.clausTakenSlots.add(data.slot);
         renderUI();   // slot v řadě zhasne se startem letu (stav dorazí až za ním)
@@ -2027,6 +2033,7 @@ function startLawReveal(data) {
             if (parked) {
                 opts.from = { x: parked.x, y: parked.y };
                 opts.fromScale = 0.3;
+                opts.fromAngle = parked.angle || 0;
                 if (parked.sprite?.active) parked.sprite.destroy();
                 App.kitSpecPicksDone = (App.kitSpecPicksDone || 0) + 1;
             }
@@ -2045,6 +2052,9 @@ function startDeckCardReveal(card, playerIdx, D, opts = {}) {
     const from = opts.from || deckTopPos();
     const pScale = currentLayout().scaleDeck;   // velikost karty na hromádce (odhoz)
     const startScale = opts.fromScale ?? pScale;
+    // Karta může vzlétat z místa, kde LEŽÍ otočená (odkrytá řada u soupeřova sedadla) –
+    // pak se cestou doprostřed narovná. Z balíčku je to vždycky 0 → tween nevznikne.
+    const startAngle = opts.fromAngle || 0;
     let pulse = null;
     const stopPulse = () => {
         if (!pulse) return;
@@ -2053,10 +2063,11 @@ function startDeckCardReveal(card, playerIdx, D, opts = {}) {
         pulse = null;
     };
     const sprite = gameScene.add.image(from.x, from.y, 'card_back')
-        .setScale(startScale).setDepth(820).setAlpha(0.98);
+        .setScale(startScale).setAngle(startAngle).setDepth(820).setAlpha(0.98);
     // 1) balíček → střed: posun + růst + flip rub→líc
     const halfFlip = Math.round(D.flyMs / 2);
     gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: D.flyMs, ease: 'Cubic.easeOut' });
+    if (startAngle) gameScene.tweens.add({ targets: sprite, angle: 0, duration: D.flyMs, ease: 'Cubic.easeOut' });
     gameScene.tweens.add({ targets: sprite, scaleY: REVEAL_BIG, duration: D.flyMs, ease: 'Cubic.easeOut' });
     gameScene.tweens.add({ targets: sprite, scaleX: 0, duration: halfFlip, ease: 'Sine.easeIn',
         onComplete: () => { if (!sprite.active) return; sprite.setTexture(faceTex);
@@ -2394,12 +2405,15 @@ function _applyRoomUpdate(payload) {
     // omylem neskryla karta se stejným ID v dalším balíčku.
     if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.dealDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.revealShuffling = false; App.revealLocked = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; _clearKitSpecSprites(); }
 
-    // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Jen u
-    // živého hráče v běžící hře (smrt řeší vlastní odhozová animace → vyžadujeme health>0).
+    // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Smrt má
+    // vlastní cinematiku (core/deathAnim.js), proto se vyžaduje NOVÝ stav > 0; opačný
+    // směr (z nuly zpátky do hry) se ale animovat MÁ – Mrtvý muž (Fistful) se vrací se
+    // dvěma životy a duch (Město duchů) se smí během svého tahu doléčit, takže postava
+    // v obou případech vyjede od paty karty životů nahoru.
     if (_prevHealths && state?.players && !state.winner) {
         state.players.forEach((pp, i) => {
             const oldH = _prevHealths[i];
-            if (typeof oldH === 'number' && oldH > 0 && pp.health > 0 && pp.health !== oldH) {
+            if (typeof oldH === 'number' && pp.health > 0 && pp.health !== oldH) {
                 App.healthAnims[i] = { fromHealth: oldH };
             }
         });

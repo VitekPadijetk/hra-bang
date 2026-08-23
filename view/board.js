@@ -2484,8 +2484,9 @@ function drawPhaseOverlays(ctx) {
         });
     }
 
-    // Claus "The Saint" (Fistful): odkrytá řada uprostřed stolu + banner s tím, PRO KOHO
-    // se právě vybírá. Claus vidí líce a kliká, ostatní i divák vidí ruby (redactState).
+    // Claus "The Saint" (Fistful): odkrytá řada + banner s tím, PRO KOHO se právě vybírá.
+    // Claus vidí líce uprostřed stolu a kliká; ostatní i divák vidí ruby zaparkované
+    // u jeho místa (redactState je zakrývá), pod úhlem jeho sedadla – jako u Kita Carlsona.
     // Geometrie řady je v clausPanelLayout (game.js) – jediný zdroj pro kreslení i lety.
     if (state.phase === "CLAUS_GIVE" && state.clausState) {
         const cs = state.clausState;
@@ -2501,7 +2502,8 @@ function drawPhaseOverlays(ctx) {
             if (cs.picked?.includes(i)) return;          // už rozdaná (stav)
             if (App.clausTakenSlots?.has(i)) return;     // právě odlétá k příjemci
             const slot = clausSlotPos(i);
-            const cSprite = gameScene.add.image(slot.x, slot.y, getTex(card?.id)).setScale(P.scale);
+            const cSprite = gameScene.add.image(slot.x, slot.y, getTex(card?.id))
+                .setScale(P.scale).setAngle(P.angle || 0);
             if (mine && !App.blockInput && !App.revealLocked) {
                 cSprite.setInteractive({ useHandCursor: true });
                 cSprite.setTint(0xddffdd);

@@ -7,25 +7,33 @@
 // bez potvrzení) a `lastConfirmedDrawn` (= poslední potvrzené cardsDrawn).
 //
 // Pozor na vlastníka: počítadlo patří JEDNÉ konkrétní fázi lízání. Řetěz kill-rewardů
-// (odměna za banditu → Herb Hunter) přejde z fáze DRAW rovnou do jiné fáze DRAW jiného
-// hráče a `cardsDrawn` spadne zpátky na 0 – bez kontroly vlastníka se rozdíl (0 − 3)
-// PŘIČETL k pendingDrawCount, balíček tomu druhému nešel rozkliknout a hra uvázla.
+// (odměna za banditu → Herb Hunter) přejde z fáze DRAW rovnou do jiné fáze DRAW a
+// `cardsDrawn` spadne zpátky na 0 – bez rozpoznání předělu se rozdíl (0 − 3) PŘIČETL
+// k pendingDrawCount, balíček nešel rozkliknout a hra uvázla.
 //
-// nextDrawCounters(prev, phase, drawPhaseState) -> { pendingDrawCount, lastConfirmedDrawn, lastDrawOwner }
+// Předěl pozná `drawId` (GameState._setDrawPhase) – každá fáze lízání má vlastní.
+// Odvozovat ho z playerIdx/cardsDrawn nestačí: když Herb Hunter zabije banditu, líže
+// 2 + 3 karty SÁM ZA SEBE a oba broadcasty (odložené o 350 ms kvůli animaci) doručí
+// už jen ten druhý stav s `cardsDrawn: 0` – vlastník stejný, pokles žádný.
+// Starý server bez `drawId` (oba undefined) propadne na původní heuristiku.
+//
+// nextDrawCounters(prev, phase, drawPhaseState) -> { pendingDrawCount, lastConfirmedDrawn, lastDrawOwner, lastDrawId }
 function nextDrawCounters(prev, phase, drawPhaseState) {
     const p = prev || {};
     if (phase !== 'DRAW') {
-        return { pendingDrawCount: 0, lastConfirmedDrawn: 0, lastDrawOwner: null };
+        return { pendingDrawCount: 0, lastConfirmedDrawn: 0, lastDrawOwner: null, lastDrawId: null };
     }
     const confirmed = drawPhaseState?.cardsDrawn ?? 0;
     const owner = drawPhaseState?.playerIdx ?? null;
+    const drawId = drawPhaseState?.drawId ?? null;
     const prevConfirmed = p.lastConfirmedDrawn ?? 0;
-    // Jiný vlastník fáze nebo pokles cardsDrawn = nový cyklus lízání → počítadlo od nuly.
-    const fresh = owner !== (p.lastDrawOwner ?? null) || confirmed < prevConfirmed;
+    // Jiná fáze lízání (jiné ID nebo vlastník) nebo pokles cardsDrawn → počítadlo od nuly.
+    const fresh = drawId !== (p.lastDrawId ?? null) ||
+                  owner !== (p.lastDrawOwner ?? null) || confirmed < prevConfirmed;
     const pending = fresh
         ? 0
         : Math.max(0, (p.pendingDrawCount ?? 0) - (confirmed - prevConfirmed));
-    return { pendingDrawCount: pending, lastConfirmedDrawn: confirmed, lastDrawOwner: owner };
+    return { pendingDrawCount: pending, lastConfirmedDrawn: confirmed, lastDrawOwner: owner, lastDrawId: drawId };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

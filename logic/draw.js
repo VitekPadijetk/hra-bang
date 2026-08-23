@@ -54,7 +54,7 @@ const DrawMixin = {
 
         const cardsNeeded = this._drawCountFor(player);
 
-        this.drawPhaseState = { active: true, playerIdx: this.currentPlayerIndex, cardsNeeded, cardsDrawn: 0, options: this._getDrawOptions(player), isStartOfTurn: true };
+        this._setDrawPhase({ active: true, playerIdx: this.currentPlayerIndex, cardsNeeded, cardsDrawn: 0, options: this._getDrawOptions(player), isStartOfTurn: true });
         this.phase = "DRAW";
     },
 
@@ -330,7 +330,7 @@ const DrawMixin = {
             const i = (this.currentPlayerIndex + k) % n;
             if (isInPlay(this.players[i])) order.push(i);
         }
-        this.drawPhaseState = {
+        this._setDrawPhase({
             active: true,
             playerIdx: this.currentPlayerIndex,
             cardsNeeded: 1,
@@ -341,7 +341,7 @@ const DrawMixin = {
             isClaus: true,
             clausKeep: keep,
             clausOrder: order,
-        };
+        });
         this.phase = "DRAW";
     },
 
@@ -353,7 +353,7 @@ const DrawMixin = {
         // a zbylou kartu si po výběru lízne klasicky z balíčku (kitExtra).
         const total = this._drawCountFor(player);
         const keep = Math.min(total, KIT_REVEAL - 1);
-        this.drawPhaseState = {
+        this._setDrawPhase({
             active: true,
             playerIdx: this.currentPlayerIndex,
             cardsNeeded: 1,
@@ -366,7 +366,7 @@ const DrawMixin = {
             isStartOfTurn: true,
             kitNeeded: keep,            // kolik si nechá z odkrytých
             kitExtra: total - keep      // kolik si po výběru dolízne z balíčku
-        };
+        });
         this.phase = "DRAW";
     },
 
@@ -400,7 +400,7 @@ const DrawMixin = {
             if (extra > 0) {
                 // Příjezd vlaku (High Noon): karta nad rámec schopnosti se líže úplně
                 // klasicky z balíčku, až po výběru (klik na balíček jako u kohokoli jiného).
-                this.drawPhaseState = {
+                this._setDrawPhase({
                     active: true,
                     playerIdx: this.currentPlayerIndex,
                     cardsNeeded: extra,
@@ -409,7 +409,7 @@ const DrawMixin = {
                     // Pořád je to lízání na začátku tahu (jen jeho ocásek) – Želízka se
                     // ptají až za ním, viz _finishDraw.
                     isStartOfTurn: true
-                };
+                });
                 this.phase = "DRAW";
                 return;
             }

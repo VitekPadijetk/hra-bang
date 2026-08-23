@@ -73,7 +73,7 @@ prohlížeč (Phaser)  ──socket akce──►  server.js  ──►  logic.j
 | `core/assetLoad.js` | `shouldRetryAsset`, `isPermanentlyMissing`, `retryAssetUrl`, `missingAssets` | **opakované načtení assetů**: co má smysl zkusit znovu (výpadek spojení / 5xx ano, 4xx ne) a co ještě chybí, než se hra smí sestavit. Používá `preload`/`create` v game.js (registr `AssetLoads`, `ensureAssetsLoaded`) – bez toho Phaser chybný soubor jen přeskočí a hra jede se zelenými placeholdery až do F5. |
 | `core/animQueue.js` | `createAnimQueue` | **prezentační fronta klienta**: `card_animation` a `room_update` se nepřehrávají hned při doručení, ale jdou frontou – animace za sebou, stav se aplikuje až doběhne to, co mu předcházelo. Bez ní se na pomalé lince oba eventy slijí a karta „už je v odhozu", zatímco ještě letí. Pořadí = pořadí příjmu (Socket.IO doručuje eventy jednoho socketu v pořadí odeslání), nic se nečísluje. Zaostávání se nekumuluje: víc než jedna čekající animace přes `maxLagMs` → čekající animace se zahodí a dojede poslední stav (plný snímek). Instance + tabulka trvání `ANIM_MS` je v `net/handlers.js`; **při změně `duration` animace srovnej i `ANIM_MS`**. Dokud fronta něco drží (`animQueueBusy()`), letící sprite se nevzdá držení na cíli (`holdThenFinish` v game.js) – jinak by dlouhá cinematika zařazená mezi let a jeho stav (vězení do odhozu → odkrytí karty High Noon) nechala sprite zaniknout dřív, než stav dorazí, a karta by problikla zpátky na původní místo. |
 | `core/deathAnim.js` | `DEATH_ANIM`, `deathAnimTimeline`, `deathSequenceMs`, `deathFallMs`, `deathRevealMs`, `penaltyDiscardMs` | **časování cinematiky vyřazení hráče** (pokles na 0 životů → pauza → karty odlétají po jedné → postava se posune vedle místa role → rubová karta role letí doprostřed, překlopí se, vydrží a odletí na místo). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `playDeathSequence`, fáze drží `App.deathSeq`/`App.deathHandHide`, board.js podle nich kreslí), server o stejnou dobu drží boty (`room._deathBlockUntil` v `server/anim.js`, respektuje `scheduleBotTick`). Stav se do konce sekvence nepustí – animace jde frontou jako `essential` (nezahoditelná). **Varianty:** `skipReveal` (šerif roli neodhaluje – zná ji celý stůl, sekvence končí odhozením karet); `deathFallMs`+`deathRevealMs` = sekvence rozpůlená dělením karet mezi víc Vulture Samů; `penaltyDiscardMs` = šerifova ztráta karet za zabití pomocníka (stejné odhazování, ale bez poklesu životů, bez role a Colt .45 zůstává). |
-| `core/drawCounter.js` | `nextDrawCounters` | **počítadlo naklikaných, ještě nepotvrzených líznutí** (`App.pendingDrawCount`/`lastConfirmedDrawn`/`lastDrawOwner`). Drží dva rychlé kliky na balíček a zároveň brání kliku navíc. Klíčové je, že počítadlo patří JEDNÉ fázi lízání: při změně vlastníka (řetěz kill-rewardů, DRAW → DRAW jiného hráče) se nuluje – jinak vyjde „zbývá ≤ 0", balíček nejde rozkliknout a hra uvázne. |
+| `core/drawCounter.js` | `nextDrawCounters` | **počítadlo naklikaných, ještě nepotvrzených líznutí** (`App.pendingDrawCount`/`lastConfirmedDrawn`/`lastDrawOwner`/`lastDrawId`). Drží dva rychlé kliky na balíček a zároveň brání kliku navíc. Klíčové je, že počítadlo patří JEDNÉ fázi lízání a při předělu (DRAW → jiné DRAW) se nuluje – jinak vyjde „zbývá ≤ 0", balíček nejde rozkliknout a hra uvázne. Předěl pozná **`drawPhaseState.drawId`** (přiděluje ho `GameState._setDrawPhase`, jediná cesta, jak se fáze lízání zakládá – **nová se nesmí přiřadit napřímo**): navazující lízání téhož hráče (Herb Hunter 2 + odměna za banditu 3, návrat Mrtvého muže 2 + vlastní fáze lízání) má `playerIdx` stejný a `cardsDrawn` v obou 0, takže se jinak nepozná – oba broadcasty jsou odložené o dobu animace a doručí až ten druhý stav. |
 | `core/gameLog.js` | `snapshotState`, `formatEvent`, `LogEvent` | čistý formát strukturovaného herního logu: `snapshotState(gs)` = kompaktní stav (role/ruce/board/HP/phase/pendingActor), `formatEvent(evt)` = jednořádkový český popis pro konzoli. Persistenci do souboru řeší `server/gamelog.js`; není v index.html (server-only). |
 | `core/highNoon.js` | `eventActive`, `bangLimitFor`, `bangBlockedFor`, `beerBlockedFor`, `effSuit`, `suitBlockedFor` | **zrcadlo dotazů na aktivní událost High Noon nad prostým JSON stavem** – server se ptá přes `GameState.hasEvent`/`_effSuit`, klient (`core/playability.js`, `view/*`) a bot (`core/botPolicy.js`) přes tenhle helper. `effSuit(state, card)` = barva, která PLATÍ (Požehnání srdce / Prokletí piky). `suitBlockedFor(state, i, card)` zrcadlí Želízka (`GameState._suitBlocked`). |
 | `core/highNoonAnim.js` | `HN_ANIM`, `hnRevealMs`, `NI_ANIM`, `niResultMs` | **časování odkrytí karty události High Noon** + dojezdu Nové identity (`niResultMs(take)`; drží ho `room._niBlockUntil` a fronta animací) (pauza `preMs` → let z balíčku doprostřed → výdrž na rubu → překlopení → výdrž lícem → zmenšení na místo platné karty). Jediný zdroj pravdy: klient ji přehrává (`net/handlers.js` `high_noon_reveal`), server o stejnou dobu drží boty (`room._hnBlockUntil`) a fronta si podle `hnRevealMs()` spočítá zdržení stavu. Animace nese i `playerIdx` (šerif je na tahu už během odkrývání – stav dorazí až po ní) a `remaining` (balíček ubývá se startem letu → `App.hnDeckLeft`, ne až se stavem; jinak by u poslední karty zůstal ležet prázdný rub). |
@@ -678,6 +678,14 @@ zbytek – dřív se jen o 5,7 s odložil celý broadcast a řada naskočila nar
   se `dealtBefore`, zamíchá se, dorozdá se zbytek). Zároveň **potlačí legacy
   `reshuffle_anim`** (vynuluje `_reshuffleOccurred`), aby se míchání nepřehrálo dvakrát –
   přesně jako `openStore`.
+- **Kde ta řada leží, závisí na tom, KDO se dívá** (`clausPanelLayout`/`clausSlotPos`
+  v [game.js](game.js), jediný zdroj pro kreslení, rozdávání i lety k příjemcům):
+  vlastník ji má odkrytou uprostřed stolu, **ostatní i divák ji vidí rubem zaparkovanou
+  u jeho místa** a natočenou podle jeho sedadla – u Kita to tak bylo vždycky
+  (`_kitSpecParked`), u Clause je řada jen delší, takže se rozteč s počtem karet zmenšuje
+  a délka je zastropovaná (`CLAUS_SPEC_*`). Uprostřed stolu by z ní byla jen anonymní
+  hromada rubů, kterou si nikdo s Clausem nespojí. Kdo kreslí/animuje kartu z řady, musí
+  proto brát i **`P.angle`** (deska, `claus_pick`, `law_reveal` s `from: 'claus'`).
 - Klient to hraje přes `dealRevealRow(n, anim, tempo, flyOne, onDone)` ([game.js](game.js)) –
   jeden rozdávač pro Kitův panel, Clausovu řadu i pohled ostatních na Kita. Po dobu
   rozdávání kreslí balíček podle vlastního počtu (`App.dealDeckCount`, sdílené
@@ -752,7 +760,14 @@ ve vězení, tah přeskakuje a nedaruje nic), takže visí na začátku `startDr
   `_ghost`**: s Městem duchů (High Noon) se první vyřazený vrací doopravdy, ostatní jako
   duchové.
 - **Dvě karty si líže ručně** přes existující frontu `KILL_REWARD` (klik na balíček);
-  start tahu se dotočí až po ní (`_resumeBeginTurnAfterQueue`).
+  start tahu se dotočí až po ní (`_resumeBeginTurnAfterQueue`). Navazující (vlastní) fáze
+  lízání patří TÉMUŽ hráči a začíná zase od nuly – rozliší je `drawId`, viz
+  `core/drawCounter.js`.
+- **Návrat se animuje posunem po kartě životů** (0 → 2). Posun postavy (`runHealthSlide`
+  ve [view/board.js](view/board.js)) se proto spouští i z NULOVÉ výchozí hodnoty
+  (`_applyRoomUpdate` v [net/handlers.js](net/handlers.js)); smrt se pořád nesnímá,
+  tu hlídá podmínka na NOVÝ stav > 0. Týká se to i ducha (Město duchů), který se během
+  svého tahu doléčí.
 
 ### Fistful of Cards (`FISTFUL_OF_CARDS`)
 

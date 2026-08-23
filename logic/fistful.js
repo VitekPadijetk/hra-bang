@@ -166,7 +166,7 @@ const FistfulMixin = {
         // drawPhaseState existuje jen kvůli _finishDraw (isStartOfTurn → Želízka, Ranč)
         // a proto, že se ho ptá spousta míst; `active: false` schová klikatelný balíček –
         // hádá se tlačítky, ne klikem na hromádku.
-        this.drawPhaseState = {
+        this._setDrawPhase({
             active: false,
             playerIdx: this.currentPlayerIndex,
             cardsNeeded: 0,
@@ -174,7 +174,7 @@ const FistfulMixin = {
             options: [],
             isStartOfTurn: true,
             isPeyote: true,
-        };
+        });
         this.pendingPeyote = { playerIdx: this.currentPlayerIndex, guesses: 0 };
         this.phase = "PEYOTE";
         return true;
@@ -263,7 +263,7 @@ const FistfulMixin = {
         this.logEvent('event', { card: 'Ranč', who: p.name, msg: `mění ${discarded.length} karet` });
         // Není to lízání na začátku tahu (`isStartOfTurn: false`) – Želízka ani Ranč sám
         // se po jeho dokončení znovu neptají, _finishDraw jen vrátí fázi PLAY.
-        this.drawPhaseState = {
+        this._setDrawPhase({
             active: true,
             playerIdx,
             cardsNeeded: discarded.length,
@@ -271,7 +271,7 @@ const FistfulMixin = {
             options: ['deck'],
             isStartOfTurn: false,
             isRanch: true,
-        };
+        });
         this.phase = "DRAW";
         return { discarded };
     },

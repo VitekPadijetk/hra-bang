@@ -323,6 +323,41 @@ test('Herb Hunter je ve frontě PŘED odměnou za banditu a obě líznutí době
     assert.equal(g.players[1].hand.length, 3);
 });
 
+// Herb Hunter, který banditu zabije SÁM: líže 2 (schopnost) + 3 (odměna) za sebe, tedy
+// 5 karet. Obě fáze lízání musí mít různé `drawId` – klient podle něj pozná předěl a
+// vynuluje počítadlo naklikaných líznutí (core/drawCounter.js). Bez toho se hra po třetí
+// kartě zasekla: balíček přestal jít rozkliknout a server dál čekal na zbylá líznutí.
+test('Herb Hunter zabije banditu sám: 2 + 3 karty, každá fáze lízání má vlastní drawId', () => {
+    const g = mkGame([
+        { role: 'Sheriff', character: 'Herb Hunter' },
+        { role: 'Outlaw', health: 1 },
+        { role: 'Renegade' },
+    ], { current: 0, phase: 'PLAY' });
+    for (let i = 0; i < 10; i++) g.deck.cards.push(mkCard(CardType.BANG));
+
+    const bang = give(g, 0, CardType.BANG);
+    g.playBang(0, 1, bang);
+    g.handleResponse(1, null);                    // bandita nemá Vedle! → umře
+
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 0);
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    const herbDrawId = g.drawPhaseState.drawId;
+    assert.ok(herbDrawId, 'fáze lízání musí nést drawId');
+    g.drawCard('deck'); g.drawCard('deck');
+
+    // Rovnou navazuje odměna za banditu – TÝŽ hráč, cardsDrawn zpátky na 0.
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 0);
+    assert.equal(g.drawPhaseState.cardsNeeded, 3);
+    assert.equal(g.drawPhaseState.cardsDrawn, 0);
+    assert.notEqual(g.drawPhaseState.drawId, herbDrawId);
+    g.drawCard('deck'); g.drawCard('deck'); g.drawCard('deck');
+
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[0].hand.length, 5);
+});
+
 // ── Elena Fuente ─────────────────────────────────────────────────────────────
 test('Elena Fuente: libovolná karta z ruky ubrání Bang! (jako Vedle!)', () => {
     const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw', character: 'Elena Fuente' }]);

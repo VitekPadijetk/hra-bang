@@ -1105,21 +1105,25 @@ function dealStoreCards(cards, from, to, onDone) {
     for (let i = from; i < to; i++) if (cards[i]) indices.push(i);
     if (!indices.length) { if (onDone) onDone(); return; }
     const count = cards.length;
-    const lift = App.storePileLiftY || 0;
     // Opuštěný důl: rozdává se z ODHOZU (a karty na něm ležely lícem nahoru, takže se
     // za letu nemají co překlápět). deckTopPos() vrací roli, ne místo – viz mineOn().
-    const _src = deckTopPos();
-    const deckX = _src.x, deckY = _src.y - lift;
+    const deckX = deckTopPos().x;
+    // Základna hromádky, ze které se rozdává. Vrch si dopočítáme až v okamžiku letu,
+    // a to z počtu, který se PRÁVĚ kreslí (App.dealDeckCount) – ne ze stavu, který už
+    // rozdané karty nemá. Zvednutí balíčků (storeLift) je uvnitř _pileTopY, takže se
+    // odečítat podruhé NESMÍ: karta by pak vzlétala o celý zdvih nad hromádkou.
+    const _baseY = mineOn() ? DISCARD_Y : DECK_Y;
     const _faceUp = mineOn();
     indices.forEach((i, n) => {
         setTimeout(() => {
             const card = cards[i];
             if (!card) return;
+            const deckY = _pileTopY(_baseY, App.dealDeckCount ?? (state?.deck?.cards?.length ?? 0));
             if (App.dealDeckCount !== null) App.dealDeckCount = Math.max(0, App.dealDeckCount - 1);
             if (!gameScene) { App.storeDealIds.delete(card.id); return; }
             const slot = getStoreSlotPos(i, count, App.storePileLiftY || 0);
             animateCardFlip(deckX, deckY, slot.x, slot.y, 'card_back', getCardTex(card.id),
-                { flip: !_faceUp, startScale: 0.26, endScale: 0.3, duration: STORE_DEAL_MS,
+                { flip: !_faceUp, startScale: currentLayout().scaleDeck, endScale: 0.3, duration: STORE_DEAL_MS,
                   onComplete: () => { App.storeDealIds.delete(card.id); renderUI(); } });
             renderUI();   // hromádka o kartu nižší (s poslední rozdanou kartou zmizí úplně)
         }, n * STORE_DEAL_STAGGER);
@@ -1526,26 +1530,53 @@ function playKitCarlsonResult() {
     App.revealLocked = false;
 }
 
-// ── CLAUS "THE SAINT" (Fistful): odkrytá řada uprostřed stolu ─────────────────
-// Karet je až devět (osm hráčů, s Příjezdem vlaku i deset), takže se na rozdíl od Kitova
-// panelu MĚŘÍTKO počítá z jejich počtu – řada se musí vejít mezi okraje jeviště. Mezera
-// mezi kartami je naopak PEVNÁ (a malá): karty se mají zvětšovat, ne rozestupovat.
-// Tahle geometrie je jediný zdroj pravdy pro kreslení (view/board.js), rozdávání
-// z balíčku i následné lety k příjemcům, takže se nikde nesmí dopočítávat „podle sebe".
+// ── CLAUS "THE SAINT" (Fistful): odkrytá řada ────────────────────────────────
+// CLAUS ji má uprostřed stolu, lícem nahoru: karet je až devět (osm hráčů, s Příjezdem
+// vlaku i deset), takže se na rozdíl od Kitova panelu MĚŘÍTKO počítá z jejich počtu –
+// řada se musí vejít mezi okraje jeviště. Mezera mezi kartami je naopak PEVNÁ (a malá):
+// karty se mají zvětšovat, ne rozestupovat. OSTATNÍ ji vidí rubem u jeho místa (viz
+// clausPanelLayout níž). Tahle geometrie je jediný zdroj pravdy pro kreslení
+// (view/board.js), rozdávání z balíčku i následné lety k příjemcům, takže se nikde
+// nesmí dopočítávat „podle sebe".
 const CLAUS_ROW_Y = 470, CLAUS_MAX_SCALE = 0.6, CLAUS_GAP = 10;
+
+// Pohled OSTATNÍCH (a diváka): karty jsou pro ně zakryté (redactState), takže uprostřed
+// stolu by z nich byla jen anonymní řada rubů, kterou si nikdo s Clausem nespojí. Parkují
+// proto kousek od jeho místa – přesně jako Kitovy rubové karty (_kitSpecParked), jen víc
+// vedle sebe: karet je až deset, takže rozteč s jejich počtem klesá a délka řady je
+// zastropovaná, ať nesahá na sousedy. OFF/SCALE/STEP zrcadlí Kitovy hodnoty.
+const CLAUS_SPEC_OFF = 175, CLAUS_SPEC_SCALE = 0.3, CLAUS_SPEC_STEP = 66, CLAUS_SPEC_MAX_LEN = 480;
 
 function clausPanelLayout(n) {
     const count = Math.max(1, n || 1);
+    const clausIdx = state?.currentPlayerIndex ?? 0;   // Claus je vždycky hráč na tahu
+    if (!(myIndex !== null && clausIdx === myIndex)) {
+        // Kotva: kousek od Clausovy ruky směrem ke středu stolu; řada se pak roztahuje
+        // podél kolmice, takže na boku leží nastojato (stejně jako jeho ostatní karty).
+        const hand = getPlayerHandPos(clausIdx);
+        const dx = 960 - hand.x, dy = 540 - hand.y;
+        const dlen = Math.hypot(dx, dy) || 1;
+        const ux = dx / dlen, uy = dy / dlen;
+        const spacing = Math.min(CLAUS_SPEC_STEP, CLAUS_SPEC_MAX_LEN / Math.max(1, count - 1));
+        return { n: count, scale: CLAUS_SPEC_SCALE, spacing, spectator: true,
+                 angle: _kitSpecAngleFor(clausIdx),
+                 ax: hand.x + ux * CLAUS_SPEC_OFF, ay: hand.y + uy * CLAUS_SPEC_OFF,
+                 perpx: -uy, perpy: ux };
+    }
     const avail = Math.max(600, (stageRight() - stageLeft()) - 180);
     const scale = Math.max(0.16, Math.min(CLAUS_MAX_SCALE,
         (avail - CLAUS_GAP * (count - 1)) / (count * CARD_TEX_W)));
     const spacing = CARD_TEX_W * scale + CLAUS_GAP;
     // Střed jeviště zůstává na 960 i po roztažení plátna (viz computeStage).
-    return { n: count, scale, spacing, y: CLAUS_ROW_Y, startX: 960 - (count - 1) * spacing / 2 };
+    return { n: count, scale, spacing, angle: 0, y: CLAUS_ROW_Y, startX: 960 - (count - 1) * spacing / 2 };
 }
 
 function clausSlotPos(i) {
     const P = App.clausPanel || clausPanelLayout(state?.clausState?.revealed?.length || 1);
+    if (P.spectator) {
+        const off = (i - (P.n - 1) / 2) * P.spacing;
+        return { x: P.ax + P.perpx * off, y: P.ay + P.perpy * off };
+    }
     return { x: P.startX + i * P.spacing, y: P.y };
 }
 
@@ -1573,10 +1604,12 @@ function startClausDeal() {
         if (card?.id != null) {
             // Opuštěný důl: z odhozu jdou karty lícem nahoru → nepřeklápět.
             animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(card.id),
-                { flip: !mineOn(), startScale: pileScale, endScale: P.scale, duration: CLAUS_TEMPO.fly, onComplete: done });
+                { flip: !mineOn(), startScale: pileScale, endScale: P.scale, duration: CLAUS_TEMPO.fly,
+                  endAngle: P.angle || 0, onComplete: done });
         } else {
+            // Ostatním řada parkuje u Clausova místa, takže na boku dosedá nastojato.
             animateCard(from.x, from.y, to.x, to.y, 'card_back', CLAUS_TEMPO.fly, done,
-                { startScale: pileScale, endScale: P.scale });
+                { startScale: pileScale, endScale: P.scale, endAngle: P.angle || 0 });
         }
     });
 }

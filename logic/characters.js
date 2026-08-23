@@ -177,12 +177,12 @@ const CharactersMixin = {
         } else if (action.type === 'VULTURE_SPLIT') {
             this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {
-            this.drawPhaseState = {
+            this._setDrawPhase({
                 active: true, playerIdx: action.playerIdx,
                 cardsNeeded: action.cardsNeeded, cardsDrawn: 0,
                 options: ['deck'], isStartOfTurn: false,
                 isKillReward: true
-            };
+            });
             this.phase = "DRAW";
         }
         return true;

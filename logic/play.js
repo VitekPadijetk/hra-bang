@@ -58,12 +58,12 @@ const PlayMixin = {
                 return true;
             },
             [CardType.STAGECOACH]: () => {
-                this.drawPhaseState = { active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 2, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false };
+                this._setDrawPhase({ active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 2, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false });
                 this.phase = "DRAW";
                 return true;
             },
             [CardType.WELLS_FARGO]: () => {
-                this.drawPhaseState = { active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 3, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false };
+                this._setDrawPhase({ active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 3, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false });
                 this.phase = "DRAW";
                 return true;
             },

@@ -248,11 +248,16 @@ test('Mrtvý muž: první vyřazený se ve svém tahu vrací se 2 životy a 2 ka
     assert.equal(g.phase, 'DRAW');
     assert.equal(g.drawPhaseState.cardsNeeded, 2, 'dvě karty si líže ručně');
     assert.equal(g.drawPhaseState.isKillReward, true);
+    const returnDrawId = g.drawPhaseState.drawId;
     // Po dobrání karet se dotočí start tahu a rozjede se vlastní fáze lízání.
     g.drawCard('deck'); g.drawCard('deck');
     assert.equal(g.players[1].hand.length, 2);
     assert.equal(g.phase, 'DRAW');
     assert.equal(g.drawPhaseState.isStartOfTurn, true, 'navazuje normální fáze lízání');
+    // Obě fáze lízání patří TÉMUŽ hráči a `cardsDrawn` je v obou 0, takže klient pozná
+    // předěl jen podle drawId (core/drawCounter.js) – bez něj mu v počítadle zůstaly
+    // naklikané kliky z návratu a balíček přestal jít rozkliknout (hra „zamrzla").
+    assert.notEqual(g.drawPhaseState.drawId, returnDrawId);
 });
 
 test('Mrtvý muž: vrací se jen jednou', () => {

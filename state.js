@@ -18,6 +18,10 @@ const App = {
     // Vlastník fáze lízání, ke které pendingDrawCount/lastConfirmedDrawn patří. Když se
     // změní (DRAW → DRAW jiného hráče, řetěz kill-rewardů), počítadlo se musí vynulovat.
     lastDrawOwner: null,
+    // ID té fáze lízání (drawPhaseState.drawId ze serveru). Řetěz kill-rewardů běží
+    // i pro TÉHOŽ hráče (Herb Hunter 2 + odměna za banditu 3), takže samotný vlastník
+    // předěl nepozná – viz core/drawCounter.js.
+    lastDrawId: null,
     spectating: false,
     // Místnost, jejíž zprávy už nás nezajímají (právě jsme přestali sledovat její hru).
     // Odhlášení z kanálu diváků na serveru je asynchronní, takže updaty odeslané těsně

@@ -348,6 +348,19 @@ class GameState {
         }
     }
 
+    // Každá fáze lízání dostane vlastní ID. Klient podle něj pozná, že jedno lízání
+    // skončilo a začalo JINÉ – a vynuluje počítadlo naklikaných, ještě nepotvrzených
+    // líznutí (core/drawCounter.js). Samotné `playerIdx`/`cardsDrawn` na to nestačí:
+    // řetěz kill-rewardů (Herb Hunter 2 karty → odměna za banditu 3) běží pro TÉHOŽ
+    // hráče a oba broadcasty (odložené o 350 ms) doručí `cardsDrawn: 0`, takže by
+    // počítadlo nepoznalo předěl, zůstalo přeplněné a balíček by přestal jít rozkliknout.
+    _setDrawPhase(ds) {
+        this._drawSeq = (this._drawSeq || 0) + 1;
+        ds.drawId = this._drawSeq;
+        this.drawPhaseState = ds;
+        return ds;
+    }
+
     _trackCard(playerIdx, cardType) {
         const s = this.players[playerIdx]?.stats;
         if (!s) return;

@@ -258,7 +258,7 @@ const DodgeCityMixin = {
         if (eff === 'draw_3') {                          // Pony express – lízni 3 (Wells Fargo)
             discardAndTrack();
             this.checkSuzyLafayette(player);
-            this.drawPhaseState = { active: true, playerIdx, cardsNeeded: 3, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false };
+            this._setDrawPhase({ active: true, playerIdx, cardsNeeded: 3, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false });
             this.phase = "DRAW";
             return;
         }
