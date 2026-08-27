@@ -27,7 +27,7 @@ A — animace karet             3, 4, 8, 11, 15, 16   net/handlers.js, server/an
 B — intro a odkrytá řada      1, 20                 view/intro.js, game.js   HOTOVO
 C — Peyote a barvy            2, 6                  game.js, net/handlers.js, logic/fistful.js   HOTOVO
 D — zvýraznění na desce       5, 13, 18             view/board.js
-E — drobná pravidla           9, 14, 19, 21, 22     logic/*
+E — drobná pravidla           9, 14, 19, 21, 22     logic/*   HOTOVO
 F — Právo západu + Želízka    12                    core/playability.js, logic/fistful.js   HOTOVO
 G — boti                      7                     core/botPolicy.js, core/beliefs.js   HOTOVO
 H — bez herní logiky          10, 17                index.html, assets/, characters.json   HOTOVO
@@ -44,13 +44,8 @@ OTEVŘENÉ
 --------
 
 - 5 když já na někoho střílím, tak mě postava být červeně zvýrazněná nemusí
-- 9 Je-li město duchů a kromě ducha zbývají už jen dva hráči a na tahu je duch, tak by mělo jít zahrát pivo (hrají totiž v tu chvíli 3 hráči)
 - 13 když se posouvají balíčky kvůli hokynářství, balíčky HN a FF tam je takové divné posunutí, nějak to blikne
-- 14 molly stark si nelízne kartu když dá pivo jako záchranu
 - 18 když je laso, a já mám vyložené nějaké zelené karty (a nemůžu je tedy zahrát) a zároveň už nemůžu zahrát karty z ruky, nebliká mi tlačítko ukončit tah
-- 19 zkontroluj že když belle star útočí na jourdannais tak jourdanais funguje schopnost 
-- 21 pokud mám vendetu, měla by se mi nabít zelená karta vyložená v mém prvním tahu
-- 22 suzy si pokud nemá karty když končí kocovina lízne hned jakmile se otočí karty HN/FF, tedy před jakoukoliv akcí, které tyto dvě karty vyvolávají, ne až po nich (např. před efektem daltonů nebo ruské rulety)
 - 23 - zkontroluj jestli funguje derringer správně s léčkou
 
 
@@ -59,6 +54,11 @@ HOTOVÉ
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 9 Je-li město duchů a kromě ducha zbývají už jen dva hráči a na tahu je duch, tak by mělo jít zahrát pivo (hrají totiž v tu chvíli 3 hráči) → oprava: 8040853 (nový trychtýř inPlayCount v core/distance.js – duch se počítá; platí i pro Sidovu záchranu)
+- 14 molly stark si nelízne kartu když dá pivo jako záchranu → oprava: 8cb5bc1
+- 19 zkontroluj že když belle star útočí na jourdannais tak jourdanais funguje schopnost → OVĚŘENO, chyba nebyla: 32a7fdd (Belle Star ruší jen Barel jako KARTU na stole, vrozené sejmutí Jourdonnaise běží dál – doplněny testy)
+- 21 pokud mám vendetu, měla by se mi nabít zelená karta vyložená v mém prvním tahu → OVĚŘENO, chyba nebyla: ffda0e4 (tah navíc má nové turnId, razítko _playedTurn z první půlky tedy neblokuje – doplněn test)
+- 22 suzy si pokud nemá karty když končí kocovina lízne hned jakmile se otočí karty HN/FF, tedy před jakoukoliv akcí, které tyto dvě karty vyvolávají, ne až po nich (např. před efektem daltonů nebo ruské rulety) → oprava: 5feaba0 (nový krok startu tahu _applyAbilitiesOnEnter mezi odkrytím karet a jejich efekty)
 - 12 když je právo západu, zkontroluj jestli je znemožněna akce (zahrání nějaké karty nebo něco), co by zmenožnila zahrání té poteřebné karty, ale akce, které s tím nesouvisí jsou poveleny. Používám-li kartu s odhoďte další kartu a mám kromě této a kromě karty na právo západu ještě jinou, nebude mě blokovat ji použít, bude akorát blokovat odhození té karty z práva. Stejně tak když jsou navíc želízka tak si hráč MUSÍ vybrat tu barvu té karty kterou má zahrát (pokud to není karta co zahrát nejde jako třeba vedle) → oprava: 92ca43f (zamčené jsou jen akce, které by vynucenou kartu vypnuly; zaplatit ani odhodit ji nejde vůbec), 8c30342 (Želízka si vynutí barvu vynucené karty)
 - 10 šlo by přidat nějakou ikonku webu, takovéto co vidím u záložky nahoře v chromeu v lan verzi, nebo pak i na klasickém serveru? → oprava: d821f03
 - 17 vyměň prosím assety pro postavy uncle will a johnny kisch (vše je seřazené podle rozšíření, podle abecedy) a tady je první johnny kisch, ten má teď 033, ale měl by mít 032 a uncle will má 032 a měl by mít 033 → oprava: 8b45f1d
