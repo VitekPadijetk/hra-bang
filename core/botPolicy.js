@@ -228,6 +228,20 @@ function weaponRange(w) { return (w && (w.range || w.props?.range)) || 1; }
 // stejnou akci posílal donekonečna (= zaseknutá hra).
 function weaponReach(state, w) { return boardDeadFor(state) ? 1 : weaponRange(w); }
 
+// Dostane zbraň z ruky do dostřelu LEPŠÍ cíl, než na koho se dá střílet teď? Pak se musí
+// vyložit DŘÍV než střelba: dokud ji bot držel v ruce, vystřílel náboje na jediného
+// soupeře v dosahu Coltu (často na toho, na kterého útočit vůbec nechtěl) a zbraň, která
+// mu odemykala skutečný cíl, vyložil až po něm.
+function weaponUnlocksTarget(state, myIndex, beliefs, weapon) {
+    const reach = weaponReach(state, weapon);
+    // Laso (Fistful) ruší karty na stole – tam zbraň nic neodemkne (obojí vyjde na 1).
+    if (reach <= weaponReach(state, state.players[myIndex].weapon)) return false;
+    const targets = shootTargets(state, myIndex, beliefs);
+    const now = targets.findIndex(e => computeCanHit(state, myIndex, e.idx));
+    const after = targets.findIndex(e => computeCanHit(state, myIndex, e.idx, reach));
+    return after !== -1 && (now === -1 || after < now);
+}
+
 // Hodnota zbraně pro bota. Volcanic má dostřel 1, zato dovolí neomezené Bang! za tah –
 // v praxi je silnější než Schofield (2), takže se nesmí porovnávat jen podle dostřelu
 // (jinak by ho bot nikdy nevyložil na Colt .45 a hned by ho vyměnil za cokoli delšího).
@@ -686,8 +700,12 @@ function decidePlay(state, myIndex, beliefs) {
             if (me.weapon?._playedTurn === state.turnId) return;
             const newV = weaponValue(card), curV = weaponValue(me.weapon);
             // Skóre roste s hodnotou zbraně, aby si bot z ruky vybral tu NEJLEPŠÍ
-            // (dřív měly všechny stejné skóre a vyhrála první v ruce).
-            if (newV > curV) consider(35 + newV, intent);
+            // (dřív měly všechny stejné skóre a vyhrála první v ruce). Zbraň, která teprve
+            // odemyká lepší cíl, jde PŘED střelbu (50–55), pořád ale až za karty za víc
+            // karet (66+) – i ty se ještě stihnou proměnit v náboje.
+            if (newV > curV) {
+                consider((weaponUnlocksTarget(state, myIndex, beliefs, card) ? 58 : 35) + newV, intent);
+            }
             return;
         }
         if (card.type === T.BARREL) { consider(25, intent); return; }

@@ -460,3 +460,34 @@ test('cílení: postava se 3 životy „od přírody" není trvale první na rá
     const rank = shootTargets(g, 0, computeBeliefs(g, { pairs: {} }, 0));
     assert.equal(rank[0].idx, 2, 'dobít zraněného je přednost bez ohledu na rotaci');
 });
+
+// ── Zbraň se vykládá DŘÍV, než bot vystřílí náboje na horší cíl ──────────────
+// 5 hráčů, bot = šerif. Ledger usvědčil idx1 i idx2; idx2 je zraněný (tedy lepší cíl),
+// ale s Coltem na něj bot nedosáhne – Schofield mu ho odemkne.
+const weaponRace = () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Outlaw', health: 2 },
+                      { role: 'Renegade' }, { role: 'Deputy' }], { current: 0 });
+    g.turnId = 4;
+    give(g, 0, CardType.BANG);
+    g.behaviorLedger = { pairs: { 1: { 0: { hostile: 3 } }, 2: { 0: { hostile: 3 } } } };
+    return g;
+};
+
+test('PLAY: zbraň, která odemyká lepšího nepřítele, jde před střelbu', () => {
+    const g = weaponRace();
+    const sch = give(g, 0, CardType.WEAPON, { name: 'Schofield', props: { range: 2 } });
+    assert.deepEqual(decideBotAction(g, 0), { event: 'play_card', payload: sch });
+});
+
+test('PLAY: bez zbraně v ruce bot střílí na to, na co dosáhne', () => {
+    const a = decideBotAction(weaponRace(), 0);
+    assert.equal(a.event, 'play_bang');
+    assert.equal(a.payload.targetIdx, 1);   // idx2 je lepší cíl, ale s Coltem je mimo dostřel
+});
+
+test('PLAY: zbraň, která nic neodemkne, zůstává až za střelbou', () => {
+    const g = weaponRace();
+    g.players[2].health = 4;                      // nikdo zraněný → nejlepší cíl je idx1 (v dostřelu)
+    give(g, 0, CardType.WEAPON, { name: 'Schofield', props: { range: 2 } });
+    assert.equal(decideBotAction(g, 0).event, 'play_bang');
+});
