@@ -418,3 +418,45 @@ test('PLAY: Wells Fargo se zahraje DŘÍV než Bang! (líznuté karty se dají j
     const wf = give(g, 0, CardType.WELLS_FARGO);
     assert.deepEqual(decideBotAction(g, 0), { event: 'play_card', payload: wf });
 });
+
+// ── Slepé cílení: bez informací se nestřílí a palba se rozkládá ──────────────
+// Šerif s Willym the Kid poslal tři Bang! do neznámého souseda (nejslabší postava u stolu),
+// ukázalo se, že to byl jeho pomocník, a přišel o všechny karty.
+test('PLAY: šerif bez jediné informace radši nestřílí', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Outlaw' },
+                      { role: 'Renegade' }, { role: 'Deputy' }], { current: 0 });
+    give(g, 0, CardType.BANG);
+    assert.equal(decideBotAction(g, 0).event, 'end_turn', 'každý soused je z 1/4 vlastní pomocník');
+});
+
+test('PLAY: jakmile na šerifa někdo zaútočí, střílí zpátky', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Outlaw' },
+                      { role: 'Renegade' }, { role: 'Deputy' }], { current: 0 });
+    give(g, 0, CardType.BANG);
+    g.behaviorLedger = { pairs: { 1: { 0: { hostile: 2 } } } };
+    const a = decideBotAction(g, 0);
+    assert.equal(a.event, 'play_bang');
+    assert.equal(a.payload.targetIdx, 1);
+});
+
+test('cílení: postava se 3 životy „od přírody" není trvale první na ráně', () => {
+    const { shootTargets, computeBeliefs } = require('../core/botPolicy.js');
+    const mk = (turnId) => {
+        const g = mkGame([{ role: 'Deputy' }, { role: 'Outlaw', maxHealth: 3, health: 3 },
+                          { role: 'Outlaw', maxHealth: 4, health: 4 }, { role: 'Renegade' },
+                          { role: 'Sheriff' }], { current: 0 });
+        g.turnId = turnId;
+        return g;
+    };
+    const first = [0, 1, 2, 3, 4].map(t => {
+        const g = mk(t);
+        return shootTargets(g, 0, computeBeliefs(g, { pairs: {} }, 0))[0].idx;
+    });
+    assert.ok(new Set(first).size > 1, `palba se má rozkládat, ne mířit pořád na jednoho: ${first}`);
+
+    // Zraněný cíl má naopak přednost vždycky – tam už o síle postavy nejde.
+    const g = mk(0);
+    g.players[2].health = 2;
+    const rank = shootTargets(g, 0, computeBeliefs(g, { pairs: {} }, 0));
+    assert.equal(rank[0].idx, 2, 'dobít zraněného je přednost bez ohledu na rotaci');
+});

@@ -80,6 +80,7 @@ if (typeof require === 'function') {
     }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
+        globalThis.ROLES = __b.ROLES;
         globalThis.computeBeliefs = __b.computeBeliefs;
         globalThis.expectedHostility = __b.expectedHostility;
         globalThis.enemyProbability = __b.enemyProbability;
@@ -115,6 +116,19 @@ const ENEMY_EPS = 0.1;
 // šanci. Jistý spojenec (šance 0) tak zůstává nedotknutelný vždycky.
 const DESPERATE_ENEMY_P = 0.25;
 
+// Cíle, jejichž očekávaná nepřátelskost se liší jen o tohle, jsou pro bota NEROZLIŠITELNÉ –
+// mezi nimi se nesmí rozhodovat podle „kdo má nejmíň životů". Postavy, které mají od přírody
+// jen 3 životy (Paul Regret, Claus the Saint…), by jinak schytaly všechno hned na začátku
+// hry, kdy o nikom nikdo nic neví. Rozhoduje proto (1) kdo je nejvíc ZRANĚNÝ (toho jde
+// dobít) a (2) rotace, díky které jde každý další výstřel na jiného hráče.
+const HOSTILITY_TIE = 0.35;
+
+// Nad tenhle podíl už bot na cíl radši nevystřelí vůbec. „Nevím, kdo to je" totiž není
+// důvod vypálit do souseda celý zásobník: šerif s Willym the Kid poslal tři Bang! do
+// neznámého souseda, ukázalo se, že to byl jeho pomocník, a šerif přišel o všechny karty.
+// Krádeže a odhozy (Panika, Cat Balou) brzdu nemají – ty se dají přežít, zásah ne.
+const FRIENDLY_FIRE_MAX = 0.2;
+
 // pendingActor je vytažen do core/pending.js (sdílí ho klient přes <script>). V prohlížeči
 // je globál z pending.js, v Node ho výše require-ujeme na globalThis. Re-export níže drží
 // kompatibilitu pro server/bots.js a testy (require('./botPolicy').pendingActor).
@@ -140,10 +154,37 @@ function hostilityOf(state, myIndex, targetIdx, beliefs) {
     return expectedHostility(me.role, beliefs[targetIdx], hostOpts(state, beliefs, myIndex));
 }
 
-// Seřazení nepřátel podle beliefů: nejvíc nepřátelský → nejnižší HP → nejmíň karet v ruce.
+// Jaká je šance, že je cíl někdo, na koho se STŘÍLET NEMÁ (pomocník pro šerifa, spoluodpadlík
+// pro banditu, šerif pro odpadlíka, dokud žije někdo další). Očekávaná nepřátelskost tuhle
+// otázku nezodpoví – ta se v součtu rozmělní a vyjde kladná i u hráče, který je z třetiny
+// vlastní. Bere se neváženě, stejně jako enemyProbability, jen z opačné strany.
+function allyRisk(state, myIndex, targetIdx, beliefs) {
+    const dist = beliefs[targetIdx];
+    if (!dist) return 0;
+    const me = state.players[myIndex];
+    const opts = hostOpts(state, beliefs, myIndex);
+    let p = 0;
+    for (const r of ROLES) if ((dist[r] || 0) > 0 && roleHostility(me.role, r, opts) < 0) p += dist[r];
+    return p;
+}
+
+// Rotace cílů v rámci jednoho pásma nepřátelskosti: pokaždé se začíná o kus dál, takže tři
+// Bang! v jednom tahu (Willy the Kid) neskončí všechny v jednom hráči. Je to deterministické
+// (žádný Math.random), aby testy i log zůstaly čitelné – posouvá to tah a počet výstřelů.
+function spreadOrder(state, myIndex) {
+    const me = state.players[myIndex];
+    const n = state.players.length;
+    const rot = ((state.turnId || 0) + (me.bangsPlayedThisTurn || 0) + myIndex) % n;
+    return (idx) => (idx - rot + n) % n;
+}
+
+// Seřazení nepřátel podle beliefů: nejvíc nepřátelský → nejvíc zraněný → na řadě v rotaci.
+// Kdo je nepřátelský jen o vlásek víc, je NEROZLIŠITELNÝ (HOSTILITY_TIE), takže se v tom
+// pásmu nerozhoduje podle síly postavy, ale podle zranění a rotace – tím se palba rozloží.
 // Když práh nepřekročí nikdo, nastupuje nouzové cílení (viz DESPERATE_ENEMY_P): pořadí
 // zůstává stejné (od nejpravděpodobnějšího nepřítele), jen se propustí i záporná
-// nepřátelskost – kromě hráčů, kteří nepřítelem prakticky být nemůžou.
+// nepřátelskost – kromě hráčů, kteří nepřítelem prakticky být nemůžou. Výsledek nese
+// příznak `desperate` – podle něj se vypíná brzda proti přátelské palbě (viz shootTargets).
 function rankEnemies(state, myIndex, beliefs, requireReach) {
     const me = state.players[myIndex];
     const opts = hostOpts(state, beliefs, myIndex);
@@ -153,12 +194,31 @@ function rankEnemies(state, myIndex, beliefs, requireReach) {
         if (requireReach && !computeCanHit(state, myIndex, idx)) return;
         all.push({ idx, h: expectedHostility(me.role, beliefs[idx], opts),
                    ep: enemyProbability(me.role, beliefs[idx], opts),
-                   health: p.health, hand: p.hand.length });
+                   health: p.health, hand: p.hand.length,
+                   hurt: Math.max(0, (p.maxHealth || p.health) - p.health) });
     });
     let list = all.filter(e => e.h > ENEMY_EPS);
-    if (list.length === 0) list = all.filter(e => e.ep >= DESPERATE_ENEMY_P);
-    list.sort((a, b) => b.h - a.h || a.health - b.health || a.hand - b.hand);
+    let desperate = false;
+    if (list.length === 0) { list = all.filter(e => e.ep >= DESPERATE_ENEMY_P); desperate = true; }
+    const order = spreadOrder(state, myIndex);
+    const band = (e) => Math.floor(e.h / HOSTILITY_TIE);
+    // Rotace je úplné uspořádání (každý index padne jinam), takže za ní už žádné další
+    // kritérium nemá co rozhodovat – počet karet v ruce se proto řeší až filtrem u karty.
+    list.sort((a, b) => band(b) - band(a) || b.hurt - a.hurt || order(a.idx) - order(b.idx));
+    list.desperate = desperate;
     return list;
+}
+
+// Nepřátelé, na které se smí STŘÍLET. Proti obyčejnému rankEnemies navíc vyhazuje cíle,
+// u kterých je moc velká šance, že jsou vlastní (FRIENDLY_FIRE_MAX) – bez informace se
+// prostě nestřílí. V nouzi (nikdo nepřekročil práh nepřátelskosti) brzda neplatí: tam už
+// jiná možnost není a koncovka „šerif + pomocníci + odpadlík" by nikdy neskončila.
+function shootTargets(state, myIndex, beliefs) {
+    const list = rankEnemies(state, myIndex, beliefs, false);
+    if (list.desperate) return list;
+    const out = list.filter(e => allyRisk(state, myIndex, e.idx, beliefs) <= FRIENDLY_FIRE_MAX);
+    out.desperate = false;
+    return out;
 }
 
 function weaponRange(w) { return (w && (w.range || w.props?.range)) || 1; }
@@ -504,7 +564,7 @@ function decidePlay(state, myIndex, beliefs) {
             // Vedle!. Vyplatí se na nepřítele s chudou rukou – tam je šance, že dvě
             // Vedle! nemá. Přebíjí obyčejný výstřel (vyšší skóre).
             if (sniperOffer(state, me, myIndex, card)) {
-                const st = rankEnemies(state, myIndex, beliefs, false)
+                const st = shootTargets(state, myIndex, beliefs)
                     .find(e => e.hand <= 2 && computeCanHit(state, myIndex, e.idx));
                 if (st) consider(56 + (5 - Math.min(st.health, 5)),
                     { event: 'sniper_choose', payload: { cardIdx: i, targetIdx: st.idx } });
@@ -522,7 +582,7 @@ function decidePlay(state, myIndex, beliefs) {
             // něj (kvůli Odražené střele), server by ale play_bang mlčky zahodil.
             if (!bangAtPlayerOk(state, me, myIndex, card)) return;
             const reach = bangEffectReach(card);
-            const tgt = rankEnemies(state, myIndex, beliefs, false)
+            const tgt = shootTargets(state, myIndex, beliefs)
                 .find(e => computeCanHit(state, myIndex, e.idx, reach));
             if (tgt) consider(50 + (5 - Math.min(tgt.health, 5)),
                 { event: 'play_bang', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
@@ -539,7 +599,7 @@ function decidePlay(state, myIndex, beliefs) {
         }
 
         if (action === T.DUEL) {
-            const tgt = rankEnemies(state, myIndex, beliefs, false)[0];
+            const tgt = shootTargets(state, myIndex, beliefs)[0];   // duel bere život, platí brzda
             if (tgt) consider(26,
                 { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
             return;
@@ -556,7 +616,7 @@ function decidePlay(state, myIndex, beliefs) {
 
         // ── Dodge City „odhoď další kartu" (cena = jedna postradatelná karta navíc) ──
         if (action === 'DE_BANG') { // Springfield: bang-efekt na libovolného nepřítele
-            const tgt = rankEnemies(state, myIndex, beliefs, false)[0];
+            const tgt = shootTargets(state, myIndex, beliefs)[0];
             if (tgt) consider(30, { event: 'discard_extra_choose', payload: { cardIdx: i, targetIdx: tgt.idx } });
             return;
         }
@@ -660,7 +720,7 @@ function decidePlay(state, myIndex, beliefs) {
             if (card.range === 'any') reach = Infinity;
             else if (typeof card.range === 'number') reach = card.range;
             else reach = weaponReach(state, me.weapon);   // 'weapon' = dostřel zbraně
-            const tgt = rankEnemies(state, myIndex, beliefs, false)
+            const tgt = shootTargets(state, myIndex, beliefs)
                 .find(e => computeDistance(state, myIndex, e.idx) <= reach);
             if (tgt) consider(46, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId, target: { targetIdx: tgt.idx } } });
             return;
@@ -709,7 +769,7 @@ function decidePlay(state, myIndex, beliefs) {
     }
     if (ch === 'Doc Holyday' && !me._docUsed && me.hand.length >= 3) {
         const reach = weaponReach(state, me.weapon);
-        const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => computeDistance(state, myIndex, e.idx) <= reach);
+        const tgt = shootTargets(state, myIndex, beliefs).find(e => computeDistance(state, myIndex, e.idx) <= reach);
         if (tgt) {
             // Zaplať dvěma nejméně cennými kartami.
             const order = me.hand.map((c, i) => i).sort((a, b) => keepScore(me.hand[a]) - keepScore(me.hand[b]));
@@ -1052,7 +1112,7 @@ function decideBotAction(state, myIndex, beliefs) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { pendingActor, decideBotAction, roleHostility, rankEnemies, pickCharacter,
-                       CHAR_RANK, chooseCharacter, cardDrawGain,
+                       CHAR_RANK, chooseCharacter, cardDrawGain, shootTargets, allyRisk,
                        keepScore, computeBeliefs, chooseTargetCardArea, boardCardValue,
                        weaponValue, keepCharacterChance, decideKeepCharacter };
 }
