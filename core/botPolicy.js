@@ -39,6 +39,9 @@ if (typeof require === 'function') {
     if (typeof lawForcedCard === 'undefined') {
         globalThis.lawForcedCard = require('./playability.js').lawForcedCard;
     }
+    if (typeof lawProtectedCard === 'undefined') {
+        globalThis.lawProtectedCard = require('./playability.js').lawProtectedCard;
+    }
     // Ruská ruleta (Fistful) – samostatný guard ze stejného důvodu.
     if (typeof rouletteDiscardable === 'undefined') {
         globalThis.rouletteDiscardable = require('./playability.js').rouletteDiscardable;
@@ -770,7 +773,10 @@ function decidePlay(state, myIndex, beliefs) {
     }
     if (ch === 'José Delgado' && (me._joseUses || 0) < 2) {
         let blueIdx = -1, blueScore = Infinity;
-        me.hand.forEach((c, i) => { if (isBlueCard(c) && keepScore(c) < blueScore) { blueScore = keepScore(c); blueIdx = i; } });
+        me.hand.forEach((c, i) => {
+            if (lawProtectedCard(state, me, myIndex, c)) return;   // Právo západu
+            if (isBlueCard(c) && keepScore(c) < blueScore) { blueScore = keepScore(c); blueIdx = i; }
+        });
         if (blueIdx !== -1) consider(18, { event: 'jose_delgado', payload: { cardIdx: blueIdx } });
     }
     // Uncle Will (Fistful): 1× za tah zahraje libovolnou kartu jako Hokynářství. Vyplatí
@@ -781,6 +787,7 @@ function decidePlay(state, myIndex, beliefs) {
         let idx = -1, low = Infinity;
         me.hand.forEach((c, i) => {
             if (suitBlockedFor(state, myIndex, c)) return;   // Želízka
+            if (lawProtectedCard(state, me, myIndex, c)) return;   // Právo západu
             if (keepScore(c) < low) { low = keepScore(c); idx = i; }
         });
         if (idx !== -1) consider(16, { event: 'uncle_will', payload: { cardIdx: idx } });
@@ -790,8 +797,12 @@ function decidePlay(state, myIndex, beliefs) {
         const tgt = shootTargets(state, myIndex, beliefs).find(e => computeDistance(state, myIndex, e.idx) <= reach);
         if (tgt) {
             // Zaplať dvěma nejméně cennými kartami.
-            const order = me.hand.map((c, i) => i).sort((a, b) => keepScore(me.hand[a]) - keepScore(me.hand[b]));
-            consider(28, { event: 'doc_holyday', payload: { cardIndices: [order[0], order[1]], targetIdx: tgt.idx } });
+            // Právo západu: vynucenou kartu zaplatit nelze – ze seznamu vypadne.
+            const order = me.hand.map((c, i) => i)
+                .filter(i => !lawProtectedCard(state, me, myIndex, me.hand[i]))
+                .sort((a, b) => keepScore(me.hand[a]) - keepScore(me.hand[b]));
+            if (order.length >= 2)
+                consider(28, { event: 'doc_holyday', payload: { cardIndices: [order[0], order[1]], targetIdx: tgt.idx } });
         }
     }
 
@@ -1030,7 +1041,8 @@ function decideBotAction(state, myIndex, beliefs) {
         // Fistful – Ranč: vyměň jen karty, které bys stejně odhodil (nízké keepScore),
         // nejvýš tři – větší výměna už je hazard s rukou, se kterou se dá hrát teď.
         case 'RANCH': {
-            const ids = me.hand.filter(c => c && !c._placeholder && keepScore(c) <= 2)
+            const ids = me.hand.filter(c => c && !c._placeholder && keepScore(c) <= 2 &&
+                    !lawProtectedCard(state, me, myIndex, c))   // Právo západu: vynucená karta zůstává
                 .sort((a, b) => keepScore(a) - keepScore(b))
                 .slice(0, 3)
                 .map(c => c.id);
@@ -1108,11 +1120,14 @@ function decideBotAction(state, myIndex, beliefs) {
             let worst = -1, worstScore = Infinity;
             me.hand.forEach((c, i) => {
                 if (c.id === mainId) return;
+                // Fistful – Právo západu: vynucenou kartou zaplatit nelze (server ji odmítne).
+                if (lawProtectedCard(state, me, myIndex, c)) return;
                 if (_snPay && !bangCardFromHand(state, me, myIndex, c)) return;
                 const s = keepScore(c);
                 if (s < worstScore) { worstScore = s; worst = i; }
             });
-            if (worst === -1 && !_snPay) worst = me.hand.findIndex(c => c.id !== mainId);
+            if (worst === -1 && !_snPay) worst = me.hand.findIndex(c =>
+                c.id !== mainId && !lawProtectedCard(state, me, myIndex, c));
             if (worst === -1) return { event: 'cancel_discard_another' };
             return { event: 'discard_another_card', payload: { playerIdx: myIndex, extraCardIdx: worst } };
         }

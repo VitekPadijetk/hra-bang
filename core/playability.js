@@ -79,13 +79,14 @@ function cardPlayability(state, me, myIndex, card) {
         return false;
     }
     if (isMyPlayTurn) {
-        // Fistful – Právo západu: dokud hráč drží vynucenou (odkrytou) kartu a JDE zahrát,
-        // je zbytek ruky zamčený – vynucená karta musí ven jako první. Bez toho jde
-        // povinnost snadno obejít: zahrát Pivo, aby vynucený Salón přestal jít zahrát,
-        // nebo jiný Bang! a vyčerpat jím limit. Sama vynucená karta se sem nezacyklí:
-        // pro ni se gate přeskočí ještě před dotazem na lawForcedCard.
+        // Fistful – Právo západu: zamčené jsou jen karty, po jejichž zahrání by vynucená
+        // (odkrytá) karta přestala jít zahrát – doléčené Pivo/Salon nebo vyčerpaný limit
+        // Bang! (viz lawLocksOther). Zbytek ruky zůstává volný: vynucenou kartu stejně
+        // nejde zaplatit ani odhodit (lawProtectedCard), takže se povinnost obejít nedá.
+        // Sama vynucená karta se sem nezacyklí: pro ni se gate přeskočí ještě před
+        // dotazem na lawForcedCard.
         if (me._lawCardId != null && card.id !== me._lawCardId &&
-            lawForcedCard(state, me, myIndex)) return false;
+            lawLocksOther(state, me, myIndex, card)) return false;
         // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené, Vězení).
         if (judgeBlocksFor(state, card)) return false;
         // Karta s bang-efektem (Úder, …) mimo zelené: nepočítá se do limitu Bang!.
@@ -109,7 +110,11 @@ function cardPlayability(state, me, myIndex, card) {
         // Dodge City „odhoď další kartu": potřebuje aspoň 1 další kartu k odhození +
         // pro cílené efekty musí existovat smysluplný cíl (jinak by se nic nestalo).
         if (card.discardExtra) {
-            if (me.hand.length < 2) return false;
+            // Musí zbýt ČÍM zaplatit. Vynucená karta (Právo západu) se počítat nesmí –
+            // zaplatit se jí nedá (lawProtectedCard), takže by hráč skončil ve fázi
+            // DISCARD_ANOTHER, ze které vede jen „zrušit" (a bot by se v ní zacyklil).
+            if (!(me.hand || []).some(c => c && !c._placeholder && c.id !== card.id &&
+                !lawProtectedCard(state, me, myIndex, c))) return false;
             // Léčit lze každého VE HŘE – duch (Město duchů, High Noon) v ní na svůj tah je,
             // takže i jeho (isInPlay, ne health > 0).
             if (card.discardExtra === 'heal_self_2') return isInPlay(me) && me.health < me.maxHealth;
@@ -210,12 +215,100 @@ function lawSelfShootOnly(state, me, myIndex, card) {
         i !== myIndex && p.health > 0 && computeCanHit(state, myIndex, i, reach));
 }
 
-// Zamyká vynucená karta zbytek tahu? `card` = karta hraná Z RUKY; null (schopnost postavy,
-// aktivace zelené karty ze stolu) je zamčené vždycky. Zrcadlo serverového _lawLocked.
-function lawLocksOther(state, me, myIndex, card) {
+// Kolik karet hráči za zahrání karty PŘIBUDE do ruky. Modeluje se jen to, co si vezme
+// sám (hokynářství = jedna karta pro každého, tedy i pro něj) – rozdané karty soupeřů
+// vynucenou kartu ovlivnit nemůžou.
+function _lawDrawGain(card) {
+    if (!card) return 0;
+    if (card.type === "Wells Fargo") return 3;
+    if (card.type === "Dostavník") return 2;
+    if (card.type === "Hokynářství") return 1;
+    return 0;
+}
+
+// Počítá se zahrání téhle karty do limitu „1× Bang! za tah"? (Karty s bang-EFEKTEM
+// – Úder, Springfield, zelené – se do něj nepočítají, viz playBang isEffect.)
+function _lawCountsBang(me, card) {
+    return !!card && !card.bangEffect &&
+        (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!"));
+}
+
+// Hypotetický stav PO akci, z pohledu vynucené karty. Kopíruje se MĚLCE (skutečným
+// stavem se nehne) a modeluje se jen to, co si hráč způsobí SÁM a co může vynucenou
+// kartu „vypnout": ruka (karty odejdou / přibudou), limit karet Bang! a vlastní životy.
+// Zásahy do stavu soupeřů (zabití, sebraná poslední karta) se nemodelují – to by
+// znamenalo dohrát celé pravidlo; jsou to okrajové případy, kde povinnost prostě
+// odpadne, ne kde by se hra zasekla.
+function _lawAfterAction(state, me, myIndex, forcedCard, card, opts) {
+    const players = state.players.slice();
+    const sim = Object.assign({}, state, { players });
+    const simMe = Object.assign({}, me);
+    players[myIndex] = simMe;
+    simMe.hand = (me.hand || []).slice();
+
+    // 1) Karty, které z ruky odejdou. Vynucená karta mezi nimi nikdy není – tu chrání
+    //    lawProtectedCard, takže se jí zaplatit ani odhodit nedá.
+    const drop = (pred) => {
+        const i = simMe.hand.findIndex(c => c && c.id !== forcedCard.id && pred(c));
+        if (i !== -1) simMe.hand.splice(i, 1);
+    };
+    if (card) drop(c => c.id === card.id);
+    // „Odhoď další kartu" (Springfield/Tequila/Whisky/Ragtime/Rvačka, Odstřelovač) stojí
+    // ještě jednu kartu z ruky.
+    let discards = (opts.discards || 0) + (card && card.discardExtra ? 1 : 0);
+    for (let k = 0; k < discards; k++) drop(() => true);
+    // 2) Karty, které přibudou (Dostavník, Wells Fargo, hokynářství, schopnosti).
+    const draws = (opts.draws || 0) + _lawDrawGain(card);
+    for (let k = 0; k < draws; k++) simMe.hand.push({ id: null, name: "", type: "" });
+    // 3) Limit karet Bang! (Odstřelovač ani Odražená střela ho nečerpají → noBangLimit).
+    if (!opts.noBangLimit && _lawCountsBang(me, card))
+        simMe.bangsPlayedThisTurn = (simMe.bangsPlayedThisTurn || 0) + 1;
+    // 4) Doléčené životy – kvůli nim „nejde zahrát" vynucené Pivo/Salon/Whisky/Tequila.
+    const heal = (p, n) => { if (isInPlay(p)) p.health = Math.max(0, Math.min(p.maxHealth, (p.health || 0) + n)); };
+    if (opts.heal) heal(simMe, opts.heal);
+    if (card) {
+        if (card.type === "Pivo") heal(simMe, effectiveCharacter(me) === "Tequila Joe" ? 2 : 1);
+        else if (card.type === "Salon") players.forEach((p, i) => {
+            if (i === myIndex) { heal(simMe, 1); return; }
+            const q = Object.assign({}, p); players[i] = q; heal(q, 1);
+        });
+        else if (card.discardExtra === 'heal_self_2') heal(simMe, 2);
+        // Tequila léčí zvoleného hráče – koho, se v tuhle chvíli ještě neví (klient se ptá
+        // před výběrem cíle), takže se počítá nejhorší případ „vyléčí sebe".
+        else if (card.discardExtra === 'heal_any') heal(simMe, 1);
+    }
+    return { state: sim, me: simMe };
+}
+
+// Zamyká vynucená karta tuhle akci? Právo západu NEZAMYKÁ celý zbytek tahu: hráč smí
+// dělat cokoli, po čem vynucená karta pořád půjde zahrát. Blokují se jen akce, které by
+// ji „vypnuly" – vyčerpaly by limit karet Bang!, doléčily život, na který čeká
+// (Pivo/Salon/Whisky/Tequila), nebo ubraly z ruky karty, které potřebuje jako cenu.
+// Vynucenou kartu samotnou zaplatit ani odhodit nejde vůbec (lawProtectedCard), takže
+// „zahrát Springfield a zaplatit jím povinnost" nehrozí a zbytek tahu zůstává volný.
+// `card` = karta hraná Z RUKY; null = schopnost postavy / aktivace zelené karty ze stolu.
+// `opts` = co akce udělá navíc: { discards, draws, heal, noBangLimit }.
+// Zrcadlo serverového _lawLocked.
+function lawLocksOther(state, me, myIndex, card, opts = {}) {
     if (!me || me._lawCardId == null) return false;
     if (card && card.id === me._lawCardId) return false;
-    return !!lawForcedCard(state, me, myIndex);
+    const forced = lawForcedCard(state, me, myIndex);
+    if (!forced) return false;
+    const after = _lawAfterAction(state, me, myIndex, forced.card, card, opts);
+    return !lawForcedCard(after.state, after.me, myIndex);
+}
+
+// Smí se tahle karta z ruky ODHODIT nebo jí ZAPLATIT? Vynucenou kartu ne – jinak by se
+// jí hráč zbavil, aniž by ji zahrál (cena za „odhoď další kartu" a za Odstřelovače,
+// Sid Ketchum, Doc Holyday, José Delgado, Uncle Will, Ranč). Tohle je protiváha
+// uvolněného lawLocksOther: zbytek tahu je volný právě proto, že povinnost nejde
+// zaplatit. Ptá se i mimo fázi PLAY (cena se vybírá ve fázi DISCARD_ANOTHER, Ranč má
+// svou vlastní), proto se hratelnost vynucené karty posuzuje proti fázi PLAY.
+function lawProtectedCard(state, me, myIndex, card) {
+    if (!card || !me || me._lawCardId == null || card.id !== me._lawCardId) return false;
+    if (state.currentPlayerIndex !== myIndex) return false;
+    const s = state.phase === "PLAY" ? state : Object.assign({}, state, { phase: "PLAY" });
+    return !!lawForcedCard(s, me, myIndex);
 }
 
 // ── A Fistful of Cards – Ruská ruleta: co se počítá za „kartu Vedle!" ────────
@@ -293,8 +386,9 @@ function ricochetOffer(state, me, myIndex, card) {
     if (!isPlayTurn(state, myIndex)) return false;
     if (!bangCardFromHand(state, me, myIndex, card)) return false;
     if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
-    // Právo západu: dokud drží vynucenou kartu, smí ven jen ona (zrcadlo _lawLocked).
-    return !lawLocksOther(state, me, myIndex, card);
+    // Právo západu: zamčené jsou jen střely, po kterých by vynucená karta přestala jít
+    // zahrát. Odražená střela limit Bang! nečerpá (R2) → noBangLimit.
+    return !lawLocksOther(state, me, myIndex, card, { noBangLimit: true });
 }
 
 // Je vyložená karta hráče `targetIdx` platným cílem Odražené střely? Na vlastní karty se
@@ -326,14 +420,18 @@ function sniperOffer(state, me, myIndex, card) {
     if (!isPlayTurn(state, myIndex)) return false;
     if (!bangCardFromHand(state, me, myIndex, card)) return false;
     if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
-    if (lawLocksOther(state, me, myIndex, card)) return false;   // Právo západu
-    const other = (me.hand || []).some(c => c && c.id !== card.id && bangCardFromHand(state, me, myIndex, c));
+    // Právo západu: Odstřelovač stojí druhou kartu Bang! z ruky a do limitu se nepočítá
+    // (FAQ Q07). Vynucená karta jako ta druhá posloužit nesmí – odhazuje se, nehraje.
+    if (lawLocksOther(state, me, myIndex, card, { noBangLimit: true, discards: 1 })) return false;
+    const other = (me.hand || []).some(c => c && c.id !== card.id &&
+        !lawProtectedCard(state, me, myIndex, c) && bangCardFromHand(state, me, myIndex, c));
     if (!other) return false;
     return state.players.some((p, i) => i !== myIndex && isInPlay(p) && computeCanHit(state, myIndex, i));
 }
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther,
+                       lawProtectedCard,
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer };

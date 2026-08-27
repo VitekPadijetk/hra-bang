@@ -54,6 +54,8 @@ if (typeof isBlueCard === 'undefined' && typeof require === 'function') {
 if (typeof lawForcedCard === 'undefined' && typeof require === 'function') {
     globalThis.lawForcedCard = require('./core/playability.js').lawForcedCard;
     globalThis.lawSelfShootOnly = require('./core/playability.js').lawSelfShootOnly;
+    globalThis.lawLocksOther = require('./core/playability.js').lawLocksOther;
+    globalThis.lawProtectedCard = require('./core/playability.js').lawProtectedCard;
 }
 // A Fistful of Cards – Ruská ruleta: „co se počítá za kartu Vedle!". Stejný helper si
 // bere klient (zvýraznění) i bot, takže se výčet nemůže rozejít se serverem.

@@ -17,10 +17,15 @@ const DodgeCityMixin = {
         const card = player.hand[cardIndex];
         if (!card || !card.discardExtra) return;
         if (this._suitBlocked(this.currentPlayerIndex, card)) return;   // High Noon – Želízka
-        // Fistful – Právo západu: vynucená karta musí ven jako první (viz _lawLocked) –
-        // jinak by si ji hráč zaplatil jako „další kartu" a povinnosti se tím zbavil.
+        // Fistful – Právo západu: zamčené je jen to, po čem by vynucená karta přestala
+        // jít zahrát – „odhoď další kartu" stojí ještě jednu kartu z ruky, což _lawLocked
+        // podle discardExtra započítá samo. Vynucenou kartou se zaplatit nedá (viz
+        // _lawProtected v discardAnotherCard), takže se povinnosti zbavit nejde.
         if (this._lawLocked(this.currentPlayerIndex, card)) return;
-        if (player.hand.length < 2) return; // není čím zaplatit „další kartu"
+        // Není čím zaplatit „další kartu"? Vynucená karta (Právo západu) se nepočítá –
+        // tou se zaplatit nedá (viz _lawProtected v discardAnotherCard).
+        if (!player.hand.some(c => c && c.id !== card.id &&
+            !this._lawProtected(this.currentPlayerIndex, c))) return;
         const effect = card.discardExtra;
         const pIdx = this.currentPlayerIndex;
 
@@ -69,6 +74,9 @@ const DodgeCityMixin = {
         const mainIdx = player.hand.findIndex(c => c.id === pending.mainCardId);
         if (mainIdx === -1) return;
         if (extraCardIdx === mainIdx || !player.hand[extraCardIdx]) return;
+        // Fistful – Právo západu: vynucenou kartou zaplatit nelze – odhazuje se, nehraje,
+        // takže by se jí hráč povinnosti zbavil. Klient ani bot ji nenabídnou.
+        if (this._lawProtected(playerIdx, player.hand[extraCardIdx])) return;
         // Fistful – Odstřelovač: „cenou" musí být DRUHÁ karta Bang! (u Calamity Janet
         // i Vedle!). Neplatný klik radši ignoruj, ať se hráči nespotřebuje karta, kterou
         // platit nesmí – klient ani bot jinou nenabídnou (viz bangCardFromHand).
@@ -202,9 +210,14 @@ const DodgeCityMixin = {
         if (!card.green) return;
         if (card._playedTurn === this.turnId) return;   // nelze ve stejném tahu, kdy byla položena
         if (card.activate === 'miss') return;            // Vedle!-zelené jen jako reakce
-        // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného –
-        // zelený bang-efekt by jinak vyčerpal limit Bang! a vynucený Bang! by „nešel".
-        if (this._lawLocked(playerIdx)) return;
+        // Fistful – Právo západu: aktivace ze stolu se ruky netýká a bang-efekt zelené
+        // limit karet Bang! nečerpá – vadit může jen to, co si hráč doléčí (Čutora) nebo
+        // co mu do ruky přibude (Pony express, Krytý vůz, Derringer).
+        if (this._lawLocked(playerIdx, null, {
+            heal: card.activate === 'heal_self' ? 1 : 0,
+            draws: (card.activate === 'draw_3' ? 3 : 0) +
+                   (card.activate === 'steal_any' ? 1 : 0) + (card.draw || 0),
+        })) return;
         if (this._boardDead()) return;                   // Fistful – Laso: karta na stole nemá efekt
         // High Noon – Želízka omezují jen karty hrané Z RUKY. Zelená karta už leží
         // ve hře (byla zahraná dřív), takže se její aktivace barvou neomezuje.

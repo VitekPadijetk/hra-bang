@@ -201,18 +201,27 @@ const FistfulMixin = {
         return p ? lawForcedCard(this, p, playerIdx) : null;
     },
 
-    // Zamyká vynucená karta zbytek tahu? Dokud ji hráč drží a JDE zahrát, nesmí udělat
-    // nic jiného – povinnost by se jinak dala obejít: zahrát Pivo, aby vynucený Salón
-    // přestal jít zahrát; zahrát jiný Bang! a vyčerpat jím limit (s Volcanicem se druhý
-    // Bang! zahraje až PO tom vynuceném); nebo si kartu prostě odhodit schopností
-    // (Sid Ketchum, Doc Holyday, José Delgado, Uncle Will, „odhoď další kartu").
-    // `card` = karta hraná Z RUKY; null (schopnost postavy, aktivace zelené karty ze
-    // stolu) je zamčené vždycky – i zelený bang-efekt by jinak vyčerpal limit Bang!.
-    // Zrcadlo pro klienta i bota: lawLocksOther / cardPlayability v core/playability.js.
-    _lawLocked(playerIdx, card = null) {
-        const forced = this._lawForced(playerIdx);
-        if (!forced) return false;
-        return !card || card.id !== forced.card.id;
+    // Zamyká vynucená karta tuhle akci? Zbytek tahu zamčený NENÍ – hráč smí dělat
+    // cokoli, po čem vynucená karta pořád půjde zahrát. Blokují se jen akce, které by
+    // ji vypnuly: doléčené Pivo/Salon/Whisky/Tequila, vyčerpaný limit karet Bang!
+    // (s Volcanicem se druhý Bang! zahraje až PO tom vynuceném) nebo ruka, ve které
+    // pak nezbude čím zaplatit „odhoď další kartu". Odhodit si vynucenou kartu
+    // schopností (Sid Ketchum, Doc Holyday, José Delgado, Uncle Will, cena za „odhoď
+    // další kartu", Ranč) nejde vůbec – to hlídá _lawProtected.
+    // `card` = karta hraná Z RUKY; null = schopnost postavy / aktivace zelené ze stolu.
+    // `opts` = co akce udělá navíc: { discards, draws, heal, noBangLimit }.
+    // Trychtýř na sdílený helper – stejně se ptá klient (cardPlayability) i bot.
+    _lawLocked(playerIdx, card = null, opts = {}) {
+        const p = this.players[playerIdx];
+        return !!p && lawLocksOther(this, p, playerIdx, card, opts);
+    },
+
+    // Smí se karta z ruky odhodit / zaplatit jí? Vynucenou kartu ne – jinak by se jí hráč
+    // zbavil, aniž by ji zahrál. Protiváha uvolněného _lawLocked: zbytek tahu je volný
+    // právě proto, že povinnost nejde zaplatit. Trychtýř na sdílený helper.
+    _lawProtected(playerIdx, card) {
+        const p = this.players[playerIdx];
+        return !!p && lawProtectedCard(this, p, playerIdx, card);
     },
 
     // Musí vynucený Bang! (nebo bang-efekt) letět SÁM NA SEBE? Jen když hráč na nikoho
@@ -335,6 +344,8 @@ const FistfulMixin = {
             if (seen.has(id)) return;
             const i = p.hand.findIndex(c => c && c.id === id);
             if (i === -1) return;
+            // Právo západu: vynucenou kartu vyměnit nejde – odhodila by se, ne zahrála.
+            if (this._lawProtected(playerIdx, p.hand[i])) return;
             seen.add(id);
             picked.push({ i, card: p.hand[i] });
         });

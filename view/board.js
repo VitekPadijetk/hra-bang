@@ -1721,11 +1721,16 @@ function drawMyArea(ctx) {
                 // Sida Ketchuma, hráč pak klikne na jinou kartu (cenu). Ostatní se zvýrazní.
                 const isDiscardAnother = state.phase === "DISCARD_ANOTHER" && state.pendingDiscardAnother?.playerIdx === myIndex;
                 const isDAmain = isDiscardAnother && card.id === state.pendingDiscardAnother.mainCardId;
+                // Fistful – Právo západu: vynucenou kartou se platit ani vyměňovat nedá
+                // (odhodila by se, ne zahrála) – server ji odmítne, takže se v režimech
+                // ceny (Sid, Doc, José, Uncle Will, „odhoď další kartu", Ranč) nesmí
+                // nabízet. Ptá se stejným helperem jako server, viz core/playability.js.
+                const _lawProt = lawProtectedCard(state, me, myIndex, card);
                 // Fistful – Odstřelovač: „cenou" smí být JEN druhá karta Bang! (u Calamity
                 // Janet i Vedle!) – server jiný klik ignoruje, takže se ani nesmí nabízet.
-                const _sniperPayOk = !isDiscardAnother || isDAmain ||
-                    state.pendingDiscardAnother.effect !== 'sniper' ||
-                    bangCardFromHand(state, me, myIndex, card);
+                const _payOk = !isDiscardAnother || isDAmain ||
+                    (!_lawProt && (state.pendingDiscardAnother.effect !== 'sniper' ||
+                     bangCardFromHand(state, me, myIndex, card)));
                 // Uncle Will: nabitá schopnost čeká na kartu, kterou zahraje jako
                 // Hokynářství (stejný režim jako José/Doc).
                 // (Claus "The Saint" tudy NECHODÍ – rozděluje odkrytou řadu uprostřed
@@ -1766,12 +1771,18 @@ function drawMyArea(ctx) {
 
                 // „Odhoď další kartu": hlavní (zmenšená) karta zašedne, ostatní červeně
                 // (vyber cenu) – stejné zvýraznění jako u odhazování Sida Ketchuma.
-                if (isDiscardAnother) cSprite.setTint(isDAmain ? 0xbbbbbb : (_sniperPayOk ? 0xff6666 : 0x777777));
+                if (isDiscardAnother) cSprite.setTint(isDAmain ? 0xbbbbbb : (_payOk ? 0xff6666 : 0x777777));
                 // Doc: vybrané (2) karty zašednou; José Delgado: modré karty žlutě.
                 if (isDocStaged) cSprite.setTint(0xbbbbbb);
                 if (isJoseBlue) cSprite.setTint(0xffff44);
                 // Ranč: celá ruka je klikací (světle modře), označené karty zašednou.
                 if (isRanchMine) cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff);
+                // Fistful – Právo západu: v režimech ceny je vynucená karta mimo hru.
+                // Ve fázi PLAY (Sid/Doc/José/Will) ji stejně přebije zlatá níž; ve fázích
+                // DISCARD_ANOTHER a RANCH je tohle jediné, co ji odliší.
+                const _lawCostMode = isMySidActive || isDocActive || isWillActive ||
+                    !!selectedState.jose || isRanchMine;
+                if (_lawProt && !isDAmain && _lawCostMode) cSprite.setTint(0x777777);
 
                 // Pivo jako záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE).
                 // Reverend (High Noon) Pivo zakazuje i tady → nezvýrazňovat (klik ho také
@@ -1873,6 +1884,9 @@ function drawMyArea(ctx) {
                     // „odhoď další kartu"/José/Doc jdou mimo ni – bez tohohle šel v mezidobí
                     // odeslat druhý klik (a zvýraznění zůstalo svítit až do příchodu stavu).
                     if (App.blockInput) return;
+                    // Fistful – Právo západu: vynucenou kartou se platit ani vyměňovat nedá
+                    // (server klik zahodí) – v režimech ceny na ni klik nedělá nic.
+                    if (_lawProt && !isDAmain && _lawCostMode) return;
                     // „Odhoď další kartu": klik na hlavní kartu = zrušit; na jinou = zaplatit.
                     if (isDiscardAnother) {
                         if (isDAmain) {
@@ -1881,7 +1895,7 @@ function drawMyArea(ctx) {
                             renderUI();
                             return;
                         }
-                        if (!_sniperPayOk) return;   // Odstřelovač: jen druhý Bang!
+                        if (!_payOk) return;   // Odstřelovač: jen druhý Bang! / Právo západu
                         socket.emit('discard_another_card', { playerIdx: myIndex, extraCardIdx: index });
                         App.blockInput = true;
                         renderUI();

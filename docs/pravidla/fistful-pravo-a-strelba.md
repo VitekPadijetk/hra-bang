@@ -10,16 +10,35 @@ v tomhle tahu zahrát, pokud to jde. Jediný zdroj pravdy je `lawForcedCard`
 (zlaté zvýraznění, zašedlé „Ukončit tah") i bot. Rozejít se nesmí, jinak by server tah
 tiše odmítal ukončit a bot by posílal `end_turn` donekonečna.
 
-- **Zámek zbytku tahu** — `_lawLocked(playerIdx, card)` ([logic/fistful.js](logic/fistful.js)).
-  Dokud hráč vynucenou kartu drží a JDE zahrát, nesmí udělat nic jiného: `playCard`,
-  `playBang`, `playSpecialCard`, `startDiscardExtra`, `activateGreenCard` a všechny aktivní
-  schopnosti (Sid Ketchum, Uncle Will, Chuck Wengam, José Delgado, Doc Holyday) se na něj
-  ptají. Bez toho jde povinnost snadno obejít: zahrát Pivo, aby se hráč doléčil a vynucený
-  **Salón** přestal jít zahrát; zahrát **jiný Bang!** a vyčerpat jím limit (s Volcanicem
-  se druhý Bang! prostě zahraje až PO tom vynuceném); nebo si kartu odhodit schopností.
+- **Zbytek tahu zamčený NENÍ** — vynucená karta blokuje jen akce, po kterých by přestala
+  jít zahrát. Nesouvisející karty i schopnosti hráč používat smí (bug 12). Stojí to na
+  dvojici helperů z [core/playability.js](core/playability.js), na které se ptá server
+  (`_lawLocked`/`_lawProtected` v [logic/fistful.js](logic/fistful.js)), klient
+  i bot – rozejít se nesmí, jinak server akci mlčky odmítne a bot ji posílá dokola:
+  - **`lawLocksOther(state, me, i, card, opts)`** postaví mělkou kopii stavu PO té akci
+    a zeptá se `lawForcedCard` znovu. Modeluje jen to, co si hráč způsobí SÁM: ruku
+    (karty ven i líznuté), limit karet Bang! a vlastní životy. Tím spadnou do zámku
+    přesně tři obcházky – doléčit se **Pivem**, aby vynucený **Salón** přestal jít
+    zahrát; vyčerpat limit **jiným Bangem** (s Volcanicem se druhý Bang! prostě zahraje
+    až PO tom vynuceném); a zahrát „odhoď další kartu", po které by v ruce nezbylo čím
+    zaplatit. `opts = { discards, draws, heal, noBangLimit }` popisuje, co akce udělá
+    navíc – schopnosti (Sid 2 karty + 1 život, Doc 2 karty, José 1 za 2, Uncle Will 1 za
+    1, Chuck 2 karty za život) i aktivace zelené ze stolu si ho vyplňují samy.
+    Zásahy do stavu SOUPEŘŮ (zabít poslední cíl, sebrat mu poslední kartu) se
+    nemodelují – to by znamenalo dohrát celé pravidlo; tam povinnost prostě odpadne.
+  - **`lawProtectedCard(state, me, i, card)`** je protiváha: vynucenou kartu nejde
+    ODHODIT ani jí ZAPLATIT (cena za „odhoď další kartu" i za Odstřelovače, Sid Ketchum,
+    Doc Holyday, José Delgado, Uncle Will, Ranč). Právě proto může zbytek tahu zůstat
+    volný. Ptá se i mimo fázi PLAY (cenu si hráč vybírá v `DISCARD_ANOTHER`, Ranč má
+    vlastní fázi), takže si hratelnost posuzuje proti hypotetické fázi `PLAY`.
+  - **Kdo nemá čím zaplatit, nesmí kartu ani rozehrát** – `cardPlayability`
+    i `startDiscardExtra` se ptají „zbývá v ruce NEchráněná karta?", ne na `hand.length`.
+    Bez toho se hráč (a hlavně bot) dostal do `DISCARD_ANOTHER`, ze které vede jen
+    „zrušit", a bot ji dokola rozehrával znovu.
   Klientské zrcadlo je jeden gate na začátku větve `isMyPlayTurn` v `cardPlayability`
-  (zbytek ruky se rovnou zašedne) – zacyklení nehrozí, pro samotnou vynucenou kartu se
-  gate přeskočí ještě před dotazem na `lawForcedCard`.
+  a `_lawProt`/`_payOk` ve `drawMyArea` ([view/board.js](view/board.js)) – chráněná
+  karta v režimech ceny zašedne a klik na ni nic nedělá. Zacyklení nehrozí, pro samotnou
+  vynucenou kartu se gate přeskočí ještě před dotazem na `lawForcedCard`.
 - **Bang! bez cíle míří na sebe** — `_lawHasTarget` u `SHOOT` vrací **vždy true**: když
   hráč na nikoho jiného nedosáhne, musí střelit sám sebe (`lawSelfShootOnly`). Klient mu
   k tomu výjimečně zvýrazní **vlastní postavu** (`drawMyArea`), bot má stejný fallback

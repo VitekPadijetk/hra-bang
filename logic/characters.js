@@ -32,14 +32,16 @@ const CharactersMixin = {
     // nevykládá před hráče; Želízka (High Noon) ano, karta jde z ruky.
     useUncleWill(playerIdx, cardIdx) {
         if (this.phase !== "PLAY" || playerIdx !== this.currentPlayerIndex) return false;
-        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
-        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
-        if (this._lawLocked(playerIdx)) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Uncle Will") return false;
         if (p._willUsedTurn === this.turnId) return false;
         const card = p.hand[cardIdx];
         if (!card) return false;
+        // Fistful – Právo západu: vynucenou kartu schopnost spolknout nesmí (odhazuje se,
+        // nehraje); jinak schopnost vadí jen tehdy, když by po ní vynucená karta přestala
+        // jít zahrát – jedna karta z ruky ven, jedna z hokynářství zpátky.
+        if (this._lawProtected(playerIdx, card)) return false;
+        if (this._lawLocked(playerIdx, null, { discards: 1, draws: 1 })) return false;
         if (this._suitBlocked(playerIdx, card)) return false;
         p._willUsedTurn = this.turnId;
         this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
@@ -388,14 +390,16 @@ const CharactersMixin = {
     useSidKetchum(playerIdx, cardIndices) {
         let p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
-        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic jiného –
-        // schopností by si ji jinak odhodil a povinnosti se zbavil. Mimo svůj tah ho to
-        // neomezuje (vynucená karta se vyhodnocuje jen ve fázi PLAY jejího majitele).
-        if (this._lawLocked(playerIdx)) return;
         if (!isInPlay(p) || p.health >= p.maxHealth) return;   // duch (Město duchů) se léčit smí
         if (cardIndices.length !== 2) return;
         cardIndices.sort((a, b) => b - a);
         if (new Set(cardIndices).size !== 2) return;
+        // Fistful – Právo západu: vynucenou kartu schopnost odhodit nesmí, a doléčený
+        // život může vypnout vynucené Pivo/Salon – proto { discards: 2, heal: 1 }.
+        // Mimo svůj tah nic z toho neplatí (vynucená karta se vyhodnocuje jen ve fázi
+        // PLAY jejího majitele).
+        if (cardIndices.some(i => this._lawProtected(playerIdx, p.hand[i]))) return;
+        if (this._lawLocked(playerIdx, null, { discards: 2, heal: 1 })) return;
         this.deck.discard(p.hand.splice(cardIndices[0], 1)[0]);
         this.deck.discard(p.hand.splice(cardIndices[1], 1)[0]);
         this._heal(p, 1);
@@ -406,9 +410,9 @@ const CharactersMixin = {
     // Chuck Wengam: ztrať 1 život → lízni 2 (opakovatelné, ne poslední život).
     useChuckWengam(playerIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
-        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
-        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
-        if (this._lawLocked(playerIdx)) return false;
+        // Fistful – Právo západu: schopnost žádnou kartu neodhazuje (ztráta života + dvě
+        // líznuté), takže vynucenou kartu vypnout nemůže – projde skoro vždycky.
+        if (this._lawLocked(playerIdx, null, { draws: 2, heal: -1 })) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Chuck Wengam" || p.health <= 1) return false;
         p.health--;
@@ -420,12 +424,13 @@ const CharactersMixin = {
     // José Delgado: odhoď modrou kartu z ruky → lízni 2 (max 2×/tah).
     useJoseDelgado(playerIdx, cardIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
-        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
-        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
-        if (this._lawLocked(playerIdx)) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "José Delgado") return false;
         if ((p._joseUses || 0) >= 2) return false;
+        // Fistful – Právo západu: vynucenou modrou kartu schopnost odhodit nesmí; jinak
+        // ruka o jednu zhubne a o dvě povyroste, takže vynucené kartě nic nehrozí.
+        if (this._lawProtected(playerIdx, p.hand[cardIdx])) return false;
+        if (this._lawLocked(playerIdx, null, { discards: 1, draws: 2 })) return false;
         // Modrá = i Vězení (viz isBlueCard v core/cardRules.js) – to, že se vykládá před
         // soupeře, z něj modrou kartu dělat nepřestává.
         if (!isBlueCard(p.hand[cardIdx])) return false;
@@ -440,13 +445,14 @@ const CharactersMixin = {
     // Doc Holyday: 1×/tah odhoď 2 karty z ruky → bang-efekt na cíl v dostřelu zbraně.
     useDocHolyday(playerIdx, cardIndices, targetIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
-        // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
-        // jiného – schopností by si ji jinak odhodil a povinnosti se zbavil.
-        if (this._lawLocked(playerIdx)) return false;
         const p = this.players[playerIdx];
         if (!p || effectiveCharacter(p) !== "Doc Holyday" || p._docUsed) return false;
         if (!Array.isArray(cardIndices) || cardIndices.length !== 2 || new Set(cardIndices).size !== 2) return false;
         if (!p.hand[cardIndices[0]] || !p.hand[cardIndices[1]]) return false;
+        // Fistful – Právo západu: vynucenou kartu schopnost odhodit nesmí. Jeho bang je
+        // efekt, takže limit karet Bang! nečerpá – vynucenému Bang! nepřekáží.
+        if (cardIndices.some(i => this._lawProtected(playerIdx, p.hand[i]))) return false;
+        if (this._lawLocked(playerIdx, null, { discards: 2 })) return false;
         const target = this.players[targetIdx];
         if (!target || target.health <= 0 || targetIdx === playerIdx) return false;
         // Fistful – Laso: zbraň na stole nemá efekt → dostřel 1 jako s Coltem.
