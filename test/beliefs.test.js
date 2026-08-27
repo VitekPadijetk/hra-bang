@@ -155,3 +155,26 @@ test('computeBeliefs 8P: složení rolí je 1/2/3/2', () => {
     assert.ok(unknown.Renegade > 0, 'odpadlík je v poolu');
     assert.equal(unknown.Sheriff, 0);
 });
+
+// ── Odhalená role se nezapomíná ──────────────────────────────────────────────
+// Mrtvý muž (A Fistful of Cards) vrací prvního vyřazeného zpátky do hry. Roli u toho
+// viděl celý stůl a klient ji dál ukazuje – bot na ni tedy nesmí jako jediný zapomenout.
+test('vrácený Mrtvý muž si roli nese s sebou (nehádá se znovu)', () => {
+    const mk = (revealed) => ({
+        players: [
+            { role: 'Sheriff', health: 4 },
+            { role: 'Outlaw', health: 2, _roleRevealed: revealed },
+            { role: 'Deputy', health: 4 },
+            { role: 'Outlaw', health: 4 },
+            { role: 'Renegade', health: 4 },
+        ],
+    });
+    const after = computeBeliefs(mk(true), { pairs: {} }, 0);
+    assert.deepEqual(after[1], { Sheriff: 0, Deputy: 0, Outlaw: 1, Renegade: 0 });
+    // A ubraná role zmizí i z poolu ostatních – zbývají 3 neznámí na 1 banditu, 1 pomocníka
+    // a 1 odpadlíka, takže je každý z nich přesně z třetiny každým z nich.
+    assert.ok(Math.abs(after[2].Deputy - 1 / 3) < 1e-9);
+
+    const before = computeBeliefs(mk(false), { pairs: {} }, 0);
+    assert.ok(before[1].Outlaw < 1, 'bez odhalení se role pořád jen odhaduje');
+});

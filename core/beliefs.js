@@ -3,12 +3,12 @@
 // Bot NEZNÁ skryté role ostatních. Odvozuje je jen z VEŘEJNÝCH informací:
 //   • složení rolí podle počtu hráčů (rolesForPlayerCount) – ví, KOLIK je kterého,
 //   • veřejný šerif (hvězda) – jistota,
-//   • mrtví hráči – po smrti se role odhalí (jistota),
+//   • mrtví hráči – po smrti se role odhalí, a odhalená zůstává (Mrtvý muž se vrací do hry),
 //   • vlastní role – svou zná,
 //   • ledger chování (kdo na koho útočil / koho léčil) – veřejné akce.
 // Z toho spočítá pro každého ŽIJÍCÍHO neznámého hráče pravděpodobnostní rozdělení
 // rolí a z něj „očekávanou nepřátelskost" pro cílení. Čtení `p.role` je povoleno JEN
-// pro veřejné případy (sebe, šerif, mrtví) – živého neznámého se `role` nikdy nedotýká.
+// pro veřejné případy (sebe, šerif, jednou odhalení) – živého neznámého se `role` nedotýká.
 //
 // Exporty:
 //   roleHostility(myRole, targetRole, opts) -> number  (nepřátelskost dvojice rolí)
@@ -122,7 +122,12 @@ function computeBeliefs(state, ledger, myIndex) {
     const known = {};                         // idx -> jistá role (jen veřejné případy)
     known[myIndex] = players[myIndex] && players[myIndex].role;
     if (sheriffIdx !== -1) known[sheriffIdx] = 'Sheriff';
-    players.forEach((p, i) => { if (p.health <= 0) known[i] = p.role; }); // mrtví = veřejní
+    // Mrtví mají roli odkrytou – a `_roleRevealed` ji drží i po NÁVRATU do hry: Mrtvý muž
+    // (A Fistful of Cards) vrací prvního vyřazeného zpátky, jeho roli u toho ale viděl celý
+    // stůl a klient ji dál ukazuje (viz redactState v server/rooms.js). Duch (Město duchů) je
+    // zvláštní případ téhož – na svůj tah má životy nad nulou. Bez tohohle by bot byl jediný
+    // u stolu, kdo na jednou odhalenou roli zapomene, a hádal by ji znovu od nuly.
+    players.forEach((p, i) => { if (p.health <= 0 || p._roleRevealed || p._ghost) known[i] = p.role; });
     // Hra pro 3 (Město duchů): všechny tři role leží lícem nahoru, takže se nic nededukuje.
     if (state.mode3p) players.forEach((p, i) => { known[i] = p.role; });
 
