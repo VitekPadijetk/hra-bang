@@ -1471,10 +1471,19 @@ function dealRevealRow(n, anim, tempo, flyOne, onDone) {
             } });
         } else if (a.mode === 'proactive') {
             // Balíček se vyprázdnil poslední kartou – míchá se až teď, paralelně s výběrem.
+            // Po dobu míchání se hromádka NEKRESLÍ (revealShuffling): stav už nese
+            // zamíchaný (plný) balíček, takže bez toho se objevil hned na začátku
+            // cinematiky – vedle míchané hromádky ležel druhý, hotový.
             App.dealDeckCount = null;
             App.revealLocked = false;
+            App.revealShuffling = true;
+            App.revealShuffleRunning = true;
             renderUI();
-            playReshuffleCinematic(a.shuffleCount || 20, { depthBase: 5, onDone: () => { renderUI(); } });
+            playReshuffleCinematic(a.shuffleCount || 20, { depthBase: 5, onDone: () => {
+                App.revealShuffleRunning = false;
+                App.revealShuffling = false;
+                renderUI();
+            } });
             if (onDone) onDone();
         } else {
             finish();
@@ -1523,7 +1532,7 @@ function playKitCarlsonResult() {
     App.kitRevealCards = null;
     App.kitPicked = [];
     App.dealDeckCount = null;    // konec rozdávání řady → balíček zase podle stavu
-    App.revealShuffling = false;
+    if (!App.revealShuffleRunning) App.revealShuffling = false;
     App.revealLocked = false;
 }
 
@@ -1616,7 +1625,7 @@ function endClausDeal() {
     App.clausDealSlots = new Set();
     App.clausTakenSlots = new Set();
     App.dealDeckCount = null;
-    App.revealShuffling = false;
+    if (!App.revealShuffleRunning) App.revealShuffling = false;
     App.revealLocked = false;
 }
 
@@ -1639,7 +1648,7 @@ function _clearKitSpecSprites() {
     App.kitSpecPicksDone = 0;
     App.oppHandHideCount = {};   // žádné rozletěné Kitovy karty → nic neskrývej
     App.dealDeckCount = null;    // konec rozdávání řady → balíček zase podle stavu
-    App.revealShuffling = false;
+    if (!App.revealShuffleRunning) App.revealShuffling = false;
     App.revealLocked = false;
 }
 

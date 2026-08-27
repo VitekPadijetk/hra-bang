@@ -184,6 +184,11 @@ const App = {
     // s fází dorazí hned (míchání si řídí klient), takže bez zámku by šlo kliknout
     // na kartu, která ještě letí – stejná dohoda jako storeLocked u hokynářství.
     revealShuffling: false,
+    // revealShuffleRunning = míchací cinematika odkryté řady PRÁVĚ běží. V režimu
+    // 'proactive' (balíček došel poslední odkrytou kartou) se míchá paralelně
+    // s výběrem, takže úklid po výběru (playKitCarlsonResult/endClausDeal/…) nesmí
+    // revealShuffling shodit – jinak by se doprostřed míchání vrátil plný balíček.
+    revealShuffleRunning: false,
     revealLocked: false,
     discardBorderShown: false,
     // Pedro Ramirez: po kliknutí na odhoz (vzít první kartu z odhozu) zamkni odhoz,
