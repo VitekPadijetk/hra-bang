@@ -67,6 +67,11 @@ const ResponseMixin = {
             if (pr.ricochet) return false;
 
             this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
+            // Molly Stark: Pivo zahrané mimo její tah je taky „zahraná karta z ruky",
+            // takže si za něj lízne. V Duelu se náhrada odloží až na jeho konec (stejně
+            // jako u Bang!) – zachráněný Duel končí hned v _advanceAfterLastLifeSave,
+            // kde se odložené náhrady uvolní.
+            this._mollyPlayedOutOfTurn(playerIdx, pr.sourceCard === CardType.DUEL);
             this.checkSuzyLafayette(p);
 
             // Zásah se nikdy neaplikuje (hráč zůstává na 1 HP) → přebytek je čisté léčení.

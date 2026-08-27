@@ -413,3 +413,23 @@ test('Molly Stark: náhrada za Bang! v Duelu se odloží až do konce Duelu', ()
     assert.equal(g.phase, 'DRAW');
     assert.equal(g.drawPhaseState.playerIdx, 1);
 });
+
+test('Molly Stark: Pivo jako záchrana posledního života → lízne 1', () => {
+    // Tři hráči (ve dvou by Pivo nefungovalo), tah hráče 0 → Molly hraje mimo svůj tah.
+    const g = mkGame([
+        { role: 'Sheriff' }, { role: 'Outlaw', character: 'Molly Stark', health: 1 }, { role: 'Renegade' },
+    ]);
+    g.currentPlayerIndex = 0;
+    g.deck.cards = [mkCard(CardType.BANG, { id: 964 })];
+    const bang = give(g, 0, CardType.BANG);
+    const beer = give(g, 1, CardType.BEER);
+    g.playBang(0, 1, bang);
+
+    assert.equal(g.beerLastLifeSave(1, beer), true);
+    assert.equal(g.players[1].health, 1);        // zachráněná
+    // Náhrada za zahrané Pivo: KILL_REWARD 1 pro Molly → líže klikem na balíček
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 1);
+    g.drawCard('deck');
+    assert.equal(g.players[1].hand.some(c => c.id === 964), true);
+});
