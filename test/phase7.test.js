@@ -173,6 +173,41 @@ test('Belle Star: cíl nemůže uhnout zelenou kartou ze stolu (její tah)', () 
     assert.equal(g2.players[1].board.some(c => c.id === ip2.id), false);
 });
 
+test('Belle Star: Jourdonnaisovi zůstává jeho VROZENÉ sejmutí (ruší jen karty na stole)', () => {
+    // Belle Star ruší cizí KARTY na stole; Jourdonnaisův barel je schopnost postavy,
+    // takže sejmutí proběhne (a při ♥ zásah mine).
+    const g = mkGame([
+        { role: 'Sheriff', character: 'Belle Star' }, { role: 'Outlaw', character: 'Jourdonnais' },
+    ], { current: 0 });
+    topDeck(g, Suits.HEARTS);
+    const idx = give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+    g.playBang(0, 1, idx);
+    assert.equal(g.phase, 'BARREL_DRAW');
+    assert.equal(g.pendingBarrelCheck.reason, 'JOURDONNAIS');
+    assert.equal(g.pendingBarrelCheck.checksLeft, 1);   // barel na stole se nepočítá
+    g.triggerBarrelDraw();
+    g.resolveCheck();
+    assert.equal(g.players[1].health, 4);               // ♥ → zásah miň
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Belle Star: Jourdonnais s Barelem má jen JEDNO sejmutí (karta na stole neplatí)', () => {
+    const g = mkGame([
+        { role: 'Sheriff', character: 'Belle Star' }, { role: 'Outlaw', character: 'Jourdonnais' },
+    ], { current: 0 });
+    board(g, 1, CardType.BARREL);
+    const idx = give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+    g.playBang(0, 1, idx);
+    assert.equal(g.pendingBarrelCheck.checksLeft, 1);
+
+    // Bez Belle Star jsou to dvě sejmutí (schopnost + karta).
+    const g2 = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw', character: 'Jourdonnais' }], { current: 0 });
+    board(g2, 1, CardType.BARREL);
+    const idx2 = give(g2, 0, CardType.BANG, { suit: Suits.SPADES });
+    g2.playBang(0, 1, idx2);
+    assert.equal(g2.pendingBarrelCheck.checksLeft, 2);
+});
+
 // ── Vera Custer ──────────────────────────────────────────────────────────────
 test('Vera Custer: začátek tahu → VERA_COPY s volbami žijících cizích postav', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Vera Custer' }, { role: 'Outlaw', character: 'Bart Cassidy' }, { role: 'Renegade', character: 'Slab the Killer' }], { current: 0 });
