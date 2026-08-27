@@ -1182,7 +1182,12 @@ function playNewIdentityResult(data) {
             targets: bigSpr, x: NI_MY_X(), y: _niMyCharY(2),
             scaleX: NI_MY_SCALE(), scaleY: NI_MY_SCALE(),
             duration: D.moveMs, ease: 'Power2',
-            onComplete: () => { if (bigSpr.active) bigSpr.destroy(); done(); }
+            // Sprite drž na cíli, dokud STAV nemá novou postavu (stejně jako holdUntil
+            // u letových animací). Bez toho se po doletu sundá App.niHideChar dřív, než
+            // dorazí room_update, a na místě postavy problikne ještě ta STARÁ.
+            onComplete: () => holdThenFinish(bigSpr,
+                () => state?.players?.[myIndex]?.character === data.to,
+                () => { if (bigSpr.active) bigSpr.destroy(); done(); })
         });
     };
 
@@ -1202,7 +1207,15 @@ function playNewIdentityResult(data) {
                     if (!oldSpr.active) { flyNewIn(); return; }
                     gameScene.tweens.add({
                         targets: oldSpr, y: NI_MY_Y(), duration: D.moveMs, ease: 'Power2',
-                        onComplete: () => { if (oldSpr.active) oldSpr.destroy(); flyNewIn(); }
+                        // Karta dosedla na slot odložené identity = přesně tam, kde renderer
+                        // kreslí kartu životů. Odkryj ji HNED (a teprve pak sundej sprite),
+                        // ať tam po dobu letu nové postavy nezůstane díra.
+                        onComplete: () => {
+                            App.niHideSecond = false;
+                            if (gameScene) renderUI();
+                            if (oldSpr.active) oldSpr.destroy();
+                            flyNewIn();
+                        }
                     });
                 }
             });
