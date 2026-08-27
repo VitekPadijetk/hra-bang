@@ -31,6 +31,9 @@ if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
     }
+    if (typeof inPlayCount === 'undefined') {
+        globalThis.inPlayCount = require('./distance.js').inPlayCount;
+    }
     if (typeof cardPlayability === 'undefined') {
         globalThis.cardPlayability = require('./playability.js').cardPlayability;
     }
@@ -878,7 +881,7 @@ function decideBotAction(state, myIndex, beliefs) {
             }
 
             // Pořád nelze uhnout — záchrana při posledním životě (Pivo / Sid Ketchum).
-            const aliveCount = state.players.filter(p => p.health > 0).length;
+            const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
             if (me.health === 1 && aliveCount > 2 && !_rico) {
                 const beerIdx = beerBlockedFor(state) ? -1
                     : me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
@@ -990,7 +993,7 @@ function decideBotAction(state, myIndex, beliefs) {
         }
 
         case 'DYNAMITE_DAMAGE': {
-            const aliveCount = state.players.filter(p => p.health > 0).length;
+            const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
             if (me.health === 1 && aliveCount > 2 && !beerBlockedFor(state)) {
                 const beerIdx = me.hand.findIndex(c => c.type === T.BEER);
                 if (beerIdx !== -1) return { event: 'beer_dynamite_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
@@ -1001,7 +1004,7 @@ function decideBotAction(state, myIndex, beliefs) {
         // High Noon – Pravé poledne: ztráta života na začátku tahu. Na posledním životě
         // se zachraň Pivem (pokud ho Reverend zrovna nezakazuje), jinak schytej zásah.
         case 'NOON_DAMAGE': {
-            const aliveCount = state.players.filter(p => p.health > 0).length;
+            const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
             if (me.health === 1 && aliveCount > 2 && !beerBlockedFor(state)) {
                 const beerIdx = me.hand.findIndex(c => c.type === T.BEER);
                 if (beerIdx !== -1) return { event: 'beer_noon_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };

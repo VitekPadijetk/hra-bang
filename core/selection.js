@@ -34,6 +34,11 @@ if (typeof require === 'function') {
     if (typeof beerBlockedFor === 'undefined') {
         globalThis.beerBlockedFor = require('./highNoon.js').beerBlockedFor;
     }
+    // Duch (Město duchů) se počítá za hráče ve hře – pravidlo „při dvou hráčích Pivo
+    // nefunguje" se ho proto ptá přes inPlayCount, ne přes health > 0.
+    if (typeof inPlayCount === 'undefined') {
+        globalThis.inPlayCount = require('./distance.js').inPlayCount;
+    }
 }
 
 function decideCardClick(ctx) {
@@ -77,7 +82,7 @@ function decideCardClick(ctx) {
     if (state.phase === "DYNAMITE_DAMAGE" &&
         state.pendingDynamiteDamage?.playerIdx === myIndex &&
         me.health === 1 && card.type === "Pivo" && !beerBlockedFor(state) &&
-        state.players.filter(p => p.health > 0).length > 2) {
+        inPlayCount(state.players) > 2) {
         return { type: 'BEER_DYNAMITE_SAVE', index };
     }
 
@@ -85,7 +90,7 @@ function decideCardClick(ctx) {
     if (state.phase === "NOON_DAMAGE" &&
         state.pendingNoonDamage?.playerIdx === myIndex &&
         me.health === 1 && card.type === "Pivo" && !beerBlockedFor(state) &&
-        state.players.filter(p => p.health > 0).length > 2) {
+        inPlayCount(state.players) > 2) {
         return { type: 'BEER_NOON_SAVE', index };
     }
 
@@ -98,7 +103,7 @@ function decideCardClick(ctx) {
     if (isMyResponseTurn) {
         // Pivo jako záchrana při posledním životě
         if (card.type === "Pivo" && me.health === 1 &&
-            state.players.filter(p => p.health > 0).length > 2) {
+            inPlayCount(state.players) > 2) {
             return { type: 'RESPOND_BEER', index };
         }
         return { type: 'RESPOND', index };

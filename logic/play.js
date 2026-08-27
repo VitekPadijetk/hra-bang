@@ -42,7 +42,8 @@ const PlayMixin = {
                 // hlídal jen u záchrany posledního života (beerLastLifeSave), takže v
                 // koncovce 1v1 se z ruky pořád léčilo. Klient to nenabízel (cardPlayability),
                 // ale pravidlo patří sem – Salón i ostatní léčení platí dál.
-                if (this.players.filter(p => p.health > 0).length <= 2) return false;
+                // Duch (Město duchů) se počítá za hráče ve hře – s ním jsou u stolu tři.
+                if (inPlayCount(this.players) <= 2) return false;
                 // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
                 // Přes _heal, který ohlídá i to, že mrtvého léčit nejde (duch při Městě
                 // duchů ale ano) – jinak se Pivo vůbec nezahraje.

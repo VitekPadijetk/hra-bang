@@ -1787,7 +1787,7 @@ function drawMyArea(ctx) {
                 // Pivo jako záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE).
                 // Reverend (High Noon) Pivo zakazuje i tady → nezvýrazňovat (klik ho také
                 // nepustí, viz decideCardClick v core/selection.js).
-                const _aliveNow = state.players.filter(p => p.health > 0).length;
+                const _aliveNow = inPlayCount(state.players);   // duch se počítá (Město duchů)
                 const _isLastLifeBeer = card.type === "Pivo" && me.health === 1 && _aliveNow > 2 && !isMySidActive &&
                     !beerBlockedFor(state) &&
                     ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex
@@ -2148,7 +2148,7 @@ function drawMyArea(ctx) {
 
         // Sid Ketchum záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE)
         {
-            const _aliveForSid = state.players.filter(p => p.health > 0).length;
+            const _aliveForSid = inPlayCount(state.players);   // duch se počítá (Město duchů)
             const _sidLastLifeCtx = effectiveCharacter(me) === "Sid Ketchum" && me.health === 1 &&
                 me.hand.filter(c => !c._placeholder).length >= 2 && _aliveForSid > 2 &&
                 ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex

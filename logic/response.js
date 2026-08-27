@@ -9,7 +9,7 @@ const ResponseMixin = {
         if (!p || p.health !== 1) return false;
         const card = p.hand[cardIdx];
         if (!card || card.type !== CardType.BEER) return false;
-        const aliveCount = this.players.filter(pl => pl.health > 0).length;
+        const aliveCount = inPlayCount(this.players);   // duch (Město duchů) se počítá
         if (aliveCount <= 2) return false;
         if (this._beerBlocked()) return false;   // High Noon – Reverend: Pivo se hrát nedá
         if (this._suitBlocked(playerIdx, card)) return false;   // High Noon – Želízka
@@ -83,7 +83,7 @@ const ResponseMixin = {
     sidLastLifeSave(playerIdx, cardIdx1, cardIdx2) {
         const p = this.players[playerIdx];
         if (!p || p.health !== 1 || effectiveCharacter(p) !== "Sid Ketchum") return false;
-        const aliveCount = this.players.filter(pl => pl.health > 0).length;
+        const aliveCount = inPlayCount(this.players);   // duch (Město duchů) se počítá
         if (aliveCount <= 2) return false;
         if (p.hand.length < 2) return false;
         // Fistful – Odražená střela ohrožuje kartu na stole, ne život (viz beerLastLifeSave).

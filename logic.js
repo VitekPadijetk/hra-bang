@@ -12,6 +12,9 @@ if (typeof computeDistance === 'undefined' && typeof require === 'function') {
 if (typeof isInPlay === 'undefined' && typeof require === 'function') {
     globalThis.isInPlay = require('./core/distance.js').isInPlay;
 }
+if (typeof inPlayCount === 'undefined' && typeof require === 'function') {
+    globalThis.inPlayCount = require('./core/distance.js').inPlayCount;
+}
 
 // V Node nejsou entity globály — načteme je z logic/entities.js a vystavíme na globalThis,
 // aby na ně metody GameState mohly sahat bez kvalifikace. V prohlížeči jsou to globály

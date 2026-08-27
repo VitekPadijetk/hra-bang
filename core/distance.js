@@ -43,6 +43,13 @@ function isInPlay(player) {
     return !!player && (player.health > 0 || !!player._ghost);
 }
 
+// Kolik hráčů právě SEDÍ VE HŘE (duch Města duchů se počítá – na svůj tah hraje).
+// Jediný zdroj pravdy pro pravidlo „při dvou hráčích Pivo nemá efekt": je-li na tahu
+// duch a žijí ještě dva hráči, hrají v tu chvíli tři a Pivo (i Sidova záchrana) platí.
+function inPlayCount(players) {
+    return (players || []).filter(isInPlay).length;
+}
+
 function computeDistance(state, fromIdx, toIdx) {
     const alivePlayers = state.players
         .map((p, index) => ({ p, index }))
@@ -104,5 +111,5 @@ function bangEffectReach(card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, isInPlay };
+    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, isInPlay, inPlayCount };
 }

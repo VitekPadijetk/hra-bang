@@ -16,6 +16,9 @@ if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
     }
+    if (typeof inPlayCount === 'undefined') {
+        globalThis.inPlayCount = require('./distance.js').inPlayCount;
+    }
     if (typeof isResponseTurn === 'undefined') {
         const __ph = require('./phaseInfo.js');
         globalThis.isResponseTurn = __ph.isResponseTurn;
@@ -68,7 +71,7 @@ function cardPlayability(state, me, myIndex, card) {
     if ((isMyResponseTurn || isMyPlayTurn) && suitBlockedFor(state, myIndex, card)) return false;
     if (isMyResponseTurn) {
         const req = state.pendingResponse.requiredCard;
-        const _aliveForBeer = state.players.filter(p => p.health > 0).length;
+        const _aliveForBeer = inPlayCount(state.players);   // duch se počítá (Město duchů)
         // Pivo jako záchrana při posledním životě (Reverend ho zakazuje – High Noon).
         // Fistful – Odražená střela neohrožuje život, ale kartu na stole: zachraňovat
         // se před ní Pivem (ani Sidem) nejde, jinak by šlo za jedno Pivo ubránit kartu.
@@ -150,7 +153,7 @@ function cardPlayability(state, me, myIndex, card) {
         if (card.type === "Duel") return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
         if (card.type === "Pivo") {
             if (beerBlockedFor(state)) return false;   // Reverend (High Noon)
-            const aliveCount = state.players.filter(p => p.health > 0).length;
+            const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
             if (aliveCount <= 2) return false;
             if (!isInPlay(me) || me.health >= me.maxHealth) return false;   // duch se léčit smí
             return true;

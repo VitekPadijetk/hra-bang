@@ -43,6 +43,26 @@ test('beerLastLifeSave: na 1 HP a >2 hráči zachrání, jinak ne', () => {
     assert.equal(g2.beerLastLifeSave(1, beer2), false);
 });
 
+test('Pivo: duch (Město duchů) se počítá za třetího hráče', () => {
+    // Dva živí + duch na tahu = u stolu sedí tři, takže Pivo zase funguje.
+    const g = mkGame([
+        { role: 'Sheriff', health: 0 }, { role: 'Outlaw', health: 2 }, { role: 'Renegade' },
+    ]);
+    g.players[0]._ghost = true;
+    g.eventDeck = [];
+    const beer = give(g, 0, CardType.BEER);
+
+    g.playCard(beer);
+    assert.equal(g.players[0].health, 1);   // duch se léčit smí (isInPlay)
+
+    // Bez ducha jsou to jen dva hráči a Pivo nemá efekt.
+    const g2 = mkGame([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw', health: 2 }]);
+    const beer2 = give(g2, 0, CardType.BEER);
+    g2.playCard(beer2);
+    assert.equal(g2.players[0].health, 2);
+    assert.equal(g2.players[0].hand.length, 1);   // nezahráno
+});
+
 // ── Salon ───────────────────────────────────────────────────────────────────
 test('Salon vyléčí všechny zraněné o 1', () => {
     const g = mkGame([
