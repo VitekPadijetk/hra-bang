@@ -1935,8 +1935,11 @@ function _playCardAnim(data) {
             // byl vidět dvakrát) a po doletu odkryj.
             App.stealHideIds.add(data.cardId);
             renderUI();
-            // Dynamit se během letu dotočí do orientace cílového hráče (bok = 90°) a zmenší
-            // se z „zvednuté" velikosti na velikost karty na cílovém boardu.
+            // Dynamit se během letu dotočí do orientace cílového hráče (bok = 90°) a přeškáluje
+            // z velikosti boardu PŮVODNÍHO majitele na velikost karty na cílovém boardu.
+            // startScale musí být sideScale(fromIdx), ne pevná konstanta – na kompaktním
+            // profilu (a u soupeřů obecně) leží karty menší, takže dynamit se se startem
+            // letu viditelně nafoukl a teprve za letu se srovnal.
             // holdUntil: sprite drž na cíli, dokud dynamit reálně neleží na stole nového
             // majitele (room_update). Bez toho se po dojezdu letu odkryje dřív, než stav
             // dorazí, a dynamit na okamžik problikne zpátky na PŮVODNÍM místě.
@@ -1944,7 +1947,7 @@ function _playCardAnim(data) {
                 App.stealHideIds.delete(data.cardId); renderUI();
             }, { startAngle: sideAngle(data.fromIdx), endAngle: sideAngle(data.toIdx),
                  exactAngle: true,   // naproti (0°→180°) se musí opravdu otočit, ne srovnat na 0
-                 startScale: 0.42, endScale: sideScale(data.toIdx),
+                 startScale: sideScale(data.fromIdx), endScale: sideScale(data.toIdx),
                  holdUntil: () => onBoardOf(data.toIdx, data.cardId) });
             break;
         }
@@ -1958,7 +1961,8 @@ function _playCardAnim(data) {
             // rotaci zrušil a dynamit by dosedl vzhůru nohama.
             animateCard(from.x, from.y, discard.x, discard.y, getCardTex(data.cardId), 350, () => {
                 if (App.discardAnimHideId === data.cardId) { App.discardAnimHideId = null; renderUI(); }
-            }, { startAngle: sideAngle(data.playerIdx), endAngle: 0, exactAngle: true, startScale: 0.42, endScale: 0.3,
+            }, { startAngle: sideAngle(data.playerIdx), endAngle: 0, exactAngle: true,
+                 startScale: sideScale(data.playerIdx), endScale: pileScale(),
                  });
             break;
         }
