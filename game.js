@@ -2249,19 +2249,17 @@ function ensureAllExpansionAssets() {
 // `cardList` = které karty zapéct. Bez něj se berou základní karty (cards_data); karty
 // rozšíření se pečou zvlášť, až doteče jejich art (viz loadExpansionAssets) – jinak by se
 // jim natrvalo zapekl placeholder.
-function buildCardTextures(scene, cardList) {
-    const allData = cardList || scene.cache.json.get('cards_data');
-    if (!allData) { clog('error', 'cards_data nenačteno – karty zůstanou na rubu'); return; }
+// Vykreslí OBSAH jedné karty do připravené RenderTextury: art druhu (nebo nouzový
+// placeholder + název) + marky hodnoty/barvy + symbol rozšíření. `sKey` = marka barvy,
+// která se má ZAPÉCT – volající tím rozhoduje, jestli platí přebarvení (Požehnání/Prokletí),
+// nebo vytištěná barva. Vytažené z buildCardTextures, aby šla stejnou cestou upéct
+// i varianta s vytištěnou barvou pro Peyote (viz printedSuitTex).
+function paintCardTexture(scene, rt, card, sKey) {
     const W = CARD_TEX_W, H = CARD_TEX_H, L = MARK_LAYOUT;
-    scene._cardRTs = scene._cardRTs || {};
-    // Který seznam se kdy pekl – přepečení při Požehnání/Prokletí musí projít všechny
-    // (základ + rozšíření, jejichž art se mezitím dotáhl).
-    scene._bakedCardLists = scene._bakedCardLists || [];
-    if (!scene._bakedCardLists.includes(allData)) scene._bakedCardLists.push(allData);
-    // High Noon – Požehnání/Prokletí: marka barvy se přebíjí pro VŠECHNY karty.
-    const overrideSKey = scene._suitOverride ? 'suit_' + SUIT_SLUG[scene._suitOverride] : null;
-    const missingArt = [];   // karty složené z placeholderu (chybí art) – do logu
-    const drawMarks = (rt, vKey, sKey) => {
+    const aKey = artKey(card), vKey = valueMarkKey(card);
+    const hasArt = !!aKey && scene.textures.exists(aKey);
+    const isExp = card.exp || null;
+    const drawMarks = () => {
         // marky do levého dolního rohu (hodnota, vedle ní barva); origin(0,1) = kotva vlevo dole
         if (vKey && scene.textures.exists(vKey)) {
             const val = scene.make.image({ key: vKey, add: false }).setOrigin(0, 1).setScale(L.scale);
@@ -2274,12 +2272,49 @@ function buildCardTextures(scene, cardList) {
             val.destroy();
         }
     };
+    if (hasArt) {
+        // Hlavní cesta: art druhu + marky hodnoty/barvy. Marky se kreslí každá zvlášť,
+        // takže i kdyby některá chyběla, art se použije (lepší než náhradní karta).
+        const art = scene.make.image({ key: aKey, add: false }).setOrigin(0, 0);
+        art.setDisplaySize(W, H);
+        rt.draw(art, 0, 0); art.destroy();
+        drawMarks();
+    } else {
+        // Nouzová cesta (art druhu chybí): placeholder + název nahoře + marky. Stejně
+        // jako u karet rozšíření bez artu, ale býka dostanou dál jen karty rozšíření.
+        const ph = scene.make.image({ key: 'placeholder', add: false }).setOrigin(0, 0);
+        ph.setDisplaySize(W, H);
+        rt.draw(ph, 0, 0); ph.destroy();
+        const nameTxt = scene.make.text({ x: 0, y: 0, add: false, text: card.name || '', style: {
+            fontFamily: 'Arial', fontSize: '30px', color: '#1a1a1a', fontStyle: 'bold',
+            align: 'center', wordWrap: { width: W * 0.86 }
+        } }).setOrigin(0.5, 0);
+        rt.draw(nameTxt, W / 2, H * 0.06); nameTxt.destroy();
+        drawMarks();
+    }
+    // Symbol rozšíření (býk) do pravého horního rohu. Jen Dodge City – jiná rozšíření
+    // mají vlastní (nebo žádnou) marku, býka by dostat nesměla.
+    if (isExp === 'dodge_city' && scene.textures.exists('mark_dodge_city')) {
+        const bull = scene.make.image({ key: 'mark_dodge_city', add: false }).setOrigin(1, 0).setScale(L.bullScale);
+        rt.draw(bull, L.bullX, L.bullY); bull.destroy();
+    }
+}
+
+function buildCardTextures(scene, cardList) {
+    const allData = cardList || scene.cache.json.get('cards_data');
+    if (!allData) { clog('error', 'cards_data nenačteno – karty zůstanou na rubu'); return; }
+    const W = CARD_TEX_W, H = CARD_TEX_H;
+    scene._cardRTs = scene._cardRTs || {};
+    // Který seznam se kdy pekl – přepečení při Požehnání/Prokletí musí projít všechny
+    // (základ + rozšíření, jejichž art se mezitím dotáhl).
+    scene._bakedCardLists = scene._bakedCardLists || [];
+    if (!scene._bakedCardLists.includes(allData)) scene._bakedCardLists.push(allData);
+    // High Noon – Požehnání/Prokletí: marka barvy se přebíjí pro VŠECHNY karty.
+    const overrideSKey = scene._suitOverride ? 'suit_' + SUIT_SLUG[scene._suitOverride] : null;
+    const missingArt = [];   // karty složené z placeholderu (chybí art) – do logu
     for (const card of allData) {
-        const aKey = artKey(card), vKey = valueMarkKey(card);
-        const sKey = overrideSKey || suitMarkKey(card);
-        const hasArt = !!aKey && scene.textures.exists(aKey);
-        const isExp = card.exp || null;
-        if (!hasArt) missingArt.push(card.id + ':' + (card.name || '?'));
+        const aKey = artKey(card);
+        if (!(aKey && scene.textures.exists(aKey))) missingArt.push(card.id + ':' + (card.name || '?'));
         // PŘEPEČENÍ (Požehnání/Prokletí) kreslí do STEJNÉ RenderTextury, jen ji vyčistí.
         // Texturu `card_<id>` tím nikdy nerušíme – dřív se odstranila a založila znovu pod
         // stejným klíčem, jenže sprity, které renderUI nepřekreslí (letící karty držené na
@@ -2296,32 +2331,7 @@ function buildCardTextures(scene, cardList) {
             scene._cardRTs[card.id] = rt;        // RT drží texturu → nedestruovat
             rt.saveTexture('card_' + card.id);   // getCardTex/getTex beze změny
         }
-        if (hasArt) {
-            // Hlavní cesta: art druhu + marky hodnoty/barvy. Marky se kreslí každá zvlášť,
-            // takže i kdyby některá chyběla, art se použije (lepší než náhradní karta).
-            const art = scene.make.image({ key: aKey, add: false }).setOrigin(0, 0);
-            art.setDisplaySize(W, H);
-            rt.draw(art, 0, 0); art.destroy();
-            drawMarks(rt, vKey, sKey);
-        } else {
-            // Nouzová cesta (art druhu chybí): placeholder + název nahoře + marky. Stejně
-            // jako u karet rozšíření bez artu, ale býka dostanou dál jen karty rozšíření.
-            const ph = scene.make.image({ key: 'placeholder', add: false }).setOrigin(0, 0);
-            ph.setDisplaySize(W, H);
-            rt.draw(ph, 0, 0); ph.destroy();
-            const nameTxt = scene.make.text({ x: 0, y: 0, add: false, text: card.name || '', style: {
-                fontFamily: 'Arial', fontSize: '30px', color: '#1a1a1a', fontStyle: 'bold',
-                align: 'center', wordWrap: { width: W * 0.86 }
-            } }).setOrigin(0.5, 0);
-            rt.draw(nameTxt, W / 2, H * 0.06); nameTxt.destroy();
-            drawMarks(rt, vKey, sKey);
-        }
-        // Symbol rozšíření (býk) do pravého horního rohu. Jen Dodge City – jiná rozšíření
-        // mají vlastní (nebo žádnou) marku, býka by dostat nesměla.
-        if (isExp === 'dodge_city' && scene.textures.exists('mark_dodge_city')) {
-            const bull = scene.make.image({ key: 'mark_dodge_city', add: false }).setOrigin(1, 0).setScale(L.bullScale);
-            rt.draw(bull, L.bullX, L.bullY); bull.destroy();
-        }
+        paintCardTexture(scene, rt, card, overrideSKey || suitMarkKey(card));
     }
     if (missingArt.length) {
         clog('warn', 'Karty bez artu složené z placeholderu: ' + missingArt.length,
@@ -2345,6 +2355,27 @@ function suitOverrideForEvent(key) {
 function effSuitMarkKey(card) {
     const ov = gameScene && gameScene._suitOverride;
     return ov ? 'suit_' + SUIT_SLUG[ov] : suitMarkKey(card);
+}
+
+// Textura karty s VYTIŠTĚNOU barvou. Potřebuje ji jediné místo v pravidlech, které se
+// vytištěnou barvou řídí – Peyote (A Fistful of Cards): tipuje se proti tomu, co je na
+// kartě natištěné, takže pod Požehnáním/Prokletím nesmí odkrytá karta ukázat přebarvenou
+// marku ani při odkrývání z balíčku, ani za letu do ruky/odhozu (přebarvení pro ni začne
+// platit až tam, kde dosedne). Bez override je to prostě běžná textura; jinak se JEDNOU
+// upeče varianta `card_<id>_printed` – její obsah se nikdy nemění (vytištěná barva je
+// konstanta), takže se nechává nacachovaná i po přepečení všech ostatních karet.
+function printedSuitTex(card) {
+    if (!gameScene || !card) return 'card_back';
+    if (!gameScene._suitOverride) return getCardTex(card.id);
+    const key = 'card_' + texIdOf(card.id) + '_printed';
+    gameScene._printedRTs = gameScene._printedRTs || {};
+    if (!gameScene._printedRTs[key]) {
+        const rt = gameScene.make.renderTexture({ width: CARD_TEX_W, height: CARD_TEX_H }, false);
+        gameScene._printedRTs[key] = rt;   // RT drží texturu → nedestruovat
+        rt.saveTexture(key);
+        paintCardTexture(gameScene, rt, card, suitMarkKey(card));
+    }
+    return key;
 }
 
 // Idempotentní: když se platná barva nemění, neudělá nic. Volá se z cinematiky odkrytí

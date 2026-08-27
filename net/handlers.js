@@ -2037,8 +2037,10 @@ function _playCardAnim(data) {
 // jako u Black Jacka. Časování je sdílené se serverem (core/fistfulAnim.js).
 function startPeyoteReveal(data) {
     // `printedSuit`: Peyote se schválně vyhodnocuje proti VYTIŠTĚNÉ barvě (jinak by pod
-    // Požehnáním/Prokletím sedl každý tip), takže i odkrytá karta musí ukázat tu
-    // vytištěnou – přebarvení na srdce/piky se na ní projeví až v ruce.
+    // Požehnáním/Prokletím sedl každý tip), takže vytištěnou barvu musí ukazovat CELÁ
+    // cinematika – překlopení z balíčku, výdrž s pulzující markou i let do ruky/odhozu
+    // (kartě se pro to upeče vlastní textura, viz printedSuitTex). Přebarvení na
+    // srdce/piky se na ní projeví až tam, kde dosedne, tedy až ji převezme stav.
     startDeckCardReveal(data.card, data.playerIdx, PEYOTE_ANIM,
                         { pulse: true, printedSuit: true, toDiscard: !data.hit });
 }
@@ -2086,7 +2088,10 @@ function startLawReveal(data) {
 // (ostatním se za letu překlopí zpět na rub) nebo do ODHOZU (`toDiscard`).
 function startDeckCardReveal(card, playerIdx, D, opts = {}) {
     if (!gameScene || !state || !card) return;
-    const faceTex = getCardTex(card.id);
+    // `opts.printedSuit` (Peyote): karta ukazuje VYTIŠTĚNOU barvu po CELOU dobu cinematiky –
+    // od odkrytí z balíčku přes výdrž uprostřed až po dolet do ruky/odhozu. Přebarvení
+    // (Požehnání/Prokletí) se na ní projeví až tam, kde dosedne, tedy až ji převezme stav.
+    const faceTex = opts.printedSuit ? printedSuitTex(card) : getCardTex(card.id);
     const isOwner = playerIdx === myIndex && myIndex !== null;
     const from = opts.from || deckTopPos();
     const pScale = currentLayout().scaleDeck;   // velikost karty na hromádce (odhoz)

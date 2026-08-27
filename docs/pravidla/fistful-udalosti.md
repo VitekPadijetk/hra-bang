@@ -263,8 +263,16 @@ a hádá znovu. Neuhodl → karta jde do odhozu a fáze lízání končí."
   za ním. Když došel balíček i odhoz, fáze prostě skončí – jinak by se nedala dokončit.
 - **Jediné místo v kódu, kde se čte VYTIŠTĚNÁ `card.suit`.** Pod Požehnáním/Prokletím
   (High Noon) by přes `_effSuit` každý tip sedl a hráč by si lízl celý balíček; výjimka
-  je proto i v klientské cinematice (`pulseCheckMark(..., { printedSuit: true })`)
-  a v botově větvi `PEYOTE`. Jakmile karta dosedne do ruky, přebarvení pro ni platí normálně.
+  je proto i v klientské cinematice a v botově větvi `PEYOTE`. Jakmile karta dosedne
+  do ruky (nebo do odhozu), přebarvení pro ni platí normálně.
+- **Vytištěnou barvu ukazuje CELÁ cinematika, ne jen výdrž uprostřed.** Textury `card_<id>`
+  jsou pod Požehnáním/Prokletím přepečené na srdce/piky, takže se karta odkrývaná z balíčku
+  přebarvovala i tam, kde se zrovna sázelo na tu vytištěnou; `printedSuit: true` proto
+  nesahá jen na pulzující marku (`pulseCheckMark`), ale rovnou na texturu spritu –
+  **`printedSuitTex(card)`** ([game.js](game.js)) upeče jednorázově variantu
+  `card_<id>_printed` (stejnou cestou jako běžné karty, sdílený `paintCardTexture`),
+  kterou si letící karta drží od překlopení až po dosednutí. Ve stavu (ruka, odhoz) už
+  je zase běžná přebarvená textura.
 - **Obě tlačítka (červená/černá) obsadí oba slotky**, takže se ve fázi `PEYOTE` nekreslí
   tlačítko Sida Ketchuma – stejně jako u Ranče a Pokrevních bratrů.
 
