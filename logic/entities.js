@@ -63,7 +63,7 @@ const DODGE_CITY_CHARACTERS = [
 // Postavy rozšíření A Fistful of Cards (všechny 4 životy). Do výběru se přidají
 // jen se zapnutým rozšířením (options.expansions.fistful → _characterPool).
 const FISTFUL_CHARACTERS = [
-    "Claus the Saint", "Uncle Will", "Johnny Kisch"
+    "Claus the Saint", "Johnny Kisch", "Uncle Will"
 ];
 
 class Card {
