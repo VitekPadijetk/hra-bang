@@ -2054,7 +2054,10 @@ function drawMyArea(ctx) {
             // Zelená karta na mém stole, kterou lze teď aktivovat, se počítá jako
             // hratelná akce (blikání „Ukončit tah" pak nemá smysl). Zrcadlí `ok`-logiku
             // aktivace zelených karet výše v drawMyArea.
-            const hasPlayableGreen = (me.board || []).some(card => {
+            // Fistful – Laso: karty na stole nemají efekt, takže se ani zelená
+            // aktivovat nedá (zrcadlí greenTurn níže). Bez toho zůstalo „Ukončit
+            // tah" nebliká, i když hráč neměl co zahrát (bug 18).
+            const hasPlayableGreen = !boardDeadFor(state) && (me.board || []).some(card => {
                 if (!card || !card.green) return false;
                 if (card.activate === 'miss') return false;        // Vedle!-zelené jen jako reakce
                 if (card._playedTurn === state.turnId) return false; // položená tento tah
