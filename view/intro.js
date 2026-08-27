@@ -1054,8 +1054,14 @@ function renderIntroScene() {
     const s = _introState;
     const sub = s.sub;
 
-    // Výběr postavy: zobraz když máme choices, hráč nevybral, a UI je ready
-    if (s.myCharChoices && s.myCharChoices.length > 0 && !s.myCharSelected && s.myCharShowUI) {
+    // Výběr postavy: zobraz když máme choices, hráč nevybral, a UI je ready.
+    // Stačí, že doletěla PRVNÍ z dvojice (charRevealed) – jinak by levá karta po
+    // dokončení svého překlopení zmizela (sprite se ničí) a scéna by ji nakreslila
+    // až s doletem pravé, tedy viditelně bliknula. Klikací jsou obě až po obou
+    // (charChoicesRevealed, gate uvnitř _renderIntroCharSelect).
+    const anyCharRevealed = !!(s.charRevealed && s.charRevealed.some(Boolean));
+    if (s.myCharChoices && s.myCharChoices.length > 0 && !s.myCharSelected
+        && (s.myCharShowUI || anyCharRevealed)) {
         _renderIntroCharSelect();
         return;
     }
