@@ -482,6 +482,30 @@ test('Vendeta: ♥ → týž hráč hraje ještě jeden tah (nové turnId)', () 
     assert.equal(g.phase, 'DRAW', 'tah navíc jede celý znovu, včetně fáze lízání');
 });
 
+test('Vendeta: zelená karta z první půlky tahu jde v tahu navíc aktivovat', () => {
+    // Tah navíc má nové turnId, takže razítko `_playedTurn` z první půlky už neplatí
+    // („nelze aktivovat ve stejném tahu, kdy byla položena").
+    const g = mkEv([{ role: 'Sheriff' }, {}], 'VENDETA', { current: 0 });
+    g.turnId = 5;
+    const i = give(g, 0, CardType.CANTEEN, { props: { green: true, activate: 'heal_self' } });
+    g.playCard(i);
+    const green = g.players[0].board[0];
+    assert.equal(green._playedTurn, 5);
+
+    g.nextTurn();
+    topDeck(g, Suits.HEARTS);
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.currentPlayerIndex, 0, 'týž hráč hraje znovu');
+    assert.notEqual(green._playedTurn, g.turnId, 'razítko je z minulého tahu');
+
+    g.phase = 'PLAY';
+    g.players[0].health = 1;
+    g.activateGreenCard(0, green.id, null);
+    assert.equal(g.players[0].health, 2, 'Čutora se aktivovala');
+    assert.equal(g.players[0].board.length, 0);
+});
+
 test('Vendeta: jiná barva → tah se normálně posune', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}], 'VENDETA', { current: 0 });
     g.nextTurn();
