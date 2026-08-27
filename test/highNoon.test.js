@@ -773,6 +773,35 @@ test('Kocovina přestane platit, jakmile ji překryje další událost', () => {
     assert.equal(g.players.some(p => p._noAbility), false);
 });
 
+test('Kocovina končí → Suzy si lízne hned, ještě PŘED efektem odkryté karty', () => {
+    // Schopnosti se vracejí v okamžiku výměny karty, ne až po efektu nové události:
+    // do Daltonů tak Suzy nastupuje s kartou v ruce (jinak by neměla co odhodit
+    // a navíc by ji Daltonové zastihli bez schopnosti).
+    const g = mkHnGame([{ role: 'Sheriff', character: 'Suzy Lafayette' }, {}]);
+    board(g, 0, CardType.BARREL);
+    g.deck.cards = [mkCard(CardType.BANG, { id: 981 })];
+    flipEvent(g, 'KOCOVINA');
+    assert.equal(g.players[0].hand.length, 0, 'pod Kocovinou schopnost neplatí');
+
+    assert.equal(flipEvent(g, 'DALTONOVE'), true, 'start tahu se pozastaví');
+    assert.equal(g.phase, 'SUZY_DRAW', 'nejdřív Suzy, teprve pak Daltonové');
+    assert.equal(g.daltonsQueue, null);
+
+    g.suzyLafayetteDraw(0);
+    assert.equal(g.players[0].hand.some(c => c.id === 981), true);
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD', 'teď teprve Daltonové');
+    assert.equal(g.pendingSelection.isDaltons, true);
+});
+
+test('Kocovina končí, ale Suzy karty má → žádné líznutí navíc', () => {
+    const g = mkHnGame([{ role: 'Sheriff', character: 'Suzy Lafayette' }, {}]);
+    give(g, 0, CardType.BANG);
+    flipEvent(g, 'KOCOVINA');
+    flipEvent(g, 'DOKTOR');
+    assert.notEqual(g.phase, 'SUZY_DRAW');
+    assert.equal(g.players[0].hand.length, 1);
+});
+
 // ── Zlatá horečka ───────────────────────────────────────────────────────────
 // Hraje se proti směru hodinových ručiček. Efekty karet zůstávají po směru (FAQ H3).
 

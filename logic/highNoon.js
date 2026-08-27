@@ -77,9 +77,10 @@ const HighNoonMixin = {
     //
     // Kroky jsou očíslované (`_beginTurnStep`), aby se dalo kdykoli pauznout a vrátit
     // se přesně sem: 0 = návrat Mrtvého muže (Fistful), 1 = odkrytí událostí (obou
-    // balíčků), 2 = okamžitý efekt karty High Noon, 3 = okamžitý efekt karty Fistful,
-    // 4 = Pravé poledne, 5 = zásahy od Fistful of Cards, 6 = Nová identita,
-    // 7 = Pokrevní bratři (Fistful).
+    // balíčků), 2 = změna platnosti schopností (Kocovina) + okamžité líznutí Suzy,
+    // 3 = okamžitý efekt karty High Noon, 4 = okamžitý efekt karty Fistful,
+    // 5 = Pravé poledne, 6 = zásahy od Fistful of Cards, 7 = Nová identita,
+    // 8 = Pokrevní bratři (Fistful).
     _beginTurn() {
         this._beginTurnStep = 0;
         // Želízka (High Noon) platí přesně jeden tah. Barvu je nutné zahodit hned na
@@ -134,7 +135,8 @@ const HighNoonMixin = {
         // na Dynamit/Vězení: „na začátku svého tahu, PŘED lízáním" – a sejmutí na Dynamit
         // i Vězení už k fázi lízání patří. Život tak stihne darovat i ten, koho vzápětí
         // vyhodí do vzduchu dynamit nebo komu vězení tah vezme.
-        const steps = [this._deadManReturn, this._flipEvent, this._applyEventOnEnter,
+        const steps = [this._deadManReturn, this._flipEvent, this._applyAbilitiesOnEnter,
+                       this._applyEventOnEnter,
                        this._applyFfEventOnEnter, this._noonDamage, this._fistfulHits,
                        this._newIdentityOffer, this._startBloodBrothers];
         while (this._beginTurnStep < steps.length) {
@@ -173,18 +175,40 @@ const HighNoonMixin = {
         return false;
     },
 
+    // Platnost schopností postav se mění v OKAMŽIKU výměny karty události, tedy dřív,
+    // než cokoli z nové dvojice karet začne působit. Vlastní krok startu tahu právě
+    // proto: až za ním jdou efekty obou karet (Daltonové, Ruská ruleta…).
+    //
+    // Kocovina: po celé kolo neplatí žádné schopnosti postav. Příznak čte
+    // effectiveCharacter (core/distance.js), kterým prochází VŠECHNY kontroly
+    // schopností v pravidlech i v klientských zrcadlech. Přepisuje se při každé
+    // výměně události – jinak by kocovina zůstala viset i po jejím překrytí.
+    //
+    // Suzy Lafayette: „jakmile nemá v ruce karty, hned si jednu lízne." Skončila-li
+    // právě Kocovina, dostala schopnost zpátky s prázdnou rukou → líže si TEĎ, ne až
+    // po efektu odkrytých karet: do Daltonů i do Ruské rulety tak nastupuje s kartou.
+    // `_eventEntering` se tu schválně NENULUJE – čte ho ještě _applyEventOnEnter.
+    _applyAbilitiesOnEnter() {
+        const key = this._eventEntering;
+        if (!key) return false;
+        (this.players || []).forEach(p => { p._noAbility = key === 'KOCOVINA'; });
+
+        (this.players || []).forEach(p => this.checkSuzyLafayette(p));
+        // Frontu pročisti PŘED tím, než se podle její délky rozhoduješ (viz CLAUDE.md).
+        this._pruneSuzyQueue();
+        if (this.specialActionQueue.length > 0) {
+            this._resumeBeginTurnAfterQueue = true;
+            this._processSpecialQueue();
+            return true;
+        }
+        return false;
+    },
+
     // Efekty, které se vyhodnotí JEDNOU při příchodu karty do hry.
     _applyEventOnEnter() {
         const key = this._eventEntering;
         this._eventEntering = null;
         if (!key) return false;
-
-        // Kocovina: po celé kolo neplatí žádné schopnosti postav. Příznak čte
-        // effectiveCharacter (core/distance.js), kterým prochází VŠECHNY kontroly
-        // schopností v pravidlech i v klientských zrcadlech. Přepisuje se při každé
-        // výměně události – jinak by kocovina zůstala viset i po jejím překrytí.
-        const hangover = key === 'KOCOVINA';
-        (this.players || []).forEach(p => { p._noAbility = hangover; });
 
         if (key === 'DALTONOVE') return this._startDaltons();
 

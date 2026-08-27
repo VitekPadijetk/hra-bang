@@ -71,7 +71,7 @@ jednu z nich odhodí** – vybírá si ji sám, po směru hodinových ručiček 
 Recykluje se sekvenční výběr Rvačky, jen `attackerIdx === targetIdx`: hráč sahá na
 **vlastní** stůl. Klik klienta, bot i guard tím fungují beze změny.
 
-1. `_applyEventOnEnter` (krok 1 `_beginTurn`) zavolá `_startDaltons` → fronta `daltonsQueue`
+1. `_applyEventOnEnter` (krok 3 `_beginTurn`) zavolá `_startDaltons` → fronta `daltonsQueue`
    od šerifa po směru; `_advanceDaltons` postaví `pendingSelection`
    (`sourceCardType: CAT_BALOU`, `ignoreDistance`, `isDaltons`) a fázi `SELECTING_TARGET_CARD`.
    Vrací `true` → start tahu se pozastaví.

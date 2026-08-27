@@ -59,18 +59,25 @@ K tomu „matice rozšíření × 3–8 hráčů" (`test/server.bots.test.js`) �
 ## Start tahu (Fistful): Mrtvý muž, Fistful of Cards, Pokrevní bratři
 
 Tři karty, které sahají do startu tahu. Krokovač `_runBeginTurn`
-([logic/highNoon.js](logic/highNoon.js)) je proto osmikrokový a **pořadí je pravidlo**:
+([logic/highNoon.js](logic/highNoon.js)) je proto devítikrokový a **pořadí je pravidlo**:
 
 ```
-0. _deadManReturn        ← Mrtvý muž: návrat prvního vyřazeného      (Fistful)
-1. _flipEvent            ← odkrytí karty High Noon a hned za ní Fistful
-2. _applyEventOnEnter    ← okamžitý efekt karty High Noon (Kocovina, Daltonové, Doktor)
-3. _applyFfEventOnEnter  ← okamžitý efekt karty Fistful
-4. _noonDamage           ← Pravé poledne                             (High Noon)
-5. _fistfulHits          ← Fistful of Cards: N× Bang!                (Fistful)
-6. _newIdentityOffer     ← Nová identita                             (High Noon, přibalené)
-7. _startBloodBrothers   ← Pokrevní bratři: daruj 1 život            (Fistful)
+0. _deadManReturn         ← Mrtvý muž: návrat prvního vyřazeného      (Fistful)
+1. _flipEvent             ← odkrytí karty High Noon a hned za ní Fistful
+2. _applyAbilitiesOnEnter ← platnost schopností (Kocovina) + líznutí Suzy Lafayette
+3. _applyEventOnEnter     ← okamžitý efekt karty High Noon (Daltonové, Doktor)
+4. _applyFfEventOnEnter   ← okamžitý efekt karty Fistful
+5. _noonDamage            ← Pravé poledne                             (High Noon)
+6. _fistfulHits           ← Fistful of Cards: N× Bang!                (Fistful)
+7. _newIdentityOffer      ← Nová identita                             (High Noon, přibalené)
+8. _startBloodBrothers    ← Pokrevní bratři: daruj 1 život            (Fistful)
 ```
+
+**Krok 2 je vlastní schválně:** platnost schopností se mění v OKAMŽIKU výměny karty, tedy
+dřív, než cokoli z nové dvojice začne působit. Skončila-li právě Kocovina, dostane Suzy
+Lafayette schopnost zpátky s prázdnou rukou a **líže si hned** – do Daltonů (krok 3) i do
+Ruské rulety (krok 4) tak nastupuje s kartou. Líznutí jde frontou odložených akcí, takže
+se krokovač pozastaví a dojede přes `_resumeBeginTurnAfterQueue`.
 
 **Pokrevní bratři jsou poslední, ale pořád PŘED kontrolami na Dynamit/Vězení** – „na
 začátku svého tahu, před lízáním", a sejmutí na Dynamit i Vězení už k fázi lízání patří.
