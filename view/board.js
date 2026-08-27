@@ -1300,11 +1300,10 @@ function drawMyArea(ctx) {
         if (App.niHideChar) charImg.setVisible(false);
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character))) charImg.setVisible(false);
-        // Střílím zrovna na někoho? Moje postava se rozsvítí u všech u stolu stejně
-        // (jediný cíl vidí, kdo na něj míří) – včetně mě, ať vím, co ostatní vidí.
-        // PŘED registrací Very: ta si obarvení uloží jako baseTint a vrací ho mezi
-        // problikáváním kopie, jinak by červená z portrétu útočící Very hned zmizela.
-        applyAttackTint(charImg, myIndex, attackHighlight());
+        // Střílím zrovna na někoho? Červeně se útočník rozsvítí OSTATNÍM u stolu
+        // (cíl musí vidět, kdo na něj míří) – sobě ne: já vím, že střílím já, a
+        // vlastní portrét načervenalý jako terč jen mate (bug 5).
+        // Divák (drawSpectatorPlayer) útočníka obarveného vidí, ten u stolu nesedí.
         registerVeraPortrait(charImg, me, getCharTex);
         // Claus (Fistful) si právě bere kartu pro sebe → moje postava svítí stejně jako
         // postava kohokoli jiného, komu zrovna vybírá.
