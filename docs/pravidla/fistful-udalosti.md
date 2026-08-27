@@ -273,6 +273,11 @@ a hádá znovu. Neuhodl → karta jde do odhozu a fáze lízání končí."
   `card_<id>_printed` (stejnou cestou jako běžné karty, sdílený `paintCardTexture`),
   kterou si letící karta drží od překlopení až po dosednutí. Ve stavu (ruka, odhoz) už
   je zase běžná přebarvená textura.
+- **Tip je veřejný.** Nad odkrývanou kartou visí popisek `TIP: ♥ ♦ ČERVENÁ` / `♠ ♣ ČERNÁ`
+  (`caption` v `startDeckCardReveal`, [net/handlers.js](net/handlers.js)) – bez něj ostatní
+  hráči vidí jen výsledek a nepoznají, jestli karta sedla náhodou, nebo jestli hráč barvu
+  znal. Zhasíná stejným `stopPulse` jako pulzující marka, tedy přesně když karta vyráží
+  ze středu do ruky/odhozu.
 - **Obě tlačítka (červená/černá) obsadí oba slotky**, takže se ve fázi `PEYOTE` nekreslí
   tlačítko Sida Ketchuma – stejně jako u Ranče a Pokrevních bratrů.
 

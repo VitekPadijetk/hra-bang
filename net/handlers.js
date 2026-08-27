@@ -2041,8 +2041,13 @@ function startPeyoteReveal(data) {
     // cinematika – překlopení z balíčku, výdrž s pulzující markou i let do ruky/odhozu
     // (kartě se pro to upeče vlastní textura, viz printedSuitTex). Přebarvení na
     // srdce/piky se na ní projeví až tam, kde dosedne, tedy až ji převezme stav.
+    // Tip je veřejný: ostatní hráči jinak nepoznají, jestli karta sedla náhodou, nebo
+    // jestli hráč barvu znal (Odstřelovač u balíčku, spočítané karty…). Popisek visí nad
+    // kartou po celou dobu odkrývání a zhasne s ní, když vyrazí do ruky/odhozu.
     startDeckCardReveal(data.card, data.playerIdx, PEYOTE_ANIM,
-                        { pulse: true, printedSuit: true, toDiscard: !data.hit });
+                        { pulse: true, printedSuit: true, toDiscard: !data.hit,
+                          caption: 'TIP: ' + (data.red ? '♥ ♦ ČERVENÁ' : '♠ ♣ ČERNÁ'),
+                          captionColor: data.red ? THEME.color.danger : THEME.color.text });
 }
 
 // A Fistful of Cards – Právo západu: vynucená karta se ukáže celému stolu (BEZ pulzující
@@ -2100,7 +2105,11 @@ function startDeckCardReveal(card, playerIdx, D, opts = {}) {
     // pak se cestou doprostřed narovná. Z balíčku je to vždycky 0 → tween nevznikne.
     const startAngle = opts.fromAngle || 0;
     let pulse = null;
+    // `opts.caption` = popisek nad odkrývanou kartou. Uklízí ho `stopPulse`, takže zhasne
+    // přesně ve chvíli, kdy karta vyráží ze středu pryč (stejně jako pulzující marka).
+    let caption = null;
     const stopPulse = () => {
+        if (caption) { caption.destroy(); caption = null; }
         if (!pulse) return;
         if (pulse.tween) pulse.tween.remove();
         pulse.marks.forEach(m => m.destroy());
@@ -2108,6 +2117,15 @@ function startDeckCardReveal(card, playerIdx, D, opts = {}) {
     };
     const sprite = gameScene.add.image(from.x, from.y, 'card_back')
         .setScale(startScale).setAngle(startAngle).setDepth(820).setAlpha(0.98);
+    if (opts.caption) {
+        caption = gameScene.add.text(REVEAL_CX, REVEAL_CY - (CARD_TEX_H * REVEAL_BIG) / 2 - 30,
+            opts.caption, {
+                fontFamily: THEME.fontUI, fontSize: '30px', fontStyle: 'bold',
+                color: opts.captionColor || THEME.color.text,
+                stroke: '#000000', strokeThickness: 5,
+                shadow: { offsetX: 0, offsetY: 2, color: '#000', blur: 6, fill: true },
+            }).setOrigin(0.5).setDepth(831);
+    }
     // 1) balíček → střed: posun + růst + flip rub→líc
     const halfFlip = Math.round(D.flyMs / 2);
     gameScene.tweens.add({ targets: sprite, x: REVEAL_CX, y: REVEAL_CY, duration: D.flyMs, ease: 'Cubic.easeOut' });
