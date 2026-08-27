@@ -199,10 +199,26 @@ function _hasWorthTaking(p) {
         || (p.board || []).some(c => boardCardValue(c) > 0);
 }
 
+// Kolik karet hráči karta přinese (0 = nic navíc). Jediný zdroj pravdy pro preferenci
+// „tohle není jedna karta, ale tři" – rozhoduje se podle EFEKTU, ne podle jmen, takže se
+// do ní sám trefí i Pony express z Dodge City (a karty budoucích rozšíření).
+function cardDrawGain(card) {
+    if (!card) return 0;
+    if (card.type === T.WELLS_FARGO) return 3;
+    if (card.type === T.STAGECOACH) return 2;
+    if (card.activate === 'draw_3') return 3;   // Pony express – líže se ze stolu, ne z ruky
+    return 0;
+}
+
 // ── Hodnota karty pro DISCARD (nižší = odhodit dřív) ─────────────────────────
 function keepScore(card) {
     if (card.type === T.DYNAMITE) return 0;   // dynamit pryč jako první (ale radši ho zahrajeme)
     if (card.type === T.JAIL) return 2;
+    // Karta za víc karet je to nejcennější, co může bot v ruce držet – jedna se v ní mění
+    // na dvě až tři. Dřív měl Dostavník i Wells Fargo jen 3 body, takže jimi bot platil za
+    // Rvačku a v hokynářství si před nimi vybral obyčejný Bang!.
+    const gain = cardDrawGain(card);
+    if (gain >= 2) return 6 + gain;
     if (card.discardExtra) return 4;          // Springfield/Tequila/Whisky/Ragtime/Rvačka
     if (card.green) return card.activate === 'miss' ? 6 : 5;  // zelené DC karty na stůl
     if (card.bangEffect) return 6;            // Úder a spol.
@@ -575,7 +591,10 @@ function decidePlay(state, myIndex, beliefs) {
 
         // ── Zelené karty (DC): z ruky se jen VYLOŽÍ na stůl (aktivují se pak ze stolu) ──
         if (card.green) {
-            consider(card.activate === 'miss' ? 16 : 12, { event: 'play_card', payload: i });
+            // Pony express má přednost před ostatními zelenými: od příštího tahu z něj
+            // padají tři karty za tah, takže čím dřív leží, tím líp.
+            const green = card.activate === 'draw_3' ? 20 : (card.activate === 'miss' ? 16 : 12);
+            consider(green, { event: 'play_card', payload: i });
             return;
         }
 
@@ -613,7 +632,11 @@ function decidePlay(state, myIndex, beliefs) {
         }
         if (card.type === T.BARREL) { consider(25, intent); return; }
         if (card.type === T.EQUIPMENT) { consider(20, intent); return; }
-        if (card.type === T.STAGECOACH || card.type === T.WELLS_FARGO || card.type === T.STORE) { consider(22, intent); return; }
+        // Karty za víc karet se hrají PRVNÍ v tahu: co si líznu, můžu ještě ten tah zahrát
+        // (klidně další Bang!). Proto přebíjejí i střelbu (50–55) a vyložení zbraně.
+        // Hokynářství zůstává nízko – kartu dá i každému soupeři, takže tak výhodné není.
+        if (card.type === T.STAGECOACH || card.type === T.WELLS_FARGO) { consider(64 + cardDrawGain(card), intent); return; }
+        if (card.type === T.STORE) { consider(22, intent); return; }
         if (card.type === T.GATLING || card.type === T.INDIANS) {
             const { pos, neg } = aoeBalance();
             if (pos >= 1 && pos > neg) consider(35, intent);
@@ -656,8 +679,8 @@ function decidePlay(state, myIndex, beliefs) {
             if (isInPlay(me) && me.health < me.maxHealth) consider(me.health <= 2 ? 28 : 8, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
             return;
         }
-        if (card.activate === 'draw_3') {
-            consider(22, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
+        if (card.activate === 'draw_3') {   // Pony express – tři karty, stejná priorita jako Wells Fargo
+            consider(64 + cardDrawGain(card), { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
             return;
         }
     });
@@ -1029,7 +1052,7 @@ function decideBotAction(state, myIndex, beliefs) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { pendingActor, decideBotAction, roleHostility, rankEnemies, pickCharacter,
-                       CHAR_RANK, chooseCharacter,
+                       CHAR_RANK, chooseCharacter, cardDrawGain,
                        keepScore, computeBeliefs, chooseTargetCardArea, boardCardValue,
                        weaponValue, keepCharacterChance, decideKeepCharacter };
 }

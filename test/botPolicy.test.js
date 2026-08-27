@@ -390,3 +390,31 @@ test('CHAR_RANK zná každou postavu ze všech rozšíření', () => {
     assert.deepEqual(all.filter(c => !CHAR_RANK[c]), [], 'postava bez ranku = bot si ji nevybere');
     assert.equal(pickCharacter(['Vulture Sam', 'Uncle Will']), 'Uncle Will');
 });
+
+// ── Karty za víc karet (Dostavník / Wells Fargo / Pony express) ──────────────
+// Jedna karta se v nich mění na dvě až tři, takže se nesmí odhazovat jako placení
+// a v hokynářství si je bot má vybrat před obyčejným Bang!.
+test('STORE: z hokynářství si bot vezme Wells Fargo, ne Bang!', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { phase: 'STORE', current: 0 });
+    g.storeCards = [
+        { id: 901, name: 'Bang!', type: CardType.BANG },
+        { id: 902, name: 'Wells Fargo', type: CardType.WELLS_FARGO },
+    ];
+    assert.deepEqual(decideBotAction(g, 0), { event: 'store_pick', payload: { cardIdx: 1 } });
+});
+
+test('DISCARD: Dostavník se odhazuje až po Bang! (je to karta za dvě)', () => {
+    const { keepScore, cardDrawGain } = require('../core/botPolicy.js');
+    assert.ok(keepScore({ type: CardType.WELLS_FARGO }) > keepScore({ type: CardType.BANG }));
+    assert.ok(keepScore({ type: CardType.STAGECOACH }) > keepScore({ type: CardType.BANG }));
+    // Pony express je zelená karta – preference se pozná z efektu, ne ze jména.
+    assert.equal(cardDrawGain({ type: CardType.PONY_EXPRESS, green: true, activate: 'draw_3' }), 3);
+    assert.ok(keepScore({ green: true, activate: 'draw_3' }) > keepScore({ green: true, activate: 'miss' }));
+});
+
+test('PLAY: Wells Fargo se zahraje DŘÍV než Bang! (líznuté karty se dají ještě zahrát)', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }], { current: 0 });
+    give(g, 0, CardType.BANG);
+    const wf = give(g, 0, CardType.WELLS_FARGO);
+    assert.deepEqual(decideBotAction(g, 0), { event: 'play_card', payload: wf });
+});
