@@ -26,7 +26,7 @@ BATCHE
 A — animace karet             3, 4, 8, 11, 15, 16   net/handlers.js, server/anim.js   HOTOVO
 B — intro a odkrytá řada      1, 20                 view/intro.js, game.js   HOTOVO
 C — Peyote a barvy            2, 6                  game.js, net/handlers.js, logic/fistful.js   HOTOVO
-D — zvýraznění na desce       5, 13, 18             view/board.js
+D — zvýraznění na desce       5, 13, 18             view/board.js   HOTOVO
 E — drobná pravidla           9, 14, 19, 21, 22     logic/*   HOTOVO
 F — Právo západu + Želízka    12                    core/playability.js, logic/fistful.js   HOTOVO
 G — boti                      7                     core/botPolicy.js, core/beliefs.js   HOTOVO
@@ -43,9 +43,6 @@ H — bez herní logiky          10, 17                index.html, assets/, char
 OTEVŘENÉ
 --------
 
-- 5 když já na někoho střílím, tak mě postava být červeně zvýrazněná nemusí
-- 13 když se posouvají balíčky kvůli hokynářství, balíčky HN a FF tam je takové divné posunutí, nějak to blikne
-- 18 když je laso, a já mám vyložené nějaké zelené karty (a nemůžu je tedy zahrát) a zároveň už nemůžu zahrát karty z ruky, nebliká mi tlačítko ukončit tah
 - 23 - zkontroluj jestli funguje derringer správně s léčkou
 
 
@@ -54,6 +51,9 @@ HOTOVÉ
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 5 když já na někoho střílím, tak mě postava být červeně zvýrazněná nemusí → oprava: 865b2ae (červená postava útočníka je informace pro CÍL – v drawMyArea se vlastní portrét už neobarvuje, u soupeřů a diváka zůstává)
+- 13 když se posouvají balíčky kvůli hokynářství, balíčky HN a FF tam je takové divné posunutí, nějak to blikne → oprava: 4649d8e (eventPileLift přičítal přídavek srovnaných sloupců 45 px skokem na prvním ticku tweenu; teď roste v poměru k plnému zvednutí)
+- 18 když je laso, a já mám vyložené nějaké zelené karty (a nemůžu je tedy zahrát) a zároveň už nemůžu zahrát karty z ruky, nebliká mi tlačítko ukončit tah → oprava: 768618e (hasPlayableGreen se neptal na boardDeadFor – Laso vypíná i aktivaci zelených)
 - 9 Je-li město duchů a kromě ducha zbývají už jen dva hráči a na tahu je duch, tak by mělo jít zahrát pivo (hrají totiž v tu chvíli 3 hráči) → oprava: 8040853 (nový trychtýř inPlayCount v core/distance.js – duch se počítá; platí i pro Sidovu záchranu)
 - 14 molly stark si nelízne kartu když dá pivo jako záchranu → oprava: 8cb5bc1
 - 19 zkontroluj že když belle star útočí na jourdannais tak jourdanais funguje schopnost → OVĚŘENO, chyba nebyla: 32a7fdd (Belle Star ruší jen Barel jako KARTU na stole, vrozené sejmutí Jourdonnaise běží dál – doplněny testy)
