@@ -439,6 +439,11 @@ test('hokynářství zvedne srovnané sloupce mezi řadu karet a horního soupe�
     // Bez srovnání nad sebe se zvedá přesně jako balíčky (dnešní chování).
     assert.equal(eventPileLift(DSK, DSK.storeLift, false), DSK.storeLift);
     assert.equal(eventPileLift(DSK, 0, true), 0, 'bez hokynářství se nezvedá nic');
+    // Zvednutí je PLYNULÉ – přídavek srovnaných sloupců se nesmí naskočit celý hned
+    // s prvním tickem tweenu (jinak sloupce na začátku i konci cinematiky poskočí).
+    const half = eventPileLift(DSK, DSK.storeLift / 2, true);
+    assert.ok(Math.abs(half - lift / 2) < 0.01, `půl cesty zvedá o ${half}, čekáno ${lift / 2}`);
+    assert.ok(eventPileLift(DSK, 1, true) < 3, 'první tick nesmí sloupce hodit o desítky px');
 });
 
 test('moje vyložené karty nedosáhnou na balíčky', () => {

@@ -438,9 +438,17 @@ function eventPileSlots(L, hnOn, ffOn) {
 // tedy pod hranicí viditelnosti. Platí to jen po dobu cinematiky hokynářství – v klidu
 // mají sloupce místa dost (hlídá test/positions.test.js).
 const EVENT_STORE_SLACK = 40;
+//
+// Přídavek se musí přičítat POSTUPNĚ, ne skokem: animatePileLift (game.js) tweenuje
+// storeLift z 0 na L.storeLift, a kdyby přídavek naskočil celý hned s prvním tickem,
+// sloupce událostí by na začátku i na konci cinematiky poskočily o 45 px (bug 13).
+// Poměr k plnému zvednutí nechává obě krajní polohy přesně tam, kde byly.
 function eventPileLift(L, storeLift, stacked) {
     if (!storeLift) return 0;
-    return storeLift + (stacked ? L.eventRowGap / 2 - EVENT_STORE_SLACK : 0);
+    if (!stacked) return storeLift;
+    const full = L.storeLift || 0;
+    const t = full > 0 ? Math.min(1, Math.max(0, storeLift / full)) : 1;
+    return storeLift + t * (L.eventRowGap / 2 - EVENT_STORE_SLACK);
 }
 
 // Profil, který právě platí. Mimo prohlížeč (testy, server) vždy desktopový.
