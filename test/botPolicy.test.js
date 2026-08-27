@@ -120,11 +120,18 @@ test('DRAW: líznutí z balíčku', () => {
 });
 
 // ── CHARACTER_SELECT ───────────────────────────────────────────────────────────
-test('CHARACTER_SELECT: vybere výše hodnocenou postavu', () => {
+// Lepší postavu bere bot z 60 %, jinak tu horší – u stolu tak nesedí pořád tytéž tváře.
+test('CHARACTER_SELECT: lepší postavu bere častěji, ale ne vždycky', () => {
+    const { chooseCharacter } = require('../core/botPolicy.js');
+    const choices = ['Sid Ketchum', 'Willy the Kid'];
+    assert.equal(chooseCharacter(choices, () => 0), 'Willy the Kid');     // trefil se do 60 %
+    assert.equal(chooseCharacter(choices, () => 0.99), 'Sid Ketchum');    // zbylých 40 %
+
     const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { phase: 'CHARACTER_SELECT' });
-    g.players[0].charChoices = ['Sid Ketchum', 'Willy the Kid'];
+    g.players[0].charChoices = choices;
     const a = decideBotAction(g, 0);
-    assert.deepEqual(a, { event: 'select_character', payload: 'Willy the Kid' });
+    assert.equal(a.event, 'select_character');
+    assert.ok(choices.includes(a.payload));
 });
 
 // ── Skryté role: cílení podle chování ─────────────────────────────────────────

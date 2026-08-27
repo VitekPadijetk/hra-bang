@@ -236,6 +236,18 @@ function pickCharacter(choices) {
     return [...choices].sort((a, b) => (CHAR_RANK[b] || 0) - (CHAR_RANK[a] || 0))[0];
 }
 
+// Výběr postavy na začátku hry NENÍ „vždycky ta nejlepší": u stolu pak seděly pořád tytéž
+// tváře a hra byla předvídatelná. Bot vezme lepší postavu s pravděpodobností BETTER_CHAR_P,
+// jinak posune pořadí o jednu níž – u dvou nabídek (klasické rozdání) tedy vyjde 60 / 40.
+// pickCharacter zůstává deterministický: Vera Custer kopíruje na JEDEN tah to nejlepší, co
+// je na stole, a tam nejde o pestrost u stolu, ale o sílu schopnosti.
+const BETTER_CHAR_P = 0.6;
+function chooseCharacter(choices, rnd = Math.random) {
+    const order = [...choices].sort((a, b) => (CHAR_RANK[b] || 0) - (CHAR_RANK[a] || 0));
+    for (let i = 0; i < order.length - 1; i++) if (rnd() < BETTER_CHAR_P) return order[i];
+    return order[order.length - 1];
+}
+
 // Navazující hra: nechá si přeživší bot svou postavu? Dřív bral vždycky, takže u stolu
 // seděly pořád tytéž postavy. Teď se rozhoduje náhodně a šance roste s kvalitou postavy:
 // silná ~80 %, průměrná ~50 %, slabá ~20 %.
@@ -696,7 +708,7 @@ function decideBotAction(state, myIndex, beliefs) {
             return { event: 'keep_character', payload: decideKeepCharacter(me._survivorChar) };
         }
         if (!me.character && me.charChoices?.length) {
-            return { event: 'select_character', payload: pickCharacter(me.charChoices) };
+            return { event: 'select_character', payload: chooseCharacter(me.charChoices) };
         }
         return null;
     }
@@ -1017,7 +1029,7 @@ function decideBotAction(state, myIndex, beliefs) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { pendingActor, decideBotAction, roleHostility, rankEnemies, pickCharacter,
-                       CHAR_RANK,
+                       CHAR_RANK, chooseCharacter,
                        keepScore, computeBeliefs, chooseTargetCardArea, boardCardValue,
                        weaponValue, keepCharacterChance, decideKeepCharacter };
 }
