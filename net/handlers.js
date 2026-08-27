@@ -788,9 +788,19 @@ function _vultureStageIncoming(pid, flyCtx, seq) {
     // Skutečné objekty karet (ne jen ID) – po odkrytí je ruka normálně vykreslí.
     const cardOf = (id) => dead?.hand?.find(c => c.id === id) || dead?.board?.find(c => c.id === id)
                         || (dead?.weapon?.id === id ? dead.weapon : null) || { id };
+    // PŘESNĚ v tom pořadí, v jakém je Samovi do ruky přidávají pravidla (handlePlayerDeath
+    // v logic/combat.js): ruka mrtvého, pak jeho stůl, nakonec zbraň. `seq` je pořadí LETU
+    // (modré odzadu → zbraň → ruka odzadu), což je něco jiného. Kdyby se stagovalo podle
+    // něj, po doletu by se ruka srovnala do jiného pořadí, než v jakém dorazí stav –
+    // a Samovi by se na konci cinematiky (přesně když dosedá karta role) karty ve vějíři
+    // viditelně přeházely.
+    const rev = (k) => seq.filter(it => it.kind === k).reverse();
+    const inOrder = [...rev('hand'), ...rev('blue'), ...seq.filter(it => it.kind === 'weapon')];
+    flyCtx.slotOf = {};
     let staged = 0;
-    seq.forEach(it => {
+    inOrder.forEach(it => {
         if (it.id == null) return;
+        flyCtx.slotOf[it.id] = staged;
         if (flyCtx.isVulture) App.pendingDrawIds.add(it.id);
         if (!hand || hand.some(c => c.id === it.id)) return;
         hand.push(cardOf(it.id));
@@ -923,7 +933,10 @@ function playDeathSequence(data) {
     // `moved` = pořadí PŘENÁŠENÉ karty (Colt .45 se nepřenáší) → slot v Samově vějíři.
     let moved = 0;
     seq.forEach((it, k) => {
-        const myMoved = it.kind === 'colt' ? -1 : moved++;
+        // U Sama je slot ve vějíři daný POŘADÍM VE STAVU (flyCtx.slotOf), ne pořadím letu –
+        // jinak by se ruka po příchodu stavu přeskládala (viz _vultureStageIncoming).
+        const myMoved = it.kind === 'colt' ? -1
+                      : (isVulture ? (flyCtx.slotOf?.[it.id] ?? moved++) : moved++);
         setTimeout(() => {
             if (!gameScene) return;
             App.deathSeq[pid] = 'discarding';
