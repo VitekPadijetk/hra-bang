@@ -4,6 +4,11 @@
 const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 const { hnRevealMs } = require('../core/highNoonAnim.js');
 const { mineLandMs } = require('../core/fistfulAnim.js');
+const { effectiveCharacter, isInPlay } = require('../core/distance.js');
+
+// Délka jedné animace ragtime_steal – MUSÍ sedět s ANIM_MS v net/handlers.js (o tuhle
+// dobu drží klientská fronta stav a o stejnou se musí podržet boti).
+const RAGTIME_MS = 360;
 
 module.exports = function installAnimService(ctx) {
     const { io, broadcastRoomDelayed } = ctx;
@@ -112,8 +117,12 @@ module.exports = function installAnimService(ctx) {
             if (gs._deathAnimData) delete gs._deathAnimData[deadIdx];
             return;
         }
+        // Stejné dotazy jako pravidla (handlePlayerDeath v logic/combat.js): schopnost může
+        // mít i Vera Custer (effectiveCharacter) a sbírat smí i duch Města duchů, který má
+        // nula životů, ale ve hře je (isInPlay). Bez toho se karty ve stavu přesunuly Samovi,
+        // ale animace je poslala do odhozu.
         const vultureIdx = gs.players.findIndex(
-            (p, idx) => idx !== deadIdx && p.character === "Vulture Sam" && p.health > 0
+            (p, idx) => idx !== deadIdx && p && isInPlay(p) && effectiveCharacter(p) === "Vulture Sam"
         );
         // Role jde s animací, ne ze stavu: stav se na klientu aplikuje až ZA cinematikou
         // (fronta animací), takže v tu chvíli je vyřazený hráč pro klienta ještě živý
@@ -290,16 +299,41 @@ module.exports = function installAnimService(ctx) {
     // ── Město duchů: duch odchází ze hry a odkládá, co mu zbylo na stole ─────
     // Vizuálně TOTÉŽ jako šerifova ztráta karet za pomocníka (karty po jedné do odhozu,
     // bez poklesu životů a bez odhalení role) – duch svou roli odhalil už při vyřazení.
-    // Emituje se jen když karty padají do odhozu; sebral-li je Vulture Sam, přesun se
-    // ukáže až v novém stavu.
+    // Sebral-li je Vulture Sam (`toIdx`), letí místo do odhozu po jedné do jeho ruky –
+    // stejnou animací jako Ragtime. Dřív se v tomhle případě neemitovalo nic a karty
+    // ze stolu ducha prostě zmizely a naskočily Samovi v ruce s novým stavem.
     function flushGhostLeave(room) {
         const gs = room.gameState;
         const gl = gs && gs._ghostLeaveAnim;
         if (!gl) return;
         gs._ghostLeaveAnim = null;
-        emitAnim(room, { type: 'sheriff_penalty_discard', ...gl });
-        room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + penaltyDiscardMs(
-            (gl.blue?.length || 0) + (gl.weapon ? 1 : 0) + (gl.hand?.length || 0)));
+        if (gl.toIdx == null) {
+            emitAnim(room, { type: 'sheriff_penalty_discard', ...gl });
+            room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + penaltyDiscardMs(
+                (gl.blue?.length || 0) + (gl.weapon ? 1 : 0) + (gl.hand?.length || 0)));
+            return;
+        }
+        // Pořadí jako v cinematice vyřazení (_deathCardSeq na klientu): modré odzadu,
+        // pak zbraň, pak ruka. Vizuální slot je v jednotné konvenci „slot 0 = zbraň".
+        // Ruka odzadu: klient kartu z vějíře odebere hned (stolenIndex), takže by se
+        // při postupu odpředu posunuly indexy zbylých karet.
+        const steps = [];
+        const blue = gl.blue || [], hand = gl.hand || [];
+        for (let k = blue.length - 1; k >= 0; k--) steps.push({ area: 'board', boardIdx: 1 + k, id: blue[k].id });
+        if (gl.weapon) steps.push({ area: 'weapon', boardIdx: 0, id: gl.weapon.id });
+        for (let h = hand.length - 1; h >= 0; h--) steps.push({ area: 'hand', boardIdx: null, id: hand[h].id, handIdx: h });
+        steps.forEach(st => {
+            const base = { type: 'ragtime_steal', attackerIdx: gl.toIdx, targetIdx: gl.playerIdx,
+                           area: st.area, boardIdx: st.boardIdx,
+                           stolenIndex: st.area === 'hand' ? st.handIdx : null };
+            // Karta z ruky je skrytá – líc uvidí jen Sam, ostatním letí rub.
+            if (st.area === 'hand') {
+                emitAnimPrivate(room, gl.toIdx, { ...base, stolenCardId: st.id }, { ...base, stolenCardId: null });
+            } else {
+                emitAnim(room, { ...base, stolenCardId: st.id });
+            }
+        });
+        room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + steps.length * RAGTIME_MS);
     }
 
     // ── Johnny Kisch: stejnojmenné karty odcházejí ze stolu do odhozu ────────

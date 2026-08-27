@@ -289,7 +289,7 @@ const HighNoonMixin = {
         for (let step = 1; step <= this.players.length; step++) {
             const i = (idx + step) % this.players.length;
             const p = this.players[i];
-            if (i === idx || !p || p.health <= 0) continue;
+            if (i === idx || !p || !isInPlay(p)) continue;   // duch sbírá taky (viz handlePlayerDeath)
             if (effectiveCharacter(p) === "Vulture Sam") vultures.push(i);
         }
 
@@ -301,6 +301,17 @@ const HighNoonMixin = {
         } else {
             if (vultures.length === 1) {
                 const vulture = this.players[vultures[0]];
+                // Přesun k Samovi musí být vidět stejně jako odhoz – dřív se karty jen
+                // objevily v novém stavu v jeho ruce a ze stolu ducha zmizely bez animace.
+                // `toIdx` přepne flushGhostLeave (server/anim.js) z odhozu na let k Samovi.
+                if (leftCount > 0) {
+                    this._ghostLeaveAnim = {
+                        playerIdx: idx, toIdx: vultures[0],
+                        blue: g.board.map(c => ({ id: c.id })),
+                        weapon: weapon.length ? { id: weapon[0].id } : null,
+                        hand: g.hand.map(c => ({ id: c.id })),
+                    };
+                }
                 vulture.hand.push(...g.hand, ...g.board, ...weapon);
                 this.checkSuzyLafayette(vulture);
             } else if (leftCount > 0) {
