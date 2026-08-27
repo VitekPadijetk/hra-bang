@@ -6,6 +6,12 @@
          zůstanou po stranách černé pruhy a hra je ještě menší (odsazení řeší safe-area). -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Bang! Online Prototyp</title>
+    <!-- Ikona v záložce. .ico nese 16/32/48 a leží na /favicon.ico, kam si prohlížeč
+         sáhne sám i bez tohoto odkazu; PNG je pro moderní prohlížeče a plochu iOS.
+         Generuje je tools/favicon.js z písmene B v logu hry. -->
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
