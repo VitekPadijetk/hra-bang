@@ -372,3 +372,14 @@ test('každý kind z pendingActor má v decideBotAction svou větev', () => {
     g.players[0]._survivorChar = 'Slab the Killer';
     assert.equal(decideBotAction(g, 0).event, 'keep_character');
 });
+
+// ── Postavy: bot musí umět ohodnotit KAŽDOU postavu, co může padnout do výběru ─
+// Postava, kterou CHAR_RANK nezná, spadne v pickCharacter na 0 a prohraje i s tou
+// nejslabší – přesně proto si bot nikdy nevybral postavu z A Fistful of Cards.
+test('CHAR_RANK zná každou postavu ze všech rozšíření', () => {
+    const { CHAR_RANK, pickCharacter } = require('../core/botPolicy.js');
+    const { ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS } = require('../logic/entities.js');
+    const all = [...ALL_CHARACTERS, ...DODGE_CITY_CHARACTERS, ...FISTFUL_CHARACTERS];
+    assert.deepEqual(all.filter(c => !CHAR_RANK[c]), [], 'postava bez ranku = bot si ji nevybere');
+    assert.equal(pickCharacter(['Vulture Sam', 'Uncle Will']), 'Uncle Will');
+});

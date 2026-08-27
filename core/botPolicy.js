@@ -228,6 +228,9 @@ const CHAR_RANK = {
     'Doc Holyday': 8, 'Chuck Wengam': 7, 'José Delgado': 7, 'Pat Brennan': 6,
     'Tequila Joe': 6, 'Greg Digger': 5, 'Herb Hunter': 5, 'Sean Mallory': 5,
     'Apache Kid': 8, 'Belle Star': 7, 'Vera Custer': 6,
+    // A Fistful of Cards. Bez nich měly rank 0 (CHAR_RANK[x] || 0), takže je pickCharacter
+    // vždycky poslal na konec pořadí a bot si je NIKDY nevybral - ani proti slabé postavě.
+    'Claus the Saint': 7, 'Johnny Kisch': 6, 'Uncle Will': 7,
 };
 function pickCharacter(choices) {
     return [...choices].sort((a, b) => (CHAR_RANK[b] || 0) - (CHAR_RANK[a] || 0))[0];
@@ -1014,6 +1017,7 @@ function decideBotAction(state, myIndex, beliefs) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { pendingActor, decideBotAction, roleHostility, rankEnemies, pickCharacter,
+                       CHAR_RANK,
                        keepScore, computeBeliefs, chooseTargetCardArea, boardCardValue,
                        weaponValue, keepCharacterChance, decideKeepCharacter };
 }
