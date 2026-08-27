@@ -24,7 +24,7 @@ BATCHE
 ------
 
 A — animace karet             3, 4, 8, 11, 15, 16   net/handlers.js, server/anim.js   HOTOVO
-B — intro a odkrytá řada      1, 20                 view/intro.js, game.js
+B — intro a odkrytá řada      1, 20                 view/intro.js, game.js   HOTOVO
 C — Peyote a barvy            2, 6                  game.js, net/handlers.js, logic/fistful.js   HOTOVO
 D — zvýraznění na desce       5, 13, 18             view/board.js
 E — drobná pravidla           9, 14, 19, 21, 22     logic/*
@@ -43,7 +43,6 @@ H — bez herní logiky          10, 17                index.html, assets/, char
 OTEVŘENÉ
 --------
 
-- 1 Když se mi v intru ukazují postavy, tak ta levá na chvilku zmizí, je tam takové probliknutí (je to ten čas mezi tím kdy skončí její animace zvětšení a mezi tím než skončí animace pravé postavy), měla by se ukázat už v moment kdy skončí její animace ne až jak skončí obě.
 - 5 když já na někoho střílím, tak mě postava být červeně zvýrazněná nemusí
 - 9 Je-li město duchů a kromě ducha zbývají už jen dva hráči a na tahu je duch, tak by mělo jít zahrát pivo (hrají totiž v tu chvíli 3 hráči)
 - 12 když je právo západu, zkontroluj jestli je znemožněna akce (zahrání nějaké karty nebo něco), co by zmenožnila zahrání té poteřebné karty, ale akce, které s tím nesouvisí jsou poveleny. Používám-li kartu s odhoďte další kartu a mám kromě této a kromě karty na právo západu ještě jinou, nebude mě blokovat ji použít, bude akorát blokovat odhození té karty z práva. Stejně tak když jsou navíc želízka tak si hráč MUSÍ vybrat tu barvu té karty kterou má zahrát (pokud to není karta co zahrát nejde jako třeba vedle)
@@ -51,7 +50,6 @@ OTEVŘENÉ
 - 14 molly stark si nelízne kartu když dá pivo jako záchranu
 - 18 když je laso, a já mám vyložené nějaké zelené karty (a nemůžu je tedy zahrát) a zároveň už nemůžu zahrát karty z ruky, nebliká mi tlačítko ukončit tah
 - 19 zkontroluj že když belle star útočí na jourdannais tak jourdanais funguje schopnost 
-- 20 když kit carlson si lízne 3 poslední karty z balíčku, balíček se tam objeví moc brzo, ne až po skončení míchání
 - 21 pokud mám vendetu, měla by se mi nabít zelená karta vyložená v mém prvním tahu
 - 22 suzy si pokud nemá karty když končí kocovina lízne hned jakmile se otočí karty HN/FF, tedy před jakoukoliv akcí, které tyto dvě karty vyvolávají, ne až po nich (např. před efektem daltonů nebo ruské rulety)
 
@@ -72,3 +70,5 @@ HOTOVÉ
 - 11 u města duchů (možná i jindy) když někdo opustí hru, chybí tam animace k vulture samovi karet co jsou před vyřazeným na stole. → oprava: d5577c3
 - 15 poté co jako vulture sam dostatnu karty tak v moment kdy karta role z odhalení skončí na stole, získané karty se mi v ruce nějak posunou → oprava: 446f1e0
 - 16 když odhazuji více karet na ranč, měly by se odhazovat postupně a s lízáním by se mělo počkat až se všechny odhodí, čím víc jich je, tím déle by se měly odhazovat, teď se odhodí jakoby třeba jedna karta a ostatní insta zmizí. → oprava: a501767
+- 1 Když se mi v intru ukazují postavy, tak ta levá na chvilku zmizí, je tam takové probliknutí (je to ten čas mezi tím kdy skončí její animace zvětšení a mezi tím než skončí animace pravé postavy), měla by se ukázat už v moment kdy skončí její animace ne až jak skončí obě. → oprava: 2057afd
+- 20 když kit carlson si lízne 3 poslední karty z balíčku, balíček se tam objeví moc brzo, ne až po skončení míchání → oprava: d9e7b0b
