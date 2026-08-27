@@ -484,15 +484,22 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 }
             }
 
-            // Zelená karta letí ze stolu do odhozu.
-            emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: playerIdx, cardId: card.id, boardIdx: greenVisIdx });
+            // Zelená karta letí ze stolu do odhozu. Krytý vůz/Kankán ale mají celou sekvenci
+            // jako Panika/Cat Balou (nálet na cílovou kartu → teprve pak do odhozu), takže se
+            // u nich animace emituje až PO aktivaci – viz větve isSteal/isDiscard níž. Když
+            // efekt neproběhne (Apache Kid je imunní vůči ♦), doplní se tam prostý odlet.
+            const useSeq = (isSteal || isDiscard) && !!target;
+            const emitGreenToDiscard = () => emitAnim(room,
+                { type: 'board_to_discard', fromPlayerIdx: playerIdx, cardId: card.id, boardIdx: greenVisIdx });
+            if (!useSeq) emitGreenToDiscard();
             // Stav před aktivací: podle toho poznáme, jestli se efekt vůbec provedl (Apache Kid
             // je imunní vůči károvému Krytému vozu/Kankánu → karta se odhodí naprázdno, nic se
             // nevezme/neodhodí → nesmí se pak přehrát animace brané/odhozené karty).
             const stealHandBefore = gs.players[playerIdx].hand.length;
             const discardBefore = gs.deck._discardPile.length;
-            // Krádež z ruky (Krytý vůz): pořadí ruky oběti PŘED aktivací → slot vzaté karty.
-            const victimHandIds = (isSteal && target?.area === 'hand')
+            // Krádež/odhoz z ruky (Krytý vůz/Kankán): pořadí ruky oběti PŘED aktivací → slot
+            // vzaté karty (klient podle něj zvedne SPRÁVNOU kartu z vějíře).
+            const victimHandIds = (useSeq && target?.area === 'hand')
                 ? (gs.players[target.targetIdx]?.hand || []).map(c => c.id) : null;
             gs.activateGreenCard(playerIdx, d.cardId, target);
             // Cílená zelená karta (bang-efekt / krádež / odhoz) → ledger chování (dedukce rolí).
@@ -501,30 +508,50 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 ctx.recordBehavior?.(room, { actorIdx: playerIdx, targetIdx: target.targetIdx, kind: 'hostile' });
             }
 
+            // Zelenou kartu (a u Kankánu i zničenou kartu cíle) podrž mimo odhoz, dokud ji
+            // tam animace nedoveze – jinak by se u všech objevila v odhozu dřív, než doletí.
+            // Po doletu se odhodí ve stejném pořadí, v jakém tam přistály (zelená, pak cílová).
+            const runSeq = (holdIds, ms) => {
+                const held = [];
+                for (const id of holdIds) { const c = gs.deck.takeFromDiscard(id); if (c) held.push(c); }
+                setTimeout(() => { held.forEach(c => gs.deck.discard(c)); broadcastRoom(room); }, ms);
+            };
             if (isSteal) {
                 const atkHand = gs.players[playerIdx].hand;
-                if (atkHand.length <= stealHandBefore) { broadcastRoomDelayed(room, 500); return; }  // nic neukradeno (Apache) → bez animace
+                if (!useSeq || atkHand.length <= stealHandBefore) {   // nic neukradeno (Apache) → jen odlet zelené
+                    if (useSeq) emitGreenToDiscard();
+                    broadcastRoomDelayed(room, 500);
+                    return;
+                }
                 const ownerStolenId = atkHand[atkHand.length - 1]?.id;
                 const vsi = victimHandIds ? victimHandIds.indexOf(ownerStolenId) : -1;
-                const anim = { type: 'ragtime_steal', attackerIdx: playerIdx, targetIdx: target.targetIdx, area: target.area,
+                const anim = { type: 'panic_sequence', attackerIdx: playerIdx, targetIdx: target.targetIdx,
+                               cardId: card.id, fromBoardIdx: greenVisIdx, area: target.area,
                                boardIdx: victimVisIdx, stolenIndex: vsi === -1 ? null : vsi };
                 emitAnimPrivate(room, playerIdx,
                     { ...anim, stolenCardId: target.area === 'hand' ? ownerStolenId : victimPublicId },
                     { ...anim, stolenCardId: target.area === 'hand' ? null : victimPublicId });
-                broadcastRoomDelayed(room, 500);
+                runSeq([card.id], 600);
                 return;
             }
             if (isDiscard) {
                 // > discardBefore + 1 = kromě zelené karty se odhodila i cílová (efekt proběhl).
-                if (gs.deck._discardPile.length > discardBefore + 1) {
-                    if (target.area === 'hand') {
-                        const top = gs.deck.discardTop();
-                        if (top) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: target.targetIdx, cardId: top.id });
-                    } else if (victimPublicId != null) {
-                        emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: target.targetIdx, cardId: victimPublicId, boardIdx: victimVisIdx });
-                    }
+                const hit = gs.deck._discardPile.length > discardBefore + 1;
+                if (!useSeq || !hit) {
+                    if (useSeq) emitGreenToDiscard();
+                    broadcastRoomDelayed(room, 500);
+                    return;
                 }
-                broadcastRoomDelayed(room, 500);
+                // Zničená karta leží navrchu odhozu = je veřejná (i ta z ruky), takže se za
+                // letu smí odhalit rub→líc přesně jako u Cat Balou.
+                const top = gs.deck.discardTop();
+                const stolenCardId = target.area === 'hand' ? (top?.id ?? null) : victimPublicId;
+                const vsi = victimHandIds && top ? victimHandIds.indexOf(top.id) : -1;
+                emitAnim(room, { type: 'catbalou_sequence', attackerIdx: playerIdx, targetIdx: target.targetIdx,
+                                 cardId: card.id, fromBoardIdx: greenVisIdx, area: target.area,
+                                 boardIdx: victimVisIdx, stolenCardId,
+                                 stolenIndex: vsi === -1 ? null : vsi });
+                runSeq([card.id, top?.id].filter(id => id != null), 670);
                 return;
             }
             // Bang-efekt / Houfnice / Čutora / Pony express: zbytek řeší nový stav (RESPOND/DRAW/PLAY).
