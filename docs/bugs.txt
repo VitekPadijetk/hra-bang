@@ -30,7 +30,7 @@ D — zvýraznění na desce       5, 13, 18             view/board.js
 E — drobná pravidla           9, 14, 19, 21, 22     logic/*
 F — Právo západu + Želízka    12                    core/playability.js, logic/fistful.js
 G — boti                      7                     core/botPolicy.js, core/beliefs.js
-H — bez herní logiky          10, 17                index.html, assets/, characters.json
+H — bez herní logiky          10, 17                index.html, assets/, characters.json   HOTOVO
 
   G je sám o sobě šest různých požadavků (preference karet, timing zbraně, slepé
   cílení, paměť po Mrtvém muži, šance na postavu, postavy z Fistfulu) — počítej
@@ -52,14 +52,12 @@ OTEVŘENÉ
 - 7 u botů bych chtěl udělat nějaké změny - třeba nedává smysl, že nepreferují dostavník/wells fargo stejně tak pony express například v hokynářství, jsou to totiž 3 karty místo jedné karty, stejně tak ho odhazují třeba s rvačkou apod. takže tomu větší preferenci, stejně tak je dobré, aby se tyto karty používaly pak v rámci rozšíření Divoký západ, dále nedává smysl, aby když jsou nějaká role a jejich cíl je mimo dostřel (ale oni v ruce mají dostatečně dobrou zbraň), tak ji vyloží až poté, co vše vystřílí na někoho jiného než mají útočit. Taky by boti neměli úplně střílet "na slepo" a vybírat si čistě jeden cíl a to ten nejslabší, když netuší kdo to je - příklad, vedle šerifa je claus the saint, který má jen tři životy, šerif je willy the kid, má 3x bang a bum santa je mrtvý, ouha byl to pomocník a šerif o všechno přišel - když už tak ať šerif (nebo někdo jiný to je jedno) když neví tak střílí tak nějak rovnoměrně nebo prostě spíš nestřílí - druhá věc je když si to odvodí z chování ostatních a vyplyne mu jeho role. Obecně by na začátku nemuseli úplně targetit postavy co mají méně životů "od přírody". Pokud se hráč oživí z mrtvého muže (a jeho role byla tedy předtím odhalena), měl by si to pamatovat, teď na to zapomene. Dále by měli mít šanci třeba procent že si vezmou tu lepší postavu a 40 že tu horší. Co testuji, nevšiml jsem si, že by si bot vzal postavu z fistfulu
 - 8 nová identita - je zde problém s blikáním, konkrétně: když si vyberu změnu postavy, tak poté, co se moje stará postava otočí a posune na místo správné, tak v moment konce animace zmizí a objeví se až jak doletí nová postava. Tam je taky problém, že když nová postava doletí tak na malou chvíli jde vidět ještě stará postava, až pak se přeblikne na novou. Měla by tam být už vidět jen ta nová
 - 9 Je-li město duchů a kromě ducha zbývají už jen dva hráči a na tahu je duch, tak by mělo jít zahrát pivo (hrají totiž v tu chvíli 3 hráči)
-- 10 šlo by přidat nějakou ikonku webu, takovéto co vidím u záložky nahoře v chromeu v lan verzi, nebo pak i na klasickém serveru?
 - 11 u města duchů (možná i jindy) když někdo opustí hru, chybí tam animace k vulture samovi karet co jsou před vyřazeným na stole.
 - 12 když je právo západu, zkontroluj jestli je znemožněna akce (zahrání nějaké karty nebo něco), co by zmenožnila zahrání té poteřebné karty, ale akce, které s tím nesouvisí jsou poveleny. Používám-li kartu s odhoďte další kartu a mám kromě této a kromě karty na právo západu ještě jinou, nebude mě blokovat ji použít, bude akorát blokovat odhození té karty z práva. Stejně tak když jsou navíc želízka tak si hráč MUSÍ vybrat tu barvu té karty kterou má zahrát (pokud to není karta co zahrát nejde jako třeba vedle)
 - 13 když se posouvají balíčky kvůli hokynářství, balíčky HN a FF tam je takové divné posunutí, nějak to blikne
 - 14 molly stark si nelízne kartu když dá pivo jako záchranu
 - 15 poté co jako vulture sam dostatnu karty tak v moment kdy karta role z odhalení skončí na stole, získané karty se mi v ruce nějak posunou
 - 16 když odhazuji více karet na ranč, měly by se odhazovat postupně a s lízáním by se mělo počkat až se všechny odhodí, čím víc jich je, tím déle by se měly odhazovat, teď se odhodí jakoby třeba jedna karta a ostatní insta zmizí.
-- 17 vyměň prosím assety pro postavy uncle will a johnny kisch (vše je seřazené podle rozšíření, podle abecedy) a tady je první johnny kisch, ten má teď 033, ale měl by mít 032 a uncle will má 032 a měl by mít 033
 - 18 když je laso, a já mám vyložené nějaké zelené karty (a nemůžu je tedy zahrát) a zároveň už nemůžu zahrát karty z ruky, nebliká mi tlačítko ukončit tah
 - 19 zkontroluj že když belle star útočí na jourdannais tak jourdanais funguje schopnost 
 - 20 když kit carlson si lízne 3 poslední karty z balíčku, balíček se tam objeví moc brzo, ne až po skončení míchání
@@ -70,4 +68,7 @@ OTEVŘENÉ
 HOTOVÉ
 ------
 
-(zatím nic — formát: "- 17 text bugu … → oprava: <hash>")
+(formát: "- 17 text bugu … → oprava: <hash>")
+
+- 10 šlo by přidat nějakou ikonku webu, takovéto co vidím u záložky nahoře v chromeu v lan verzi, nebo pak i na klasickém serveru? → oprava: d821f03
+- 17 vyměň prosím assety pro postavy uncle will a johnny kisch (vše je seřazené podle rozšíření, podle abecedy) a tady je první johnny kisch, ten má teď 033, ale měl by mít 032 a uncle will má 032 a měl by mít 033 → oprava: 8b45f1d
