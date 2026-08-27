@@ -61,7 +61,24 @@ function mineLandMs(on, holdMs) {
     return (holdMs === undefined ? D.holdMs : holdMs) + D.flipMs + D.bufMs;
 }
 
+// ── Ranč: hráč vyměňuje N karet z ruky ───────────────────────────────────────
+// Karty musí odletět PO JEDNÉ (výměna pěti karet nesmí vypadat jako výměna jedné)
+// a lízání smí začít, teprve až poslední dosedne v odhozu. Celá dávka je proto JEDNA
+// položka fronty animací: nerozpadne se a nemůže se zahodit kvůli zaostávání. Dřív
+// se posílalo N samostatných odhozů, jejichž součet přelezl maxLagMs fronty
+// (core/animQueue.js) – od páté karty pak jedna odletěla a zbytek zmizel naráz.
+const RANCH_ANIM = {
+    staggerMs:  95,   // rozestup startů odlétajících karet (jako u cinematiky vyřazení)
+    cardMs:    380,   // let poslední karty do odhozu (= ANIM_MS.hand_to_discard)
+    bufMs:     120,   // rezerva, ať stav nedorazí přesně na hranu dosednutí
+};
+
+function ranchDiscardMs(n) {
+    const D = RANCH_ANIM;
+    return Math.max(0, (n | 0) - 1) * D.staggerMs + D.cardMs + D.bufMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { PEYOTE_ANIM, peyoteRevealMs, LAW_ANIM, lawRevealMs,
-                       MINE_ANIM, mineLandMs };
+                       MINE_ANIM, mineLandMs, RANCH_ANIM, ranchDiscardMs };
 }

@@ -2,7 +2,7 @@
 // reakce, odhoz, Kit Carlson/Lucky Duke/Barel výběry, Sid/dynamit/pivo záchrany,
 // hokynářství). registerGameHandlers(socket, ctx, withRoom) – těla byte-identická.
 const { niResultMs } = require('../core/highNoonAnim.js');
-const { peyoteRevealMs, lawRevealMs } = require('../core/fistfulAnim.js');
+const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, handleAutoEndTurn,
@@ -853,9 +853,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     });
 
     // A Fistful of Cards – Ranč: hráč po lízání odhodil N karet. Odhoz proběhne naráz,
-    // ale karty odlétají do odhozu PO JEDNÉ (zleva doprava, jak leží ve vějíři) – fronta
-    // animací na klientu (core/animQueue.js) je přehraje za sebou a stav dorazí až za nimi,
-    // ať je karet kolik chce. Náhradní karty si pak hráč líže sám klikáním na balíček
+    // ale karty odlétají do odhozu PO JEDNÉ (zleva doprava, jak leží ve vějíři) a celá
+    // dávka jde jako JEDNA animace `ranch_discard` – fronta na klientu (core/animQueue.js)
+    // ji tak nemůže zahodit kvůli zaostávání (N samostatných odhozů jí od páté karty
+    // přeleze maxLagMs a zbytek se sesypal naráz) a stav (fáze lízání) dorazí až za
+    // poslední dosedlou kartou. Náhradní karty si pak hráč líže sám klikáním na balíček
     // (nová fáze DRAW, viz ranchExchange v logic/fistful.js).
     on('ranch_exchange', (d) => {
         withRoom((room, p, gs) => {
@@ -863,7 +865,12 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (idx === undefined || idx === null) return;
             const res = gs.ranchExchange(idx, (d && d.cardIds) || []);
             if (!res) { broadcastRoom(room); return; }
-            res.discarded.forEach(c => emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: c.id }));
+            if (res.discarded.length) {
+                emitAnim(room, { type: 'ranch_discard', playerIdx: idx, cardIds: res.discarded.map(c => c.id) });
+                // Boti o tu dobu nehrají – jinak by hráli „přes" odhazování.
+                room._revealBlockUntil = Math.max(room._revealBlockUntil || 0,
+                                                  Date.now() + ranchDiscardMs(res.discarded.length));
+            }
             broadcastRoom(room);
         });
     });

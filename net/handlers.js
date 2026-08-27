@@ -1545,6 +1545,31 @@ function _playCardAnim(data) {
                   ...(toDeck ? { mineLand: true } : {}) });
             break;
         }
+        // A Fistful of Cards – Ranč: hráč mění N karet naráz. Karty odlétají do odhozu
+        // PO JEDNÉ (stagger), ale celá dávka je JEDNA položka fronty – fronta ji proto
+        // nemůže rozpadnout ani zahodit kvůli zaostávání a stav (fáze lízání) dorazí až
+        // za poslední dosedlou kartou. Vlastní let je totožný s `hand_to_discard`.
+        case 'ranch_discard': {
+            const ids = (data.cardIds || []).filter(id => id != null);
+            ids.forEach((cardId, k) => {
+                setTimeout(() => {
+                    if (!gameScene) return;
+                    // Pozici čti až TEĎ: předchozí karty už z vějíře odešly a ruka se
+                    // přeskládala, takže slot z okamžiku přijetí animace by byl vedle.
+                    const from = getMyPlayedCardPos(data.playerIdx, cardId);
+                    _liftCardFromHand(data.playerIdx, cardId);
+                    App.discardAnimHideId = cardId;
+                    renderUI();
+                    const done = () => { if (App.discardAnimHideId === cardId) { App.discardAnimHideId = null; renderUI(); } };
+                    animateCardFlip(from.x, from.y, discard.x, discard.y, 'card_back', getCardTex(cardId),
+                        { flip: data.playerIdx !== myIndex, duration: RANCH_ANIM.cardMs, onComplete: done,
+                          startScale: sideScale(data.playerIdx, 'hand'), endScale: pileScale(),
+                          startAngle: sideAngle(data.playerIdx), endAngle: 0,
+                          holdUntil: () => inDiscard(cardId) });
+                }, k * RANCH_ANIM.staggerMs);
+            });
+            break;
+        }
         case 'hand_to_board': {
             const boardIdx = data.boardIdx ?? 0;
             const from = getMyPlayedCardPos(data.playerIdx, data.cardId);
@@ -2291,6 +2316,8 @@ function _animDurationMs(data) {
     if (data.type === 'peyote_reveal') return peyoteRevealMs();
     // Fistful – Právo západu: vynucená karta se ukáže celému stolu (střed → ruka).
     if (data.type === 'law_reveal') return lawRevealMs();
+    // Fistful – Ranč: celá vyměňovaná dávka je jedna položka fronty (karty po jedné).
+    if (data.type === 'ranch_discard') return ranchDiscardMs((data.cardIds || []).length);
     // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
     if (data.type === 'vulture_split_death') return deathFallMs();
     if (data.type === 'player_death_reveal') {
@@ -2314,7 +2341,8 @@ socket.on('card_animation', (data) => {
     const essential = data.type === 'player_death_discard' || data.type === 'vulture_sam_steal' ||
                       data.type === 'sheriff_penalty_discard' ||
                       data.type === 'vulture_split_death' || data.type === 'player_death_reveal' ||
-                      data.type === 'high_noon_reveal' || data.type === 'new_identity_result';
+                      data.type === 'high_noon_reveal' || data.type === 'new_identity_result' ||
+                      data.type === 'ranch_discard';
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 
