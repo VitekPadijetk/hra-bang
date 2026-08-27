@@ -420,8 +420,14 @@ function renderHandcuffsOverlay() {
 
     themeTitle(gameScene, 960, 250, '🔗 Želízka – vyber barvu', { fontSize: '42px' });
 
-    const hint = gameScene.add.text(960, 330,
-        'V tomhle tahu smíš zahrát jen karty zvolené barvy.',
+    // Fistful – Právo západu: drží-li hráč vynucenou kartu, která by ve své barvě šla
+    // zahrát, musí si vybrat právě tu barvu (server jinou odmítne). Ostatní zašednou.
+    const forcedSuit = typeof lawHandcuffsSuit === 'function'
+        ? lawHandcuffsSuit(state, state.players[myIndex], myIndex) : null;
+
+    const hint = gameScene.add.text(960, 330, forcedSuit
+        ? `Právo západu: musíš zahrát odkrytou kartu, takže volba je jen ${forcedSuit}.`
+        : 'V tomhle tahu smíš zahrát jen karty zvolené barvy.',
         { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.textMuted }).setOrigin(0.5);
     gameScene.cardsSprites.add(hint);
 
@@ -441,12 +447,14 @@ function renderHandcuffsOverlay() {
         const mine = (state.players[myIndex]?.hand || [])
             .filter(c => (typeof effSuit === 'function' ? effSuit(state, c) : c.suit) === it.s).length;
 
+        const locked = !!forcedSuit && forcedSuit !== it.s;
         const { bg } = themeButton(gameScene, cx, 560, 230, 230, `${it.s}\n${it.label}`, {
-            fill: it.red ? 0x4a1414 : 0x1c1c26, fillHover: it.red ? 0x6b1d1d : 0x2c2c3a,
-            stroke: it.red ? 0xd05050 : 0x8888aa,
-            textColor: it.red ? '#ff9a9a' : '#dfe0f0', fontSize: '40px',
+            fill: locked ? 0x232328 : (it.red ? 0x4a1414 : 0x1c1c26),
+            fillHover: locked ? 0x232328 : (it.red ? 0x6b1d1d : 0x2c2c3a),
+            stroke: locked ? 0x555566 : (it.red ? 0xd05050 : 0x8888aa),
+            textColor: locked ? '#6a6a76' : (it.red ? '#ff9a9a' : '#dfe0f0'), fontSize: '40px',
             onClick: () => {
-                if (App.blockInput) return;
+                if (App.blockInput || locked) return;
                 App.blockInput = true;
                 socket.emit('handcuffs_suit', { suit: it.s });
                 renderUI();

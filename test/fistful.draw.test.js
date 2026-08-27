@@ -276,15 +276,44 @@ test('Právo západu: Žízeň (1 karta) žádnou kartu nevynutí', () => {
     assert.ok(!g.players[0]._lawCardId);
 });
 
-test('Právo západu: Želízka mají přednost – zakázaná barva nic nevynutí', () => {
-    const g = mkEv([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }], 'PRAVO_ZAPADU');
+// Želízka (High Noon) × Právo západu (Fistful): jinou barvou by si hráč povinnost jen
+// zrušil, takže mu volba zbude jediná – barva vynucené karty. Neplatí to u karty, která
+// by nešla zahrát ani ve své barvě (Vedle! ve svém tahu), tam se vybírá svobodně.
+test('Právo západu + Želízka: vynucená karta si vynutí svou barvu', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }, {}], 'PRAVO_ZAPADU');
     g.activeEvent = hn('ZELIZKA');
     stackDeck(g, 2, CardType.BEER, { suit: Suits.HEARTS });
     g.startDrawPhase();
     g.drawCard('deck'); g.drawCard('deck');
     assert.equal(g.phase, 'HANDCUFFS_SUIT');
-    g.chooseHandcuffsSuit(0, Suits.SPADES);
-    assert.equal(g._lawForced(0), null, 'srdcové Pivo se v pikovém tahu zahrát nedá');
+    assert.equal(g.chooseHandcuffsSuit(0, Suits.SPADES), false, 'piky by Pivo vypnuly');
+    assert.equal(g.phase, 'HANDCUFFS_SUIT', 'čeká se dál');
+    assert.equal(g.chooseHandcuffsSuit(0, Suits.HEARTS), true);
+    assert.ok(g._lawForced(0), 'a povinnost platí');
+});
+
+test('Právo západu + Želízka: bot si vybere vynucenou barvu', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }, {}], 'PRAVO_ZAPADU');
+    g.activeEvent = hn('ZELIZKA');
+    give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+    give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+    stackDeck(g, 2, CardType.BEER, { suit: Suits.HEARTS });
+    g.startDrawPhase();
+    g.drawCard('deck'); g.drawCard('deck');
+    const act = decideBotAction(JSON.parse(JSON.stringify(g)), 0, null);
+    assert.equal(act.event, 'handcuffs_suit');
+    assert.equal(act.payload.suit, Suits.HEARTS, 'i když má v ruce jen piky');
+});
+
+test('Právo západu + Želízka: nehratelná karta barvu nevynutí', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 2 }, { role: 'Outlaw' }, {}], 'PRAVO_ZAPADU');
+    g.activeEvent = hn('ZELIZKA');
+    stackDeck(g, 2, CardType.MISSED, { suit: Suits.HEARTS });
+    g.startDrawPhase();
+    g.drawCard('deck'); g.drawCard('deck');
+    assert.equal(g.phase, 'HANDCUFFS_SUIT');
+    assert.equal(g.chooseHandcuffsSuit(0, Suits.SPADES), true, 'Vedle! se ve svém tahu nezahraje tak jako tak');
+    assert.equal(g._lawForced(0), null);
     g.tryEndTurn();
     assert.equal(g.currentPlayerIndex, 1);
 });

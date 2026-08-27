@@ -472,6 +472,11 @@ const HighNoonMixin = {
         const all = [Suits.HEARTS, Suits.DIAMONDS, Suits.CLUBS, Suits.SPADES];
         if (!all.includes(suit)) return false;
         const p = this.players[playerIdx];
+        // Fistful – Právo západu: drží-li hráč vynucenou kartu, která by ve své barvě šla
+        // zahrát, je volba jediná – jinou barvou by si povinnost zrušil. Stejný helper
+        // má klient (nabídne jen tu barvu) i bot, jinak by server volbu tiše odmítal.
+        const must = lawHandcuffsSuit(this, p, playerIdx);
+        if (must && suit !== must) return false;
         p._handcuffsSuit = suit;
         this.pendingHandcuffs = null;
         this.phase = "PLAY";

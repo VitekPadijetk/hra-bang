@@ -71,6 +71,9 @@ tiše odmítal ukončit a bot by posílal `end_turn` donekonečna.
   - **Když vynucená vyjde na kartu vybranou dřív, je už v ruce.** `law_reveal` ji odtud
     vytáhne zpátky doprostřed – `startDeckCardReveal` si ji po dobu letu schová
     (`App.pendingDrawIds`), takže se nikdy nezdvojí.
+- **Se Želízky (High Noon) volba barvy není svobodná** — hráč si musí vybrat barvu
+  vynucené karty, jinak by si povinnost zrušil. Viz `lawHandcuffsSuit` a
+  [high-noon.md](high-noon.md).
 - **Zlaté zvýraznění přebíjí všechna ostatní** — nastavuje se ve `drawMyArea` až úplně
   nakonec (i za zeleným zvýrazněním právě vybrané karty, ta se pozná vysunutím) a drží
   i po hover-outu. Hráč musí pořád vidět, která karta ho v tahu drží.

@@ -32,6 +32,10 @@ if (typeof require === 'function') {
     if (typeof suitBlockedFor === 'undefined') {
         globalThis.suitBlockedFor = require('./highNoon.js').suitBlockedFor;
     }
+    // Barva, která u karty PLATÍ (Požehnání/Prokletí) – potřebuje ji lawHandcuffsSuit.
+    if (typeof effSuit === 'undefined') {
+        globalThis.effSuit = require('./highNoon.js').effSuit;
+    }
     // A Fistful of Cards – Laso a Soudce (stejný důvod pro samostatné guardy).
     if (typeof boardDeadFor === 'undefined') {
         globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
@@ -311,6 +315,28 @@ function lawProtectedCard(state, me, myIndex, card) {
     return !!lawForcedCard(s, me, myIndex);
 }
 
+// Želízka (High Noon) × Právo západu (Fistful): jakou barvu si hráč MUSÍ vybrat.
+// Drží-li vynucenou kartu, která by ve své barvě šla zahrát, je volba jediná – jinou
+// barvou by si povinnost jen zrušil (a `lawForcedCard` by ji přestal hlásit, protože
+// _suitBlocked kartu vypne). Vrací null, když se vybírat dá svobodně: vynucená karta
+// není, nebo by nešla zahrát ani ve své barvě (typicky Vedle!, ve svém tahu nehratelné).
+// Jediný zdroj pravdy pro server (chooseHandcuffsSuit), klienta (overlay) i bota.
+function lawHandcuffsSuit(state, me, myIndex) {
+    if (!me || me._lawCardId == null) return null;
+    if (!eventActive(state, 'PRAVO_ZAPADU') || !eventActive(state, 'ZELIZKA')) return null;
+    const card = (me.hand || []).find(c => c && !c._placeholder && c.id === me._lawCardId);
+    if (!card) return null;
+    const suit = effSuit(state, card);
+    if (!suit) return null;
+    // Barva se volí ve fázi HANDCUFFS_SUIT (hned po lízání), takže se hratelnost posuzuje
+    // proti hypotetické fázi PLAY se ZVOLENOU barvou.
+    const simMe = Object.assign({}, me, { _handcuffsSuit: suit });
+    const players = state.players.slice();
+    players[myIndex] = simMe;
+    const sim = Object.assign({}, state, { players, phase: "PLAY" });
+    return lawForcedCard(sim, simMe, myIndex) ? suit : null;
+}
+
 // ── A Fistful of Cards – Ruská ruleta: co se počítá za „kartu Vedle!" ────────
 // „Počínaje šerifem každý hráč odhodí kartu Vedle!. První, kdo nemůže, ztrácí 2 životy."
 // Jediný zdroj pravdy pro server (_rouletteValidCard v logic/fistful.js), klientské
@@ -431,7 +457,7 @@ function sniperOffer(state, me, myIndex, card) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther,
-                       lawProtectedCard,
+                       lawProtectedCard, lawHandcuffsSuit,
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer };

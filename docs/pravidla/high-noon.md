@@ -157,6 +157,14 @@ karty té barvy **z ruky**. Co už leží na stole, je ve hře (bylo zahráno d�
   RESPOND s kartou z ruky, kterou playability neřeší). **Bez zrcadel by bot vybíral akci,
   kterou server odmítne, a hra by se zasekla.** Naopak zrcadlo navíc (bot si zakázal
   zelené karty ze stolu) by mu bralo tahy, které pravidla dovolují.
+- **S Právem západu (Fistful) volba není svobodná**: drží-li hráč vynucenou (odkrytou)
+  kartu, která by ve své barvě šla zahrát, musí si vybrat **právě její barvu** – jinou by
+  si povinnost jen zrušil. Rozhoduje o tom `lawHandcuffsSuit` ([core/playability.js](core/playability.js)):
+  postaví si stav s tou barvou a fází `PLAY` a zeptá se `lawForcedCard`. Vrátí `null`
+  u karty, která by nešla zahrát ani ve své barvě (Vedle! ve svém tahu) – tam se vybírá
+  dál svobodně. Ptají se jím server (`chooseHandcuffsSuit` jinou barvu odmítne), klient
+  (ostatní barvy v překryvu zašednou) i bot; bez zrcadel by bot posílal odmítanou volbu
+  donekonečna.
 
 **Nová identita** — každý hráč má druhou postavu lícem dolů; na začátku svého tahu si ji
 smí vzít místo současné a klesnout na 2 životy (odložená se vymění, příště se smí vrátit).

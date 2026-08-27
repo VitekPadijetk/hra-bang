@@ -42,6 +42,9 @@ if (typeof require === 'function') {
     if (typeof lawProtectedCard === 'undefined') {
         globalThis.lawProtectedCard = require('./playability.js').lawProtectedCard;
     }
+    if (typeof lawHandcuffsSuit === 'undefined') {
+        globalThis.lawHandcuffsSuit = require('./playability.js').lawHandcuffsSuit;
+    }
     // Ruská ruleta (Fistful) – samostatný guard ze stejného důvodu.
     if (typeof rouletteDiscardable === 'undefined') {
         globalThis.rouletteDiscardable = require('./playability.js').rouletteDiscardable;
@@ -1010,6 +1013,10 @@ function decideBotAction(state, myIndex, beliefs) {
         // zahraju nejvíc (sčítá se hodnota karet, ne jejich počet – jedna zbraň je víc
         // než dvě karty na vyhození).
         case 'HANDCUFFS_SUIT': {
+            // Fistful – Právo západu: drží-li bot vynucenou kartu, která by ve své barvě
+            // šla zahrát, je volba jediná (server jinou odmítne a tick by se zacyklil).
+            const mustSuit = lawHandcuffsSuit(state, me, myIndex);
+            if (mustSuit) return { event: 'handcuffs_suit', payload: { suit: mustSuit } };
             const score = {};
             me.hand.forEach(c => {
                 const s = effSuit(state, c);
