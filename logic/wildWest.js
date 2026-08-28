@@ -377,6 +377,91 @@ const WildWestMixin = {
         this._processSpecialQueue();
         return { taken, given: give, givenSlot };
     },
+
+    // ── Teren Kill ────────────────────────────────────────────────────────────────────
+    // „Pokaždé, když by měl být vyřazen, sejme kartu: není-li to pik, zůstává na
+    // 1 životě a lízne si kartu."
+    //
+    // Hák je úplně nahoře v `handlePlayerDeath` (logic/combat.js) – jediný trychtýř
+    // vyřazení. Vyřazení se POZASTAVÍ: hráč se místo nuly drží na 1 životě a sejmutí
+    // se zařadí do fronty odložených akcí (`TEREN_CHECK`). Držet ho naživu je nutné:
+    // jinak by `checkWinCondition` uprostřed nedokončeného vyřazení vyhlásil vítěze
+    // a `isInPlay` by ho vyškrtlo ze hry, přestože ještě může přežít.
+    //
+    // Sejmutí pak jede existující cestou CHECK_DRAW → CHECKING → `_applyCheckResult`
+    // (stejně jako Vendeta), takže se zdarma veze Lucky Duke, John Pain, klientská
+    // cinematika odkrytí i větev bota.
+    //
+    // Pivo / Sid Ketchum (FAQ Q18): hráč má na výběr, ale ne obojí. Záchrana se nabízí
+    // PŘED zásahem (fáze RESPOND / DYNAMITE_DAMAGE / NOON_DAMAGE, viz beerLastLifeSave);
+    // jakmile zásah padne a sejmutí se rozjede, je hráč na 1 životě jen technicky
+    // a žádná z těch fází už neběží – Pivo tedy zahrát nejde (věta z pravidel
+    // „nepovede-li se sejmutí, nesmíš se zachránit Pivem").
+    //
+    // Dynamit (FAQ Q12): snímá se JEDNOU. Zbytek zásahů propadá – `takeDynamiteHit`
+    // pending nuluje ještě před voláním `handlePlayerDeath`.
+    //
+    // Duch (Město duchů) umřít nemůže, takže se kontrola nespouští.
+    _terenKillCheck(deadIdx, killerArg) {
+        const p = this.players[deadIdx];
+        if (!p || p._ghost) return false;
+        if (this._terenDyingIdx === deadIdx) return false;   // sejmutí padlo na pik → umírá
+        if (effectiveCharacter(p) !== "Teren Kill") return false;
+
+        p.health = 1;
+        this.pendingTerenKill = { playerIdx: deadIdx, killerArg, phase: this.phase };
+        this.specialActionQueue.push({ type: 'TEREN_CHECK', playerIdx: deadIdx });
+        this.logEvent('special', { who: p.name, card: 'Teren Kill', msg: 'snímá na vyřazení' });
+        return true;
+    },
+
+    // Sejmutí doběhlo (volá `_applyCheckResult`). ♠ = vyřazení proběhne doopravdy,
+    // cokoli jiného = zůstává na 1 životě a líže si kartu (klikací líznutí ve frontě
+    // odložených akcí, stejný vzor jako odměna za zabití).
+    _terenKillResult(playerIdx, isSpade) {
+        const ptk = this.pendingTerenKill;
+        this.pendingTerenKill = null;
+        const p = this.players[playerIdx];
+        if (!p) return;
+        // Kam se hra vrací, až sejmutí (a líznutí za ně) doběhne. Obnovit fázi je nutné
+        // PŘED resume (stejně jako v _finishVultureSplit): jinak by si líznutí uložilo
+        // přechodné „CHECKING" jako interruptedPhase a hra by v něm uvázla.
+        const back = this.interruptedPhase || "PLAY";
+
+        if (!isSpade) {
+            p.health = 1;
+            this.logEvent('special', { who: p.name, card: 'Teren Kill', msg: 'zůstává na 1 životě' });
+            this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 1 });
+            this.phase = back;
+            this._resumeAfterSpecial();
+            return;
+        }
+
+        // ♠ → hráč je opravdu vyřazen. Fáze se na dobu vyřazení vrátí na tu, ve které
+        // zásah padl: `handlePlayerDeath` z ní pozná, jestli umřel hráč na tahu
+        // (_autoEndTurnPending). `_terenDyingIdx` drží hák vypnutý, ať se sejmutí
+        // nespustí podruhé.
+        p.health = 0;
+        this.phase = ptk?.phase || back;
+        this._terenDyingIdx = playerIdx;
+        this.handlePlayerDeath(playerIdx, ptk ? ptk.killerArg : undefined);
+        this._terenDyingIdx = null;
+        this.phase = back;
+
+        // Pokračování naplánované na dobranou frontu počítalo s tím, že hráč žije. Když
+        // byl na tahu a je vyřazený, dotáčelo by start tahu mrtvému – tah se místo toho
+        // posune (a rozdělaná série zásahů od Fistful of Cards končí).
+        if (!isInPlay(this.getCurrentPlayer())) {
+            this._resumeBeginTurnAfterQueue = false;
+            this._startChecksAfterQueue = false;
+            this.pendingFistful = null;
+            if (!this._autoEndTurnPending && !this.winner) this._nextTurnAfterQueue = true;
+        }
+        // Umřel hráč na tahu ve fázi PLAY/DRAW → tah posune server (handleAutoEndTurn),
+        // stejně jako u Pravého poledne. Sahat na frontu tady už nesmíme.
+        if (this._autoEndTurnPending) return;
+        this._resumeAfterSpecial();
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) {

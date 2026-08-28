@@ -1124,3 +1124,42 @@ test('přibalené karty: každý hráč dostane druhou postavu, a jinou než hra
     assert.equal(new Set(second).size, 4, 'druhé postavy se neopakují');
     gs.players.forEach(p => assert.notEqual(p._secondChar, p.character));
 });
+
+// Teren Kill pozastavuje VYŘAZENÍ – jediný trychtýř, kterým prochází každá smrt ve hře.
+// Náhodně vylosovaný by se do zátěže dostal jen občas, takže ho tady dostane každý:
+// každá jednotlivá smrt v partii pak jde přes sejmutí (fronta → CHECK_DRAW → CHECKING),
+// a hra to musí ustát ze všech stran (Bang!, hromadné útoky, dynamit, Pravé poledne,
+// Ruská ruleta, Fistful of Cards) i s tím, že se vyřazený hráč nakonec vrátí do hry.
+test('20 her jen botů, ve kterých jsou VŠICHNI Teren Kill', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: k % 2 === 0,
+                                         fistful: k % 3 === 0, divoky_zapad: true } };
+            const room = { id: 'terenk' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Výběr postav ještě neproběhl (dělají ho boti) → stačí přepsat nabídku.
+            gs.players.forEach(p => { p.charChoices = ['Teren Kill', 'Teren Kill']; });
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            // Nejdřív jen výběr postav – dál by Nová identita (High Noon) postavu vyměnila.
+            for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+            assert.ok(gs.players.every(pl => pl.character === 'Teren Kill'),
+                `TK hra #${k}: všichni opravdu dostali Terena`);
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `TK hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `TK hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani se samými Tereny');
+});

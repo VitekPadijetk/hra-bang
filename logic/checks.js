@@ -133,6 +133,7 @@ const ChecksMixin = {
         if (check.reason === "DYNAMITE") checkResult = (suit === Suits.SPADES && numVal >= 2 && numVal <= 9) ? 'výbuch' : 'nevybuchl';
         else if (check.reason === "JAIL") checkResult = (suit === Suits.HEARTS) ? 'srdce → hraje' : 'vězení → konec tahu';
         else if (check.reason === "VENDETTA") checkResult = (suit === Suits.HEARTS) ? 'srdce → tah navíc' : 'konec tahu';
+        else if (check.reason === "TEREN_KILL") checkResult = (suit === Suits.SPADES) ? 'pik → vyřazen' : 'zůstává na 1 životě';
         else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
         this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${suit}`, result: checkResult });
 
@@ -196,6 +197,11 @@ const ChecksMixin = {
                 this.phase = "PLAY";
                 this.nextTurn();
             }
+        } else if (check.reason === "TEREN_KILL") {
+            // Divoký západ – Teren Kill: ♠ = vyřazení, které se na tohle sejmutí
+            // pozastavilo, proběhne doopravdy; cokoli jiného = zůstává na 1 životě
+            // a líže si kartu. Viz _terenKillResult (logic/wildWest.js).
+            this._terenKillResult(check.playerIdx, suit === Suits.SPADES);
         } else if (check.reason === "BARREL" || check.reason === "JOURDONNAIS") {
             // Fistful – Ruská ruleta: sejmutí nahrazuje odhozenou kartu Vedle! (FAQ Q13),
             // takže se nevyhodnocuje obrana, ale kolečko (viz _rouletteBarrelResult).

@@ -58,6 +58,10 @@ const CombatMixin = {
     },
 
     handlePlayerDeath(deadIdx, explicitKillerIdx = undefined) {
+        // Divoký západ – Teren Kill: „pokaždé, když by měl být vyřazen, sejme kartu".
+        // Vyřazení se tím POZASTAVÍ (hráč se drží na 1 životě a rozjede se sejmutí);
+        // sem se vrátí, jen když padl pik. Viz _terenKillCheck (logic/wildWest.js).
+        if (this._terenKillCheck(deadIdx, explicitKillerIdx)) return;
         const deadPlayer = this.players[deadIdx];
         const killerIdx = explicitKillerIdx === undefined ? this.currentPlayerIndex : explicitKillerIdx;
         const killer = killerIdx !== null ? this.players[killerIdx] : null;
@@ -238,6 +242,15 @@ const CombatMixin = {
             // musí pokračovat – posunout tah by ho o něj připravilo.
             const _rouletteResume = resume === 'BEGIN_TURN' && isInPlay(this.getCurrentPlayer());
             this._pruneSuzyQueue();
+            // Divoký západ – Teren Kill: vyřazení se pozastavilo na sejmutí, hráč je
+            // pořád ve hře. Zbytek zásahů propadá (FAQ Q12: snímá se JEDNOU – pending
+            // je vynulovaný o pár řádků výš), ale tah pokračuje tam, kam by ho poslaly
+            // dobrané zásahy, ne posunem na dalšího hráče.
+            if (this.pendingTerenKill) {
+                this._afterDamageClicks(resume, true);
+                this._processSpecialQueue();
+                return;
+            }
             if (this.specialActionQueue.length > 0) {
                 if (_rouletteResume) this._resumeBeginTurnAfterQueue = true;
                 else this._nextTurnAfterQueue = true;

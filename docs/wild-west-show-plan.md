@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1, 2, 2b, 3 a 4 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1, 2, 2b, 3, 4 a 5 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1365,6 +1365,25 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 >   rozdávání v intru ([server/intro.js](../server/intro.js)). Bez sdíleného pole by
 >   intro rozdalo 9 karet a stav pak ukázal 5.
 >
+> **Fáze 5 rozhodla tři věci, které §5.5 nechává otevřené:**
+>
+> - **Pozastavený Teren se drží na 1 životě, ne na nule.** §5.5 mluví o „pozastavení
+>   vyřazení" jako u dělení karet mezi víc Vulture Samů – jenže tam je hráč už mrtvý,
+>   kdežto tady ještě může přežít. Na nule by ho `isInPlay` vyškrtlo ze hry a
+>   `checkWinCondition` (kterou volá kdekdo) by uprostřed nedokončeného vyřazení
+>   vyhlásil vítěze. Hráč proto zůstává na 1 životě po celou dobu sejmutí a na nulu
+>   ho srazí až ♠.
+> - **Pivo se ve fázi `CHECK_DRAW` nenabízí.** §5.5 chtěla nabídku nechat svítit
+>   a zavřít ji až klikem na balíček; jenže volba „Pivo, nebo sejmutí" (FAQ Q18) padá
+>   už o krok dřív – ve fázi, ve které zásah dopadl (RESPOND / DYNAMITE_DAMAGE /
+>   NOON_DAMAGE). Jakmile se sejmutí rozjede, žádná z těch fází neběží, takže
+>   `beerLastLifeSave` vrátí `false` sama od sebe a `_terenChecked` není potřeba.
+> - **Dynamit se hlídá sám.** `takeDynamiteHit` nuluje `pendingDynamiteDamage` ještě
+>   před voláním `handlePlayerDeath`, takže zbylé zásahy propadnou bez jediné podmínky
+>   navíc (FAQ Q12). Doplnit se musela jen jedna větev: přežil-li Teren, tah pokračuje
+>   tam, kam by ho poslaly dobrané zásahy (`_afterDamageClicks`), ne posunem na dalšího
+>   hráče.
+>
 | # | Fáze | Obsah | Riziko |
 |---|---|---|---|
 | **0** ✅ | Kostra | data, `logic/wildWest.js`, spouštěč, třetí sloupec, assety, loader, intro, lobby | nízké |
@@ -1373,7 +1392,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **2b** ✅ | Sacagaway | redakce ruky, přetáčení vějířů, lety karet lícem | **render — nutné ověření v prohlížeči; pravidla se nemění** |
 | **3** ✅ | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |
 | **4** ✅ | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |
-| **5** | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |
+| **5** ✅ | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |
 | **6** | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |
 | **7** | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |
 | **8** | Divoký západ | podmínka výhry, bot | střední |

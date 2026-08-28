@@ -48,6 +48,14 @@ OTEVŘENÉ
 - 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif. Taky když jsem tento poslední hráč, tak se mi zeleně ukáží karty až po HN/FF do té doby pořád šedé
 - 26 když zahraju jinou kartu u práva západu než je ta kterou musím (př. byla wells fargo, zahráli jsme bang) tak to nějak divně blikalo, vracelo se a podobně
 - 27 veře custer se na obrazovku nevejde 7 postav vedle sebe, pokud se hraje v 8, chtělo by to více smrsknout. Oddělej ty texty co tam jsou s názvy postav a taky hvězdička šerifa a karty HN/FF překrývají tyto karty postav, měla by být pod nimi
+- 28 john pain ta karta by z toho jak je velká odhalená měla letět hned k johnu painovi, ne že na balíček a až pak k němu (obdobná animace jako black jack de facto to je)
+- 29 když se karty odhozené dají vulture samovi, jdou vidět jako odhalené, ne jako rubové, někde se ztatilo otočení. Insta se otočí jak skončí odhalení role
+- 30 u zúčtování a karet které se dají hrát jako bang tak dej prosím u všech povinně to tlačítko použít jako bang (i u vedle a úhybu). U karet bang jako vedle to není třeba
+- 31 u uncla willa by nemělo svítit tlačítko ukončit tah když může použít svou schopnost
+- 32 právo západu v kombinaci se zúčtováním a přestřelkou se dá obejít zahrání té karty
+- 33 pokud duch ukončí hru během města duchů, nejedná se o živou postavu a nemá tak nárok na zachování postavy v další hře
+- 34 byl problém když bylo zúčtování, já jsem měl barel, měl jsem druhý barel v ruce a kliknul na sebe, tak jsem na sebe vystřelil, mělo by to být až s tím zmáčknutím tlačítka (provázáno s bugem 30)
+- 35 u miláčka valentýna bych na všechny ty karty měl kliknout já, ne automatika
 
 
 HOTOVÉ

@@ -210,6 +210,18 @@ function describePendingCheck(state, viewerIdx) {
                 detail: '♥ = hraješ ještě jeden tah, jinak tah končí',
             };
         }
+        // Divoký západ – Teren Kill: sejmutí na vlastní vyřazení (taky bez karty na stole).
+        if (pcd.reason === 'TEREN_KILL') {
+            return {
+                forMe: pcd.playerIdx === viewerIdx,
+                kind: 'TEREN_KILL',
+                playerIdx: pcd.playerIdx,
+                waitingName: nameOf(pcd.playerIdx),
+                short: 'Teren Kill',
+                title: '💀 Teren Kill – lízni si kontrolní kartu',
+                detail: '♠ = jsi vyřazen, jinak zůstáváš na 1 životě a lízneš si kartu',
+            };
+        }
         const isDynamite = pcd.dynamiteIdx !== null && pcd.dynamiteIdx !== undefined;
         return {
             forMe: pcd.playerIdx === viewerIdx,

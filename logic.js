@@ -172,6 +172,11 @@ class GameState {
         this.pendingBlood = null;       // Pokrevní bratři: nabídka darovat 1 život (před lízáním)
         this.pendingFistful = null;     // Fistful of Cards: rozdělaná série zásahů na začátku tahu
         this._mineTurn = false;         // Opuštěný důl: líže tenhle tah z odhozu? (fáze 1 a 3)
+        // Divoký západ – Teren Kill: pozastavené vyřazení, na které se právě snímá.
+        // `_terenDyingIdx` drží hák vypnutý ve chvíli, kdy sejmutí padlo na pik a vyřazení
+        // se dokončuje doopravdy (viz logic/wildWest.js).
+        this.pendingTerenKill = null;
+        this._terenDyingIdx = null;
         this._firstDeadIdx = null;      // Mrtvý muž: kdo byl vyřazen jako první
         this._deadManUsed = false;      // Mrtvý muž: návrat je jednorázový
         this.pendingRoulette = null;    // Ruská ruleta: kolečko odhazování karet Vedle!

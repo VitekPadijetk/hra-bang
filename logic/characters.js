@@ -184,6 +184,15 @@ const CharactersMixin = {
         } else if (action.type === 'UHYB_DRAW') {
             this.pendingUhybDraw = { playerIdx: action.playerIdx };
             this.phase = "UHYB_DRAW";
+        } else if (action.type === 'TEREN_CHECK') {
+            // Divoký západ – Teren Kill: sejmutí na vyřazení. Jde stejnou cestou jako
+            // Vendeta (CHECK_DRAW → CHECKING → _applyCheckResult), takže se zdarma veze
+            // Lucky Duke, John Pain, klientská cinematika i větev bota.
+            this.pendingCheckDraw = {
+                active: true, playerIdx: action.playerIdx,
+                dynamiteIdx: null, jailIdx: null, reason: 'TEREN_KILL'
+            };
+            this.phase = "CHECK_DRAW";
         } else if (action.type === 'VULTURE_SPLIT') {
             this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {

@@ -78,9 +78,9 @@ const WILD_WEST_CHARACTERS = [
 // …a podmnožina, která už MÁ schopnost, tedy ta, která smí do OSTRÉ hry. Seznam roste
 // s každou fází implementace (docs/wild-west-show-plan.md §10) a zmizí, až budou hotové
 // všechny – pak se `_characterPool` bude ptát rovnou na WILD_WEST_CHARACTERS.
-// Chybí: Teren Kill (fáze 5), Lee Van Kliff (fáze 6), Greygory Deck (fáze 10).
+// Chybí: Lee Van Kliff (fáze 6), Greygory Deck (fáze 10).
 const WILD_WEST_READY = [
-    "Big Spencer", "Flint Westwood", "Gary Looter", "John Pain", "Youl Grinner"
+    "Big Spencer", "Flint Westwood", "Gary Looter", "John Pain", "Teren Kill", "Youl Grinner"
 ];
 
 class Card {

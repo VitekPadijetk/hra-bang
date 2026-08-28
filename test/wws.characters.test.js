@@ -1,5 +1,6 @@
 // Rozšíření Divoký západ – postavy (fáze 4: Big Spencer, Gary Looter, John Pain,
-// Flint Westwood, Youl Grinner). Texty karet jsou v docs/wild-west-show-plan.md §5.
+// Flint Westwood, Youl Grinner; fáze 5: Teren Kill).
+// Texty karet jsou v docs/wild-west-show-plan.md §5.
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -7,7 +8,7 @@ const path = require('path');
 const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 const { playsAsMissed, playsAsBang, rouletteDiscardable, bigSpencerBlocked } = require('../core/playability.js');
 const { startCardsForCharacter, baseHealthForCharacter, healthForCharacter } = require('../core/roles.js');
-const { pendingActor } = require('../core/pending.js');
+const { pendingActor, describePendingCheck } = require('../core/pending.js');
 const { decideBotAction } = require('../core/botPolicy.js');
 const { computeBeliefs } = require('../core/beliefs.js');
 const { WILD_WEST_CHARACTERS } = require('../logic/entities.js');
@@ -473,13 +474,198 @@ test('Flint Westwood: bot schopnost použije', () => {
 test('_characterPool: ostrá hra bere jen hotové postavy Divokého západu', () => {
     const g = mkGame([{}, {}]);
     const pool = g._characterPool({ expansions: { divoky_zapad: true } });
-    ['Big Spencer', 'Flint Westwood', 'Gary Looter', 'John Pain', 'Youl Grinner']
+    ['Big Spencer', 'Flint Westwood', 'Gary Looter', 'John Pain', 'Teren Kill', 'Youl Grinner']
         .forEach(c => assert.ok(pool.includes(c), `${c} chybí v ostrém poolu`));
-    ['Teren Kill', 'Lee Van Kliff', 'Greygory Deck']
+    ['Lee Van Kliff', 'Greygory Deck']
         .forEach(c => assert.ok(!pool.includes(c), `${c} ještě nemá schopnost, do ostré hry nepatří`));
     // Bez rozšíření se nepřidá nic.
     assert.equal(g._characterPool({}).some(c => WILD_WEST_CHARACTERS.includes(c)), false);
     // Debug hra nabízí všech osm (ať se dá vyzkoušet i dráha životů bez pravidel).
     const dbg = g._characterPool({ expansions: { divoky_zapad: true }, debugPool: true });
     WILD_WEST_CHARACTERS.forEach(c => assert.ok(dbg.includes(c), `${c} chybí v debug poolu`));
+});
+
+// ── Teren Kill ──────────────────────────────────────────────────────────────
+// „Pokaždé, když by měl být vyřazen, sejme kartu: není-li to pik, zůstává na
+// 1 životě a lízne si kartu." Vyřazení se pozastaví ve frontě odložených akcí
+// (TEREN_CHECK) a dojede přes CHECK_DRAW → CHECKING → _applyCheckResult.
+
+// Hra, ve které smrtelný zásah dostane Teren Kill (seat 1). `check` = barva sejmuté karty.
+function terenGame(check, opts = {}) {
+    const g = mkGame([
+        { role: 'Sheriff' },
+        { role: 'Outlaw', character: 'Teren Kill', maxHealth: 3, health: opts.health ?? 1 },
+        { role: 'Renegade' }, { role: 'Deputy' },
+    ], { current: opts.current ?? 0 });
+    for (let i = 0; i < 8; i++) topDeck(g, Suits.CLUBS, '4');   // zásoba na líznutí
+    if (check) topDeck(g, check, '9');                          // kontrolní karta navrch
+    return g;
+}
+
+// Doběhne sejmutí, které čeká ve frontě (klik na balíček + odkrytí karty).
+function runTerenCheck(g) {
+    g._processSpecialQueue();
+    g.triggerCheckDraw();
+    g.resolveCheck();
+}
+
+test('Teren Kill: smrtelný zásah se pozastaví na sejmutí, ne-pik ho drží na 1 životě', () => {
+    const g = terenGame(Suits.HEARTS);
+    g.handleDamage(1, 0);
+
+    // Vyřazení ještě NEproběhlo: hráč se drží na 1 životě, aby ho isInPlay ani
+    // checkWinCondition uprostřed nedokončeného vyřazení nevyškrtly ze hry.
+    assert.equal(g.players[1].health, 1);
+    assert.equal(g.winner, null);
+    assert.deepEqual(g.specialActionQueue, [{ type: 'TEREN_CHECK', playerIdx: 1 }]);
+
+    runTerenCheck(g);
+    assert.equal(g.players[1].health, 1);
+    // …a líže si kartu (klikací líznutí ve frontě, stejný vzor jako odměna za zabití).
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 1);
+    assert.equal(g.drawPhaseState.cardsNeeded, 1);
+    g.drawCard('deck');
+    assert.equal(g.players[1].hand.length, 1);
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Teren Kill: pik = vyřazení proběhne doopravdy (i s odměnou za banditu)', () => {
+    const g = terenGame(Suits.SPADES);
+    give(g, 1, CardType.BANG);
+    g.handleDamage(1, 0);
+    runTerenCheck(g);
+
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g.players[1].hand.length, 0);       // karty šly do odhozu
+    assert.equal(g._deathAnimPlayerIdx, 1);          // cinematiku vyřazení dohraje server
+    // Šerif vyřadil banditu → 3 karty (kill-reward ve frontě).
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.playerIdx, 0);
+    assert.equal(g.drawPhaseState.cardsNeeded, 3);
+});
+
+test('Teren Kill: sejmutí jede přes CHECK_DRAW, takže na něj čeká klient i bot', () => {
+    const g = terenGame(Suits.HEARTS);
+    g.handleDamage(1, 0);
+    g._processSpecialQueue();
+
+    assert.equal(g.phase, 'CHECK_DRAW');
+    assert.equal(g.pendingCheckDraw.reason, 'TEREN_KILL');
+    assert.deepEqual(pendingActor(g), { idx: 1, kind: 'CHECK_DRAW' });
+    const d = describePendingCheck(g, 1);
+    assert.equal(d.kind, 'TEREN_KILL');
+    assert.equal(d.forMe, true);
+    assert.match(d.detail, /♠/);
+});
+
+test('Teren Kill: jakmile se snímá, Pivo už zachránit nemůže', () => {
+    const g = terenGame(Suits.HEARTS);
+    const beer = give(g, 1, CardType.BEER);
+    g.handleDamage(1, 0);
+    g._processSpecialQueue();
+    // FAQ Q18: volba „Pivo, nebo sejmutí" padla ve chvíli zásahu. Teď je pozdě –
+    // hráč je na 1 životě jen technicky a žádná ze záchranných fází neběží.
+    assert.equal(g.beerLastLifeSave(1, beer), false);
+    assert.equal(g.players[1].hand.length, 1);
+});
+
+test('Teren Kill × Pivo (FAQ Q18): záchrana Pivem sejmutí vůbec nespustí', () => {
+    const g = terenGame(Suits.SPADES);
+    g.phase = 'RESPOND';
+    g.pendingResponse = { active: true, originatorIdx: 0, targetIdx: 1,
+                          requiredCard: CardType.MISSED, sourceCard: CardType.BANG, responded: [] };
+    const beer = give(g, 1, CardType.BEER);
+
+    assert.equal(g.beerLastLifeSave(1, beer), true);
+    assert.equal(g.players[1].health, 1);
+    assert.equal(g.specialActionQueue.length, 0, 'sejmutí se nespustilo');
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Teren Kill: obrana bez Vedle! projde celou cestou playBang → sejmutí', () => {
+    const g = terenGame(Suits.HEARTS);
+    const c = give(g, 0, CardType.BANG);
+    g.playBang(0, 1, c);
+    g.handleResponse(1, null);           // nemá Vedle! → schytá zásah
+    assert.equal(g.phase, 'CHECK_DRAW');
+    assert.equal(g.players[1].health, 1);
+    runTerenCheck(g);
+    assert.equal(g.players[1].health, 1);
+    assert.equal(g.drawPhaseState.playerIdx, 1);
+});
+
+test('Teren Kill × dynamit (FAQ Q12): snímá se jednou a zbytek zásahů propadá', () => {
+    const g = terenGame(Suits.HEARTS, { current: 1, health: 3 });
+    g.pendingDynamiteDamage = { playerIdx: 1, hitsLeft: 3 };
+    g.phase = 'DYNAMITE_DAMAGE';
+    g.takeDynamiteHit(1);   // 3 → 2
+    g.takeDynamiteHit(1);   // 2 → 1
+    g.takeDynamiteHit(1);   // 1 → 0 → pozastavené vyřazení
+    assert.equal(g.players[1].health, 1);
+    assert.equal(g.pendingDynamiteDamage, null, 'zbylé zásahy propadly');
+    assert.equal(g.phase, 'CHECK_DRAW');
+
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.players[1].health, 1);
+    // Nejdřív karta za přežití, teprve pak pokračuje vlastní tah (fáze lízání).
+    assert.equal(g.drawPhaseState.cardsNeeded, 1);
+    g.drawCard('deck');
+    assert.equal(g.currentPlayerIndex, 1);
+    assert.equal(g.drawPhaseState.isStartOfTurn, true);
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+});
+
+test('Teren Kill × dynamit: pik na vlastním tahu tah posune', () => {
+    const g = terenGame(Suits.SPADES, { current: 1, health: 1 });
+    g.pendingDynamiteDamage = { playerIdx: 1, hitsLeft: 3 };
+    g.phase = 'DYNAMITE_DAMAGE';
+    g.takeDynamiteHit(1);
+    g.triggerCheckDraw();
+    g.resolveCheck();
+
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g.winner, null);
+    assert.notEqual(g.currentPlayerIndex, 1, 'tah se posunul na dalšího hráče');
+});
+
+test('Teren Kill × Pravé poledne: pik nechá tah posunout serveru (_autoEndTurnPending)', () => {
+    const g = terenGame(Suits.SPADES, { current: 1, health: 1 });
+    g._beginTurnStep = 6;
+    g.pendingNoonDamage = { playerIdx: 1 };
+    g.phase = 'NOON_DAMAGE';
+    g.takeNoonHit(1);
+    assert.equal(g.phase, 'CHECK_DRAW');
+    g.triggerCheckDraw();
+    g.resolveCheck();
+
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g._autoEndTurnPending, true);
+    // Start tahu se mrtvému nedotáčí – pokračování naplánované na frontu se zahodilo.
+    assert.equal(g._resumeBeginTurnAfterQueue, false);
+    assert.equal(g.currentPlayerIndex, 1, 'tah posune až server');
+});
+
+test('Teren Kill jako duch (Město duchů) sejmutí nespouští', () => {
+    const g = terenGame(Suits.HEARTS, { current: 1, health: 1 });
+    g.players[1]._ghost = true;
+    g.handleDamage(1, 0);
+    assert.equal(g.players[1].health, 0);
+    assert.equal(g.specialActionQueue.length, 0);
+    assert.equal(g.pendingTerenKill, null);
+});
+
+test('Teren Kill: sejmutou kartu bere John Pain (jde to normální check cestou)', () => {
+    const g = mkGame([
+        { role: 'Sheriff', character: 'John Pain' },
+        { role: 'Outlaw', character: 'Teren Kill', maxHealth: 3, health: 1 },
+        { role: 'Renegade' }, { role: 'Deputy' },
+    ], { current: 0 });
+    for (let i = 0; i < 8; i++) topDeck(g, Suits.CLUBS, '4');
+    topDeck(g, Suits.HEARTS, '9');
+    g.handleDamage(1, 0);
+    runTerenCheck(g);
+    assert.equal(g.players[0].hand.length, 1, 'John Pain si vzal sejmutou kartu');
+    assert.equal(g.players[0].hand[0].suit, Suits.HEARTS);
 });
