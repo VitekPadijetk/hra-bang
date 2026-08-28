@@ -216,6 +216,12 @@ const CharactersMixin = {
             this._resumeBeginTurnAfterQueue = false;
             this.interruptedPhase = null;
             if (!this.winner) this._resumeBeginTurn();
+        } else if (this._advanceGrinnerAfterQueue) {
+            // Divoký západ – Youl Grinner: dávající si mohl prázdnou rukou vysloužit
+            // líznutí (Suzy Lafayette). Až doběhne, jde na řadu další v kolečku.
+            this._advanceGrinnerAfterQueue = false;
+            this.interruptedPhase = null;
+            if (!this.winner) this._advanceGrinner();
         } else if (this._advanceRouletteAfterQueue) {
             // Fistful – Ruská ruleta: odhod mohl do fronty přidat líznutí (Suzy Lafayette
             // s prázdnou rukou, Molly Stark za odhozenou kartu). Až doběhne, jde na řadu

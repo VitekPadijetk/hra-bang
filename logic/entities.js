@@ -68,13 +68,19 @@ const FISTFUL_CHARACTERS = [
 
 // Postavy rozšíření Divoký západ (Wild West Show). Portréty 034–041, data
 // (characters.json) i životy (core/roles.js: Big Spencer 9, Gary Looter 5, Teren Kill 3)
-// jsou hotové, ale do OSTRÉ hry se ZATÍM nepřidávají: schopnosti přijdou až s vlastními
-// fázemi implementace a do té doby by u stolu seděly postavy bez schopnosti. V debug hře
-// se zapnutým rozšířením vybrat jdou (`_characterPool` + options.debugPool), ať se dá
-// vyzkoušet dráha životů; do ostré hry je pustí až `exps.divoky_zapad` bez té podmínky.
+// jsou hotové pro všech osm; v DEBUG hře se zapnutým rozšířením jdou vybrat všechny
+// (`_characterPool` + options.debugPool), ať se dá vyzkoušet i to, co ještě nemá pravidla.
 const WILD_WEST_CHARACTERS = [
     "Big Spencer", "Flint Westwood", "Gary Looter", "Greygory Deck",
     "John Pain", "Lee Van Kliff", "Teren Kill", "Youl Grinner"
+];
+
+// …a podmnožina, která už MÁ schopnost, tedy ta, která smí do OSTRÉ hry. Seznam roste
+// s každou fází implementace (docs/wild-west-show-plan.md §10) a zmizí, až budou hotové
+// všechny – pak se `_characterPool` bude ptát rovnou na WILD_WEST_CHARACTERS.
+// Chybí: Teren Kill (fáze 5), Lee Van Kliff (fáze 6), Greygory Deck (fáze 10).
+const WILD_WEST_READY = [
+    "Big Spencer", "Flint Westwood", "Gary Looter", "John Pain", "Youl Grinner"
 ];
 
 class Card {
@@ -252,5 +258,5 @@ class Deck {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, Card, Player, Deck };
+    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, Card, Player, Deck };
 }

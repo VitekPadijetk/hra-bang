@@ -11,6 +11,12 @@ const DrawMixin = {
         // Divoký západ – John Pain: kontroly na Dynamit/Vězení doběhly, sejmutá karta
         // tedy smí do ruky (pojistka pro větve, které frontu odložených akcí neberou).
         this._drainJohnPain();
+        // Divoký západ – Youl Grinner: „než si začne líznout, musí mu každý hráč, který
+        // má v ruce víc karet než on, dát jednu kartu" (FAQ Q26). Musí to být ÚPLNĚ
+        // první krok – Peyote, Kit Carlson i Black Jack si fázi lízání přebírají celou.
+        // Až kolečko doběhne, zavolá _advanceGrinner startDrawPhase znovu; podruhé už
+        // schopnost neprojde (_grinnerTurn), takže nic pod tímhle řádkem neběží dvakrát.
+        if (this._startGrinner()) return;
         const player = this.getCurrentPlayer();
         player.bangsPlayedThisTurn = 0;
         player._joseUses = 0;      // Dodge City: José Delgado max 2×/tah

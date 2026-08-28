@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1, 2, 2b a 3 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1, 2, 2b, 3 a 4 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1335,6 +1335,36 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 >   zbytek ruky přetočí zpátky. Odložení se dělá tím, že se `_playCardAnim` zavolá znovu
 >   s `_sacaDone`, takže se těla case větví nesahá.
 >
+> **Fáze 4 rozhodla pět věcí, které §5 nechává otevřené:**
+>
+> - **Postavy jdou do OSTRÉ hry po jedné, jak přibývají schopnosti.** `WILD_WEST_READY`
+>   ([logic/entities.js](../logic/entities.js)) je podmnožina `WILD_WEST_CHARACTERS`,
+>   kterou bere `_characterPool` v ostré hře; debug hra nabízí všech osm dál. Seznam
+>   roste s fázemi 5, 6 a 10 a pak zmizí. Bez toho by fáze 4 nebyla hratelná — a hlavně
+>   by se postavy vůbec nedostaly do zátěžových her jen botů.
+> - **Stall guard bota musel zjemnit otisk pokroku** (`progressSig`, [server/bots.js](../server/bots.js)):
+>   Divoký západ přinesl TŘI cesty, kterými karta jen přeskakuje z ruky do ruky (Gary
+>   Looter, Youl Grinner, Flint Westwood), takže se SOUČET karet v rukou nezmění a guard
+>   hlásil zaseknutí tam, kde hra běžela. Ruce se proto počítají po hráčích.
+> - **John Pain se odbavuje v `_pruneSuzyQueue`.** §5.3 chtěla `specialActionQueue`
+>   s vlastní položkou; jenže ta se odbavuje jen na místech, kam některé větve sejmutí
+>   (Vězení sebralo tah, Vendeta neuspěla, dynamit se posunul) vůbec nevedou. Karta se
+>   proto jen zapíše (`_johnPainQueue`) a přesune se při pročištění fronty — to je
+>   jediné místo, které se veze se VŠEMI cestami — plus pojistka v `nextTurn`
+>   a `startDrawPhase`. Rozložený zásah (dynamit, Pravé poledne) drain blokuje: mezi
+>   jeho zásahy jde zahrát Pivo na záchranu posledního života, tedy přesně to, co
+>   poznámka na kartě zakazuje.
+> - **Animace „kartu vybral její majitel" nese `chosen`.** Gary Looter, Youl Grinner
+>   i Flintova vlastní karta letí jako `ragtime_steal`, ale pod Sacagaway se u nich
+>   NEHRAJE gesto se zamícháním ruky (FAQ Q17 je o NÁHODNÉ krádeži). Rozhoduje o tom
+>   jediné pole, které čtou `fromShuffledHand`/`holdForSacaSteal` ([server/anim.js](../server/anim.js))
+>   i klient ([net/handlers.js](../net/handlers.js)). Dvě karty, které si Flint bere,
+>   `chosen` nemají — ty náhodné jsou.
+> - **Big Spencerova startovní ruka je vlastní pole `_startCards`**, ne dopočet z životů:
+>   čte ho jak skutečné rozdání ([logic/setup.js](../logic/setup.js), debug), tak animace
+>   rozdávání v intru ([server/intro.js](../server/intro.js)). Bez sdíleného pole by
+>   intro rozdalo 9 karet a stav pak ukázal 5.
+>
 | # | Fáze | Obsah | Riziko |
 |---|---|---|---|
 | **0** ✅ | Kostra | data, `logic/wildWest.js`, spouštěč, třetí sloupec, assety, loader, intro, lobby | nízké |
@@ -1342,7 +1372,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **2** ✅ | Zúčtování | `playsAsBang`/`playsAsMissed`/`showdownBangOk`/`preacherBlocks`/`nativePlayInTurn`/`turnActionForCard`, přepínač v UI | střední (dotýká se obrany) |
 | **2b** ✅ | Sacagaway | redakce ruky, přetáčení vějířů, lety karet lícem | **render — nutné ověření v prohlížeči; pravidla se nemění** |
 | **3** ✅ | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |
-| **4** | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |
+| **4** ✅ | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |
 | **5** | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |
 | **6** | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |
 | **7** | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |

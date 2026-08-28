@@ -249,6 +249,134 @@ const WildWestMixin = {
             this.logEvent('special', { who: taker.name, card: 'John Pain', taken: card.name });
         });
     },
+
+    // ── Youl Grinner ──────────────────────────────────────────────────────────
+    // „Než si začne líznout, musí mu každý hráč, který má v ruce víc karet než on, dát
+    // jednu kartu podle své volby." Spouští se na začátku JEHO fáze lízání (FAQ Q26),
+    // tedy ještě před Peyote, Kitem Carlsonem i vším ostatním, co si lízání přebírá.
+    //
+    // Množina dávajících se určí JEDNOU, snímkem (R8 / FAQ Q03 „každý z těch hráčů"):
+    // jinak by pořadí dávání měnilo, kdo ještě platí. Pořadí je po směru od Youla.
+    // Mrtví nedávají; duch (Město duchů) na svém tahu schopnost používá.
+    _startGrinner() {
+        if (this._grinnerTurn === this.turnId) return false;   // v tomhle tahu už proběhlo
+        const idx = this.currentPlayerIndex;
+        const me = this.players[idx];
+        if (!me || effectiveCharacter(me) !== "Youl Grinner") return false;
+        this._grinnerTurn = this.turnId;
+        const n = this.players.length;
+        const mine = me.hand.length;
+        const queue = [];
+        for (let k = 1; k < n; k++) {
+            const j = (idx + k) % n;
+            const p = this.players[j];
+            if (p && isInPlay(p) && p.hand.length > mine) queue.push(j);
+        }
+        if (!queue.length) return false;   // nikdo nemá víc karet → lízání jede normálně
+        this.pendingGrinner = { grinnerIdx: idx, queue };
+        this.logEvent('special', { who: me.name, card: 'Youl Grinner',
+                                   target: queue.map(i => this.players[i].name).join(', ') });
+        this.phase = "GRINNER_GIVE";
+        return true;
+    },
+
+    // Hráč na řadě dal kartu. Vrací { card, handIdx } pro animaci, nebo null u neplatného
+    // kliku (fronta se pak NEposune). Karta se DÁVÁ, neodhazuje – Molly Stark si za ni
+    // tedy nelíže (její schopnost mluví o zahrání nebo odhození). Suzy Lafayette naopak
+    // ano: kdo dal poslední kartu, má prázdnou ruku a hned si líže – a kolečko se posune
+    // až po ní (_advanceGrinnerAfterQueue), aby do dalšího kola nastoupila s kartou.
+    grinnerGive(playerIdx, cardId) {
+        if (this.phase !== "GRINNER_GIVE" || !this.pendingGrinner) return null;
+        const pg = this.pendingGrinner;
+        if (pg.queue[0] !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        const grinner = this.players[pg.grinnerIdx];
+        if (!p || !grinner) return null;
+        const i = p.hand.findIndex(c => c && c.id === cardId);
+        if (i === -1) return null;
+
+        const card = p.hand.splice(i, 1)[0];
+        grinner.hand.push(card);
+        pg.queue.shift();
+        this.logEvent('special', { who: p.name, card: 'Youl Grinner', target: grinner.name, taken: card.name });
+        this.checkSuzyLafayette(p);
+        // Frontu pročisti DŘÍV, než se podle její délky rozhoduje (viz CLAUDE.md) – jinak
+        // by `length > 0` prošlo, _processSpecialQueue by nic nerozeběhlo a kolečko by
+        // se nikdy neposunulo.
+        this._pruneSuzyQueue();
+        if (this.specialActionQueue.length > 0) {
+            this._advanceGrinnerAfterQueue = true;
+            this._processSpecialQueue();
+        } else {
+            this._advanceGrinner();
+        }
+        return { card, handIdx: i };
+    },
+
+    // Na řadu jde další dávající; když už nikdo nezbyl, pokračuje se fází lízání.
+    // Hráče, kteří mezitím odešli ze hry nebo přišli o karty, přeskoč – jinak by se
+    // čekalo na klik, který nikdo neudělá.
+    _advanceGrinner() {
+        const pg = this.pendingGrinner;
+        if (!pg) return;
+        while (pg.queue.length) {
+            const p = this.players[pg.queue[0]];
+            if (p && isInPlay(p) && p.hand.length > 0) break;
+            pg.queue.shift();
+        }
+        if (pg.queue.length) { this.phase = "GRINNER_GIVE"; return; }
+        this.pendingGrinner = null;
+        this.phase = "PLAY";
+        // _grinnerTurn drží tenhle tah, takže se schopnost znovu nespustí.
+        this.startDrawPhase();
+    },
+
+    // ── Flint Westwood ────────────────────────────────────────────────────────
+    // „Během svého tahu smí vyměnit 1 kartu z ruky za 2 náhodné karty z ruky jiného
+    // hráče." Jednou za tah (FAQ Q16). Svou kartu VYBÍRÁ, cizí jsou NÁHODNÉ; má-li cíl
+    // jen jednu kartu, dostane Flint jen jednu (Sciarra Q33). O vzdálenosti karta nemluví,
+    // takže dostřel neplatí – cílem smí být kdokoli ve hře.
+    //
+    // Pořadí operací je kvůli Suzy Lafayette (Sciarra Q32) závazné: nejdřív se cizí karty
+    // VEZMOU, pak se dá Flintova, a teprve pak se posuzují prázdné ruce. Suzy, které Flint
+    // vybral ruku, tak dostane jeho kartu dřív, než by si stihla líznout – a Flint tu
+    // líznutou kartu nedostane.
+    //
+    // Vrací { taken: [{card, slot}], given } pro animace, nebo null u neplatné akce.
+    useFlintWestwood(playerIdx, targetIdx, cardId) {
+        if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        if (!p || effectiveCharacter(p) !== "Flint Westwood") return null;
+        if (p._flintUsedTurn === this.turnId) return null;
+        const t = this.players[targetIdx];
+        if (!t || targetIdx === playerIdx || !isInPlay(t) || !t.hand.length) return null;
+        const give = p.hand.find(c => c && c.id === cardId);
+        if (!give) return null;
+        // Fistful – Právo západu: vynucenou kartu schopnost dát pryč nesmí (hráč by se
+        // jí zbavil, aniž by ji zahrál). Ruka jinak o jednu zhubne a o dvě povyroste,
+        // takže vynucené kartě samotná výměna nijak nehrozí.
+        if (this._lawProtected(playerIdx, give)) return null;
+        if (this._lawLocked(playerIdx, null, { discards: 1, draws: 2 })) return null;
+
+        p._flintUsedTurn = this.turnId;
+        const taken = [];
+        for (let k = 0; k < 2 && t.hand.length; k++) {
+            const slot = Math.floor(Math.random() * t.hand.length);
+            taken.push({ card: t.hand.splice(slot, 1)[0], slot });
+        }
+        taken.forEach(x => p.hand.push(x.card));
+        const gi = p.hand.findIndex(c => c && c.id === cardId);
+        const givenSlot = gi;
+        p.hand.splice(gi, 1);
+        t.hand.push(give);
+        this.logEvent('special', { who: p.name, card: 'Flint Westwood', target: t.name,
+                                   taken: taken.map(x => x.card.name).join(', ') });
+        // Teprve teď (viz Q32 výš). Flintova ruka prázdná být nemůže – vzal si aspoň
+        // jednu kartu – takže se posuzuje jen cíl.
+        this.checkSuzyLafayette(t);
+        this._processSpecialQueue();
+        return { taken, given: give, givenSlot };
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) {

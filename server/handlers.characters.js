@@ -145,6 +145,32 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Flint Westwood (Divoký západ): 1× za tah vymění 1 kartu z ruky za 2 náhodné
+    // karty z ruky jiného hráče. Cizí karty jsou NÁHODNÉ (letí soukromě, pod Sacagaway
+    // s gestem zamíchané ruky), jeho vlastní si vybral SÁM (`chosen` – gesto se nehraje).
+    // Pořadí emitů = pořadí, ve kterém se karty z rukou braly: klient si kartu z vějíře
+    // odebírá hned podle `stolenIndex`, takže musí sedět na stav v tu chvíli.
+    on('flint_westwood', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const targetIdx = d?.targetIdx;
+            const res = gs.useFlintWestwood(idx, targetIdx, d?.cardId);
+            if (!res) return;
+            res.taken.forEach(({ card, slot }) => {
+                const base = { type: 'ragtime_steal', attackerIdx: idx, targetIdx,
+                               area: 'hand', boardIdx: null, stolenIndex: slot };
+                emitAnimPrivate(room, idx, { ...base, stolenCardId: card.id },
+                                           { ...base, stolenCardId: null });
+            });
+            const back = { type: 'ragtime_steal', attackerIdx: targetIdx, targetIdx: idx,
+                           area: 'hand', boardIdx: null, stolenIndex: res.givenSlot, chosen: true };
+            emitAnimPrivate(room, [idx, targetIdx],
+                            { ...back, stolenCardId: res.given.id }, { ...back, stolenCardId: null });
+            ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx, kind: 'hostile' });
+            broadcastRoomDelayed(room);
+        });
+    });
+
     // Uncle Will (Fistful): 1× za tah zahraje libovolnou kartu z ruky jako Hokynářství.
     on('uncle_will', (d) => {
         withRoom((room, p, gs) => {

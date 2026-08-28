@@ -27,6 +27,7 @@ if (typeof CardType === 'undefined' && typeof require === 'function') {
     globalThis.DODGE_CITY_CHARACTERS = __ent.DODGE_CITY_CHARACTERS;
     globalThis.FISTFUL_CHARACTERS = __ent.FISTFUL_CHARACTERS;
     globalThis.WILD_WEST_CHARACTERS = __ent.WILD_WEST_CHARACTERS;
+    globalThis.WILD_WEST_READY = __ent.WILD_WEST_READY;
     globalThis.Card = __ent.Card;
     globalThis.Player = __ent.Player;
     globalThis.Deck = __ent.Deck;

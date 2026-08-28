@@ -352,6 +352,10 @@ const CHAR_RANK = {
     // A Fistful of Cards. Bez nich měly rank 0 (CHAR_RANK[x] || 0), takže je pickCharacter
     // vždycky poslal na konec pořadí a bot si je NIKDY nevybral - ani proti slabé postavě.
     'Claus the Saint': 7, 'Johnny Kisch': 6, 'Uncle Will': 7,
+    // Divoký západ. Schopnosti přibývají po fázích, rank ale musí existovat od začátku –
+    // bez něj spadne postava na 0 a bot si ji nikdy nevybere (hlídá test).
+    'Big Spencer': 7, 'Flint Westwood': 7, 'Gary Looter': 7, 'Greygory Deck': 8,
+    'John Pain': 8, 'Lee Van Kliff': 8, 'Teren Kill': 6, 'Youl Grinner': 7,
 };
 function pickCharacter(choices) {
     return [...choices].sort((a, b) => (CHAR_RANK[b] || 0) - (CHAR_RANK[a] || 0))[0];
@@ -848,6 +852,25 @@ function decidePlay(state, myIndex, beliefs) {
         });
         if (idx !== -1) consider(16, { event: 'uncle_will', payload: { cardIdx: idx } });
     }
+    // Flint Westwood (Divoký západ): 1× za tah vymění 1 kartu z ruky za 2 náhodné
+    // z ruky jiného hráče. Je to čistý zisk karty, takže se to vyplatí skoro vždycky –
+    // dá se nejlevnější karta a bere se od nejpravděpodobnějšího nepřítele s nejplnější
+    // rukou (dostřel neplatí). Podmínky musí sedět se serverem (useFlintWestwood).
+    if (ch === 'Flint Westwood' && me._flintUsedTurn !== state.turnId && me.hand.length > 0) {
+        let idx = -1, low = Infinity;
+        me.hand.forEach((c, i) => {
+            if (lawProtectedCard(state, me, myIndex, c)) return;   // Právo západu
+            if (keepScore(c) < low) { low = keepScore(c); idx = i; }
+        });
+        const victims = rankEnemies(state, myIndex, beliefs)
+            .filter(e => (state.players[e.idx]?.hand || []).length > 0);
+        const victim = victims.sort((a, b) =>
+            (state.players[b.idx].hand.length - state.players[a.idx].hand.length))[0];
+        if (idx !== -1 && victim) {
+            consider(30, { event: 'flint_westwood',
+                           payload: { targetIdx: victim.idx, cardId: me.hand[idx].id } });
+        }
+    }
     if (ch === 'Doc Holyday' && !me._docUsed && me.hand.length >= 3) {
         const reach = weaponReach(state, me.weapon);
         const tgt = shootTargets(state, myIndex, beliefs).find(e => computeDistance(state, myIndex, e.idx) <= reach);
@@ -1137,6 +1160,15 @@ function decideBotAction(state, myIndex, beliefs) {
             const green = (me.board || []).find(c => rouletteDiscardable(state, me, c, true));
             if (green) return { event: 'roulette_discard', payload: { cardId: green.id, fromBoard: true } };
             return null;
+        }
+
+        // Divoký západ – Youl Grinner: dát kartu je povinné, jen se vybírá, co bolí
+        // nejmíň (keepScore, stejně jako u Ruské rulety). Prázdnou ruku sem server
+        // neposílá (kolečko takové hráče přeskakuje).
+        case 'GRINNER_GIVE': {
+            if (!me.hand.length) return null;
+            const worst = me.hand.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
+            return { event: 'grinner_give', payload: { cardId: worst.id } };
         }
 
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom

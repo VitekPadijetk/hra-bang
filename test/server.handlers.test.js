@@ -42,6 +42,7 @@ const GROUPS = {
         'sid_ketchum_discard_both', 'take_dynamite_hit', 'respond_with_beer', 'beer_dynamite_save',
         'take_noon_hit', 'beer_noon_save', 'handcuffs_suit', 'new_identity_choose',
         'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
+        'grinner_give',
         'sniper_choose', 'play_ricochet',
         'sid_ketchum_cancel', 'sid_save_discard', 'store_pick',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another', 'activate_green_card',
@@ -50,7 +51,7 @@ const GROUPS = {
         'bart_cassidy_draw', 'uhyb_draw', 'get_taken_names', 'el_gringo_steal', 'suzy_draw',
         'trigger_check_draw', 'resolve_check', 'resolve_black_jack',
         'chuck_wengam', 'jose_delgado', 'doc_holyday', 'vera_copy',
-        'uncle_will', 'claus_give',
+        'uncle_will', 'claus_give', 'flint_westwood',
     ] },
     debug: { reg: registerDebug, events: [
         'debug_start', 'debug_end_game', 'debug_give_card', 'debug_remove_card', 'debug_select_char',
@@ -65,15 +66,15 @@ for (const [name, { reg, events }] of Object.entries(GROUPS)) {
     });
 }
 
-test('všechny moduly dohromady pokrývají 78 unikátních eventů', () => {
+test('všechny moduly dohromady pokrývají 80 unikátních eventů', () => {
     const all = [];
     for (const { reg } of Object.values(GROUPS)) {
         const socket = mkSocket();
         reg(socket, mkCtx(), () => {});
         all.push(...socket._events);
     }
-    assert.equal(all.length, 78);
-    assert.equal(new Set(all).size, 78, 'žádný event se nesmí registrovat dvakrát');
+    assert.equal(all.length, 80);
+    assert.equal(new Set(all).size, 80, 'žádný event se nesmí registrovat dvakrát');
 });
 
 // Druhá polovina invariantu „bot se nikdy nezasekne" (první je v test/botPolicy.test.js):

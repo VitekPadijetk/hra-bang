@@ -130,15 +130,20 @@ module.exports = function installBotService(ctx) {
         // Pozor: musí zachytit KAŽDÝ druh pokroku, jinak hrozí falešný stall:
         //  - pokles životů (schytání zásahu) → součet HP,
         //  - posun cíle u hromadného útoku (Kulomet/Indiáni) → pendingResponse.targetIdx,
-        //  - rozdání/přesun karet → součet ruky+stolu, odhoz, výběr postav.
-        let handSum = 0, boardSum = 0, hpSum = 0;
+        //  - rozdání/přesun karet → ruce PO HRÁČÍCH + součet stolu, odhoz, výběr postav.
+        // Ruce se musí počítat po hráčích, ne součtem: Divoký západ přinesl tři cesty,
+        // kterými karta jen PŘESKAKUJE z ruky do ruky (Gary Looter bere odhoz nad limit,
+        // Youl Grinner si nechá dát kartu, Flint Westwood mění 1 za 2) – součet se u nich
+        // nezmění a stall guard hlásil zaseknutí tam, kde hra normálně běžela.
+        const hands = [];
+        let boardSum = 0, hpSum = 0;
         for (const p of gs.players) {
-            handSum += p.hand?.length || 0;
+            hands.push(p.hand?.length || 0);
             boardSum += p.board?.length || 0;
             hpSum += Math.max(0, p.health || 0);
         }
         return [
-            gs.phase, gs.currentPlayerIndex, handSum, boardSum, hpSum,
+            gs.phase, gs.currentPlayerIndex, hands.join(','), boardSum, hpSum,
             gs.players.filter(p => p.character).length, // pokrok char-selectu
             gs.deck?.discardPile?.length || 0,
             gs.kitCarlsonState?.pendingAdd?.length || 0,
@@ -169,6 +174,11 @@ module.exports = function installBotService(ctx) {
             // Ranč se dá vždycky přeskočit prázdným seznamem.
             case 'PEYOTE': return { event: 'peyote_guess', payload: { red: true } };
             case 'RANCH': return { event: 'ranch_exchange', payload: { cardIds: [] } };
+            // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
+            case 'GRINNER_GIVE': {
+                const c = gs.players[idx]?.hand?.[0];
+                return c ? { event: 'grinner_give', payload: { cardId: c.id } } : null;
+            }
             default: return null;
         }
     }

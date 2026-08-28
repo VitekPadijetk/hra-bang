@@ -17,11 +17,12 @@ const SetupMixin = {
         if (exps.fistful && typeof FISTFUL_CHARACTERS !== 'undefined') {
             base.push(...FISTFUL_CHARACTERS);
         }
-        // Divoký západ: postavy 34–41 zatím nemají schopnosti (přijdou s vlastními fázemi
-        // implementace), takže do OSTRÉ hry nepatří. V DEBUG hře je ale vybrat jít musí –
-        // jinak se nedá vyzkoušet ani dráha životů Big Spencera (9, jako šerif 10).
-        if (exps.divoky_zapad && options.debugPool && typeof WILD_WEST_CHARACTERS !== 'undefined') {
-            base.push(...WILD_WEST_CHARACTERS);
+        // Divoký západ: do OSTRÉ hry patří jen postavy, které už mají schopnost
+        // (WILD_WEST_READY – seznam roste s fázemi implementace). V DEBUG hře jdou
+        // vybrat všechny, ať se dá vyzkoušet i dráha životů postav bez pravidel.
+        if (exps.divoky_zapad) {
+            const pool = options.debugPool ? WILD_WEST_CHARACTERS : WILD_WEST_READY;
+            if (typeof pool !== 'undefined') base.push(...pool);
         }
         return base;
     },

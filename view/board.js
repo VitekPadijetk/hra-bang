@@ -553,6 +553,11 @@ function drawOpponents(ctx) {
         const isBloodMine = state.phase === 'BLOOD_BROTHERS' && !App.blockInput &&
             state.pendingBlood?.playerIdx === myIndex;
         const bloodValid = isBloodMine && (state.pendingBlood.targets || []).includes(actualIdx);
+        // Divoký západ – Flint Westwood: nabitá schopnost čeká na klik na postavu soupeře
+        // (dostřel neplatí – karta o vzdálenosti nemluví). Cíl musí mít aspoň 1 kartu.
+        const isFlintPick = !!selectedState.flint && selectedState.flint.targetIdx == null &&
+            !App.blockInput && state.phase === 'PLAY' && state.currentPlayerIndex === myIndex;
+        const flintValid = isFlintPick && isInPlay(player) && (player.hand || []).length > 0;
         // Pat Brennan (Dodge City): ve své fázi lízání smí místo balíčku vzít 1 kartu ze
         // stolu libovolného hráče do ruky (klik na kartu na stole soupeře).
         // !App.blockInput: jakmile Pat kliknutím vezme kartu (nastaví blockInput), zvýraznění
@@ -753,6 +758,20 @@ function drawOpponents(ctx) {
                     if (!bloodValid || App.blockInput) return;
                     socket.emit('blood_brothers', { targetIdx: actualIdx });
                     App.blockInput = true;
+                    renderUI();
+                });
+            }
+
+            // Divoký západ – Flint Westwood: klik na postavu vybere, s kým se mění.
+            // Karta z vlastní ruky se vybírá až potom (viz decideCardClick).
+            if (isFlintPick) {
+                sprite.setInteractive({ useHandCursor: flintValid });
+                sprite.setTint(flintValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (flintValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(flintValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!flintValid || App.blockInput) return;
+                    selectedState.flint = { targetIdx: actualIdx };
                     renderUI();
                 });
             }
@@ -1881,8 +1900,14 @@ function drawMyArea(ctx) {
                 const _isRoulettePick = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "ROULETTE_DISCARD" && state.pendingRoulette?.playerIdx === myIndex;
                 if (_isRoulettePick) cSprite.setTint(0xffff44);
+                // Divoký západ – Youl Grinner: dát mu kartu je povinné a vybírá si ji
+                // dávající, takže svítí CELÁ ruka.
+                const _isGrinnerPick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "GRINNER_GIVE" && state.pendingGrinner?.queue?.[0] === myIndex;
+                if (_isGrinnerPick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
-                const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick || _isLawForced;
+                const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
+                                       _isGrinnerPick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2024,6 +2049,22 @@ function drawMyArea(ctx) {
                         case 'ROULETTE_DISCARD':
                             // Fistful – Ruská ruleta: odhod je povinný, žádné potvrzení.
                             socket.emit('roulette_discard', { cardId: intent.cardId, fromBoard: false });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
+                        case 'FLINT_EXCHANGE':
+                            // Divoký západ – Flint Westwood: cíl je vybraný, tohle je
+                            // jeho karta na výměnu.
+                            socket.emit('flint_westwood', { targetIdx: intent.targetIdx, cardId: intent.cardId });
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
+                        case 'GRINNER_GIVE':
+                            // Divoký západ – Youl Grinner: dát kartu je povinné, žádné potvrzení.
+                            socket.emit('grinner_give', { cardId: intent.cardId });
                             optimisticRemoveCard(intent.index);
                             selectedState = { cardIndex: null, action: null };
                             App.blockInput = true;
@@ -2198,7 +2239,8 @@ function drawMyArea(ctx) {
             // PEYOTE/RANCH (Fistful) mají OBA slotky tlačítek obsazené (tip na barvu,
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
-                 'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD'].includes(state.phase)
+                 'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
+                 'GRINNER_GIVE'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -2416,6 +2458,21 @@ function drawMyArea(ctx) {
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, doc: { staged: [] } }; renderUI(); },
                 });
             }
+            // Flint Westwood (Divoký západ): 1× za tah vymění 1 kartu z ruky za 2 náhodné
+            // z ruky jiného hráče. Nabito → klik na postavu (drawOpponents), pak na kartu
+            // v ruce (decideCardClick). Dostřel neplatí, cíl jen musí mít karty.
+            if (myPlayTurn && effectiveCharacter(me) === "Flint Westwood" &&
+                me._flintUsedTurn !== state.turnId && (selectedState.flint || me.hand.length > 0) &&
+                state.players.some((pl, i) => i !== myIndex && isInPlay(pl) && (pl.hand || []).length > 0)) {
+                const active = !!selectedState.flint;
+                const label = active
+                    ? (selectedState.flint.targetIdx == null ? 'FLINT: zrušit ↩' : 'FLINT: vyber kartu ↩')
+                    : '🤝 FLINT: vyměnit';
+                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, label, {
+                    ...themeToggleStyle(active), fontSize: '21px',
+                    onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, flint: { targetIdx: null } }; renderUI(); },
+                });
+            }
             // Uncle Will (Fistful): 1× za tah zahraj libovolnou kartu jako Hokynářství.
             // Aktivní režim pak čeká na klik na kartu v ruce (stejně jako José/Doc).
             if (myPlayTurn && effectiveCharacter(me) === "Uncle Will" &&
@@ -2624,6 +2681,30 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_bbName} – Pokrevní bratři (rozdává život)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Divoký západ – Youl Grinner: banner „dej mu kartu" ────────────────────────
+    if (state.phase === "GRINNER_GIVE" && state.pendingGrinner?.queue?.length) {
+        const _gIdx = state.pendingGrinner.queue[0];
+        const _gMine = _gIdx === myIndex;
+        const _gName = state.players[_gIdx]?.name || '?';
+        const _gTo = state.players[state.pendingGrinner.grinnerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _gMine ? 0xff5555 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_gMine) {
+            let l1 = gameScene.add.text(960, 66, `😁 Youl Grinner – dej hráči ${_gTo} kartu z ruky`,
+                { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, 'Máš víc karet než on – vybíráš si sám, kterou mu dáš',
+                { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_gName} – Youl Grinner (dává kartu)`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }

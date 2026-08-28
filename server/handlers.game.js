@@ -919,6 +919,26 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Divoký západ – Youl Grinner: hráč, který má víc karet než on, mu jednu dává
+    // (před jeho fází lízání). Kartu si vybírá sám, takže se pod Sacagaway nehraje
+    // gesto se zamícháním ruky (`chosen`) – líc vidí dárce i Youl, ostatním letí rub.
+    on('grinner_give', (d) => {
+        withRoom((room, p, gs) => {
+            const pg = gs.pendingGrinner;
+            const idx = pg?.queue?.[0];
+            const toIdx = pg?.grinnerIdx;
+            if (idx === undefined || idx === null) return;
+            const handIdxBefore = (gs.players[idx]?.hand || []).findIndex(c => c && c.id === (d && d.cardId));
+            const res = gs.grinnerGive(idx, d && d.cardId);
+            if (!res) { broadcastRoom(room); return; }
+            const base = { type: 'ragtime_steal', attackerIdx: toIdx, targetIdx: idx,
+                           area: 'hand', boardIdx: null, stolenIndex: handIdxBefore, chosen: true };
+            emitAnimPrivate(room, [toIdx, idx],
+                            { ...base, stolenCardId: res.card.id }, { ...base, stolenCardId: null });
+            broadcastRoom(room);
+        });
+    });
+
     // High Noon (přibalené) – Želízka: hráč po lízání zvolil barvu pro tenhle tah.
     on('handcuffs_suit', (d) => {
         withRoom((room, p, gs) => {

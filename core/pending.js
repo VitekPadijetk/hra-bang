@@ -40,6 +40,9 @@ function pendingActor(state) {
         case 'BLOOD_BROTHERS':   return state.pendingBlood ? { idx: state.pendingBlood.playerIdx, kind: 'BLOOD_BROTHERS' } : null;
         // Fistful – Ruská ruleta: kolečko „odhoď kartu Vedle!" (mimo tah i mimo obranu).
         case 'ROULETTE_DISCARD': return state.pendingRoulette ? { idx: state.pendingRoulette.playerIdx, kind: 'ROULETTE_DISCARD' } : null;
+        // Divoký západ – Youl Grinner: kdo má víc karet než on, dá mu jednu (před lízáním).
+        case 'GRINNER_GIVE':     return state.pendingGrinner?.queue?.length
+            ? { idx: state.pendingGrinner.queue[0], kind: 'GRINNER_GIVE' } : null;
         case 'NEW_IDENTITY':     return state.pendingNewIdentity ? { idx: state.pendingNewIdentity.playerIdx, kind: 'NEW_IDENTITY' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
@@ -78,6 +81,7 @@ const _WAIT_LABELS = {
     RANCH:                 'Ranč – vyměňuje karty',
     BLOOD_BROTHERS:        'Pokrevní bratři – rozdává život',
     ROULETTE_DISCARD:      'Ruská ruleta – odhazuje Vedle!',
+    GRINNER_GIVE:          'Youl Grinner – dává kartu',
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',

@@ -17,6 +17,8 @@
 //   { type: 'DISCARD', index }                        – odhození ve fázi DISCARD
 //   { type: 'RANCH_TOGGLE', index, cardId }           – Ranč (Fistful): označit/odznačit k výměně
 //   { type: 'ROULETTE_DISCARD', index, cardId }       – Ruská ruleta (Fistful): odhoď kartu Vedle!
+//   { type: 'GRINNER_GIVE', index, cardId }           – Youl Grinner (Divoký západ): dej mu kartu
+//   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
 
 if (typeof require === 'function') {
@@ -66,6 +68,19 @@ function decideCardClick(ctx) {
     if (state.phase === "ROULETTE_DISCARD" && state.pendingRoulette?.playerIdx === myIndex) {
         return playable === true ? { type: 'ROULETTE_DISCARD', index, cardId: card.id }
                                  : { type: 'UNPLAYABLE_FLASH' };
+    }
+
+    // Divoký západ – Youl Grinner: dát mu kartu je povinné a vybírá si ji dávající,
+    // takže klik na kteroukoli kartu v ruce ji rovnou pošle (žádné označování).
+    if (state.phase === "GRINNER_GIVE" && state.pendingGrinner?.queue?.[0] === myIndex) {
+        return { type: 'GRINNER_GIVE', index, cardId: card.id };
+    }
+
+    // Divoký západ – Flint Westwood: cíl už je vybraný (klik na postavu), tohle je
+    // volba VLASTNÍ karty na výměnu. Musí to být dřív než odznačování i Sid režim –
+    // jde o vlastní tok, ve kterém se karta nevybírá k zahrání.
+    if (selectedState.flint && selectedState.flint.targetIdx != null) {
+        return { type: 'FLINT_EXCHANGE', index, cardId: card.id, targetIdx: selectedState.flint.targetIdx };
     }
 
     // Odznačení už vybrané karty (mimo Sid režim)

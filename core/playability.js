@@ -230,6 +230,12 @@ function cardPlayability(state, me, myIndex, card) {
         return state.pendingRoulette?.playerIdx === myIndex
             ? rouletteDiscardable(state, me, card, false) : null;
     }
+    // Divoký západ – Youl Grinner: kdo má víc karet než on, mu jednu dává, a to
+    // PODLE SVÉ VOLBY – klikatelná je tedy každá karta v ruce. Taky mimo tah, takže
+    // stejně brzy jako Ruská ruleta.
+    if (state.phase === "GRINNER_GIVE") {
+        return state.pendingGrinner?.queue?.[0] === myIndex ? true : null;
+    }
     const isMyResponseTurn = isResponseTurn(state, myIndex);
     const isMyPlayTurn = isPlayTurn(state, myIndex);
     // High Noon – Želízka: ve svém tahu jen karty zvolené barvy (i jako reakce).

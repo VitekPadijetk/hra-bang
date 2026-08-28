@@ -7,6 +7,10 @@ const path = require('path');
 const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 const { playsAsMissed, playsAsBang, rouletteDiscardable, bigSpencerBlocked } = require('../core/playability.js');
 const { startCardsForCharacter, baseHealthForCharacter, healthForCharacter } = require('../core/roles.js');
+const { pendingActor } = require('../core/pending.js');
+const { decideBotAction } = require('../core/botPolicy.js');
+const { computeBeliefs } = require('../core/beliefs.js');
+const { WILD_WEST_CHARACTERS } = require('../logic/entities.js');
 
 before(() => { console.log = () => {}; });
 
@@ -279,4 +283,203 @@ test('John Pain × dynamit: kartu dostane až po všech třech zásazích', () =
     g.takeDynamiteHit(0);
     g.takeDynamiteHit(0);
     assert.equal(g.players[0].hand.length, 1);
+});
+
+// ── Youl Grinner ────────────────────────────────────────────────────────────
+
+test('Youl Grinner: kdo má víc karet, dá mu jednu ještě před jeho lízáním', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, {}, {}]);
+    give(g, 0, CardType.BANG, { name: 'Bang!' });
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 1, CardType.BEER, { name: 'Pivo' });   // 2 > 1 → dává
+    give(g, 2, CardType.BANG, { name: 'Bang!' });  // 1 = 1 → nedává
+    g.startDrawPhase();
+    assert.equal(g.phase, 'GRINNER_GIVE');
+    assert.deepEqual(g.pendingGrinner.queue, [1]);
+    const cardId = g.players[1].hand[0].id;
+    g.grinnerGive(1, cardId);
+    assert.equal(g.players[0].hand.length, 2);
+    assert.equal(g.players[1].hand.length, 1);
+    assert.equal(g.phase, 'DRAW', 'kolečko doběhlo → fáze lízání');
+});
+
+test('Youl Grinner: nikdo nemá víc karet → fáze se vůbec nezaloží', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, {}]);
+    give(g, 0, CardType.BANG, { name: 'Bang!' });
+    g.startDrawPhase();
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.pendingGrinner ?? null, null);
+});
+
+test('Youl Grinner: dávají všichni s víc kartami, po směru od něj', () => {
+    const g = mkGame([{}, { character: 'Youl Grinner' }, {}, {}], { current: 1 });
+    give(g, 0, CardType.BANG, { name: 'Bang!' });
+    give(g, 2, CardType.BANG, { name: 'Bang!' });
+    give(g, 3, CardType.BANG, { name: 'Bang!' });
+    g.startDrawPhase();
+    assert.deepEqual(g.pendingGrinner.queue, [2, 3, 0]);
+    assert.deepEqual(pendingActor(g), { idx: 2, kind: 'GRINNER_GIVE' });
+    g.grinnerGive(2, g.players[2].hand[0].id);
+    assert.deepEqual(pendingActor(g), { idx: 3, kind: 'GRINNER_GIVE' });
+    g.grinnerGive(3, g.players[3].hand[0].id);
+    g.grinnerGive(0, g.players[0].hand[0].id);
+    assert.equal(g.players[1].hand.length, 3);
+    assert.equal(g.phase, 'DRAW');
+});
+
+test('Youl Grinner: klik z jiného hráče než z čela fronty se ignoruje', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, {}, {}]);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 2, CardType.BANG, { name: 'Bang!' });
+    g.startDrawPhase();
+    assert.equal(g.grinnerGive(2, g.players[2].hand[0].id), null);
+    assert.equal(g.players[0].hand.length, 0);
+});
+
+test('Youl Grinner: množina dávajících se určí JEDNOU, snímkem (R8)', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, {}, {}]);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 2, CardType.BANG, { name: 'Bang!' });
+    give(g, 2, CardType.BEER, { name: 'Pivo' });
+    g.startDrawPhase();
+    assert.deepEqual(g.pendingGrinner.queue, [1, 2]);
+    g.grinnerGive(1, g.players[1].hand[0].id);
+    // Youl má po prvním daru 1 kartu, hráč 2 pořád 2 – dává tak jako tak, protože
+    // se množina určila na začátku.
+    assert.deepEqual(g.pendingGrinner.queue, [2]);
+    g.grinnerGive(2, g.players[2].hand[0].id);
+    assert.equal(g.phase, 'DRAW');
+});
+
+test('Youl Grinner: mrtví nedávají', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, { health: 0 }, {}]);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 2, CardType.BANG, { name: 'Bang!' });
+    g.startDrawPhase();
+    assert.deepEqual(g.pendingGrinner.queue, [2]);
+});
+
+test('Youl Grinner × Suzy Lafayette: poslední karta → nejdřív líznutí, pak další v pořadí', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, { character: 'Suzy Lafayette' }, {}]);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 2, CardType.BANG, { name: 'Bang!' });
+    g.startDrawPhase();
+    g.grinnerGive(1, g.players[1].hand[0].id);
+    assert.equal(g.phase, 'SUZY_DRAW', 'Suzy si líže dřív, než se kolečko posune');
+    g.suzyLafayetteDraw(1);
+    assert.equal(g.players[1].hand.length, 1);
+    assert.deepEqual(pendingActor(g), { idx: 2, kind: 'GRINNER_GIVE' });
+});
+
+test('Youl Grinner: Kocovina (High Noon) schopnost vypíná', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, {}]);
+    g.players[0]._noAbility = true;
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    g.startDrawPhase();
+    assert.equal(g.phase, 'DRAW');
+});
+
+test('Youl Grinner: bot dá kartu (větev GRINNER_GIVE)', () => {
+    const g = mkGame([{ character: 'Youl Grinner' }, {}]);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 1, CardType.BEER, { name: 'Pivo' });
+    g.startDrawPhase();
+    const act = decideBotAction(g, 1);
+    assert.equal(act.event, 'grinner_give');
+    assert.ok(g.players[1].hand.some(c => c.id === act.payload.cardId));
+});
+
+// ── Flint Westwood ──────────────────────────────────────────────────────────
+
+test('Flint Westwood: vymění 1 svoji kartu za 2 náhodné cizí', () => {
+    const g = mkGame([{ character: 'Flint Westwood' }, {}]);
+    const mine = mkCard(CardType.BEER, { name: 'Pivo' });
+    g.players[0].hand.push(mine);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 1, CardType.MISSED, { name: 'Vedle!' });
+    const res = g.useFlintWestwood(0, 1, mine.id);
+    assert.ok(res);
+    assert.equal(res.taken.length, 2);
+    assert.equal(g.players[0].hand.length, 2, 'dal 1, vzal 2');
+    assert.equal(g.players[1].hand.length, 2, 'přišel o 2, dostal 1');
+    assert.ok(g.players[1].hand.some(c => c.id === mine.id));
+});
+
+test('Flint Westwood: cíl s jednou kartou → dostane jen jednu (Sciarra Q33)', () => {
+    const g = mkGame([{ character: 'Flint Westwood' }, {}]);
+    const mine = mkCard(CardType.BEER, { name: 'Pivo' });
+    g.players[0].hand.push(mine);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    const res = g.useFlintWestwood(0, 1, mine.id);
+    assert.equal(res.taken.length, 1);
+    assert.equal(g.players[0].hand.length, 1);
+    assert.equal(g.players[1].hand.length, 1);
+});
+
+test('Flint Westwood: jen jednou za tah (FAQ Q16)', () => {
+    const g = mkGame([{ character: 'Flint Westwood' }, {}]);
+    const a = mkCard(CardType.BEER, { name: 'Pivo' });
+    const b = mkCard(CardType.BEER, { name: 'Pivo' });
+    g.players[0].hand.push(a, b);
+    for (let i = 0; i < 4; i++) give(g, 1, CardType.BANG, { name: 'Bang!' });
+    assert.ok(g.useFlintWestwood(0, 1, a.id));
+    assert.equal(g.useFlintWestwood(0, 1, b.id), null);
+});
+
+test('Flint Westwood: cíl bez karet a on sám nejsou platné cíle', () => {
+    const g = mkGame([{ character: 'Flint Westwood' }, {}, { health: 0 }]);
+    const mine = mkCard(CardType.BEER, { name: 'Pivo' });
+    g.players[0].hand.push(mine);
+    give(g, 2, CardType.BANG, { name: 'Bang!' });
+    assert.equal(g.useFlintWestwood(0, 1, mine.id), null, 'cíl bez karet');
+    assert.equal(g.useFlintWestwood(0, 0, mine.id), null, 'sám na sebe');
+    assert.equal(g.useFlintWestwood(0, 2, mine.id), null, 'mrtvý cíl');
+});
+
+test('Flint Westwood: dostřel neplatí – vymění si s kýmkoli u stolu', () => {
+    const g = mkGame([{ character: 'Flint Westwood' }, {}, {}, {}, {}]);
+    const mine = mkCard(CardType.BEER, { name: 'Pivo' });
+    g.players[0].hand.push(mine);
+    give(g, 2, CardType.BANG, { name: 'Bang!' });
+    assert.ok(g.useFlintWestwood(0, 2, mine.id));
+});
+
+test('Flint Westwood × Suzy Lafayette: nejdřív se bere, pak dává (Sciarra Q32)', () => {
+    const g = mkGame([{ character: 'Flint Westwood' }, { character: 'Suzy Lafayette' }]);
+    const mine = mkCard(CardType.BEER, { name: 'Pivo' });
+    g.players[0].hand.push(mine);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    g.useFlintWestwood(0, 1, mine.id);
+    assert.equal(g.phase, 'PLAY', 'Suzy si nelíže – Flintovu kartu dostala dřív');
+    assert.equal(g.players[1].hand.length, 1);
+});
+
+test('Flint Westwood: bot schopnost použije', () => {
+    const g = mkGame([{ character: 'Flint Westwood', role: 'Sheriff' },
+                      { role: 'Outlaw' }, { role: 'Outlaw' }, { role: 'Renegade' }]);
+    const mine = mkCard(CardType.BEER, { name: 'Pivo' });
+    g.players[0].hand.push(mine);
+    for (let i = 1; i < 4; i++) { give(g, i, CardType.BANG, { name: 'Bang!' }); }
+    const act = decideBotAction(g, 0, computeBeliefs(g, [], 0));
+    assert.equal(act.event, 'flint_westwood');
+    assert.equal(act.payload.cardId, mine.id, 'dá nejlevnější kartu');
+    assert.ok(act.payload.targetIdx !== 0);
+});
+
+// ── Pool postav: do ostré hry jen ty, které už mají schopnost ───────────────
+
+test('_characterPool: ostrá hra bere jen hotové postavy Divokého západu', () => {
+    const g = mkGame([{}, {}]);
+    const pool = g._characterPool({ expansions: { divoky_zapad: true } });
+    ['Big Spencer', 'Flint Westwood', 'Gary Looter', 'John Pain', 'Youl Grinner']
+        .forEach(c => assert.ok(pool.includes(c), `${c} chybí v ostrém poolu`));
+    ['Teren Kill', 'Lee Van Kliff', 'Greygory Deck']
+        .forEach(c => assert.ok(!pool.includes(c), `${c} ještě nemá schopnost, do ostré hry nepatří`));
+    // Bez rozšíření se nepřidá nic.
+    assert.equal(g._characterPool({}).some(c => WILD_WEST_CHARACTERS.includes(c)), false);
+    // Debug hra nabízí všech osm (ať se dá vyzkoušet i dráha životů bez pravidel).
+    const dbg = g._characterPool({ expansions: { divoky_zapad: true }, debugPool: true });
+    WILD_WEST_CHARACTERS.forEach(c => assert.ok(dbg.includes(c), `${c} chybí v debug poolu`));
 });
