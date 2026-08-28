@@ -60,6 +60,9 @@ function snapshotState(gs) {
         // Fistful of Cards: druhý balíček událostí, platí souběžně s High Noonem.
         eventFf: gs.activeFistful ? gs.activeFistful.name : null,
         ffLeft: gs.ffDeck?.length || 0,
+        // Divoký západ: třetí balíček událostí, otáčí ho Dostavník / Wells Fargo.
+        eventWws: gs.activeWws ? gs.activeWws.name : null,
+        wwsLeft: gs.wwsDeck?.length || 0,
     };
 }
 

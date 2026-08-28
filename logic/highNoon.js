@@ -50,12 +50,13 @@ const HighNoonMixin = {
     },
 
     // Je právě aktivní tahle událost? Jediný dotaz, kterým se ptají všechna pravidla.
-    // Ptá se OBOU balíčků (High Noon i Fistful of Cards) – hrají se současně a klíče karet
-    // jsou napříč nimi unikátní, takže se volající nemusí starat, ze kterého karta je.
-    // Klientské zrcadlo: `eventActive` v core/highNoon.js.
+    // Ptá se VŠECH TŘÍ balíčků (High Noon, Fistful of Cards, Divoký západ) – hrají se
+    // současně a klíče karet jsou napříč nimi unikátní, takže se volající nemusí starat,
+    // ze kterého karta je. Klientské zrcadlo: `eventActive` v core/highNoon.js.
     hasEvent(key) {
         return (!!this.activeEvent && this.activeEvent.key === key) ||
-               (!!this.activeFistful && this.activeFistful.key === key);
+               (!!this.activeFistful && this.activeFistful.key === key) ||
+               (!!this.activeWws && this.activeWws.key === key);
     },
 
     // Požehnání / Prokletí: po celé kolo se VŠECHNY karty počítají jako srdcové / pikové.

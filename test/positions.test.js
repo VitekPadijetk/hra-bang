@@ -420,6 +420,104 @@ test('jeden balíček událostí sedí na klasickém místě, dva se srovnají n
     assert.ok(mob.ff.activeX < mob.ff.deckX && mob.ff.deckX < LAYOUT_PROFILES.mobile.centerX);
 });
 
+// ── Třetí sloupec událostí: Divoký západ ────────────────────────────────────
+// Rozšíření jdou zapnout v libovolné kombinaci, takže sloupců může na stole stát jeden
+// až tři. Žádné dva se nesmí překrývat a žádný nesmí dosáhnout na dobírací balíček ani
+// na odhoz. Platí to pro oba profily rozložení a pro všech osm kombinací.
+function slotRect(L, s) {
+    const w = 325 * L.scaleDeck, h = 500 * L.scaleDeck;
+    const stack = 14 * 0.125;   // balíček událostí má nejvýš 15 karet
+    return {
+        x0: Math.min(s.deckX, s.activeX) - w / 2, x1: Math.max(s.deckX, s.activeX) + w / 2,
+        y0: s.y - h / 2 - stack, y1: s.y + h / 2,
+    };
+}
+// Dobírací balíček + odhoz uprostřed stolu (bez sloupců událostí).
+function centerPilesRect(L) {
+    const w = 325 * L.scaleDeck, h = 500 * L.scaleDeck;
+    const stack = 79 * 0.125;   // plný hrací balíček roste vzhůru
+    return {
+        x0: L.centerX - L.deckOffX - w / 2, x1: L.centerX + L.deckOffX + w / 2,
+        y0: L.pileY - h / 2 - stack,        y1: L.pileY + h / 2,
+    };
+}
+
+test('sloupce událostí se nepřekrývají v žádné kombinaci rozšíření ani profilu', () => {
+    ['desktop', 'mobile'].forEach(name => {
+        const L = LAYOUT_PROFILES[name];
+        const center = centerPilesRect(L);
+        for (let mask = 0; mask < 8; mask++) {
+            const hn = !!(mask & 1), ff = !!(mask & 2), wws = !!(mask & 4);
+            const slots = eventPileSlots(L, hn, ff, wws);
+            assert.equal(!!slots.hn, hn, `${name} ${mask}: High Noon`);
+            assert.equal(!!slots.ff, ff, `${name} ${mask}: Fistful`);
+            assert.equal(!!slots.wws, wws, `${name} ${mask}: Divoký západ`);
+            const rects = ['hn', 'ff', 'wws'].filter(k => slots[k])
+                .map(k => ({ k, r: slotRect(L, slots[k]) }));
+            rects.forEach(({ k, r }) => assert.ok(!overlaps(r, center),
+                `${name}, kombinace ${mask}: sloupec ${k} leze na balíčky`));
+            for (let i = 0; i < rects.length; i++)
+                for (let j = i + 1; j < rects.length; j++)
+                    assert.ok(!overlaps(rects[i].r, rects[j].r),
+                        `${name}, kombinace ${mask}: ${rects[i].k} se překrývá s ${rects[j].k}`);
+        }
+    });
+});
+
+test('Divoký západ leží vlevo a ustoupí, jen když levý pár drží Fistful', () => {
+    // Desktop: High Noon s Fistfulem se srovnávají nad sebe vpravo, takže je levý pár
+    // volný vždycky – dnešní rozložení obou se tím pádem nemění o pixel.
+    [false, true].forEach(hn => [false, true].forEach(ff => {
+        const s = eventPileSlots(DSK, hn, ff, true);
+        assert.deepEqual(s.wws, { deckX: DSK.ffPileX, activeX: DSK.ffActiveX, y: DSK.pileY },
+            `desktop hn=${hn} ff=${ff}`);
+    }));
+    const before = eventPileSlots(DSK, true, true);
+    const after = eventPileSlots(DSK, true, true, true);
+    assert.deepEqual(after.hn, before.hn, 'High Noon se nehnul');
+    assert.deepEqual(after.ff, before.ff, 'Fistful se nehnul');
+    assert.equal(after.stacked, before.stacked);
+
+    // Mobil: levý pár drží Fistful jen tehdy, když se hraje i High Noon.
+    const MOB = LAYOUT_PROFILES.mobile;
+    assert.deepEqual(eventPileSlots(MOB, true, true, true).wws,
+        { deckX: MOB.wwsPileX, activeX: MOB.wwsActiveX, y: MOB.pileY }, 'ustoupí o krok doleva');
+    assert.deepEqual(eventPileSlots(MOB, false, true, true).wws,
+        { deckX: MOB.ffPileX, activeX: MOB.ffActiveX, y: MOB.pileY }, 'sám Fistful sedí vpravo');
+    assert.deepEqual(eventPileSlots(MOB, true, false, true).wws,
+        { deckX: MOB.ffPileX, activeX: MOB.ffActiveX, y: MOB.pileY });
+    assert.ok(MOB.wwsActiveX < MOB.wwsPileX && MOB.wwsPileX < MOB.ffActiveX,
+        'třetí sloupec leží nalevo od druhého');
+});
+
+test('sloupec Divokého západu nedosáhne na vyložené karty soupeřů ani na moje', () => {
+    const rect = slotRect(DSK, eventPileSlots(DSK, true, true, true).wws);
+    for (let total = 2; total <= 8; total++) {
+        const anchors = getOpponentAnchors(total);
+        if (!anchors.length) continue;
+        for (let k = 1; k <= 14; k++) {
+            const players = Array.from({ length: total }, () => ({
+                health: 4, hand: [], board: Array.from({ length: k - 1 }, (_, i) => ({ id: i })),
+                weapon: { id: 1 },
+            }));
+            setWorld(players, 0);
+            for (let opp = 1; opp < total; opp++) {
+                const side = anchors[opp - 1].side;
+                for (let b = 0; b < k; b++) {
+                    const r = cardRect(getBoardCardPos(opp, b), side, DSK.scaleOpp);
+                    assert.ok(!overlaps(r, rect),
+                        `${total} hráčů, soupeř ${opp} (${side}), ${k} karet, karta ${b}: leze na Divoký západ`);
+                }
+            }
+            for (let b = 0; b < k; b++) {
+                const r = cardRect(getBoardCardPos(0, b), 'bottom', DSK.scaleMe);
+                assert.ok(!overlaps(r, rect), `${total} hráčů, ${k} karet, moje karta ${b}: leze na Divoký západ`);
+            }
+            global.state = null; global.myIndex = null;
+        }
+    }
+});
+
 test('hokynářství zvedne srovnané sloupce mezi řadu karet a horního soupeře', () => {
     const both = eventPileSlots(DSK, true, true);
     const lift = eventPileLift(DSK, DSK.storeLift, both.stacked);

@@ -66,6 +66,16 @@ const FISTFUL_CHARACTERS = [
     "Claus the Saint", "Johnny Kisch", "Uncle Will"
 ];
 
+// Postavy rozšíření Divoký západ (Wild West Show). Portréty 034–041 jsou hotové a
+// data (characters.json) taky, ale do výběru se ZATÍM nepřidávají: schopnosti a jejich
+// životy (Big Spencer 9, Gary Looter 5, Teren Kill 3) přijdou až s vlastními fázemi
+// implementace – do té doby by u stolu seděly postavy bez schopnosti a se špatným
+// počtem životů. Zapíná je pak `_characterPool` při options.expansions.divoky_zapad.
+const WILD_WEST_CHARACTERS = [
+    "Big Spencer", "Flint Westwood", "Gary Looter", "Greygory Deck",
+    "John Pain", "Lee Van Kliff", "Teren Kill", "Youl Grinner"
+];
+
 class Card {
     constructor(id, name, type, suit, value, props = {}) {
         this.id = id;
@@ -241,5 +251,5 @@ class Deck {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, Card, Player, Deck };
+    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, Card, Player, Deck };
 }

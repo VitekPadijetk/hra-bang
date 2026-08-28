@@ -1,0 +1,13 @@
+[
+  { "id": 501, "key": "HRBITOV", "name": "Hřbitov", "art": "hrbitov", "text": "Na začátku svého tahu se všichni vyřazení hráči vrátí do hry s 1 životem. Role vyřazených hráčů zamíchejte a rozdejte náhodně." },
+  { "id": 502, "key": "MILACEK_VALENTYN", "name": "Miláček Valentýn", "art": "milacek_valentyn", "text": "Na začátku svého tahu odhodí každý hráč všechny karty z ruky a stejný počet karet si dobere z balíčku." },
+  { "id": 503, "key": "ZURIVA_DOROTY", "name": "Zuřivá Doroty", "art": "zuriva_doroty", "text": "Hráč na tahu může jmenovat kartu a vybrat hráče, který ji musí zahrát (pokud ji má)." },
+  { "id": 504, "key": "ROUBIK", "name": "Roubík", "art": "roubik", "text": "Hráči nesmí mluvit (mohou gestikulovat, sténat atd.). Každý kdo promluví, ztrácí 1 život." },
+  { "id": 505, "key": "HELENA_ZONTERO", "name": "Helena Zontero", "art": "helena_zontero", "text": "Když přijde Helena do hry, otočte vrchní kartu z dobíracího balíčku: jsou-li to srdce ♥ nebo káry ♦, zamíchejte všechny aktivní role s výjimkou Šerifa a znovu je náhodně a tajně rozdejte. Každý hráč se podívá na svou novou roli." },
+  { "id": 506, "key": "LADY_RUZE_Z_TEXASU", "name": "Lady Růže z Texasu", "art": "lady_ruze_z_texasu", "text": "Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici a ten tak přeskočí svůj nejbližší tah." },
+  { "id": 507, "key": "MADAM_ZUZANA", "name": "Madam Zuzana", "art": "madam_zuzana", "text": "Během svého tahu musí každý hráč zahrát alespoň 3 karty. Hráč, který to neudělá, ztrácí 1 život." },
+  { "id": 508, "key": "SACAGAWAY", "name": "Sacagaway", "art": "sacagaway", "text": "Všichni hráči hrají s odhalenými kartami v ruce (vyjma svých rolí)." },
+  { "id": 509, "key": "ZUCTOVANI", "name": "Zúčtování", "art": "zuctovani", "text": "Každá karta může být hrána jako by to byla karta BANG!. Každá karta BANG! může být hrána jako by to byla karta Vedle!." },
+
+  { "id": 500, "key": "DIVOKY_ZAPAD", "name": "Divoký západ", "art": "divoky_zapad", "text": "Cílem každého hráče se stává: „Zůstaň poslední ve hře!“" }
+]

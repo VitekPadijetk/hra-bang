@@ -271,13 +271,18 @@ module.exports = function installAnimService(ctx) {
     // Hrají-li se obě rozšíření, odkryjí se v jednom okamžiku DVĚ karty (nejdřív High Noon,
     // pak Fistful of Cards). Emitují se za sebou – fronta animací na klientu je přehraje
     // v pořadí a boti se podrží o obě cinematiky.
+    // Divoký západ (`_pendingWwsReveal`) jde touž cestou, jen ho neodkrývá začátek tahu,
+    // ale zahraný Dostavník / Wells Fargo – proto si s sebou nese vlastní `playerIdx`
+    // (kartu otáčí ten, kdo ji zahrál, ne nutně hráč, kterého by měl klient rozsvítit).
     function flushHighNoonReveal(room) {
         const gs = room.gameState;
         if (!gs) return;
-        const pending = [gs._pendingHighNoonReveal, gs._pendingFistfulReveal].filter(Boolean);
+        const pending = [gs._pendingHighNoonReveal, gs._pendingFistfulReveal,
+                         gs._pendingWwsReveal].filter(Boolean);
         if (!pending.length) return;
         gs._pendingHighNoonReveal = null;
         gs._pendingFistfulReveal = null;
+        gs._pendingWwsReveal = null;
         pending.forEach(ev => {
             emitAnim(room, {
                 type: 'high_noon_reveal',
@@ -287,7 +292,7 @@ module.exports = function installAnimService(ctx) {
                 // Kartu odkrývá šerif na začátku SVÉHO tahu, jenže stav (s novým hráčem na
                 // tahu) dorazí až po celé cinematice – klient by po celou dobu ukazoval jako
                 // hráče na tahu toho předchozího. Posíláme ho tedy s animací.
-                playerIdx: gs.currentPlayerIndex,
+                playerIdx: ev.playerIdx ?? gs.currentPlayerIndex,
             });
         });
         // Boti po tu dobu nehrají – klient drží stav ve frontě a divák by jinak koukal

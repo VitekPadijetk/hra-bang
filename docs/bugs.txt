@@ -43,7 +43,10 @@ H — bez herní logiky          10, 17                index.html, assets/, char
 OTEVŘENÉ
 --------
 
-- 23 - zkontroluj jestli funguje derringer správně s léčkou
+- 23 zkontroluj jestli funguje derringer správně s léčkou
+- 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě)
+- 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif
+- 26 když zahraju jinou kartu u práva západu než je ta kterou musím (př. byla wells fargo, zahráli jsme bang) tak to nějak divně blikalo, vracelo se a podobně
 
 
 HOTOVÉ

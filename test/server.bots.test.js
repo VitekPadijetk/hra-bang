@@ -14,6 +14,7 @@ const cardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.json', 'utf8'
 const dodgeCityCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.dodge_city.json', 'utf8'));
 const highNoonCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.high_noon.json', 'utf8'));
 const fistfulCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.fistful.json', 'utf8'));
+const wwsCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.divoky_zapad.json', 'utf8'));
 
 before(() => { console.log = () => {}; console.warn = () => {}; });
 
@@ -402,6 +403,48 @@ test('matice rozšíření × 3–8 hráčů: každá kombinace doběhne bez sta
         });
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci v žádné kombinaci');
+});
+
+// Divoký západ (třetí balíček událostí) je nezávislý na ostatních dvou a otáčí se jinak
+// (Dostavníkem / Wells Fargem, tedy kdykoli uprostřed cizí fáze 2). Matici výš se kvůli
+// době běhu nezdvojnásobuje – tenhle test místo toho projede rozšíření samotné pro 3–8
+// hráčů a k tomu obě mezní kombinace se všemi třemi balíčky naráz.
+test('Divoký západ: hra jen botů doběhne sama i vedle obou ostatních balíčků', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
+    COMBOS.push({ n: 4, all: true }, { n: 7, all: true });
+
+    let flipped = 0;
+    try {
+        COMBOS.forEach(({ n, all }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: all, high_noon: all, fistful: all,
+                                         divoky_zapad: true } };
+            const tag = `${all ? 'vše' : 'jen DZ'} (${n}p)`;
+            const room = { id: `wws${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            assert.equal(gs.wwsDeck.length, 10, `${tag}: balíček Divokého západu`);
+            assert.equal(gs.activeWws, null, `${tag}: na začátku hry žádná událost neplatí`);
+
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+            if (gs.wwsPile.length) flipped++;
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci');
+    assert.ok(flipped > 0, 'aspoň v jedné hře někdo zahrál Dostavník / Wells Fargo a otočil kartu');
 });
 
 // Cílená zátěž na fázi 2 Fistfulu: v balíčku jsou JEN Léčka, Laso a Soudce, takže platí

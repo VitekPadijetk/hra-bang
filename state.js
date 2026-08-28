@@ -46,6 +46,7 @@ const App = {
     debugHighNoon: false,
     debugHighNoonExtra: false,
     debugFistful: false,
+    debugDivokyZapad: false,
     // High Noon (přibalené) – Nová identita: stav cinematiky nabídky (net/handlers.js).
     // { ready, decided } – ready = karta doletěla doprostřed a je překlopená lícem nahoru.
     niReveal: null,
@@ -152,11 +153,13 @@ const App = {
     // Čistě klientský výběr: server dostane až seznam v `ranch_exchange`. Vyprazdňuje se
     // s odchodem z fáze RANCH (net/handlers.js).
     ranchSel: new Set(),
-    // High Noon / Fistful of Cards: po dobu cinematiky odkrytí karty události kreslíme
-    // balíček událostí podle animace, ne podle stavu (ten dorazí až po ní) – karta
-    // z balíčku odchází hned se startem letu. null = kresli podle stavu (drawEventPile).
+    // High Noon / Fistful of Cards / Divoký západ: po dobu cinematiky odkrytí karty
+    // události kreslíme balíček událostí podle animace, ne podle stavu (ten dorazí až po
+    // ní) – karta z balíčku odchází hned se startem letu. null = kresli podle stavu
+    // (drawEventPile).
     hnDeckLeft: null,
     ffDeckLeft: null,
+    wwsDeckLeft: null,
     // Hokynářství na stole: balíčky se zvednou (storePileLiftY), karty se rozdají do
     // řady pod nimi (storeDealIds = ještě nedoletělé sloty, gated), výběr může být
     // dočasně zamčený (storeLocked, případ nedostatku) a u proaktivního míchání čeká

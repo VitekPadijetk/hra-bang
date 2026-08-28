@@ -46,6 +46,7 @@ const SetupMixin = {
         this.options = options;
         this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
         this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
+        this._setupWwsDeck(options);     // Divoký západ: třetí balíček (jinak no-op)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {
@@ -87,6 +88,7 @@ const SetupMixin = {
         this.deck.initializeStandardDeck(this._deckDataFor(options));
         this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
         this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
+        this._setupWwsDeck(options);     // Divoký západ: třetí balíček (jinak no-op)
 
         let roles = [...debugRoles];
         const allRoles = ["Sheriff", "Deputy", "Outlaw", "Renegade"];
@@ -212,6 +214,7 @@ const SetupMixin = {
         this.options = options;
         this._setupEventDeck(options);   // High Noon: balíček událostí (jinak no-op)
         this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
+        this._setupWwsDeck(options);     // Divoký západ: třetí balíček (jinak no-op)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {

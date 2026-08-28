@@ -58,12 +58,18 @@ const PlayMixin = {
                 this.players.forEach(p => { this._heal(p, 1); });
                 return true;
             },
+            // Divoký západ (Wild West Show): jediný spouštěč nové události toho balíčku
+            // je Dostavník / Wells Fargo, a odkrývá se PŘED lízáním – efekt karty se čte
+            // nahlas hned a některé karty mění to, co hráč vzápětí uvidí a smí zahrát.
+            // Krytý vůz (Dodge City) má vlastní CardType, takže se sem nedostane (FAQ Q16).
             [CardType.STAGECOACH]: () => {
+                this._flipWwsEvent(this.currentPlayerIndex);
                 this._setDrawPhase({ active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 2, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false });
                 this.phase = "DRAW";
                 return true;
             },
             [CardType.WELLS_FARGO]: () => {
+                this._flipWwsEvent(this.currentPlayerIndex);
                 this._setDrawPhase({ active: true, playerIdx: this.currentPlayerIndex, cardsNeeded: 3, cardsDrawn: 0, options: ['deck'], isStartOfTurn: false });
                 this.phase = "DRAW";
                 return true;

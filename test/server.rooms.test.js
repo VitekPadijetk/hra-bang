@@ -352,3 +352,29 @@ test('closeRoom umlčí i intro sekvenci (emitIntro rozpuštěné místnosti)', 
     ctx.emitIntroChars(room, 0, []);
     assert.equal(emits.length, 0, 'doběhlé timeouty už nikomu nic neposílají');
 });
+
+// ── Redakce stavu: balíčky událostí ─────────────────────────────────────────
+// Z balíčku (pořadí příštích karet) klient čte jen výšku hromádky, takže musí přijít
+// vyprázdněný. Odkryté karty jsou naopak veřejné a zůstávají tak, jak jsou – včetně
+// třetího balíčku (Divoký západ), který se otáčí uprostřed cizího tahu.
+test('redakce skryje pořadí všech tří balíčků událostí, odkryté karty nechá', () => {
+    const { ctx, addSocket } = setup();
+    addSocket('s1');
+    const room = ctx.makeRoom('Stůl', 2, 's1', 'Alice', {});
+    const gs = room.gameState;
+    gs.players = [];
+    const mk = (id) => ({ id, key: 'K' + id, name: 'N' + id, art: 'a' + id });
+    gs.eventDeck = [mk(301), mk(302)];
+    gs.ffDeck = [mk(401)];
+    gs.wwsDeck = [mk(501), mk(502), mk(503)];
+    gs.wwsPile = [mk(509)];
+    gs.activeWws = gs.wwsPile[0];
+
+    const st = ctx.roomPayload(room, 0).gameState;
+    assert.equal(st.wwsDeck.length, 3, 'výška hromádky zůstává');
+    st.wwsDeck.forEach(c => assert.equal(c.name, undefined, 'karta v balíčku je zakrytá'));
+    st.eventDeck.forEach(c => assert.equal(c.name, undefined));
+    st.ffDeck.forEach(c => assert.equal(c.name, undefined));
+    assert.equal(st.wwsPile[0].name, 'N509', 'odkrytá karta je veřejná');
+    assert.equal(st.activeWws.key, 'K509', 'a platná taky');
+});

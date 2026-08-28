@@ -82,6 +82,11 @@ socket.on('intro_phase', (data) => {
             ffTotal: data.ffCount || 0,
             ffAsideTex: null,
             ffMoving: false,
+            // A do třetice Divoký západ – stejné beaty, o krok dál doleva.
+            wwsCount: data.wwsCount || 0,
+            wwsTotal: data.wwsCount || 0,
+            wwsAsideTex: null,
+            wwsMoving: false,
         };
         // Navazující hra: přeživší mají svou postavu na stole hned (s tolika životy,
         // kolik jim zbylo z minulé hry) – ještě bez šerifovy hvězdy, role se teprve rozdají.
@@ -346,16 +351,16 @@ socket.on('intro_phase', (data) => {
         renderUI();
     }
 
-    // Rozšíření High Noon / A Fistful of Cards, 1. beat: balíček leží kompletní a šerif
-    // z něj sejme vrchní kartu (Pravé poledne / Fistful of Cards). Ta jen kousek přelétne
-    // vedle, otočí se lícem nahoru a zůstane ležet ve stejné velikosti jako balíčky, ať
-    // je vidět, která karta se míchat nebude.
-    // Oba balíčky mají STEJNÉ beaty a jedou za sebou (server/intro.js) – `which` říká,
-    // o který jde, zbytek popisuje introEventCfg (view/intro.js).
-    else if (sub === 'highnoon_top' || sub === 'fistful_top') {
-        const which = sub === 'fistful_top' ? 'ff' : 'hn';
+    // Rozšíření High Noon / A Fistful of Cards / Divoký západ, 1. beat: balíček leží
+    // kompletní a šerif z něj sejme vrchní kartu (Pravé poledne / Fistful of Cards /
+    // Divoký západ). Ta jen kousek přelétne vedle, otočí se lícem nahoru a zůstane ležet
+    // ve stejné velikosti jako balíčky, ať je vidět, která karta se míchat nebude.
+    // Všechny tři balíčky mají STEJNÉ beaty a jedou za sebou (server/intro.js) – `which`
+    // říká, o který jde, zbytek popisuje introEventCfg (view/intro.js).
+    else if (sub === 'highnoon_top' || sub === 'fistful_top' || sub === 'wws_top') {
+        const which = sub === 'fistful_top' ? 'ff' : sub === 'wws_top' ? 'wws' : 'hn';
         const C = introEventCfg(which);
-        const count = data.ffCount ?? data.hnCount ?? 0;
+        const count = data.wwsCount ?? data.ffCount ?? data.hnCount ?? 0;
         const cards = gameScene?.cache.json.get(C.json) || [];
         const last = cards.find(c => c.key === C.lastKey);
         const tex = last ? C.pre + last.art : null;
@@ -377,10 +382,10 @@ socket.on('intro_phase', (data) => {
 
     // 2. beat: šerif zamíchá zbytek balíčku událostí odděleně od hracích karet. Odložená
     // karta leží po celou dobu vedle (aby bylo vidět, že se nemíchá).
-    else if (sub === 'shuffle_highnoon' || sub === 'shuffle_fistful') {
-        const which = sub === 'shuffle_fistful' ? 'ff' : 'hn';
+    else if (sub === 'shuffle_highnoon' || sub === 'shuffle_fistful' || sub === 'shuffle_wws') {
+        const which = sub === 'shuffle_fistful' ? 'ff' : sub === 'shuffle_wws' ? 'wws' : 'hn';
         const C = introEventCfg(which);
-        const count = data.ffCount ?? data.hnCount ?? 0;
+        const count = data.wwsCount ?? data.ffCount ?? data.hnCount ?? 0;
         _introState[which + 'Count'] = 0;        // hromádku zastupuje míchací animace
         _introState[which + 'Total'] = count;
         _introState.shuffleAnimDone = false;
@@ -404,8 +409,8 @@ socket.on('intro_phase', (data) => {
 
     // 3. beat: odložená karta se překlopí na rub a sjede pod zamíchanou hromádku (bude se
     // líznout jako poslední). Od téhle chvíle má balíček plný počet karet.
-    else if (sub === 'highnoon_bottom' || sub === 'fistful_bottom') {
-        const which = sub === 'fistful_bottom' ? 'ff' : 'hn';
+    else if (sub === 'highnoon_bottom' || sub === 'fistful_bottom' || sub === 'wws_bottom') {
+        const which = sub === 'fistful_bottom' ? 'ff' : sub === 'wws_bottom' ? 'wws' : 'hn';
         const C = introEventCfg(which);
         const tex = _introState?.[which + 'AsideTex'];
         _introState[which + 'AsideTex'] = null;
@@ -536,12 +541,13 @@ socket.on('intro_phase', (data) => {
                             if (gameScene.introSprites) gameScene.introSprites.add(img);
                             movers.push(img);
                         }
-                        // Balíčky událostí (High Noon, Fistful of Cards) jedou na své herní
-                        // pozice zároveň s hracím balíčkem. Při obou zapnutých rozšířeních
+                        // Balíčky událostí (High Noon, Fistful of Cards, Divoký západ) jedou
+                        // na své herní pozice zároveň s hracím balíčkem. Při obou zapnutých rozšířeních
                         // se srovnají nad sebe, takže se mění i y (eventSlot v game.js).
                         // `on` se bere z intro počtů: stav hry ještě žádné karty nemá.
                         const _evOn = { hn: (_introState.hnCount || 0) > 0,
-                                        ff: (_introState.ffCount || 0) > 0 };
+                                        ff: (_introState.ffCount || 0) > 0,
+                                        wws: (_introState.wwsCount || 0) > 0 };
                         const evMovers = (which, from, count, texKey) => {
                             const n = count || 0;
                             const layers = n > 0 ? shuffleLayers(n) : 0;
@@ -565,6 +571,7 @@ socket.on('intro_phase', (data) => {
                         };
                         evMovers('hn', INTRO_HN_DECK, _introState.hnCount, 'hn_back');
                         evMovers('ff', INTRO_FF_DECK, _introState.ffCount, 'ff_back');
+                        evMovers('wws', INTRO_WWS_DECK, _introState.wwsCount, 'wws_back');
                         renderUI(); // skryje statický intro balíček
                         gameScene.tweens.add({
                             targets: movers, x: DECK_X,
@@ -1373,9 +1380,9 @@ function _playCardAnim(data) {
         case 'high_noon_reveal': {
             const A = HN_ANIM;
             const BIG = 0.8, CX = 960, CY = 540;
-            // Stejná cinematika pro oba balíčky událostí – liší se jen místem na stole
-            // a prefixem textur (data.deck: 'hn' | 'ff', viz server/anim.js).
-            const which = data.deck === 'ff' ? 'ff' : 'hn';
+            // Stejná cinematika pro všechny tři balíčky událostí – liší se jen místem na
+            // stole a prefixem textur (data.deck: 'hn' | 'ff' | 'wws', viz server/anim.js).
+            const which = (data.deck === 'ff' || data.deck === 'wws') ? data.deck : 'hn';
             const prefix = eventTexPrefix(which);
             const slot = eventSlot(which);
             const faceTex = prefix + data.art;
@@ -1399,6 +1406,7 @@ function _playCardAnim(data) {
             // po dojezdu.
             if (data.remaining !== undefined) {
                 if (which === 'ff') App.ffDeckLeft = data.remaining;
+                else if (which === 'wws') App.wwsDeckLeft = data.remaining;
                 else App.hnDeckLeft = data.remaining;
             }
             renderUI();
@@ -1445,10 +1453,14 @@ function _playCardAnim(data) {
                     // stav dorazí až po dojezdu animace (fronta), takže bez parkování by
                     // na okamžik zmizela úplně.
                     onComplete: () => holdThenFinish(spr,
-                        () => (which === 'ff' ? state?.activeFistful?.id : state?.activeEvent?.id) === data.id,
+                        () => (which === 'ff' ? state?.activeFistful?.id
+                             : which === 'wws' ? state?.activeWws?.id
+                             : state?.activeEvent?.id) === data.id,
                         () => {
                             if (spr.active) spr.destroy();
-                            if (which === 'ff') App.ffDeckLeft = null; else App.hnDeckLeft = null;
+                            if (which === 'ff') App.ffDeckLeft = null;
+                            else if (which === 'wws') App.wwsDeckLeft = null;
+                            else App.hnDeckLeft = null;
                             renderUI();
                         })
                 });
@@ -2529,7 +2541,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.dealDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.revealShuffling = false; App.revealShuffleRunning = false; App.revealLocked = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.dealDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.revealShuffling = false; App.revealShuffleRunning = false; App.revealLocked = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; App.wwsDeckLeft = null; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Smrt má
     // vlastní cinematiku (core/deathAnim.js), proto se vyžaduje NOVÝ stav > 0; opačný

@@ -26,6 +26,7 @@ if (typeof CardType === 'undefined' && typeof require === 'function') {
     globalThis.ALL_CHARACTERS = __ent.ALL_CHARACTERS;
     globalThis.DODGE_CITY_CHARACTERS = __ent.DODGE_CITY_CHARACTERS;
     globalThis.FISTFUL_CHARACTERS = __ent.FISTFUL_CHARACTERS;
+    globalThis.WILD_WEST_CHARACTERS = __ent.WILD_WEST_CHARACTERS;
     globalThis.Card = __ent.Card;
     globalThis.Player = __ent.Player;
     globalThis.Deck = __ent.Deck;
@@ -149,6 +150,13 @@ class GameState {
         this.ffPile = [];               // už odkryté karty Fistfulu (nejstarší → nejnovější)
         this.activeFistful = null;
         this._ffEntering = null;
+        // Rozšíření Divoký západ (Wild West Show) – TŘETÍ balíček událostí. Neotáčí ho
+        // šerif na začátku kola, ale kdokoli zahráním Dostavníku / Wells Farga, takže na
+        // začátku hry žádná jeho událost neplatí. Viz logic/wildWest.js.
+        this.wwsDeck = [];
+        this.wwsPile = [];              // už odkryté karty Divokého západu (nejstarší → nejnovější)
+        this.activeWws = null;
+        this._wwsEntering = null;
         this.pendingPeyote = null;      // Peyote: čeká se na tip červená/černá
         this.pendingRanch = null;       // Ranč: čeká se na výměnu karet (po fázi lízání)
         this.pendingBlood = null;       // Pokrevní bratři: nabídka darovat 1 život (před lízáním)
@@ -437,7 +445,8 @@ if (typeof module !== 'undefined' && typeof require === 'function') {
         require('./logic/checks.js'),
         require('./logic/dodgeCity.js'),
         require('./logic/highNoon.js'),
-        require('./logic/fistful.js')
+        require('./logic/fistful.js'),
+        require('./logic/wildWest.js')
     );
 }
 

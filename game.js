@@ -105,21 +105,24 @@ const DISCARD_X = GAME_CENTER_X + _L0.deckOffX, DISCARD_Y = _L0.pileY;
 function eventDecksOn(on) {
     if (on) return on;
     const has = (deck, pile) => ((state?.[deck]?.length || 0) + (state?.[pile]?.length || 0)) > 0;
-    return { hn: has('eventDeck', 'eventPile'), ff: has('ffDeck', 'ffPile') };
+    return { hn: has('eventDeck', 'eventPile'), ff: has('ffDeck', 'ffPile'),
+             wws: has('wwsDeck', 'wwsPile') };
 }
-// which = 'hn' | 'ff' → { deckX, activeX, y } se započítaným zvednutím při hokynářství,
-// nebo null, když se ten balíček nehraje. `on` umí přebít intro (má vlastní počty karet).
+// which = 'hn' | 'ff' | 'wws' → { deckX, activeX, y } se započítaným zvednutím při
+// hokynářství, nebo null, když se ten balíček nehraje. `on` umí přebít intro (má vlastní
+// počty karet).
 function eventSlot(which, on) {
     const L = currentLayout();
     const d = eventDecksOn(on);
-    const slots = eventPileSlots(L, d.hn, d.ff);
+    const slots = eventPileSlots(L, d.hn, d.ff, d.wws);
     const s = slots[which];
     if (!s) return null;
     return { deckX: s.deckX, activeX: s.activeX,
              y: s.y - eventPileLift(L, App.storePileLiftY || 0, slots.stacked) };
 }
-// Textury balíčku událostí: 'hn_<art>' / 'ff_<art>', rub 'hn_back' / 'ff_back'.
-function eventTexPrefix(which) { return which === 'ff' ? 'ff_' : 'hn_'; }
+// Textury balíčku událostí: 'hn_<art>' / 'ff_<art>' / 'wws_<art>',
+// rub 'hn_back' / 'ff_back' / 'wws_back'.
+function eventTexPrefix(which) { return which === 'ff' ? 'ff_' : which === 'wws' ? 'wws_' : 'hn_'; }
 
 const PILE_PX_PER_CARD = 0.25;
 // Velikost karty ležící v balíčku / odhozu. MUSÍ sedět s board.js (scaleDeck) – karta,
@@ -2055,6 +2058,7 @@ function preload() {
     loadAsset(this, 'json', 'cards_dodge_city_data', 'cards.dodge_city.json');
     loadAsset(this, 'json', 'cards_high_noon_data', 'cards.high_noon.json');
     loadAsset(this, 'json', 'cards_fistful_data', 'cards.fistful.json');
+    loadAsset(this, 'json', 'cards_divoky_zapad_data', 'cards.divoky_zapad.json');
 
     loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
@@ -2179,6 +2183,30 @@ const EXPANSION_LOADERS = {
                 normalizeTexture(scene, 'ff_back');
                 data.forEach(c => normalizeTexture(scene, 'ff_' + c.art));
                 normalizeCharTextures(scene, 31, 33);
+            },
+        };
+    },
+
+    divoky_zapad(scene) {
+        // Třetí balíček událostí – všechno stejně jako u High Noonu/Fistfulu, jen
+        // s prefixem wws_. Rozšíření má navíc 8 postav (portréty 034–041).
+        const data = scene.cache.json.get('cards_divoky_zapad_data') || [];
+        loadAsset(scene, 'image', 'wws_back', 'assets/other_cards/divoky_zapad/divoky_zapad.webp');
+        // Karta Divoký západ se ukazuje hned v intru (odložená vedle balíčku), takže
+        // musí být ve frontě loaderu první; zbytek se stihne, než ji někdo odkryje.
+        const first = data.find(c => c.key === 'DIVOKY_ZAPAD');
+        if (first) loadAsset(scene, 'image', 'wws_' + first.art, `assets/divoky_zapad_cards/${first.art}.webp`);
+        data.forEach(c => loadAsset(scene, 'image', 'wws_' + c.art, `assets/divoky_zapad_cards/${c.art}.webp`));
+        for (let i = 34; i <= 41; i++) {
+            loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.webp`);
+        }
+        return {
+            critical: ['wws_back'].concat(first ? ['wws_' + first.art] : []),
+            done: () => {
+                // Dodané ve 2× (650×1000) → srovnat na 325×500 jako ostatní karty.
+                normalizeTexture(scene, 'wws_back');
+                data.forEach(c => normalizeTexture(scene, 'wws_' + c.art));
+                normalizeCharTextures(scene, 34, 41);
             },
         };
     },

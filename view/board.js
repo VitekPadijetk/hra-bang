@@ -156,6 +156,7 @@ function renderGameBoard() {
     const isMyDraw = drawDrawPiles({ getTex, scaleDeck, me, L });
     drawEventPile({ scaleDeck }, 'hn');
     drawEventPile({ scaleDeck }, 'ff');
+    drawEventPile({ scaleDeck }, 'wws');
 
     const handlePanicCBClick = (targetIdx, area, boardIdx = null) => {
         // Zelená karta se steal/discard efektem ze stolu (Krytý vůz / Kankán): klik na
@@ -2760,23 +2761,28 @@ function drawPhaseOverlays(ctx) {
 
 
 // ── Balíčky: dobírací + odhazovací hromádka, zvýraznění lízání/check (vrací isMyDraw) ─
-// Rozšíření High Noon / A Fistful of Cards: balíček událostí rubem nahoru a vedle něj
+// Rozšíření High Noon / A Fistful of Cards / Divoký západ: balíček událostí rubem nahoru a vedle něj
 // hromádka už odkrytých karet lícem nahoru (nová vždy překryje předchozí, hromádka roste
 // do výšky – stejně jako odhoz). Kreslí se pro OBA balíčky; kde který leží, rozhoduje
 // eventSlot (game.js) podle toho, která rozšíření se hrají. Balíčky se zvedají při
 // hokynářství (řada rozdaných karet sahá při 7 hráčích až na x=1320, takže bez zvednutí
 // by přes ně ležela).
 // Vrchní (platná) karta jde zvětšit najetím kurzoru – stejná cesta jako u vrchní karty odhozu.
+// Pole stavu a klientský „zbytek balíčku" podle toho, o který balíček událostí jde.
+const EVENT_DECK_FIELDS = {
+    hn:  { deck: 'eventDeck', pile: 'eventPile', left: 'hnDeckLeft' },
+    ff:  { deck: 'ffDeck',    pile: 'ffPile',    left: 'ffDeckLeft' },
+    wws: { deck: 'wwsDeck',   pile: 'wwsPile',   left: 'wwsDeckLeft' },
+};
 function drawEventPile(ctx, which) {
     const { scaleDeck } = ctx;
     if (!state) return;
-    const isFf = which === 'ff';
-    // App.hnDeckLeft / ffDeckLeft: po dobu cinematiky odkrytí kreslíme balíček podle
-    // animace, ne podle stavu (ten dorazí až po ní). Karta z balíčku odchází HNED, takže
-    // při odkrytí poslední musí balíček zmizet se startem letu, ne až na jeho konci.
-    const left = (isFf ? App.ffDeckLeft : App.hnDeckLeft)
-        ?? ((isFf ? state.ffDeck : state.eventDeck)?.length || 0);
-    const pile = (isFf ? state.ffPile : state.eventPile) || [];
+    const F = EVENT_DECK_FIELDS[which] || EVENT_DECK_FIELDS.hn;
+    // App.hnDeckLeft / ffDeckLeft / wwsDeckLeft: po dobu cinematiky odkrytí kreslíme
+    // balíček podle animace, ne podle stavu (ten dorazí až po ní). Karta z balíčku odchází
+    // HNED, takže při odkrytí poslední musí balíček zmizet se startem letu, ne až na konci.
+    const left = App[F.left] ?? (state[F.deck]?.length || 0);
+    const pile = state[F.pile] || [];
     if (!left && !pile.length) return;   // tohle rozšíření se nehraje
 
     const slot = eventSlot(which);

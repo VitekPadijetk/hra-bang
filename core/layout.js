@@ -129,6 +129,11 @@ const LAYOUT_DESKTOP = {
     // zrcadlově vlevo od dobíracího balíčku. Viz eventPileSlots níže.
     eventStack: 'vertical', eventRowGap: 170,
     ffPileX: 750, ffActiveX: 640,
+    // TŘETÍ balíček událostí (Divoký západ) leží NALEVO od balíčků. Když je levý pár
+    // (ffPileX/ffActiveX) volný – a na desktopu je vždycky, protože se High Noon
+    // s Fistfulem srovnávají nad sebe vpravo – sedne si Divoký západ rovnou na něj.
+    // Tenhle pár je až záložní „ještě o krok doleva" pro mobil, kde levý drží Fistful.
+    wwsPileX: 530, wwsActiveX: 420,
 };
 const LAYOUT_MOBILE = {
     ...LAYOUT_DESKTOP, name: 'mobile',
@@ -402,27 +407,40 @@ function resolveLayout(profile, stage) {
     if (L.btnMargin != null) { out.btnEndX = st.right - L.btnMargin; out.btnAbilX = st.right - L.btnMargin; }
     return out;
 }
-// ── Balíčky událostí (High Noon, A Fistful of Cards) ─────────────────────────
+// ── Balíčky událostí (High Noon, A Fistful of Cards, Divoký západ) ───────────
 // Kde na stole leží rub balíčku a hromádka odkrytých karet. Pozice ZÁVISÍ na tom, která
 // rozšíření se zrovna hrají, takže to nejsou konstanty: hraje-li se jen jedno, sedí na
 // klasickém místě vpravo od odhozu (dnešní stav High Noonu). Hrají-li se obě, srovnají
 // se na desktopu nad sebe (Fistful nahoře, High Noon o půl rozteče níž), na mobilu se
 // místo toho Fistful zrcadlí doleva od dobíracího balíčku – svislé pásmo mezi kompaktní
 // řadou soupeřů a mojí zónou má jen 220 px a dvě řady karet potřebují 320.
+//
+// Divoký západ je třetí sloupec a leží VLEVO: bere levý pár (ffPileX/ffActiveX), a jen
+// když ho drží Fistful (mobil se zapnutým High Noonem), posune se o krok dál doleva na
+// wwsPileX/wwsActiveX. Na desktopu levý pár volný vždycky je, takže Divoký západ nemění
+// pixel na dnešním rozložení High Noonu ani Fistfulu.
+//
 // Vrací i `stacked`, podle kterého se při hokynářství sloupce zvednou o řadu víc
-// (jinak by na spodku platné karty ležela řada rozdaných karet).
-function eventPileSlots(L, hnOn, ffOn) {
+// (jinak by na spodku platné karty ležela řada rozdaných karet). Řídí se dál jen podle
+// High Noonu a Fistfulu – levé sloupce nad sebou nikdy nejsou.
+function eventPileSlots(L, hnOn, ffOn, wwsOn) {
     const classic = { deckX: L.hnPileX, activeX: L.hnActiveX, y: L.pileY };
+    const left = { deckX: L.ffPileX, activeX: L.ffActiveX, y: L.pileY };
+    const farLeft = { deckX: L.wwsPileX, activeX: L.wwsActiveX, y: L.pileY };
+    // Fistful drží levý pár jen tehdy, když se s High Noonem nesrovnává nad sebe.
+    const ffOnLeft = !!(hnOn && ffOn) && L.eventStack === 'horizontal';
+    const wws = wwsOn ? (ffOnLeft ? farLeft : left) : null;
     if (!hnOn || !ffOn) {
-        return { hn: hnOn ? classic : null, ff: ffOn ? classic : null, stacked: false };
+        return { hn: hnOn ? classic : null, ff: ffOn ? classic : null, wws, stacked: false };
     }
     if (L.eventStack === 'horizontal') {
-        return { hn: classic, ff: { deckX: L.ffPileX, activeX: L.ffActiveX, y: L.pileY }, stacked: false };
+        return { hn: classic, ff: left, wws, stacked: false };
     }
     const half = L.eventRowGap / 2;
     return {
         hn: { ...classic, y: L.pileY + half },
         ff: { ...classic, y: L.pileY - half },
+        wws,
         stacked: true,
     };
 }

@@ -77,6 +77,7 @@ module.exports = function installIntroService(ctx) {
             deckCount: gs.deck.cards.length,
             hnCount: gs.eventDeck?.length || 0,
             ffCount: gs.ffDeck?.length || 0,
+            wwsCount: gs.wwsDeck?.length || 0,
             survivors,
         });
 
@@ -243,15 +244,19 @@ module.exports = function installIntroService(ctx) {
     // Pravé poledne leží odložené vedle, míchá se zbytek (hnCount − 1).
     const hnShuffleMs = (hnCount) => shuffleDurationMs(Math.max(1, hnCount - 1)) + SHUFFLE_PAD_MS;
 
-    // Rozšíření A Fistful of Cards má úplně stejnou choreografii jako High Noon, jen jiné
-    // místo na stole a jinou odkládanou kartu (Fistful of Cards místo Pravého poledne).
-    // Beaty obou balíčků jdou ZA SEBOU, ne současně: _animateIntroShuffle (view/intro.js)
+    // Rozšíření A Fistful of Cards a Divoký západ mají úplně stejnou choreografii jako
+    // High Noon, jen jiné místo na stole a jinou odkládanou kartu (Fistful of Cards /
+    // Divoký západ místo Pravého poledne).
+    // Beaty všech balíčků jdou ZA SEBOU, ne současně: _animateIntroShuffle (view/intro.js)
     // si na začátku uklidí předchozí intro sprity a `shuffling()` porovnává jediný `sub`,
     // takže dvě míchání naráz by si navzájem smazala karty.
+    const EVENT_DECK_SUB = { ff: 'fistful', wws: 'wws', hn: 'highnoon' };
     function eventDeckBeats(room, deck, count, at) {
         if (!count) return 0;
-        const name = deck === 'ff' ? 'fistful' : 'highnoon';
-        const payload = deck === 'ff' ? { ffCount: count } : { hnCount: count };
+        const name = EVENT_DECK_SUB[deck] || 'highnoon';
+        const payload = deck === 'ff' ? { ffCount: count }
+                      : deck === 'wws' ? { wwsCount: count }
+                      : { hnCount: count };
         setTimeout(() => emitIntro(room, { sub: `${name}_top`, ...payload }), at);
         setTimeout(() => emitIntro(room, { sub: `shuffle_${name}`, ...payload }), at + HN_TOP_MS);
         setTimeout(() => emitIntro(room, { sub: `${name}_bottom` }), at + HN_TOP_MS + hnShuffleMs(count));
@@ -292,8 +297,10 @@ module.exports = function installIntroService(ctx) {
                 // Fistful of Cards má stejnou trojici beatů a jede AŽ ZA High Noonem.
                 const hnCount = gs.eventDeck?.length || 0;
                 const ffCount = gs.ffDeck?.length || 0;
+                const wwsCount = gs.wwsDeck?.length || 0;
                 const hnDelay = eventDeckBeats(room, 'hn', hnCount, 0);
                 const ffDelay = eventDeckBeats(room, 'ff', ffCount, hnDelay);
+                const wwsDelay = eventDeckBeats(room, 'wws', wwsCount, hnDelay + ffDelay);
                 setTimeout(() => {
                 emitIntro(room, { sub: 'deal_cards', order: cardOrder });
 
@@ -324,7 +331,7 @@ module.exports = function installIntroService(ctx) {
                     emitIntro(room, { sub: 'done' });
                     broadcastRoom(room); // phase=DRAW
                 }, doneDelay);
-                }, hnDelay + ffDelay);
+                }, hnDelay + ffDelay + wwsDelay);
 
             }, deckShuffleDelay);
         }, slideInStart + slideInDur);

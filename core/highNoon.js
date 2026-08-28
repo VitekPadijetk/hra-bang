@@ -1,16 +1,19 @@
-// core/highNoon.js — ČISTÝ izomorfní dotaz na aktivní událost rozšíření High Noon
-// a A Fistful of Cards (druhý balíček, hraje se souběžně – viz logic/fistful.js).
+// core/highNoon.js — ČISTÝ izomorfní dotaz na aktivní událost rozšíření High Noon,
+// A Fistful of Cards (druhý balíček, logic/fistful.js) a Divoký západ (třetí balíček,
+// logic/wildWest.js). Všechny tři se hrají souběžně.
 // Server se ptá přes GameState.hasEvent(); klient (view/*) a bot (core/botPolicy.js)
 // mají jen prostý JSON stav, proto tenhle helper. Obojí čte tatáž pole stavu.
 // Globál v prohlížeči (<script> v index.html), require v Node/testech. Viz CLAUDE.md.
 
-// Ptá se OBOU balíčků událostí: High Noon (`activeEvent`) i A Fistful of Cards
-// (`activeFistful`). Hrají se současně a klíče karet jsou napříč nimi unikátní, takže
-// volající nemusí řešit, ze kterého balíčku karta je. Zrcadlí GameState.hasEvent.
+// Ptá se VŠECH TŘÍ balíčků událostí: High Noon (`activeEvent`), A Fistful of Cards
+// (`activeFistful`) i Divoký západ (`activeWws`). Hrají se současně a klíče karet jsou
+// napříč nimi unikátní, takže volající nemusí řešit, ze kterého balíčku karta je.
+// Zrcadlí GameState.hasEvent.
 function eventActive(state, key) {
     if (!state) return false;
     return (!!state.activeEvent && state.activeEvent.key === key) ||
-           (!!state.activeFistful && state.activeFistful.key === key);
+           (!!state.activeFistful && state.activeFistful.key === key) ||
+           (!!state.activeWws && state.activeWws.key === key);
 }
 
 // Kolik karet Bang! smí hráč zahrát za tah (Přestřelka = 2). Zrcadlí GameState._bangLimit.

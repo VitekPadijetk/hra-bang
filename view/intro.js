@@ -73,15 +73,22 @@ const INTRO_HN_ASIDE   = { x: INTRO_HN_DECK.x, y: 350 };
 // (rozteč stejná jako mezi ostatními). Na herní pozici sjede až na konci intra.
 const INTRO_FF_DECK    = { x: INTRO_ROLE_DECK.x - 160, y: 540 };
 const INTRO_FF_ASIDE   = { x: INTRO_FF_DECK.x, y: 350 };
+// Balíček událostí Divokého západu má šestý slot, o krok dál doleva (rozteč stejná).
+const INTRO_WWS_DECK   = { x: INTRO_FF_DECK.x - 160, y: 540 };
+const INTRO_WWS_ASIDE  = { x: INTRO_WWS_DECK.x, y: 350 };
 
-// Popis balíčku událostí pro intro. Beaty obou rozšíření jsou identické – liší se jen
-// místem na stole, texturami a kartou, kterou šerif odkládá vespod.
+// Popis balíčku událostí pro intro. Beaty všech tří rozšíření jsou identické – liší se
+// jen místem na stole, texturami a kartou, kterou šerif odkládá vespod.
+const INTRO_EVENT_CFG = {
+    ff:  { deck: INTRO_FF_DECK, aside: INTRO_FF_ASIDE, back: 'ff_back', pre: 'ff_',
+           json: 'cards_fistful_data', lastKey: 'FISTFUL_OF_CARDS', shuffleSub: 'shuffle_fistful' },
+    wws: { deck: INTRO_WWS_DECK, aside: INTRO_WWS_ASIDE, back: 'wws_back', pre: 'wws_',
+           json: 'cards_divoky_zapad_data', lastKey: 'DIVOKY_ZAPAD', shuffleSub: 'shuffle_wws' },
+    hn:  { deck: INTRO_HN_DECK, aside: INTRO_HN_ASIDE, back: 'hn_back', pre: 'hn_',
+           json: 'cards_high_noon_data', lastKey: 'PRAVE_POLEDNE', shuffleSub: 'shuffle_highnoon' },
+};
 function introEventCfg(which) {
-    return which === 'ff'
-        ? { deck: INTRO_FF_DECK, aside: INTRO_FF_ASIDE, back: 'ff_back', pre: 'ff_',
-            json: 'cards_fistful_data', lastKey: 'FISTFUL_OF_CARDS' }
-        : { deck: INTRO_HN_DECK, aside: INTRO_HN_ASIDE, back: 'hn_back', pre: 'hn_',
-            json: 'cards_high_noon_data', lastKey: 'PRAVE_POLEDNE' };
+    return INTRO_EVENT_CFG[which] || INTRO_EVENT_CFG.hn;
 }
 // Odstup mezi první a druhou kartou postavy jednoho hráče (net/handlers.js
 // char_cards_fly u soupeřů, _startCharChoicesFlip u mě) – jeden rytmus pro všechny.
@@ -1083,14 +1090,15 @@ function renderIntroScene() {
         _drawIntroStack(INTRO_CHAR_DECK.x, INTRO_CHAR_DECK.y, 'lives', s.charCount, 0.30);
     if (s.deckCount > 0 && !shuffling('shuffle_deck') && !s.deckMoving)
         _drawIntroStack(INTRO_PLAY_DECK.x, INTRO_PLAY_DECK.y, 'card_back', s.deckCount, 0.30);
-    // Balíčky událostí (High Noon, Fistful of Cards): rub. Během vlastního míchání je
-    // zastupuje animace, během přesunu na herní pozici pohyblivý stack (*Moving).
-    ['hn', 'ff'].forEach(w => {
+    // Balíčky událostí (High Noon, Fistful of Cards, Divoký západ): rub. Během vlastního
+    // míchání je zastupuje animace, během přesunu na herní pozici pohyblivý stack (*Moving).
+    ['hn', 'ff', 'wws'].forEach(w => {
         const C = introEventCfg(w);
-        const shuffleSub = w === 'ff' ? 'shuffle_fistful' : 'shuffle_highnoon';
+        const shuffleSub = C.shuffleSub;
         if (s[w + 'Count'] > 0 && !shuffling(shuffleSub) && !s[w + 'Moving'])
             _drawIntroStack(C.deck.x, C.deck.y, C.back, s[w + 'Count'], 0.30);
-        // Odložená karta (Pravé poledne / Fistful of Cards) lícem nahoru, než sjede pod hromádku.
+        // Odložená karta (Pravé poledne / Fistful of Cards / Divoký západ) lícem nahoru,
+        // než sjede pod hromádku.
         const aside = s[w + 'AsideTex'];
         if (aside && gameScene.textures.exists(aside))
             _iAdd(gameScene.add.image(C.aside.x, C.aside.y, aside).setScale(0.30).setDepth(40));

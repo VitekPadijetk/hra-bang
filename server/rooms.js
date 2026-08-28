@@ -81,9 +81,9 @@ module.exports = function installRoomService(ctx) {
         const deck = gs.deck
             ? { ...gs.deck, cards: (gs.deck.cards || []).map(() => HIDDEN_CARD) }
             : gs.deck;
-        // Totéž platí pro balíčky událostí (High Noon, Fistful of Cards): klient z nich
-        // kreslí jen výšku hromádky, pořadí je pořadí příštích kol. Odkryté karty
-        // (eventPile / ffPile) jsou naopak veřejné a zůstávají.
+        // Totéž platí pro balíčky událostí (High Noon, Fistful of Cards, Divoký západ):
+        // klient z nich kreslí jen výšku hromádky, pořadí je pořadí příštích kol. Odkryté
+        // karty (eventPile / ffPile / wwsPile) jsou naopak veřejné a zůstávají.
         const hideAll = (arr) => (arr || []).map(() => HIDDEN_CARD);
         // Claus "The Saint" (Fistful): odkrytou řadu vidí jen on – ostatním z ní zbývá
         // počet karet (kreslí se rubem) a `picked` (které sloty jsou už rozdané).
@@ -91,7 +91,8 @@ module.exports = function installRoomService(ctx) {
             ? { ...gs.clausState, revealed: hideAll(gs.clausState.revealed) }
             : gs.clausState;
         return { ...gs, players, deck, clausState,
-                 eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck) };
+                 eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck),
+                 wwsDeck: hideAll(gs.wwsDeck) };
     }
 
     function roomPayload(room, viewerIdx = null, revealAll = false) {

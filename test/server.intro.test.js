@@ -265,6 +265,35 @@ test('introStartDeckPhase se zapnutým High Noon zamíchá balíček událostí 
     assert.equal(hn.payload.hnCount, 13);
 });
 
+test('introStartDeckPhase pošle beaty všech tří balíčků za sebou', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0'); addSocket('s1');
+    const room = mkRoom();
+    room.gameState = {
+        players: [{ role: 'Sheriff', hand: [], _baseHealth: 4 }, { role: 'Outlaw', hand: [], _baseHealth: 4 }],
+        deck: { cards: [] },
+        eventDeck: new Array(15).fill(0).map((_, i) => ({ id: 300 + i })),
+        ffDeck: new Array(15).fill(0).map((_, i) => ({ id: 400 + i })),
+        wwsDeck: new Array(10).fill(0).map((_, i) => ({ id: 500 + i })),
+    };
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    runWithInstantTimers(() => ctx.introStartDeckPhase(room));
+
+    const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase').map(e => e.payload.sub);
+    ['wws_top', 'shuffle_wws', 'wws_bottom'].forEach(sub =>
+        assert.ok(subs.includes(sub), `chybí beat ${sub}`));
+    // Trojice beatů jde za sebou a Divoký západ až úplně nakonec (míchání se nesmí krýt).
+    assert.ok(subs.indexOf('highnoon_bottom') < subs.indexOf('fistful_top'), 'Fistful až po High Noonu');
+    assert.ok(subs.indexOf('fistful_bottom') < subs.indexOf('wws_top'), 'Divoký západ až po Fistfulu');
+    assert.ok(subs.indexOf('wws_top') < subs.indexOf('shuffle_wws'));
+    assert.ok(subs.indexOf('shuffle_wws') < subs.indexOf('wws_bottom'));
+    assert.ok(subs.indexOf('wws_bottom') < subs.indexOf('deal_cards'), 'rozdává se až potom');
+    // Beaty nesou PLNÝ počet karet – klient si sám odečte odloženou kartu.
+    const top = emits.find(e => e.ev === 'intro_phase' && e.payload.sub === 'wws_top');
+    assert.equal(top.payload.wwsCount, 10);
+});
+
 test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', () => {
     const { io, addSocket, emits } = mkIo();
     addSocket('s0'); addSocket('s1');
@@ -280,6 +309,7 @@ test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', 
     const subs = emits.filter(e => e.ev === 'intro_phase').map(e => e.payload.sub);
     assert.ok(!subs.includes('highnoon_top'));
     assert.ok(!subs.includes('shuffle_highnoon'));
+    assert.ok(!subs.includes('wws_top'));
     assert.ok(subs.includes('deal_cards'));
 });
 
