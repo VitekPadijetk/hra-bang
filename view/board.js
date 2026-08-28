@@ -840,6 +840,16 @@ function drawOpponents(ctx) {
             // Smrt: karta z tohoto slotu už odletěla do odhozu / k Vulture Samovi.
             // Slot zůstává prázdný, zbytek vějíře se pod ní nepřeskládá.
             if (slot !== undefined && App.deathHandHide[actualIdx]?.has(slot)) return;
+            // Divoký západ – Sacagaway: celý vějíř právě drží cinematika (přetáčení při
+            // příchodu/odchodu karty, krádež z odkryté ruky) – kreslí si ho sama.
+            if (App.sacaHandHide?.has(actualIdx)) return;
+            // Sacagaway: ruce leží lícem nahoru (redakce je pod ní pouští, viz redactState
+            // v server/rooms.js), takže se karta s ID kreslí LÍCEM. Ve `sacaHandDown` je
+            // vějíř, který si oběť právě otočila lícem dolů a zamíchala (FAQ Q17) – ten
+            // zůstává rubem, dokud krádež nedoběhne.
+            const _handCard = slot !== undefined ? player.hand[slot] : null;
+            const _handTex = (_handCard && _handCard.id != null && !App.sacaHandDown?.has(actualIdx))
+                ? getTex(_handCard.id) : 'card_back';
             // Jesse Jones: !App.jesseStealLock – po kliknutí zvýraznění cizích rukou HNED
             // zhasne a nejde na ně klikat znovu (server druhý pokus stejně zahodí, protože
             // už nelíže z ruky). Nepoužívá se blockInput jako u Pata Brennana: Jesse musí
@@ -853,7 +863,7 @@ function drawOpponents(ctx) {
             // Fistful – Právo západu: vynucená karta se ukáže VEŘEJNĚ hned při líznutí
             // (cinematika law_reveal, viz net/handlers.js) a pak putuje do ruky jako
             // každá jiná – ve vějíři soupeře tedy leží rubem nahoru.
-            let hCard = gameScene.add.sprite(x, y, 'card_back').setAngle(angle).setScale(hScale);
+            let hCard = gameScene.add.sprite(x, y, _handTex).setAngle(angle).setScale(hScale);
             if (isJesseJonesDraw) {
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });
@@ -884,7 +894,7 @@ function drawOpponents(ctx) {
             gameScene.cardsSprites.add(hCard);
             // Reflow slide: rub nemá identitu → klíč per-slot; vějíř ruky se při ubrání/
             // přibytí karty plynule přeskládá (slot = pozice ve vějíři).
-            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, 'card_back', hScale, angle);
+            if (slot !== undefined) reflowCard('oh' + actualIdx + '_' + slot, hCard, x, y, _handTex, hScale, angle);
         };
 
         const showElGringoHint = () => {};  // hint odstraněn
@@ -2522,16 +2532,22 @@ function drawSpectatorPlayer(ctx) {
         }
 
         const handCount = player.hand?.length || 0;
-        if (handCount > 0) {
+        if (handCount > 0 && !App.sacaHandHide?.has(0)) {
             const handY = 1065;
             const hSpacing = Math.min(cW * 0.35, 32);
             const totalSpread = (handCount - 1) * hSpacing;
             for (let h = 0; h < handCount; h++) {
                 if (App.deathHandHide[0]?.has(h)) continue;   // slot už odletěl (smrt)
                 const hx = livesCX - totalSpread / 2 + h * hSpacing;
-                const hImg = gameScene.add.image(hx, handY, 'card_back').setScale(sOpp);
+                // Sacagaway (Divoký západ): divák vidí odkryté ruce stejně jako hráči –
+                // karta říká „všichni hráči hrají s odhalenými kartami", je to veřejná
+                // informace u stolu (redakce ji pouští i divákovi, viz redactState).
+                const hc = player.hand[h];
+                const hTex = (hc && hc.id != null && !App.sacaHandDown?.has(0))
+                    ? texOf(hc) : 'card_back';
+                const hImg = gameScene.add.image(hx, handY, hTex).setScale(sOpp);
                 gameScene.cardsSprites.add(hImg);
-                reflowCard('oh0_' + h, hImg, hx, handY, 'card_back', sOpp, 0);
+                reflowCard('oh0_' + h, hImg, hx, handY, hTex, sOpp, 0);
             }
         }
 }

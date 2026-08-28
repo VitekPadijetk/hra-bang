@@ -378,3 +378,53 @@ test('redakce skryje pořadí všech tří balíčků událostí, odkryté karty
     assert.equal(st.wwsPile[0].name, 'N509', 'odkrytá karta je veřejná');
     assert.equal(st.activeWws.key, 'K509', 'a platná taky');
 });
+
+// ── Redakce stavu: Divoký západ – Sacagaway ─────────────────────────────────
+// „Všichni hráči hrají s odhalenými kartami v ruce (vyjma svých rolí)." Jediná událost,
+// která sahá do redakce. Ruce projdou; role, pořadí balíčků, odložené identity a
+// Clausova řada se skrývají dál. Pravidla se tím nemění o řádek (FAQ Q17: z ruky se
+// pořád bere náhodně) – mění se jen to, co je vidět.
+test('Sacagaway: ruce soupeřů projdou redakcí, role ne', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.activeWws = { id: 507, key: 'SACAGAWAY', name: 'Sacagaway' };
+    ctx.broadcastRoom(room);
+    const gsA = payloadFor(emits, 's1');
+    assert.deepEqual(gsA.players[2].hand.map(c => c.name), ['Barel', 'Duel'], 'ruku soupeře vidí celou');
+    assert.equal(gsA.players[2].hand[0]._placeholder, undefined);
+    assert.equal(gsA.players[2].role, null, 'roli soupeře pořád nevidí');
+    gsA.deck.cards.forEach(c => assert.equal(c.name, undefined, 'pořadí balíčku zůstává skryté'));
+});
+
+test('Sacagaway: odkryté ruce vidí i divák', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.activeWws = { id: 507, key: 'SACAGAWAY', name: 'Sacagaway' };
+    const st = ctx.roomPayload(room, null).gameState;
+    assert.deepEqual(st.players[1].hand.map(c => c.name), ['Vedle!']);
+    assert.equal(st.players[2].role, null, 'role zůstává skrytá i divákovi');
+    assert.ok(emits);
+});
+
+test('Sacagaway: bez ní se redakce nemění, a s další kartou události se ruce zase skryjí', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    // jiná karta téhož balíčku → ruce skryté
+    room.gameState.activeWws = { id: 503, key: 'MADAM_ZUZANA', name: 'Madam Zuzana' };
+    ctx.broadcastRoom(room);
+    let gsA = payloadFor(emits, 's1');
+    assert.equal(gsA.players[2].hand[0]._placeholder, true);
+    // Sacagaway → odkryto
+    room.gameState.activeWws = { id: 507, key: 'SACAGAWAY', name: 'Sacagaway' };
+    ctx.broadcastRoom(room);
+    gsA = payloadFor(emits, 's1');
+    assert.equal(gsA.players[2].hand[0].name, 'Barel');
+    // vystřídá ji další karta → ruce se zase skryjí
+    room.gameState.activeWws = { id: 501, key: 'HRBITOV', name: 'Hřbitov' };
+    ctx.broadcastRoom(room);
+    gsA = payloadFor(emits, 's1');
+    assert.equal(gsA.players[2].hand[0]._placeholder, true);
+});

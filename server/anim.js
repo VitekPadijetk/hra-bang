@@ -4,6 +4,8 @@
 const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 const { hnRevealMs } = require('../core/highNoonAnim.js');
 const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
+const { sacaFlipMs, sacaStealExtraMs } = require('../core/wwsAnim.js');
+const { eventActive } = require('../core/highNoon.js');
 const { effectiveCharacter, isInPlay } = require('../core/distance.js');
 
 // Délka jedné animace ragtime_steal – MUSÍ sedět s ANIM_MS v net/handlers.js (o tuhle
@@ -18,6 +20,11 @@ module.exports = function installAnimService(ctx) {
     // nefiltruje nic.
     const roomAlive = (room) => typeof ctx.roomAlive !== 'function' || ctx.roomAlive(room);
 
+    // Divoký západ – Sacagaway: hrají všichni s odkrytými kartami v ruce (viz redactState
+    // v server/rooms.js). Zrcadlí se tím i animace – co je ve stavu veřejné, nesmí letět
+    // jako rub.
+    const handsOpen = (room) => eventActive(room && room.gameState, 'SACAGAWAY');
+
     // A Fistful of Cards – Opuštěný důl: odhoz nad limit karet (FÁZE 3) letí lícem
     // nahoru na dobírací balíček, chvíli tam leží a teprve pak se překlopí na rub.
     // Pozná se to podle `toDeck` v datech animace – přesně jako na klientu
@@ -30,9 +37,28 @@ module.exports = function installAnimService(ctx) {
         room._mineBlockUntil = Math.max(room._mineBlockUntil || 0, Date.now() + mineLandMs(true));
     }
 
+    // Divoký západ – Sacagaway: krádež z odkryté ruky se pod ní hraje jako u stolu
+    // (FAQ Q17) – ruka se přetočí lícem dolů, zamíchá, teprve pak z ní karta odletí
+    // a zbytek se zase odhalí. Klient si tu cinematiku přehraje sám (core/wwsAnim.js);
+    // tady se o stejnou dobu podrží boti, jinak by hráli „přes" ni.
+    const HAND_STEAL_ANIMS = new Set(['panic_sequence', 'catbalou_sequence', 'ragtime_steal']);
+    function holdForSacaSteal(room, data) {
+        if (!data || !handsOpen(room)) return;
+        const isSteal = data.type === 'jesse_jones_draw' ||
+                        (HAND_STEAL_ANIMS.has(data.type) && data.area === 'hand');
+        if (!isSteal) return;
+        // Karta už je z ruky vyndaná (emituje se po resolvu) → před krádeží jich tam byla
+        // o jednu víc. Vějíř oběti je u Jesseho/El Gringa `fromPlayerIdx`, jinak `targetIdx`.
+        const victimIdx = data.type === 'jesse_jones_draw' ? data.fromPlayerIdx : data.targetIdx;
+        const left = room.gameState?.players?.[victimIdx]?.hand?.length ?? 0;
+        room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0,
+                                       Date.now() + sacaStealExtraMs(left + 1));
+    }
+
     function emitAnim(room, data) {
         if (!roomAlive(room)) return;
         holdForMineLand(room, data);
+        holdForSacaSteal(room, data);
         // V DEBUG hře sdílí jeden socket VÍC hráčů (room.players mají stejný socketId) –
         // dedup přes seen, jinak by tentýž socket dostal animaci N× (= N překrývajících se letů).
         const seen = new Set();
@@ -50,8 +76,24 @@ module.exports = function installAnimService(ctx) {
     // hráčům i divákům `othersData` (jen rub, identita karty zůstává skrytá).
     // ownerPlayerIdx smí být i POLE seatů (Claus rozdává kartu: líc vidí obdarovaný
     // i dárce, ostatní rub).
+    // Divoký západ – Sacagaway: ruce leží lícem nahoru, takže karta, která do některé
+    // z nich přiletí, je vzápětí veřejná – soukromý payload by ostatním nechal doletět
+    // rub a ten by pak s příchozím stavem přeskočil na líc. Pod Sacagaway se proto
+    // `ownerData` pošle rovnou všem.
+    // VÝJIMKA – krádež z ruky: FAQ Q17 nařizuje ruku otočit lícem dolů a ZAMÍCHAT, teprve
+    // pak se z ní vezme náhodná karta. V tu chvíli identitu opravdu nikdo nezná (klient
+    // to i přehrává, viz core/wwsAnim.js), takže tyhle animace zůstávají soukromé.
+    const SHUFFLED_HAND_ANIMS = new Set(['panic_sequence', 'ragtime_steal']);
+    function fromShuffledHand(d) {
+        if (!d) return false;
+        if (d.type === 'jesse_jones_draw') return true;      // Jesse Jones i El Gringo
+        return SHUFFLED_HAND_ANIMS.has(d.type) && d.area === 'hand';
+    }
+
     function emitAnimPrivate(room, ownerPlayerIdx, ownerData, othersData) {
         if (!roomAlive(room)) return;
+        if (handsOpen(room) && !fromShuffledHand(ownerData)) { emitAnim(room, ownerData); return; }
+        holdForSacaSteal(room, ownerData);
         if (Array.isArray(ownerPlayerIdx)) {
             const owners = new Set(ownerPlayerIdx);
             const seenIds = new Set();
@@ -301,6 +343,33 @@ module.exports = function installAnimService(ctx) {
                                       Date.now() + pending.length * hnRevealMs());
     }
 
+    // ── Divoký západ – Sacagaway: přetočení všech vějířů ─────────────────────
+    // Karta odkrývá (a její nástupce zase zakrývá) ruce všech hráčů. Pravidla se tím
+    // nemění o řádek – mění se REDAKCE stavu (server/rooms.js), takže by ruce jinak
+    // skočily z rubů na líce v jednom snímku. Emituje se HNED ZA odkrytím karty události
+    // (flushHighNoonReveal), takže fronta animací na klientu přehraje nejdřív kartu
+    // a teprve pak vlnu přetáčení; stav (s odkrytými / zakrytými
+    // rukama) dorazí až za ní.
+    //
+    // Na PŘÍCHODU nese payload i ID karet v rukou: klient je v tu chvíli ještě nemá
+    // (stav je pořád ten starý, redigovaný) a bez nich by neměl co překlopit lícem nahoru.
+    // Na ODCHODU stačí počty – líce klient pořád vidí ve svém stavu.
+    function flushSacaFlip(room) {
+        const gs = room.gameState;
+        const pend = gs && gs._pendingSacaFlip;
+        if (!pend) return;
+        gs._pendingSacaFlip = null;
+        const hands = (gs.players || []).map((p, playerIdx) => (
+            pend.open ? { playerIdx, cardIds: (p.hand || []).map(c => c.id) }
+                      : { playerIdx, count: (p.hand || []).length }
+        ));
+        emitAnim(room, { type: 'saca_flip', open: !!pend.open, hands });
+        // Boti po dobu přetáčení nehrají – klient drží stav ve frontě a hra by se pod
+        // vlnou posunula dál (stejný důvod jako u odkrytí karty události).
+        room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0,
+            Date.now() + sacaFlipMs(hands.map(h => h.cardIds ? h.cardIds.length : h.count)));
+    }
+
     // ── Město duchů: duch odchází ze hry a odkládá, co mu zbylo na stole ─────
     // Vizuálně TOTÉŽ jako šerifova ztráta karet za pomocníka (karty po jedné do odhozu,
     // bez poklesu životů a bez odhalení role) – duch svou roli odhalil už při vyřazení.
@@ -382,6 +451,7 @@ module.exports = function installAnimService(ctx) {
         flushGhostLeave(room);
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);
+        flushSacaFlip(room);
         flushValentine(room);
     }
 

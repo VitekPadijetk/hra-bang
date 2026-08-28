@@ -57,6 +57,11 @@ const WildWestMixin = {
         if (!this.wwsDeck || !this.wwsDeck.length) return false;
         // Divoký západ (karta vespod) zůstává v platnosti do konce hry a nevyměňuje se.
         if (this.activeWws && this.activeWws.key === LAST_WWS_KEY) return false;
+        // Sacagaway (odkryté ruce) mění REDAKCI stavu, ne pravidla – její příchod i odchod
+        // je proto pro klienta předěl, na kterém se všechny cizí vějíře plynule přetočí.
+        // Označí se tady, emituje `flushSacaFlip` před broadcastem (server/anim.js) –
+        // stejný vzor jako `_pendingWwsReveal`.
+        const sacaBefore = this.hasEvent('SACAGAWAY');
         this.activeWws = this.wwsDeck.pop();
         // Odkryté karty zůstávají ležet na sobě (nová překryje předchozí) – klient z nich
         // kreslí hromádku lícem nahoru. `activeWws` je vrchní karta hromádky.
@@ -65,6 +70,8 @@ const WildWestMixin = {
         this._pendingWwsReveal = Object.assign({}, this.activeWws,
             { deck: 'wws', remaining: this.wwsDeck.length, playerIdx });
         this.logEvent('event', { card: this.activeWws.name, left: this.wwsDeck.length });
+        const sacaAfter = this.hasEvent('SACAGAWAY');
+        if (sacaBefore !== sacaAfter) this._pendingSacaFlip = { open: sacaAfter };
         return this._applyWwsEventOnEnter();
     },
 

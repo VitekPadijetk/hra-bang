@@ -2,6 +2,8 @@
 // broadcast stavu, leave/disband. Factory installRoomService(ctx): dostane
 // { io, cardData, GameState }, vlastní `rooms` Map + roomCounter a nainstaluje
 // room helpery zpět na ctx. Bez server.listen → testovatelné s fake io.
+const { eventActive } = require('../core/highNoon.js');
+
 module.exports = function installRoomService(ctx) {
     const { io, cardData, dodgeCityCardData, GameState } = ctx;
 
@@ -55,6 +57,14 @@ module.exports = function installRoomService(ctx) {
         // Po konci hry jsou role veřejné (výherní obrazovka i statistiky je ukazují).
         if (!gs || gs.isDebug || gs.winner || revealAll) return gs;
 
+        // Divoký západ – Sacagaway: „Všichni hráči hrají s odhalenými kartami v ruce
+        // (vyjma svých rolí)." Jediná událost, která sahá do redakce: ruce se nenahrazují
+        // placeholdery, VŠECHNO ostatní se skrývá dál (role, pořadí obou balíčků, odložené
+        // identity, Clausova odkrytá řada). Platí i pro diváka běžné hry – karta říká
+        // „všichni hráči", je to veřejná informace u stolu.
+        // Z ruky se přesto pořád bere NÁHODNĚ (FAQ Q17) – pravidla se nemění ani o řádek,
+        // odkrytá ruka mění jen to, co je vidět.
+        const handsOpen = eventActive(gs, 'SACAGAWAY');
         const players = (gs.players || []).map((p, i) => {
             if (i === viewerIdx) return p;
             // Duch (Město duchů) má roli odkrytou od svého vyřazení – i ve chvíli, kdy si
@@ -72,7 +82,7 @@ module.exports = function installRoomService(ctx) {
             return {
                 ...p,
                 role: roleVisible ? p.role : null,
-                hand: (p.hand || []).map(() => HIDDEN_CARD),
+                hand: handsOpen ? p.hand : (p.hand || []).map(() => HIDDEN_CARD),
                 _lawCardId: null,
                 _secondChar: null,   // odložená identita je lícem dolů (klient ji nečte)
             };

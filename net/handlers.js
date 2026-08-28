@@ -739,7 +739,9 @@ function _deathFlyToDiscard(it, o) {
     // předchozí vrchní karta, než dorazí room_update (dřív se odkrývalo dávkově pozdě).
     const reveal = () => { if (it.id != null) { App.deathDiscardHideIds.delete(it.id); if (gameScene) renderUI(); } };
     const hold = () => (state?.deck?.discardPile || []).some(c => c.id === it.id);
-    if (isMine || it.kind !== 'hand') {
+    // Sacagaway (Divoký západ): ruka vyřazeného byla odkrytá, takže se karty do odhozu
+    // jen srovnají – odhalovat není co.
+    if (isMine || it.kind !== 'hand' || handsOpen()) {
         // Znám líc (moje karty / veřejné modré+zbraň) → jen letí do odhozu,
         // z orientace hráče do 0° a z velikosti na stole (0.36/0.27) na 0.3.
         // exactAngle: karta letí LÍCEM nahoru, takže 0° ≠ 180° – u protějšího hráče by ji
@@ -792,7 +794,11 @@ function _deathFlyToVulture(it, o, n) {
         ? () => (state?.players?.[vid]?.hand || []).some(c => c.id === it.id)
         : () => (state?.players?.[vid]?.hand?.length || 0) >= baseLen + n + 1;
     const geo = { startAngle: ang, endAngle, startScale, endScale, duration: 420, holdUntil: hold, holdTries };
-    if (it.kind === 'hand') {
+    // Sacagaway (Divoký západ): ruka mrtvého i Samova jsou odkryté, takže karta letí
+    // lícem celou cestu – ani se neodhaluje, ani neschovává.
+    if (handsOpen()) {
+        animateCard(it.from.x, it.from.y, to.x, to.y, fc, 420, done, { ...geo, exactAngle: true });
+    } else if (it.kind === 'hand') {
         if (isVulture)      animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, onComplete: done });
         else if (isMine)    animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true, onComplete: done });
         // Cizí rub → cizí rub: jen doletí a dotočí se do Samovy orientace (exactAngle,
@@ -1341,6 +1347,181 @@ function _hideStolenBoardCard(data) {
     renderUI();
 }
 
+// ── Divoký západ – Sacagaway: odkryté ruce ───────────────────────────────────
+// „Všichni hráči hrají s odhalenými kartami v ruce." Redakce stavu pod ní ruce pouští
+// (redactState v server/rooms.js), takže se karta na cestě Z ruky ani DO ruky nikde
+// nepřeklápí – letí lícem celou dobu. Ptají se tím všechny lety, jejichž JEDINÝM
+// důvodem k překlopení byla skrytá ruka; překlopení z jiného důvodu (karta z rubem
+// otočené hromádky, zamíchaná ruka oběti – viz gesto níž) zůstává.
+function handsOpen() { return eventActive(state, 'SACAGAWAY'); }
+// Musí se karta odlétající z ruky hráče `idx` ostatním teprve odhalit (rub→líc)?
+function revealFromHand(idx) { return idx !== myIndex && !handsOpen(); }
+// A naopak: musí se veřejná karta mizící do ruky hráče `idx` schovat (líc→rub)?
+function hideIntoHand(idx) { return idx !== myIndex && !handsOpen(); }
+
+// Přetočení karty NA MÍSTĚ (scaleY přes nulu, tedy po ose karty – u soupeře na boku
+// se sklopí správným směrem i pod úhlem 90°). Sprite po dotočení ZŮSTÁVÁ ležet: gesto
+// s ním ještě hýbe a uklidí si ho samo.
+function _sacaFlipInPlace(spr, toTex, ms, delayMs = 0) {
+    if (!gameScene || !spr) return;
+    const sy = spr.scaleY;
+    gameScene.tweens.add({
+        targets: spr, scaleY: 0, duration: ms / 2, delay: delayMs, ease: 'Sine.easeIn',
+        onComplete: () => {
+            if (!spr.active) return;
+            spr.setTexture(toTex);
+            gameScene.tweens.add({ targets: spr, scaleY: sy, duration: ms / 2, ease: 'Sine.easeOut' });
+        },
+    });
+}
+
+// Vějíř hráče `idx` jako samostatné sprity (board.js ho po dobu cinematiky nekreslí).
+// `ids` = ID karet ve slotech, `faceUp` = se kterou stranou sprity vzniknou.
+function _sacaFanSprites(idx, ids, faceUp) {
+    App.sacaHandHide.add(idx);
+    const angle = _renderSideAngle(idx);
+    const scl = _renderHandScale(idx);
+    const out = ids.map((id, slot) => {
+        const pos = getHandSlotPos(idx, slot, ids.length);
+        const spr = gameScene.add.image(pos.x, pos.y, faceUp ? getCardTex(id) : 'card_back')
+            .setDepth(700).setAngle(angle).setScale(scl);
+        spr._sacaSlot = pos;
+        return spr;
+    });
+    renderUI();
+    return out;
+}
+
+// Úklid vějíře z cinematiky: sprity pryč, ruku zase kreslí board.js.
+function _sacaFanRelease(idx, sprites) {
+    sprites.forEach(spr => { if (spr && spr.active) spr.destroy(); });
+    App.sacaHandHide.delete(idx);
+    renderUI();
+}
+
+// Počkej, až bude `pred` platit (nebo dojde trpělivost), a teprve pak proveď `done`.
+// Pojistka proti zaseknutému vějíři: po `capMs` se pustí tak jako tak – ruka bez spritů
+// a se `sacaHandHide` by byla neviditelná.
+function _sacaHoldThen(pred, done, startMs) {
+    const t0 = Date.now();
+    const capMs = 6000;
+    const tick = () => {
+        if (!gameScene) { done(); return; }
+        if (pred() || Date.now() - t0 > capMs) { done(); return; }
+        setTimeout(tick, 60);
+    };
+    setTimeout(tick, Math.max(0, startMs || 0));
+}
+
+// ── Vlna přetáčení při příchodu / odchodu Sacagaway ──────────────────────────
+// Ruce se nesmí přepnout z rubů na líce v jednom snímku – vějíře se přetočí plynule,
+// karta po kartě, a vlna obejde stůl po směru od mého levého ramene (stejné pořadí jako
+// kotvy soupeřů). Vlastní ruku nepřetáčím: tu vidím lícem tak jako tak.
+// Na PŘÍCHODU nese payload i ID karet – stav je v tu chvíli ještě ten starý (redigovaný),
+// takže by klient bez nich neměl co překlopit lícem nahoru.
+function playSacaFlip(data) {
+    if (!gameScene || !state) return;
+    const open = !!data.open;
+    const view = myIndex === null ? 0 : myIndex;
+    const total = state.players?.length || 1;
+    const D = SACA_FLIP;
+    const hands = (data.hands || [])
+        .filter(h => h && h.playerIdx !== view)
+        .sort((a, b) => ((a.playerIdx - view + total) % total) - ((b.playerIdx - view + total) % total));
+    hands.forEach((h, order) => {
+        const idx = h.playerIdx;
+        const ids = open ? (h.cardIds || [])
+                         : (state.players?.[idx]?.hand || []).map(c => c && c.id);
+        if (!ids.length || ids.some(id => id == null)) return;
+        const sprites = _sacaFanSprites(idx, ids, !open);
+        sprites.forEach((spr, slot) => {
+            _sacaFlipInPlace(spr, open ? getCardTex(ids[slot]) : 'card_back', D.flipMs,
+                             D.preMs + order * D.handStaggerMs + slot * D.cardStaggerMs);
+        });
+        // Sprity drží, dokud pod nimi nedosedne odpovídající STAV (ruka s ID / samé
+        // placeholdery). Stav chodí až za celou vlnou (fronta animací), takže bez držení
+        // by po zániku spritů ruka na okamžik probliknula v původní podobě.
+        const settled = () => {
+            const hand = state?.players?.[idx]?.hand || [];
+            return open ? hand.some(c => c && c.id != null)
+                        : hand.every(c => c && c._placeholder);
+        };
+        _sacaHoldThen(settled, () => _sacaFanRelease(idx, sprites),
+                      D.preMs + order * D.handStaggerMs + ids.length * D.cardStaggerMs + D.flipMs);
+    });
+}
+
+// ── Krádež z odkryté ruky: fyzický postup z FAQ Q17 ──────────────────────────
+// Odkrytá ruka nemění nic na tom, JAK se z ní bere – pořád náhodně. Oběť ruku otočí
+// lícem dolů, zamíchá, teprve pak se z ní vezme karta a ruka se zase odhalí. Bez toho
+// by hráč, který soupeři vidí do ruky a stejně si nemůže vybrat, měl pocit chyby UI.
+//
+// Gesto obaluje BEZE ZMĚNY existující animaci krádeže: po dobu jejího běhu leží vějíř
+// rubem nahoru (App.sacaHandDown), takže se lety chovají přesně jako bez Sacagaway.
+// Vlastní ruky se netýká – tu vidím lícem tak jako tak a vybírat se z ní nedalo nikdy.
+// `departMs` = za jak dlouho od startu krádeže karta vějíř opustí (u Paniky/Cat Balou
+// se k oběti nejdřív musí doletět, u Ragtime/Jesseho odlétá hned).
+// Vrací true, když gesto řízení převzalo (krádež spustí odloženě).
+function _sacaStealGesture(victimIdx) {
+    const view = myIndex === null ? 0 : myIndex;
+    const hand = state?.players?.[victimIdx]?.hand || [];
+    return handsOpen() && victimIdx !== view && hand.length > 0 &&
+           hand.every(c => c && c.id != null);
+}
+
+function _sacaHandGesture(victimIdx, departMs, run) {
+    const hand = state?.players?.[victimIdx]?.hand || [];
+    const ids = hand.map(c => c.id);
+    if (!_sacaStealGesture(victimIdx)) { run(); return false; }
+    const D = SACA_STEAL;
+    const n = ids.length;
+    const downEnd = D.downMs + (n - 1) * D.cardStaggerMs;
+    const centre = getPlayerHandPos(victimIdx);
+    const sprites = _sacaFanSprites(victimIdx, ids, true);
+    sprites.forEach((spr, slot) => _sacaFlipInPlace(spr, 'card_back', D.downMs, slot * D.cardStaggerMs));
+    // Sesbírání na hromádku → krátké zamíchání → rozprostření zpátky do vějíře.
+    setTimeout(() => {
+        sprites.forEach(spr => {
+            if (!spr.active) return;
+            gameScene.tweens.add({ targets: spr, x: centre.x, y: centre.y,
+                                   duration: D.gatherMs, ease: 'Cubic.easeInOut' });
+        });
+    }, downEnd);
+    setTimeout(() => {
+        sprites.forEach(spr => {
+            if (!spr.active || !spr._sacaSlot) return;
+            gameScene.tweens.add({ targets: spr, x: spr._sacaSlot.x, y: spr._sacaSlot.y,
+                                   duration: D.spreadMs, ease: 'Cubic.easeInOut' });
+        });
+    }, downEnd + D.gatherMs + D.holdMs);
+    // Konec gesta: sprity pryč, ruka se kreslí zase staticky – ale RUBEM (sacaHandDown),
+    // dokud krádež nedoběhne. Teprve pak se zbytek vějíře přetočí zpátky lícem nahoru.
+    setTimeout(() => {
+        App.sacaHandDown.add(victimIdx);
+        _sacaFanRelease(victimIdx, sprites);
+        run();
+        setTimeout(() => _sacaHandUp(victimIdx), Math.max(0, departMs));
+    }, sacaStealPreMs(n));
+    return true;
+}
+
+// Zbytek ruky se po krádeži přetočí zpátky lícem nahoru (krok 4 z FAQ Q17).
+function _sacaHandUp(victimIdx) {
+    App.sacaHandDown.delete(victimIdx);
+    if (!gameScene || !state) { renderUI(); return; }
+    // Ukradená karta už je z ruky pryč (klient ji odebral se startem letu), takže se
+    // překlápí přesně to, co v ruce zbylo. Kdyby ruka mezitím ve stavu zmizela (odkrytí
+    // skončilo, hráč vypadl), gesto se prostě přeskočí a ruku kreslí zase board.js.
+    const hand = state.players?.[victimIdx]?.hand || [];
+    const ids = hand.map(c => c && c.id).filter(id => id != null);
+    if (!handsOpen() || !ids.length || ids.length !== hand.length) { renderUI(); return; }
+    const D = SACA_STEAL;
+    const sprites = _sacaFanSprites(victimIdx, ids, false);
+    sprites.forEach((spr, slot) => _sacaFlipInPlace(spr, getCardTex(ids[slot]), D.upMs, slot * D.cardStaggerMs));
+    _sacaHoldThen(() => true, () => _sacaFanRelease(victimIdx, sprites),
+                  D.upMs + (ids.length - 1) * D.cardStaggerMs);
+}
+
 function _playCardAnim(data) {
     if (!gameScene || !state) return;   // divák (myIndex === null) animace také vidí
     const deck    = deckTopPos();      // vrch balíčku (odkud karta vzlétá / kam dosedá)
@@ -1532,12 +1713,21 @@ function _playCardAnim(data) {
                     // u Pedra Ramireze. Bez toho by z hromádky, na které karta viditelně
                     // ležela lícem nahoru, odletěl rub a přetočení by nebylo vidět vůbec.
                     animateCardFlip(_src.x, _src.y, target.x, target.y, 'card_back', getCardTex(data.cardId),
-                        { flip: true, reverse: true, startAngle: 0, endAngle: sideAngle(pIdx),
+                        { flip: hideIntoHand(pIdx), reverse: true, startAngle: 0, endAngle: sideAngle(pIdx),
                           startScale: pileScale(), endScale: sideScale(pIdx, 'hand'),
                           duration: 380, onComplete: oppDone,
                           // Drž, dokud karta z odhozu opravdu nezmizí ve stavu – jinak by ji
                           // opožděný broadcast po zhasnutí brány na okamžik vrátil na hromádku.
                           holdUntil: () => !inDiscard(data.cardId) });
+                } else if (!hideIntoHand(pIdx) && data.cardId != null) {
+                    // Sacagaway (Divoký západ): ruka soupeře je odkrytá, takže se líznutá
+                    // karta za letu odhalí (rub→líc) a dosedne lícem nahoru – jinak by
+                    // dosedl rub a s příchodem stavu by přeskočil na líc. ID sem posílá
+                    // server (emitAnimPrivate jde pod Sacagaway veřejně, viz server/anim.js).
+                    animateCardFlip(_src.x, _src.y, target.x, target.y, 'card_back', getCardTex(data.cardId),
+                        { flip: true, startAngle: 0, endAngle: sideAngle(pIdx),
+                          startScale: pileScale(), endScale: sideScale(pIdx, 'hand'),
+                          duration: 380, onComplete: oppDone });
                 } else {
                     animateCard(_src.x, _src.y, target.x, target.y, 'card_back', 380, oppDone,
                         { startAngle: 0, endAngle: sideAngle(pIdx), exactAngle: true, depth: 800 + pending,
@@ -1570,7 +1760,8 @@ function _playCardAnim(data) {
             // do orientace odhozu (0°); flip se „prostorově" složí po hraně dané tou orientací.
             // startScale = velikost karty v ruce odesílatele (soupeř 0.27, já 0.36), ať karta
             // nevzlétne o kus větší než ostatní karty v ruce.
-            const isMine = fromIdx === myIndex;
+            // Sacagaway (Divoký západ): ruka je odkrytá, karta tedy nemá co odhalovat.
+            const isMine = !revealFromHand(fromIdx);
             animateCardFlip(from.x, from.y, dest.x, dest.y, 'card_back', faceTex,
                 { flip: !isMine, startScale: sideScale(fromIdx, 'hand'), endScale: 0.3, duration: 380, onComplete: done,
                   startAngle: sideAngle(fromIdx), endAngle: 0,
@@ -1595,7 +1786,7 @@ function _playCardAnim(data) {
                     renderUI();
                     const done = () => { if (App.discardAnimHideId === cardId) { App.discardAnimHideId = null; renderUI(); } };
                     animateCardFlip(from.x, from.y, discard.x, discard.y, 'card_back', getCardTex(cardId),
-                        { flip: data.playerIdx !== myIndex, duration: RANCH_ANIM.cardMs, onComplete: done,
+                        { flip: revealFromHand(data.playerIdx), duration: RANCH_ANIM.cardMs, onComplete: done,
                           startScale: sideScale(data.playerIdx, 'hand'), endScale: pileScale(),
                           startAngle: sideAngle(data.playerIdx), endAngle: 0,
                           holdUntil: () => inDiscard(cardId) });
@@ -1625,7 +1816,8 @@ function _playCardAnim(data) {
             const sc = sideScale(data.playerIdx);
             const scFrom = sideScale(data.playerIdx, 'hand');   // vzlétá z vějíře ruky
             const hold = () => onBoardOf(data.playerIdx, data.cardId);
-            if (data.playerIdx === myIndex) {
+            // Sacagaway: cizí ruka je odkrytá, takže se karta na stůl jen přesune (bez odhalení).
+            if (!revealFromHand(data.playerIdx)) {
                 // Svou modrou/zbraň znám → jen letí na board (bez odhalování), ve VELIKOSTI
                 // karty na mém boardu (0.36, ne malý default). holdUntil brání probliknutí.
                 animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
@@ -1639,6 +1831,16 @@ function _playCardAnim(data) {
             break;
         }
         case 'panic_sequence': {
+            // Divoký západ – Sacagaway: z odkryté ruky se pořád bere NÁHODNĚ (FAQ Q17),
+            // takže si ji oběť nejdřív otočí lícem dolů a zamíchá. Celá sekvence se o to
+            // gesto odloží a přehraje se pak beze změny – vějíř už je rubem nahoru.
+            if (data.area === 'hand' && !data._sacaDone && _sacaStealGesture(data.targetIdx)) {
+                // 380 = 320 (noha k oběti) + rezerva: kartu z vějíře odebírá až `afterReach`,
+                // tedy onComplete tweenu – bez rezervy by se přetáčení zpátky nahoru trefilo
+                // do okamžiku, kdy tam ukradená karta ještě je, a problikla by dvakrát.
+                _sacaHandGesture(data.targetIdx, 380, () => _playCardAnim({ ...data, _sacaDone: true }));
+                break;
+            }
             // `fromBoardIdx` = zdrojová karta neleží v ruce, ale na STOLE útočníka: zelený
             // Krytý vůz (Dodge City) se aktivuje ze stolu, ale sekvence je jinak stejná
             // jako u Paniky (nálet na cílovou kartu → karta do odhozu, ukradená k útočníkovi).
@@ -1655,7 +1857,7 @@ function _playCardAnim(data) {
             const atkAngle = sideAngle(data.attackerIdx);
             const tgtAngle = sideAngle(data.targetIdx);
             // Karta na stole je veřejná (líc), takže se za letu neodhaluje ani u soupeřů.
-            const isMyPanic = fromBoard || data.attackerIdx === myIndex;
+            const isMyPanic = fromBoard || !revealFromHand(data.attackerIdx);
             const revealStolen = () => { if (data.stolenCardId) { App.stealHideIds.delete(data.stolenCardId); renderUI(); } };
             // Paniku odeber z ruky útočníka teprve TEĎ, když ji zvedá animace (atk se už
             // spočítal z její pozice) – ať z ruky nezmizí dřív, než začne letět. Zelenou
@@ -1690,8 +1892,9 @@ function _playCardAnim(data) {
                         // Viditelná karta ze stolu mizí do SKRYTÉ ruky jiného hráče → pro
                         // ostatní se za letu překlopí lícem→rub (jako u Ragtime), zmenší se
                         // na velikost jeho ruky a dotočí do jeho orientace.
+                        // Sacagaway: ruka útočníka je odkrytá → karta se neschovává, jen doletí.
                         animateCardFlip(from.x, from.y, toAtk.x, toAtk.y, 'card_back', getCardTex(data.stolenCardId),
-                            { reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
+                            { flip: hideIntoHand(data.attackerIdx), reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
                               startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx, 'hand'),
                               duration: 320, onComplete: revealStolen });
                     } else {
@@ -1717,6 +1920,11 @@ function _playCardAnim(data) {
             break;
         }
         case 'catbalou_sequence': {
+            // Sacagaway: viz panic_sequence – ruka oběti se nejdřív otočí a zamíchá.
+            if (data.area === 'hand' && !data._sacaDone && _sacaStealGesture(data.targetIdx)) {
+                _sacaHandGesture(data.targetIdx, 380, () => _playCardAnim({ ...data, _sacaDone: true }));
+                break;
+            }
             // `fromBoardIdx` = zdrojová karta leží na STOLE útočníka (zelený Kankán se
             // aktivuje ze stolu); zbytek sekvence je stejný jako u Cat Balou.
             const fromBoard = data.fromBoardIdx != null;
@@ -1733,7 +1941,7 @@ function _playCardAnim(data) {
             const atkAngle = sideAngle(data.attackerIdx);
             const tgtAngle = sideAngle(data.targetIdx);
             // Karta na stole je veřejná (líc), takže se za letu neodhaluje ani u soupeřů.
-            const isMyCB = fromBoard || data.attackerIdx === myIndex;
+            const isMyCB = fromBoard || !revealFromHand(data.attackerIdx);
             const revealStolen = () => { if (data.stolenCardId) { App.stealHideIds.delete(data.stolenCardId); renderUI(); } };
             // Cat Balou odeber z ruky útočníka teprve TEĎ, když ji zvedá animace (atk se
             // už spočítal z její pozice) – ať z ruky nezmizí dřív, než začne letět. Zelenou
@@ -1783,7 +1991,7 @@ function _playCardAnim(data) {
             const rcTex = getCardTex(data.cardId);
             const atkAngle = sideAngle(data.attackerIdx);
             const tgtAngle = sideAngle(data.targetIdx);
-            const isMyShot = data.attackerIdx === myIndex;
+            const isMyShot = !revealFromHand(data.attackerIdx);
             // Kartu odeber z ruky útočníka teprve TEĎ, když ji zvedá animace (pozici
             // `atk` už máme) – ať z ruky nezmizí dřív, než začne letět.
             _liftCardFromHand(data.attackerIdx, data.cardId);
@@ -1809,6 +2017,15 @@ function _playCardAnim(data) {
             break;
         }
         case 'jesse_jones_draw': {
+            // Sacagaway: viz panic_sequence – Jesse Jones i El Gringo berou z ruky náhodně.
+            // Jesse kartu z vějíře odebere hned se startem letu (přetočení zpátky tedy může
+            // začít rovnou); u El Gringa ji ze stavu sundá až příchozí room_update, takže se
+            // čeká na dolet (jinak by se v přetočeném vějíři objevila i ta právě letící).
+            if (!data._sacaDone && _sacaStealGesture(data.fromPlayerIdx)) {
+                _sacaHandGesture(data.fromPlayerIdx, data.isElGringo ? 420 : 0,
+                                 () => _playCardAnim({ ...data, _sacaDone: true }));
+                break;
+            }
             const victim = state?.players?.[data.fromPlayerIdx];
             const vLen = victim?.hand?.length ?? 0;
             // Slot, ze kterého karta odchází: server posílá skutečný index (Jesse bere
@@ -1835,7 +2052,7 @@ function _playCardAnim(data) {
                 if (data.fromPlayerIdx === myIndex && stolenCard) {
                     // Jsem cíl a kartu znám → schová se (líc→rub) a otočí do orientace Jesseho.
                     animateCardFlip(from.x, from.y, to.x, to.y, 'card_back', getCardTex(stolenCard.id),
-                        { flip: true, reverse: true, startAngle: fromAngle, endAngle: drawerAngle,
+                        { flip: hideIntoHand(data.playerIdx), reverse: true, startAngle: fromAngle, endAngle: drawerAngle,
                           startScale: sideScale(data.fromPlayerIdx, 'hand'), endScale: sideScale(data.playerIdx, 'hand'), duration: 380 });
                 } else {
                     // Jiný divák: jen rub, otočí se z orientace cíle do orientace Jesseho.
@@ -1863,7 +2080,7 @@ function _playCardAnim(data) {
                 const dLen = state?.players?.[data.playerIdx]?.hand?.length ?? 0;
                 const to = getHandSlotPos(data.playerIdx, dLen, dLen + 1);
                 animateCardFlip(discard.x, discard.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
-                    { reverse: true, startAngle: 0, endAngle: sideAngle(data.playerIdx),
+                    { flip: hideIntoHand(data.playerIdx), reverse: true, startAngle: 0, endAngle: sideAngle(data.playerIdx),
                       startScale: 0.3, endScale: sideScale(data.playerIdx, 'hand'), duration: 380, onComplete: pedroDone });
             }
             break;
@@ -1889,7 +2106,7 @@ function _playCardAnim(data) {
             if (data.cardId != null) {
                 // Claus svou kartu zná → vidí ji odletět lícem a cestou se schovat.
                 animateCardFlip(src.x, src.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
-                    { reverse: true, startAngle: srcAngle, endAngle: sideAngle(data.toIdx),
+                    { flip: hideIntoHand(data.toIdx), reverse: true, startAngle: srcAngle, endAngle: sideAngle(data.toIdx),
                       startScale: sc, endScale, duration: 420 });
             } else {
                 // exactAngle: příjemce naproti (180°) by se bez něj srovnal na 0°.
@@ -1915,6 +2132,12 @@ function _playCardAnim(data) {
             break;
         }
         case 'ragtime_steal': {
+            // Sacagaway: viz panic_sequence. Karta odlétá hned (žádná noha k cíli), takže
+            // se vějíř přetáčí zpátky lícem nahoru rovnou se startem letu.
+            if (data.area === 'hand' && !data._sacaDone && _sacaStealGesture(data.targetIdx)) {
+                _sacaHandGesture(data.targetIdx, 0, () => _playCardAnim({ ...data, _sacaDone: true }));
+                break;
+            }
             // Ragtime: ukradená karta letí od cíle (ruka/výzbroj/stůl) do ruky útočníka.
             // (Samotná Ragtime i „další" karta letí do odhozu přes hand_to_discard.)
             // Odpovídá druhé části paniky (afterReach) – bez první nohy (nic k cíli neletí).
@@ -1940,7 +2163,7 @@ function _playCardAnim(data) {
                     // jiného hráče → pro ostatní se za letu překlopí lícem→rub (reverse),
                     // zamíří na správný slot a dotočí se z orientace cíle do orientace útočníka.
                     animateCardFlip(from.x, from.y, toAtk.x, toAtk.y, 'card_back', getCardTex(data.stolenCardId),
-                        { reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
+                        { flip: hideIntoHand(data.attackerIdx), reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
                           startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx, 'hand'),
                           duration: 360, onComplete: revealStolen });
                 } else {
@@ -1953,6 +2176,11 @@ function _playCardAnim(data) {
             }
             break;
         }
+        // Divoký západ – Sacagaway: karta přišla (ruce se odkryjí) nebo ji vystřídala
+        // jiná (ruce se zase zakryjí) – vlna přetáčení vějířů obejde stůl.
+        case 'saca_flip':
+            playSacaFlip(data);
+            break;
         case 'player_death_discard':
         case 'vulture_sam_steal':
             playDeathSequence(data);
@@ -2009,7 +2237,8 @@ function _playCardAnim(data) {
             _liftCardFromHand(data.attackerIdx, data.cardId);
             const atkAngle = sideAngle(data.attackerIdx);
             const tgtAngle = sideAngle(data.targetIdx);
-            const isMine = data.attackerIdx === myIndex;
+            // Sacagaway (Divoký západ): ruka útočníka je odkrytá → není co odhalovat.
+            const isMine = !revealFromHand(data.attackerIdx);
             const hold = () => onBoardOf(data.targetIdx, data.cardId);
             // Letí z ruky útočníka na board CÍLE: útočník kartu zná (líc, bez flipu), ostatní
             // ji měli u útočníka skrytou → flip rub→líc. Otočí se z orientace útočníka do
@@ -2127,7 +2356,7 @@ function _playCardAnim(data) {
                 const dLen = state?.players?.[data.pickerIdx]?.hand?.length ?? 0;
                 const to = getHandSlotPos(data.pickerIdx, dLen, dLen + 1);
                 animateCardFlip(slot.x, slot.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
-                    { flip: true, reverse: true, startScale: 0.32, endScale: sideScale(data.pickerIdx, 'hand'),
+                    { flip: hideIntoHand(data.pickerIdx), reverse: true, startScale: 0.32, endScale: sideScale(data.pickerIdx, 'hand'),
                       duration: 420, onComplete: cleanup, holdUntil: gone,
                       startAngle: 0, endAngle: sideAngle(data.pickerIdx) });
             }
@@ -2356,11 +2585,28 @@ function _animDurationMs(data) {
     if (data.type === 'player_death_reveal') {
         return deathRevealMs(!!state?.mode3p || state?.players?.[data.playerIdx]?.role === 'Sheriff');
     }
+    // Divoký západ – Sacagaway: vlna přetáčení všech cizích vějířů (příchod / odchod
+    // karty). Stav s odkrytými / zakrytými rukama smí dorazit, teprve až doběhne.
+    if (data.type === 'saca_flip') {
+        return sacaFlipMs((data.hands || []).map(h => h.cardIds ? h.cardIds.length : (h.count || 0)));
+    }
+    // Divoký západ – Sacagaway: krádež z odkryté ruky se prodlouží o gesto z FAQ Q17
+    // (ruka lícem dolů → zamíchání → náhodná karta → ruka zase lícem nahoru). Vzorec
+    // MUSÍ sedět se serverem (holdForSacaSteal v server/anim.js), který o stejnou dobu
+    // drží boty. `n` = počet karet v ruce oběti PŘED krádeží – stav krádeže dorazí až
+    // za animací, takže je ve state pořád ten před ní.
+    const _sacaVictim = data.type === 'jesse_jones_draw' ? data.fromPlayerIdx
+                      : (data.area === 'hand' ? data.targetIdx : null);
+    let _sacaExtra = 0;
+    if (_sacaVictim != null && _sacaStealGesture(_sacaVictim) &&
+        ['panic_sequence', 'catbalou_sequence', 'ragtime_steal', 'jesse_jones_draw'].includes(data.type)) {
+        _sacaExtra = sacaStealExtraMs(state?.players?.[_sacaVictim]?.hand?.length || 0);
+    }
     // A Fistful of Cards – Opuštěný důl: odhoz nad limit karet (FÁZE 3) letí lícem
     // nahoru na dobírací balíček, chvíli tam leží a teprve pak se překlopí na rub.
     // Stav se o tu dobu musí zdržet, jinak by hromádka přeskočila dřív, než se karta
     // otočí. Pozná se to podle `toDeck`, které posílá server – jiné odhozy důl nemění.
-    return (ANIM_MS[data.type] ?? 400) + mineLandMs(!!data.toDeck);
+    return (ANIM_MS[data.type] ?? 400) + mineLandMs(!!data.toDeck) + _sacaExtra;
 }
 
 socket.on('card_animation', (data) => {
@@ -2375,7 +2621,7 @@ socket.on('card_animation', (data) => {
                       data.type === 'sheriff_penalty_discard' ||
                       data.type === 'vulture_split_death' || data.type === 'player_death_reveal' ||
                       data.type === 'high_noon_reveal' || data.type === 'new_identity_result' ||
-                      data.type === 'ranch_discard';
+                      data.type === 'ranch_discard' || data.type === 'saca_flip';
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 
@@ -2562,7 +2808,7 @@ function _applyRoomUpdate(payload) {
     }
     // Pojistka: na začátku (nové) hry zahoď případné uvíznuté staging-ID, aby se
     // omylem neskryla karta se stejným ID v dalším balíčku.
-    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.storePileLiftY = 0; App.dealDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.revealShuffling = false; App.revealShuffleRunning = false; App.revealLocked = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; App.wwsDeckLeft = null; _clearKitSpecSprites(); }
+    if (state?.phase === 'CHARACTER_SELECT' || state?.phase === undefined) { App.pendingDrawIds.clear(); App.cardTexAlias = {}; App.drawAnims = []; App.discardAnimHideId = null; App.healthAnims = {}; App.deathDiscardHideIds.clear(); App.deathSeq = {}; App.deathHandHide = {}; App.vultureSplitIdx = null; App.stealHideIds.clear(); App.handFlyHideIds.clear(); App.sacaHandHide.clear(); App.sacaHandDown.clear(); App.storePileLiftY = 0; App.dealDeckCount = null; App.storeDealIds = new Set(); App.storeLocked = false; App.storeShuffleEndAt = 0; App.storeShuffling = false; App.storeShuffleBlock = false; App.revealShuffling = false; App.revealShuffleRunning = false; App.revealLocked = false; App.kitDealIds.clear(); App.kitRevealCards = null; App.kitPicked = []; App.luckyDealIds.clear(); App.luckyRevealCards = null; App.discardFlyHideIds.clear(); App.pedroDrawLock = false; App.playedCardFromPos = {}; App.hnDeckLeft = null; App.ffDeckLeft = null; App.wwsDeckLeft = null; _clearKitSpecSprites(); }
 
     // Zásah / vyléčení: posuň postavu po kartě životů o reálnou změnu životů. Smrt má
     // vlastní cinematiku (core/deathAnim.js), proto se vyžaduje NOVÝ stav > 0; opačný

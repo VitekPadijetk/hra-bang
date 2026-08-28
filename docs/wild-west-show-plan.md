@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1, 2 a 3 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1, 2, 2b a 3 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1311,12 +1311,36 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 >   jiná karta zahraná „jako Bang!" tedy projde. Nahradil holé `bangBlockedFor` v playBang,
 >   handleResponse, cardPlayability, sniperOffer i ricochetOffer.
 
+> **Fáze 2b (Sacagaway) rozhodla čtyři věci, které §4.2 nechává otevřené:**
+>
+> - **Krádež z ruky zůstává SOUKROMÁ, i když je ruka odkrytá.** §4.2 chtěla poslat
+>   `ragtime_steal` veřejně s `cardId`; jenže o dva odstavce níž si sama vyžádala gesto
+>   z FAQ Q17 — ruka se otočí lícem dolů a **zamíchá**, teprve pak se z ní bere. V tu
+>   chvíli identitu opravdu nikdo nezná, takže by veřejný `cardId` gesto popíral. Veřejně
+>   jde všechno OSTATNÍ (`emitAnimPrivate` pod Sacagaway posílá majitelův payload všem):
+>   líznutí, Claus, hokynářství — karta míří do odkryté ruky, kde je vzápětí veřejná.
+>   Výjimku drží `fromShuffledHand` v [server/anim.js](../server/anim.js).
+> - **`_liftCardFromHand` se měnit nemuselo.** §4.2 čekala, že bude potřeba `stolenIndex`;
+>   jenže funkce hledá kartu **podle `id`** a fallback „uber poslední slot" má výslovně
+>   podmíněný tím, že je ruka samý placeholder. Pod Sacagaway se karta podle ID najde,
+>   takže se odebere ta správná a fallback se vůbec nepoužije. `stolenIndex` u krádeží
+>   (`_stolenHandSlot`) se posílá tak jako tak, beze změny.
+> - **Gesto se netýká MOJÍ ruky.** Svou ruku vidím lícem tak jako tak a vybírat se z ní
+>   nedalo nikdy, takže ji nemá smysl přede mnou otáčet a míchat — a fanoušek by se
+>   pral se stagingem letících líznutí (`pendingDrawIds`). Gesto proto běží na každém
+>   vějíři KROMĚ vějíře toho, kdo se dívá (`_sacaStealGesture`).
+> - **Gesto obaluje krádež, nemění ji.** Po dobu jeho běhu leží vějíř oběti rubem nahoru
+>   (`App.sacaHandDown`), takže se všechny čtyři sekvence krádeže (Panika, Cat Balou,
+>   Ragtime, Jesse/El Gringo) přehrají **beze změny** — jen se o gesto odloží a pak se
+>   zbytek ruky přetočí zpátky. Odložení se dělá tím, že se `_playCardAnim` zavolá znovu
+>   s `_sacaDone`, takže se těla case větví nesahá.
+>
 | # | Fáze | Obsah | Riziko |
 |---|---|---|---|
 | **0** ✅ | Kostra | data, `logic/wildWest.js`, spouštěč, třetí sloupec, assety, loader, intro, lobby | nízké |
 | **1** ✅ | Render životů | `livesTrack`, druhá karta, mobilní číslo, testy geometrie | **render — nutné ověření v prohlížeči** |
 | **2** ✅ | Zúčtování | `playsAsBang`/`playsAsMissed`/`showdownBangOk`/`preacherBlocks`/`nativePlayInTurn`/`turnActionForCard`, přepínač v UI | střední (dotýká se obrany) |
-| **2b** | Sacagaway | redakce ruky, přetáčení vějířů, lety karet lícem | **render — nutné ověření v prohlížeči; pravidla se nemění** |
+| **2b** ✅ | Sacagaway | redakce ruky, přetáčení vějířů, lety karet lícem | **render — nutné ověření v prohlížeči; pravidla se nemění** |
 | **3** ✅ | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |
 | **4** | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |
 | **5** | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |

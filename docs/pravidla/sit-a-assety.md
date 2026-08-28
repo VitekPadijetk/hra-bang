@@ -11,8 +11,8 @@ v `server/rooms.js`, kterým prochází každý `roomPayload`.
 
 - **Skryje se**: role ostatních, jejich ruce (nahradí je `{ id: null, _placeholder: true }`,
   takže **délka ruky zůstává** — jen podle ní se kreslí vějíř rubů), pořadí balíčku
-  (`deck.cards` → stejný počet zástupných karet), pořadí OBOU balíčků událostí
-  (`eventDeck`/`ffDeck`), odložené identity (`_secondChar`), **vynucená karta Práva
+  (`deck.cards` → stejný počet zástupných karet), pořadí VŠECH TŘÍ balíčků událostí
+  (`eventDeck`/`ffDeck`/`wwsDeck`), odložené identity (`_secondChar`), **vynucená karta Práva
   západu** (`_lawCardId` — ukázala se veřejně cinematikou `law_reveal` a pak leží v ruce
   rubem nahoru jako každá jiná) a **odkrytá řada Clause the Saint** (`clausState` vidí
   jen on; ostatním z ní zbývá počet karet a `picked`).
@@ -20,8 +20,16 @@ v `server/rooms.js`, kterým prochází každý `roomPayload`.
   smrti — duch má `health 0`, takže spadne pod stejnou podmínku, a **vrácený Mrtvý muž**
   přes `_roleRevealed`, protože ten už žije), **všechny role ve hře pro 3** (`gs.mode3p` —
   leží lícem nahoru), odhoz, vyložené karty, zbraně, životy, postavy, **odkryté karty
-  událostí** (`eventPile`/`ffPile`) a `charChoices` (podle jejich počtu pozná
+  událostí** (`eventPile`/`ffPile`/`wwsPile`) a `charChoices` (podle jejich počtu pozná
   `pendingActor` fázi výběru postav i na klientovi).
+- **Divoký západ – Sacagaway je JEDINÁ karta, která do redakce sahá.** „Všichni hráči
+  hrají s odhalenými kartami v ruce (vyjma svých rolí)": dokud platí, ruce se
+  placeholdery **nenahrazují** (`eventActive(gs, 'SACAGAWAY')`) – a to i divákovi běžné
+  hry, protože je to veřejná informace u stolu. Role, pořadí balíčků, odložené identity
+  i Clausova řada se skrývají dál. **Pravidla se tím nemění o řádek**: z ruky se pořád
+  bere náhodně (FAQ Q17), `resolveCardSelection` zůstává beze změny. Detail cinematik
+  (vlna přetáčení vějířů, gesto „ruka lícem dolů + zamíchání" před krádeží) je
+  v `core/wwsAnim.js`; testy v `test/wws.sacagaway.test.js`.
 - **Redakce Opuštěného dolu sedí sama od sebe**: `deck.cards` (kam se pod ním odhazuje
   lícem dolů) jsou skryté, `discardPile` (odkud se líže) veřejný. Že všichni vidí dopředu,
   co si kdo lízne — včetně kontrolní karty — **je pointa karty, ne chyba**.
@@ -44,6 +52,14 @@ Dvě místa, kde na to musí kód myslet:
 - **Karta odlétající z ruky soupeře se nedá najít podle `id`.** `_liftCardFromHand`
   (net/handlers.js) proto u zakryté ruky odebere poslední slot — ve vějíři rubů na tom
   nezáleží a bez toho by ruka zůstala do příchodu stavu o kartu širší a pak cuknula.
+  Pod Sacagaway se karta podle `id` najde (ruka není zakrytá), takže se odebere ta
+  správná a fallback se vůbec nepoužije; krádež z ruky nese `stolenIndex` tak jako tak.
+- **Co je vidět ve stavu, nesmí letět jako rub.** Pod Sacagaway proto `emitAnimPrivate`
+  (server/anim.js) posílá „majitelův" payload rovnou všem a lety se nikde nepřeklápějí
+  (`revealFromHand`/`hideIntoHand` v net/handlers.js). **Výjimka: krádež z ruky**
+  (`panic_sequence`/`ragtime_steal` s `area: 'hand'`, `jesse_jones_draw`) zůstává
+  soukromá — ruka je v tu chvíli otočená lícem dolů a zamíchaná, takže identitu opravdu
+  nikdo nezná.
 
 Pokryto testy v `test/server.rooms.test.js` (sekce „Redakce stavu").
 

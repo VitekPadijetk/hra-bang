@@ -216,6 +216,9 @@ module.exports = function installBotService(ctx) {
         // balíčku a teprve pak se překlopí na rub (nastaví emitAnim v server/anim.js) –
         // po tu dobu bot nehraje, aby bylo vidět, co se zahrálo.
         const mineWait = Math.max(0, (room._mineBlockUntil || 0) - Date.now());
+        // Divoký západ – Sacagaway: vlna přetáčení vějířů (core/wwsAnim.js, nastaví
+        // flushSacaFlip / krádež z odkryté ruky v server/anim.js) – po tu dobu bot nehraje.
+        const wwsWait = Math.max(0, (room._wwsBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
         if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
@@ -261,7 +264,7 @@ module.exports = function installBotService(ctx) {
 
         // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
         // časováním – bot čeká, než doběhnou.
-        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait);
+        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait, wwsWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();

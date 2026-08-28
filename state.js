@@ -124,6 +124,14 @@ const App = {
     // je na boardu/výzbroji NEvykreslí, dokud plovoucí animace nedoletí – jinak by
     // byla karta po dobu letu vidět dvakrát (reálná i letící).
     stealHideIds: new Set(),
+    // Divoký západ – Sacagaway (core/wwsAnim.js): vějíře, které si právě drží cinematika.
+    //   sacaHandHide – board.js ruku VŮBEC nekreslí, sprity si dělá animace sama
+    //                  (vlna přetáčení při příchodu/odchodu karty).
+    //   sacaHandDown – ruka je odkrytá, ale oběť si ji pro krádež otočila lícem dolů
+    //                  a zamíchala (FAQ Q17) → kreslí se rubem, dokud krádež nedoběhne.
+    // Klíč = reálný index hráče (u diváka je spodní hráč 0, viz drawSpectatorPlayer).
+    sacaHandHide: new Set(),
+    sacaHandDown: new Set(),
     // ID karet právě odlétajících z RUKY vlastníka (hraná/odhazovaná karta, panika/CB).
     // Server ji může dočasně vrátit do ruky a znovu rozeslat (aby zůstala vidět, než ji
     // zvedne animace) → room_update by ji jinak vrátil zpět doprostřed letu a přepočítal
