@@ -78,6 +78,89 @@ const WildWestMixin = {
         if (!key) return false;
         return false;
     },
+
+    // ── Miláček Valentýn ──────────────────────────────────────────────────────
+    // „Na začátku svého tahu odhodí každý hráč všechny karty z ruky a stejný počet karet
+    // si dobere z balíčku." Poznámka v pravidlech: běžná fáze lízání proběhne normálně
+    // ZA tím („players then also draw the usual 2 cards"), takže je to výměna NAVÍC.
+    //
+    // Je to POSLEDNÍ krok krokovače startu tahu (_runBeginTurn, logic/highNoon.js), ale
+    // pořád ještě PŘED kontrolami na Dynamit/Vězení: hráč má do sejmutí jít s novou rukou
+    // (mohl si vyměnit Pivo, kterým se před dynamitem zachrání).
+    //
+    // Náhradní karty si líže RUČNĚ klikáním na balíček – nastaví se klasická fáze lízání,
+    // takže se domíchání balíčku odbaví úplně stejnou cestou jako u kteréhokoli jiného
+    // lízání. `isStartOfTurn: false` je nutné hned dvakrát:
+    //   • Želízka (High Noon) ani Ranč (Fistful) se u téhle fáze ptát nesmí – patří ke
+    //     SKUTEČNÉ fázi lízání, která přijde až za kontrolami,
+    //   • Opuštěný důl (Fistful) se Valentýna nesmí dotknout ani jednou půlkou: odhoz ruky
+    //     není fáze 3 (jde do normálního odhozu, ne lícem dolů na balíček) a lízání náhrad
+    //     není fáze 1 (bere se z dobíracího balíčku, ne z odhozu – viz _mineDrawCard).
+    //
+    // Suzy Lafayette se prázdnou rukou neprobudí: posuzuje se až po dokončení efektu
+    // („nejdřív doběhne efekt zahrané karty"), a to už má karty zpátky.
+    _startValentine() {
+        if (!this.hasEvent('MILACEK_VALENTYN')) return false;
+        const idx = this.currentPlayerIndex;
+        const p = this.players[idx];
+        if (!p || !isInPlay(p) || !p.hand.length) return false;
+        const n = p.hand.length;
+        const discarded = p.hand.splice(0, n);
+        // Karty odlétají do odhozu PO JEDNÉ zleva doprava (jako u Ranče) – emit řeší hák
+        // před broadcastem (flushValentine, server/anim.js), protože sem se hra dostane
+        // z pěti různých cest, ale všechny končí broadcastem.
+        this._valentineAnim = { playerIdx: idx, cardIds: discarded.map(c => c.id) };
+        discarded.forEach(c => this.deck.discard(c));
+        this.logEvent('event', { card: 'Miláček Valentýn', who: p.name, msg: `vyměňuje ${n} karet` });
+        this._setDrawPhase({
+            active: true,
+            playerIdx: idx,
+            cardsNeeded: n,
+            cardsDrawn: 0,
+            options: ['deck'],
+            isStartOfTurn: false,
+            isValentine: true,
+        });
+        this.phase = "DRAW";
+        return true;
+    },
+
+    // ── Madam Zuzana ──────────────────────────────────────────────────────────
+    // „Během svého tahu musí každý hráč zahrát alespoň 3 karty. Hráč, který to neudělá,
+    // ztrácí 1 život." Počítadlo (`p._playedThisTurn`) plní _trackCard (logic.js) VŽDYCKY,
+    // ne jen když karta platí – přijde-li Zuzana uprostřed tahu, počítají se i karty
+    // zahrané předtím (FAQ Q02).
+    //
+    // Gate sedí úplně nahoře v `nextTurn` (logic.js), PŘED Vendetou (Fistful): pořadí na
+    // konci tahu je fáze 3 (odhoz nad limit) → Zuzana → Vendeta → nový tah. Do nextTurn
+    // se chodí dvěma cestami (tryEndTurn i discardCard), takže by gate v tryEndTurn minul
+    // každého, kdo odhazoval.
+    //
+    // Zásah se KLIKÁ – recykluje se `pendingDynamiteDamage` (jako Ruská ruleta), takže
+    // zvýrazněné životy, záchrana Pivem i Sidem Ketchumem, guard, klient i bot fungují
+    // beze změny; liší se jen `resume`, tedy kam se pak pokračuje (_afterDamageClicks).
+    // Bart Cassidy si za ztracený život lízne, El Gringo nekrade (není útočník).
+    _zuzanaPenalty() {
+        const p = this.getCurrentPlayer();
+        // Vězení: koho tah přeskočil, ten karty hrát nemohl → nepenalizuje se (poznámka
+        // v pravidlech). Příznak platí přesně pro tenhle jeden konec tahu, takže se čte
+        // a nuluje i tehdy, když se Zuzana zrovna nehraje.
+        const skipped = !!(p && p._turnSkippedByJail);
+        if (p) p._turnSkippedByJail = false;
+        if (!this.hasEvent('MADAM_ZUZANA') || this._zuzanaDone || this.winner) return false;
+        if (skipped) return false;
+        // Duch (Město duchů) má na konci svého tahu 0 životů (tryEndTurn) – zásah by ho
+        // stejně minul, penalizace se ho tedy netýká.
+        if (!p || p.health <= 0) return false;
+        if ((p._playedThisTurn || 0) >= 3) return false;
+        // Nastavit HNED na začátku – stejná past jako u `_vendettaDone`: bez toho by se
+        // nextTurn po návratu z kliku zeptal znovu a hráč by platil pořád dokola.
+        this._zuzanaDone = true;
+        this.logEvent('event', { card: 'Madam Zuzana', who: p.name, msg: `zahrál jen ${p._playedThisTurn || 0} karty → −1 život` });
+        this.pendingDynamiteDamage = { playerIdx: this.currentPlayerIndex, hitsLeft: 1, source: 'ZUZANA', resume: 'NEXT_TURN' };
+        this.phase = "DYNAMITE_DAMAGE";
+        return true;
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) {

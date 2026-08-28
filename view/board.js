@@ -2867,6 +2867,22 @@ const EVENT_DECK_FIELDS = {
     ff:  { deck: 'ffDeck',    pile: 'ffPile',    left: 'ffDeckLeft' },
     wws: { deck: 'wwsDeck',   pile: 'wwsPile',   left: 'wwsDeckLeft' },
 };
+// Divoký západ – Madam Zuzana: „Během svého tahu musí každý hráč zahrát alespoň 3 karty."
+// Hráč na tahu vidí svůj závazek přímo na kartě události – jemný tint místo dalšího
+// textu nebo rámečku (stůl už má tři zvýrazňovací barvy a čtvrtý křiklavý prvek uprostřed
+// by je přebíjel). Sytost je proto výrazně níž než u ATTACK_TINT. Kreslí se to JEN jemu:
+// ostatním leží karta neobarvená, je to ukazatel jeho vlastního závazku, ne stav stolu.
+const ZUZANA_OK_TINT   = 0xbfe6bf;   // 3+ karet – splněno
+const ZUZANA_WARN_TINT = 0xe6bfbf;   // 0–2 karty – hrozí ztráta života
+function zuzanaTint(card) {
+    if (!card || card.key !== 'MADAM_ZUZANA') return null;
+    if (!state || myIndex === null || myIndex === undefined) return null;   // divák
+    if (state.currentPlayerIndex !== myIndex) return null;
+    const me = state.players?.[myIndex];
+    if (!me || me.health <= 0) return null;
+    return (me._playedThisTurn || 0) >= 3 ? ZUZANA_OK_TINT : ZUZANA_WARN_TINT;
+}
+
 function drawEventPile(ctx, which) {
     const { scaleDeck } = ctx;
     if (!state) return;
@@ -2910,6 +2926,8 @@ function drawEventPile(ctx, which) {
             .setScale(scaleDeck).setAngle(angle).setDepth(i);
         gameScene.cardsSprites.add(spr);
         if (!isTop) continue;
+        const zt = zuzanaTint(card);
+        if (zt !== null) spr.setTint(zt);
         const zoomKey = prefix + card.id;
         spr.setInteractive();
         spr._zoomKey = zoomKey;

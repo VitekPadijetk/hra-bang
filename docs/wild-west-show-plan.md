@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1 a 2 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1, 2 a 3 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1317,7 +1317,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **1** ✅ | Render životů | `livesTrack`, druhá karta, mobilní číslo, testy geometrie | **render — nutné ověření v prohlížeči** |
 | **2** ✅ | Zúčtování | `playsAsBang`/`playsAsMissed`/`showdownBangOk`/`preacherBlocks`/`nativePlayInTurn`/`turnActionForCard`, přepínač v UI | střední (dotýká se obrany) |
 | **2b** | Sacagaway | redakce ruky, přetáčení vějířů, lety karet lícem | **render — nutné ověření v prohlížeči; pravidla se nemění** |
-| **3** | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |
+| **3** ✅ | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |
 | **4** | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |
 | **5** | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |
 | **6** | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |

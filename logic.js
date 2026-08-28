@@ -254,6 +254,11 @@ class GameState {
     }
 
     nextTurn() {
+        // Divoký západ – Madam Zuzana: kdo za svůj tah nezahrál 3 karty, ztrácí život.
+        // Je to úplně první gate: pořadí na konci tahu je fáze 3 (odhoz nad limit) →
+        // Zuzana → Vendeta → nový tah. Sedí tady (a ne v tryEndTurn), protože se do
+        // nextTurn chodí DVĚMA cestami – tryEndTurn i discardCard.
+        if (this._zuzanaPenalty()) return;
         // Fistful – Vendeta: na konci svého tahu hráč sejme kartu a při ♥ hraje ještě
         // jednou. Gate je úplně nahoře, PŘED odchodem ducha (Město duchů): duch Vendetu
         // dostává taky (R10) a ze hry odchází až na konci toho tahu navíc.
@@ -289,7 +294,11 @@ class GameState {
         // – a NUTNĚ ještě před _beginTurn(), který se ptá _extraTurn (odkrytí událostí).
         this._vendettaDone = false;
         this._extraTurn = false;
+        // Divoký západ – Madam Zuzana: totéž pro její penalizaci (jen jednou za tah)
+        // a pro počítadlo zahraných karet, které patří vždy jednomu tahu jednoho hráče.
+        this._zuzanaDone = false;
         const cp = this.players[this.currentPlayerIndex];
+        if (cp) cp._playedThisTurn = 0;
         this.logEvent('turn', { who: cp?.name, role: cp?.role, hp: cp?.health, max: cp?.maxHealth, hand: cp?.hand?.length });
         // High Noon: odkrytí události (šerif) a Pravé poledne se vyhodnocují PŘED
         // kontrolami na Dynamit/Vězení. Když si start tahu vyžádá rozhodnutí hráče,
@@ -416,8 +425,15 @@ class GameState {
         return ds;
     }
 
+    // Volá se na KAŽDÉ cestě „karta byla sehrána". Vedle statistik z toho žije
+    // Divoký západ – Madam Zuzana (`_playedThisTurn`): počítadlo běží pořád, ne jen
+    // když karta platí, protože přijde-li Zuzana uprostřed tahu, počítají se i karty
+    // zahrané předtím (FAQ Q02). Odhozy (Ruská ruleta, limit na konci tahu) ani cena
+    // „odhoď další kartu" sem nechodí, takže se do počtu samy nezapočítají.
     _trackCard(playerIdx, cardType) {
-        const s = this.players[playerIdx]?.stats;
+        const p = this.players[playerIdx];
+        if (p) p._playedThisTurn = (p._playedThisTurn || 0) + 1;
+        const s = p?.stats;
         if (!s) return;
         s.cardsUsed[cardType] = (s.cardsUsed[cardType] || 0) + 1;
         s.cardsPlayed++;

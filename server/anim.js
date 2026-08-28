@@ -3,7 +3,7 @@
 // Factory installAnimService(ctx): bere { io, broadcastRoomDelayed } z ctx. Bez listenu.
 const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 const { hnRevealMs } = require('../core/highNoonAnim.js');
-const { mineLandMs } = require('../core/fistfulAnim.js');
+const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { effectiveCharacter, isInPlay } = require('../core/distance.js');
 
 // Délka jedné animace ragtime_steal – MUSÍ sedět s ANIM_MS v net/handlers.js (o tuhle
@@ -356,12 +356,33 @@ module.exports = function installAnimService(ctx) {
         });
     }
 
+    // ── Divoký západ – Miláček Valentýn: odhoz celé ruky na začátku tahu ─────
+    // Pravidla jen označí, co odletělo (gs._valentineAnim); emit řeší tenhle hák, protože
+    // start tahu se spouští z pěti různých cest, ale všechny končí broadcastem.
+    // Vizuálně je to TOTÉŽ co výměna karet Rančem (karty po jedné zleva doprava do
+    // odhozu), takže se recykluje jeho animace i její časování – celá dávka je JEDNA
+    // položka fronty, takže se nemůže rozpadnout ani zahodit kvůli zaostávání a stav
+    // (fáze lízání náhrad) dorazí až za poslední dosedlou kartou.
+    function flushValentine(room) {
+        const gs = room.gameState;
+        const va = gs && gs._valentineAnim;
+        if (!va) return;
+        gs._valentineAnim = null;
+        if (!va.cardIds || !va.cardIds.length) return;
+        emitAnim(room, { type: 'ranch_discard', playerIdx: va.playerIdx, cardIds: va.cardIds });
+        // Boti o tu dobu nehrají – jinak by hráli „přes" odhazování.
+        room._revealBlockUntil = Math.max(room._revealBlockUntil || 0,
+                                          Date.now() + ranchDiscardMs(va.cardIds.length));
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
-    // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost.
+    // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost
+    // a teprve za ní (poslední krok startu tahu) vyměnit ruku Miláček Valentýn.
     function beforeBroadcast(room) {
         flushGhostLeave(room);
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);
+        flushValentine(room);
     }
 
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,

@@ -193,12 +193,17 @@ const CombatMixin = {
     // `afterQueue: true` = totéž, ale až se dobere fronta odložených akcí.
     _afterDamageClicks(resume, afterQueue) {
         const toBeginTurn = resume === 'BEGIN_TURN' && isInPlay(this.getCurrentPlayer());
+        // Divoký západ – Madam Zuzana: penalizace přišla z KONCE tahu (nextTurn), takže
+        // se do něj vrací – rovnou na Vendetu, která je hned za ní.
+        const toNextTurn = resume === 'NEXT_TURN';
         if (afterQueue) {
             if (toBeginTurn) this._resumeBeginTurnAfterQueue = true;
+            else if (toNextTurn) this._nextTurnAfterQueue = true;
             else this._startChecksAfterQueue = true;
             return;
         }
         if (toBeginTurn) this._resumeBeginTurn();
+        else if (toNextTurn) this.nextTurn();
         else this.handleStartOfTurnChecks();
     },
 

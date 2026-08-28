@@ -698,6 +698,10 @@ const FistfulMixin = {
         this.turnId = (this.turnId || 0) + 1;
         this._extraTurn = true;
         const p = this.getCurrentPlayer();
+        // Divoký západ – Madam Zuzana: tah navíc je NOVÝ tah, takže se tři karty hrají
+        // znovu (počítadlo od nuly) a penalizace na jeho konci může přijít podruhé.
+        this._zuzanaDone = false;
+        if (p) p._playedThisTurn = 0;
         this.logEvent('event', { card: 'Vendeta', who: p?.name, msg: 'hraje ještě jeden tah' });
         this.phase = "PLAY";
         if (this._beginTurn()) return;

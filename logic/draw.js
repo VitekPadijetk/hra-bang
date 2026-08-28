@@ -297,8 +297,17 @@ const DrawMixin = {
     _finishDraw() {
         const isKillReward = this.drawPhaseState.isKillReward;
         const wasStartOfTurn = this.drawPhaseState.isStartOfTurn;
+        const isValentine = this.drawPhaseState.isValentine;
         this.drawPhaseState.active = false;
-        if (isKillReward) {
+        if (isValentine) {
+            // Divoký západ – Miláček Valentýn: výměna ruky je KROK STARTU TAHU, ne fáze 1.
+            // Pokračuje se tedy krokovačem (_resumeBeginTurn), za kterým teprve přijdou
+            // kontroly na Dynamit/Vězení a skutečná fáze lízání. Fáze se obnovuje PŘED
+            // pokračováním ze stejného důvodu jako u kill-rewardu: aby si přechodné "DRAW"
+            // nikdo neuložil jako interruptedPhase.
+            this.phase = "PLAY";
+            this._resumeBeginTurn();
+        } else if (isKillReward) {
             // Obnov fázi PŘED resume: jinak by další odložený special ve frontě
             // (typicky Suzy Lafayette s prázdnou rukou) zachytil přechodné "DRAW"
             // jako interruptedPhase a po doběhnutí by hra uvázla v DRAW bez

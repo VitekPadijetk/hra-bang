@@ -7,7 +7,7 @@ const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { mkGame, mkCard, give, CardType, Suits } = require('./_helpers.js');
+const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 const { cardPlayability, nativePlayInTurn, showdownBangOk, playsAsBang, playsAsMissed,
         preacherBlocks, sniperOffer, rouletteDiscardable } = require('../core/playability.js');
 const { getActionForCard } = require('../core/cardRules.js');
@@ -251,4 +251,227 @@ test('bot: pod Zúčtováním se ubrání kartou Bang!', () => {
         { 0: { Sheriff: 1 }, 2: { Outlaw: 1 } });
     assert.equal(act.event, 'respond_to_card');
     assert.equal(act.payload.cardIndex, 0);
+});
+
+
+// ── Madam Zuzana ──────────────────────────────────────────────────────────
+// „Během svého tahu musí každý hráč zahrát alespoň 3 karty. Hráč, který to neudělá,
+// ztrácí 1 život." Penalizace se KLIKÁ (recykluje pendingDynamiteDamage) a leží až
+// za fází 3 (odhoz nad limit), ale ještě před sejmutím Vendety.
+
+test('Madam Zuzana: 2 zahrané karty → −1 život (klik na životy)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
+    g.players[0]._playedThisTurn = 2;
+    g.tryEndTurn();
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.pendingDynamiteDamage.playerIdx, 0);
+    assert.equal(g.pendingDynamiteDamage.hitsLeft, 1);
+    assert.equal(g.currentPlayerIndex, 0, 'tah se zatím neposunul');
+    g.takeDynamiteHit(0);
+    assert.equal(g.players[0].health, 3);
+    assert.equal(g.currentPlayerIndex, 1, 'teprve teď je na tahu další hráč');
+});
+
+test('Madam Zuzana: 3 zahrané karty → bez penalizace', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
+    g.players[0]._playedThisTurn = 3;
+    g.tryEndTurn();
+    assert.notEqual(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.players[0].health, 4);
+    assert.equal(g.currentPlayerIndex, 1);
+});
+
+test('Madam Zuzana: počítadlo běží i před jejím příchodem (FAQ Q02)', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 1 }, {}, {}], null);
+    for (let k = 0; k < 3; k++) g.playCard(beer(g, 0));   // tri zivoty k doleceni
+    assert.equal(g.players[0]._playedThisTurn, 3, 'tři Piva se započítala');
+    g.activeWws = wws('MADAM_ZUZANA');           // Zuzana přišla až teď
+    const hp = g.players[0].health;
+    g.tryEndTurn();
+    assert.notEqual(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.players[0].health, hp);
+});
+
+test('Madam Zuzana: počítadlo patří jednomu tahu (další hráč začíná od nuly)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
+    g.players[0]._playedThisTurn = 3;
+    g.players[1]._playedThisTurn = 7;            // zbytek z jeho minulého tahu
+    g.tryEndTurn();
+    assert.equal(g.currentPlayerIndex, 1);
+    assert.equal(g.players[1]._playedThisTurn, 0);
+});
+
+test('Madam Zuzana: koho tah přeskočilo Vězení, ten se nepenalizuje', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
+    board(g, 0, CardType.JAIL, { name: 'Vězení' });
+    g.deck.cards = []; topDeck(g, Suits.SPADES, '5');   // ne srdce → tah se přeskočí
+    g.handleStartOfTurnChecks();
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.players[0].health, 4, 'za přeskočený tah se neplatí');
+    assert.equal(g.currentPlayerIndex, 1);
+    assert.equal(g.players[0]._turnSkippedByJail, false, 'příznak platil na jeden konec tahu');
+});
+
+test('Madam Zuzana: poslední život jde zachránit Pivem', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 1 }, {}, {}], 'MADAM_ZUZANA');
+    const b = beer(g, 0);
+    g.tryEndTurn();
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.beerLastLifeSave(0, b), true);
+    assert.equal(g.players[0].health, 1, 'Pivo zásah zrušilo');
+    assert.equal(g.currentPlayerIndex, 1);
+});
+
+test('Madam Zuzana: Bart Cassidy si za ztracený život lízne', () => {
+    const g = mkEv([{ role: 'Sheriff', character: 'Bart Cassidy' }, {}, {}], 'MADAM_ZUZANA');
+    g.deck.cards = []; for (let k = 0; k < 4; k++) topDeck(g, Suits.CLUBS, '5');
+    g.tryEndTurn();
+    g.takeDynamiteHit(0);
+    assert.equal(g.phase, 'BART_DRAW');
+    g.bartCassidyDraw(0);
+    assert.equal(g.players[0].hand.length, 1);
+    assert.equal(g.currentPlayerIndex, 1, 'tah se posunul až po líznutí');
+});
+
+test('Madam Zuzana: penalizace až PO odhozu a PŘED sejmutím Vendety', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'MADAM_ZUZANA');
+    g.activeFistful = ff('VENDETA');
+    for (let k = 0; k < 5; k++) bang(g, 0);       // limit ruky = 3 životy
+    g.tryEndTurn();
+    assert.equal(g.phase, 'DISCARD', 'nejdřív fáze 3');
+    g.discardCard(0);
+    assert.equal(g.phase, 'DISCARD');
+    g.discardCard(0);
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE', 'teprve za odhozem Zuzana');
+    g.takeDynamiteHit(0);
+    assert.equal(g.players[0].health, 2);
+    assert.equal(g.phase, 'CHECK_DRAW', 'a teprve za ní Vendeta');
+    assert.equal(g.pendingCheckDraw.reason, 'VENDETTA');
+});
+
+test('Madam Zuzana: v jednom tahu penalizuje jen jednou', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'MADAM_ZUZANA');
+    g.activeFistful = ff('VENDETA');
+    g.deck.cards = []; topDeck(g, Suits.SPADES, '5');   // Vendeta: ne srdce → tah končí
+    g.tryEndTurn();
+    g.takeDynamiteHit(0);
+    assert.equal(g.phase, 'CHECK_DRAW');
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.players[0].health, 2, 'zaplatilo se jen jednou');
+    assert.equal(g.currentPlayerIndex, 1);
+});
+
+test('Madam Zuzana: Vendetin tah navíc je nový tah (tři karty znovu)', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'MADAM_ZUZANA');
+    g.activeFistful = ff('VENDETA');
+    g.players[0]._playedThisTurn = 3;
+    g.deck.cards = []; topDeck(g, Suits.HEARTS, '5');   // Vendeta: ♥ → tah navíc
+    g.tryEndTurn();
+    assert.equal(g.phase, 'CHECK_DRAW', 'bez penalizace rovnou na Vendetu');
+    g.triggerCheckDraw();
+    g.resolveCheck();
+    assert.equal(g.currentPlayerIndex, 0, 'hraje ještě jednou');
+    assert.equal(g.players[0]._playedThisTurn, 0, 'počítadlo od nuly');
+    assert.equal(g._zuzanaDone, false, 'a penalizace může přijít znovu');
+});
+
+// ── Miláček Valentýn ──────────────────────────────────────────────────
+// „Na začátku svého tahu odhodí každý hráč všechny karty z ruky a stejný počet karet
+// si dobere z balíčku." Je to POSLEDNÍ krok startu tahu (ještě před kontrolami na
+// Dynamit/Vězení) a běžná fáze lízání proběhne normálně za ním.
+
+// Balíček se zásobou karet na výměnu i na fázi lízání.
+function stockDeck(g, n = 12) {
+    g.deck.cards = [];
+    for (let k = 0; k < n; k++) topDeck(g, Suits.CLUBS, '5');
+}
+
+test('Miláček Valentýn: odhodí celou ruku a lízne si stejný počet', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MILACEK_VALENTYN');
+    for (let k = 0; k < 4; k++) bang(g, 0);
+    stockDeck(g);
+    g._beginTurn();
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.isValentine, true);
+    assert.equal(g.drawPhaseState.isStartOfTurn, false, 'není to fáze 1');
+    assert.equal(g.drawPhaseState.cardsNeeded, 4);
+    assert.equal(g.players[0].hand.length, 0, 'ruka odešla do odhozu');
+    assert.equal(g.deck.discardPile.length, 4);
+    assert.equal(g._valentineAnim.cardIds.length, 4, 'animace odhozu je nachystaná');
+    for (let k = 0; k < 4; k++) g.drawCard('deck');
+    assert.equal(g.players[0].hand.length, 4);
+    // …a teprve teď běžná fáze lízání
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.isStartOfTurn, true);
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    g.drawCard('deck'); g.drawCard('deck');
+    assert.equal(g.players[0].hand.length, 6);
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Miláček Valentýn: prázdná ruka = krok se přeskočí', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MILACEK_VALENTYN');
+    stockDeck(g);
+    assert.equal(g._startValentine(), false);
+    g._beginTurn();
+    g.handleStartOfTurnChecks();
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.isStartOfTurn, true, 'rovnou běžná fáze lízání');
+});
+
+test('Miláček Valentýn: výměna je PŘED kontrolou Dynamitu', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MILACEK_VALENTYN');
+    bang(g, 0);
+    board(g, 0, CardType.DYNAMITE, { name: 'Dynamit' });
+    stockDeck(g);
+    g._beginTurn();
+    assert.equal(g.phase, 'DRAW', 'nejdřív výměna, sejmutí až za ní');
+    assert.equal(g.players[0].board.some(c => c.type === CardType.DYNAMITE), true);
+    g.drawCard('deck');
+    assert.equal(g.phase, 'CHECK_DRAW', 'teprve teď sejmutí na Dynamit');
+    assert.equal(g.players[0].hand.length, 1);
+});
+
+test('Miláček Valentýn × Želízka: barva se volí až po SKUTEČNÉM lízání', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MILACEK_VALENTYN');
+    g.activeEvent = hn('ZELIZKA');
+    bang(g, 0);
+    stockDeck(g);
+    g._beginTurn();
+    g.drawCard('deck');                       // dolízl náhradu za Valentýna
+    assert.equal(g.phase, 'DRAW', 'Želízka se u Valentýnovy fáze neptají');
+    assert.equal(g.drawPhaseState.isStartOfTurn, true);
+    g.drawCard('deck'); g.drawCard('deck');
+    assert.equal(g.phase, 'HANDCUFFS_SUIT');
+});
+
+test('Miláček Valentýn × Ranč: Ranč se ptá jednou, až za běžným lízáním', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MILACEK_VALENTYN');
+    g.activeFistful = ff('RANC');
+    bang(g, 0);
+    stockDeck(g);
+    g._beginTurn();
+    g.drawCard('deck');
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.isStartOfTurn, true);
+    g.drawCard('deck'); g.drawCard('deck');
+    assert.equal(g.phase, 'RANCH');
+    assert.equal(g.pendingRanch.playerIdx, 0);
+});
+
+test('Miláček Valentýn × Opuštěný důl: odhoz i lízání jdou mimo důl', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MILACEK_VALENTYN');
+    g.activeFistful = ff('OPUSTENY_DUL');
+    for (let k = 0; k < 3; k++) bang(g, 0);
+    stockDeck(g);
+    const deckBefore = g.deck._drawPile.length;
+    g._beginTurn();
+    assert.equal(g.deck.discardPile.length, 3, 'ruka šla do normálního odhozu');
+    assert.equal(g.deck._drawPile.length, deckBefore, 'a ne navrch dobíracího balíčku');
+    assert.equal(g._mineTurn, false, 'důl se rozhoduje až ve fázi 1');
+    for (let k = 0; k < 3; k++) g.drawCard('deck');
+    assert.equal(g.deck._drawPile.length, deckBefore - 3, 'náhrady se braly z balíčku');
+    assert.equal(g.players[0].hand.length, 3);
 });

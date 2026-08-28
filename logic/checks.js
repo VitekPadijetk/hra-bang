@@ -178,6 +178,9 @@ const ChecksMixin = {
                 // Vera Custer se z vězení nedostala → k volbě kopie (těsně před lízáním)
                 // se nedostane a stará kopie tady vyprší: pro tohle kolo je bez schopnosti.
                 this._veraExpireCopy(check.playerIdx);
+                // Divoký západ – Madam Zuzana: koho tah přeskočil kvůli Vězení, ten karty
+                // hrát nemohl → nepenalizuje se (čte a nuluje to _zuzanaPenalty v nextTurn).
+                p._turnSkippedByJail = true;
                 this.nextTurn();
             }
         } else if (check.reason === "VENDETTA") {

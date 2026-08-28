@@ -81,7 +81,7 @@ const HighNoonMixin = {
     // balíčků), 2 = změna platnosti schopností (Kocovina) + okamžité líznutí Suzy,
     // 3 = okamžitý efekt karty High Noon, 4 = okamžitý efekt karty Fistful,
     // 5 = Pravé poledne, 6 = zásahy od Fistful of Cards, 7 = Nová identita,
-    // 8 = Pokrevní bratři (Fistful).
+    // 8 = Pokrevní bratři (Fistful), 9 = Miláček Valentýn (Divoký západ).
     _beginTurn() {
         this._beginTurnStep = 0;
         // Želízka (High Noon) platí přesně jeden tah. Barvu je nutné zahodit hned na
@@ -136,10 +136,15 @@ const HighNoonMixin = {
         // na Dynamit/Vězení: „na začátku svého tahu, PŘED lízáním" – a sejmutí na Dynamit
         // i Vězení už k fázi lízání patří. Život tak stihne darovat i ten, koho vzápětí
         // vyhodí do vzduchu dynamit nebo komu vězení tah vezme.
+        // Divoký západ – Miláček Valentýn je schválně ÚPLNĚ POSLEDNÍ, ale pořád ještě
+        // před kontrolami na Dynamit/Vězení: je to „na začátku svého tahu" a hráč má do
+        // sejmutí jít s novou rukou (mohl si vyměnit Pivo, kterým se před dynamitem
+        // zachrání). Viz _startValentine (logic/wildWest.js).
         const steps = [this._deadManReturn, this._flipEvent, this._applyAbilitiesOnEnter,
                        this._applyEventOnEnter,
                        this._applyFfEventOnEnter, this._noonDamage, this._fistfulHits,
-                       this._newIdentityOffer, this._startBloodBrothers];
+                       this._newIdentityOffer, this._startBloodBrothers,
+                       this._startValentine];
         while (this._beginTurnStep < steps.length) {
             const step = steps[this._beginTurnStep++];
             if (step.call(this)) return true;
