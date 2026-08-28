@@ -1219,6 +1219,15 @@ function drawMyArea(ctx) {
     const _selHandCard = selectedState.cardIndex != null ? me.hand[selectedState.cardIndex] : null;
     const _sniperCan = selectedState.action === 'SHOOT' && !!_selHandCard &&
         sniperOffer(state, me, myIndex, _selHandCard);
+    // Divoký západ – Zúčtování: každá karta smí jít jako Bang!, ale svou vlastní akci
+    // si přitom ponechává (obě věty na kartě jsou povolující, R1). Které z toho hráč
+    // chce, se z kliknutí poznat nedá – u Vězení/Paniky/Duelu je cílem taky soupeř –
+    // takže se to přepíná tlačítkem. Karta, která svou akci teď zahrát nemůže (Vedle!
+    // ve vlastním tahu, druhá zelená téhož jména), míří rovnou a tlačítko nepotřebuje
+    // (viz decideCardClick v core/selection.js).
+    const _showdownCan = !!_selHandCard && !_sniperCan &&
+        showdownBangOk(state, me, myIndex, _selHandCard) &&
+        nativePlayInTurn(state, me, myIndex, _selHandCard);
     // Fistful – Odražená střela: v obraně nejde o život, ale o konkrétní vyloženou kartu.
     const _ricoDefend = (state.phase === "RESPOND" && state.pendingResponse?.active &&
         state.pendingResponse.targetIdx === myIndex) ? (state.pendingResponse.ricochet || null) : null;
@@ -2083,6 +2092,9 @@ function drawMyArea(ctx) {
                             // jiné ho ruší (jinak by zůstalo viset u karty, se kterou už
                             // pravidla Odstřelovače nenabízejí).
                             delete selectedState.sniper;
+                            // Divoký západ – Zúčtování: „hrát jako Bang!" patří KONKRÉTNÍ
+                            // kartě, výběr jiné ho ruší (stejně jako u Odstřelovače).
+                            delete selectedState.showdown;
                             // Dostřel pro míření: u karet s bang-efektem (Úder) se liší od
                             // zbraně (undefined = dostřel zbraně, číslo, nebo Infinity).
                             selectedState.reach = bangEffectReach(card);
@@ -2179,7 +2191,7 @@ function drawMyArea(ctx) {
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
-            && !_lawForced && !_sniperCan
+            && !_lawForced && !_sniperCan && !_showdownCan
             && state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
@@ -2335,13 +2347,38 @@ function drawMyArea(ctx) {
             if (App.blockInput) { _snBtn.setAlpha(0.45); _snBtn.disableInteractive(); }
         }
 
+        // ── Divoký západ – Zúčtování: přepnout vybranou kartu na výstřel ──────────
+        // Nabídne se jen u karty, která má obě možnosti. Nabito = akce SHOOT, takže se
+        // dál míří úplně stejně jako kartou Bang! (zvýrazněné postavy v dostřelu).
+        if (_showdownCan) {
+            const _sdArmed = !!selectedState.showdown;
+            const { bg: _sdBtn } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH,
+                _sdArmed ? 'ZÚČTOVÁNÍ: zrušit ↩' : '💥 ZAHRÁT JAKO BANG!', {
+                ...themeToggleStyle(_sdArmed), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    if (_sdArmed) {
+                        delete selectedState.showdown;
+                        selectedState.action = getActionForCard(_selHandCard, effectiveCharacter(me));
+                        selectedState.reach = bangEffectReach(_selHandCard);
+                    } else {
+                        selectedState.showdown = true;
+                        selectedState.action = 'SHOOT';
+                        selectedState.reach = bangEffectReach(_selHandCard);
+                    }
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _sdBtn.setAlpha(0.45); _sdBtn.disableInteractive(); }
+        }
+
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────
         {
             // Fistful – Právo západu: dokud hráč drží vynucenou kartu, nesmí udělat nic
             // jiného (server to odmítne, viz _lawLocked) – tlačítka schopností se proto
             // vůbec nekreslí. Po zahrání vynucené karty jsou zase k dispozici.
             const myPlayTurn = state.phase === "PLAY" && state.currentPlayerIndex === myIndex &&
-                !App.blockInput && !_lawForced && !_sniperCan;
+                !App.blockInput && !_lawForced && !_sniperCan && !_showdownCan;
             const BTN_Y = L.btnAbilY;   // stejné místo jako [ SID: … ]
             // Chuck Wengam: klik → nabít (zvýrazní se životy); klik na životy = −1 ❤ → 2 karty.
             if (myPlayTurn && effectiveCharacter(me) === "Chuck Wengam" && me.health > 1) {
@@ -2353,7 +2390,7 @@ function drawMyArea(ctx) {
             }
             // José Delgado: odhoď modrou → 2 karty (max 2×). Aktivní režim vybere modrou v ruce.
             if (effectiveCharacter(me) === "José Delgado" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
-                (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput && !_sniperCan) {
+                (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput && !_sniperCan && !_showdownCan) {
                 const active = !!selectedState.jose;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
                     ...themeToggleStyle(active), fontSize: '21px',
@@ -2362,7 +2399,7 @@ function drawMyArea(ctx) {
             }
             // Doc Holyday: odhoď 2 karty → bang-efekt na cíl v dostřelu (1×/tah).
             if (effectiveCharacter(me) === "Doc Holyday" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
-                !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput && !_sniperCan) {
+                !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput && !_sniperCan && !_showdownCan) {
                 const active = !!selectedState.doc;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
                     ...themeToggleStyle(active), fontSize: '21px',

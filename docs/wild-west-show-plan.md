@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0 a 1 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1 a 2 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1289,12 +1289,33 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 > - **Ověření v prohlížeči**: postavy 34–41 jdou vybrat v DEBUG hře se zapnutým Divokým
 >   západem (`_characterPool` + `options.debugPool`, logic/setup.js). Do ostré hry se pořád
 >   nepřidávají – tam by seděly bez schopnosti.
+>
+> **Fáze 2 (Zúčtování) dořešila tři věci, které §4.1 nechává otevřené:**
+>
+> - **Karta si svoji vlastní akci ponechává** (obě věty jsou povolující, R1), takže
+>   `getActionForCard` NEMOHL vrátit „vždycky SHOOT" – jinak by pod Zúčtováním nešlo
+>   vypít Pivo ani poslat Vězení. Místo toho se z `cardPlayability` vytáhl predikát
+>   **`nativePlayInTurn`** („smí se karta zahrát ve své vlastní roli?") a nad ním stojí
+>   **`turnActionForCard`**: vlastní akce, a jen když ta zrovna nejde (Vedle!/Úhyb ve svém
+>   tahu, druhá zelená téhož jména, Salon bez zraněných), se míří. Ptají se jím klient
+>   (`decideCardClick`), bot (`forcedLawIntent`) i Právo západu (`_lawHasTarget`,
+>   `lawSelfShootOnly`) – bez toho se hra jen botů zasekla na vynuceném Vedle!
+>   (`play_card`, který server mlčky odmítá).
+> - **UI: přepínač `💥 ZAHRÁT JAKO BANG!`** v slotu tlačítek schopností (vedle Odstřelovače),
+>   `selectedState.showdown`. Bez něj se u Vězení/Paniky/Duelu nedá poznat, jestli klik na
+>   soupeře znamená vlastní akci, nebo výstřel. **Daň:** nabitý přepínač obsadí slot, takže
+>   se v tu chvíli nekreslí Sid/Chuck/José/Doc; a když se kartou zároveň nabízí Odstřelovač,
+>   ustoupí tlačítko jemu (zrušit se dá odznačením karty).
+> - **Kazatel × Zúčtování** dostal vlastní predikát **`preacherBlocks`**: zákaz míří na
+>   KARTU Bang! (a na Vedle! Calamity Janet, FAQ H5), ne na roli, ve které se hraje –
+>   jiná karta zahraná „jako Bang!" tedy projde. Nahradil holé `bangBlockedFor` v playBang,
+>   handleResponse, cardPlayability, sniperOffer i ricochetOffer.
 
 | # | Fáze | Obsah | Riziko |
 |---|---|---|---|
 | **0** ✅ | Kostra | data, `logic/wildWest.js`, spouštěč, třetí sloupec, assety, loader, intro, lobby | nízké |
 | **1** ✅ | Render životů | `livesTrack`, druhá karta, mobilní číslo, testy geometrie | **render — nutné ověření v prohlížeči** |
-| **2** | Zúčtování | stažení Calamity Janet do 2 predikátů, pak samotná karta | střední (dotýká se obrany) |
+| **2** ✅ | Zúčtování | `playsAsBang`/`playsAsMissed`/`showdownBangOk`/`preacherBlocks`/`nativePlayInTurn`/`turnActionForCard`, přepínač v UI | střední (dotýká se obrany) |
 | **2b** | Sacagaway | redakce ruky, přetáčení vějířů, lety karet lícem | **render — nutné ověření v prohlížeči; pravidla se nemění** |
 | **3** | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |
 | **4** | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |

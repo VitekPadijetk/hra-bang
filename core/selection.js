@@ -20,10 +20,13 @@
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
 
 if (typeof require === 'function') {
+    // Každý svůj guard: isResponseTurn si z phaseInfo.js bere i playability.js (a přes
+    // něj logic.js), takže společná podmínka by canActOnHand tiše přeskočila.
     if (typeof isResponseTurn === 'undefined') {
-        const __ph = require('./phaseInfo.js');
-        globalThis.isResponseTurn = __ph.isResponseTurn;
-        globalThis.canActOnHand = __ph.canActOnHand;
+        globalThis.isResponseTurn = require('./phaseInfo.js').isResponseTurn;
+    }
+    if (typeof canActOnHand === 'undefined') {
+        globalThis.canActOnHand = require('./phaseInfo.js').canActOnHand;
     }
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
@@ -33,6 +36,10 @@ if (typeof require === 'function') {
     }
     if (typeof beerBlockedFor === 'undefined') {
         globalThis.beerBlockedFor = require('./highNoon.js').beerBlockedFor;
+    }
+    // Divoký západ – Zúčtování: karta, jejíž vlastní akce teď nejde, míří rovnou.
+    if (typeof turnActionForCard === 'undefined') {
+        globalThis.turnActionForCard = require('./playability.js').turnActionForCard;
     }
     // Duch (Město duchů) se počítá za hráče ve hře – pravidlo „při dvou hráčích Pivo
     // nefunguje" se ho proto ptá přes inPlayCount, ne přes health > 0.
@@ -113,7 +120,12 @@ function decideCardClick(ctx) {
         return { type: 'DISCARD', index };
     }
 
-    return { type: 'SELECT', index, action: getActionForCard(card, effectiveCharacter(me)) };
+    // Divoký západ – Zúčtování: hratelná může být i karta, jejíž VLASTNÍ akce zrovna
+    // nedává smysl (Vedle!/Úhyb ve svém tahu, druhá zelená téhož jména). Tehdy zbývá
+    // jediné využití – výstřel – a míří se rovnou, bez přepínače (turnActionForCard).
+    // Karty, které svou akci mají, si ji ponechají a na Bang! se přepnou tlačítkem
+    // (viz view/board.js).
+    return { type: 'SELECT', index, action: turnActionForCard(state, me, myIndex, card) };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

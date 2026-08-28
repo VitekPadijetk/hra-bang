@@ -75,6 +75,11 @@ if (typeof rouletteDiscardable === 'undefined' && typeof require === 'function')
 if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
     const __pl = require('./core/playability.js');
     globalThis.bangCardFromHand = __pl.bangCardFromHand;
+    // Divoký západ – Zúčtování: „co se počítá za kartu Bang! / Vedle!". Tímtéž predikátem
+    // se ptá server (playBang, handleResponse), klient i bot; rozejít se nesmí.
+    globalThis.playsAsBang = __pl.playsAsBang;
+    globalThis.playsAsMissed = __pl.playsAsMissed;
+    globalThis.preacherBlocks = __pl.preacherBlocks;
     globalThis.bangLimitFree = __pl.bangLimitFree;
     globalThis.bangAtPlayerOk = __pl.bangAtPlayerOk;
     globalThis.ricochetOffer = __pl.ricochetOffer;

@@ -249,17 +249,17 @@ const ResponseMixin = {
                         !this._boardDead() &&   // Fistful – Laso: karty na stole nemají efekt
                         !this._belleIgnoresBoard(this.pendingResponse.originatorIdx);
             } else if (this.pendingResponse.requiredCard === CardType.MISSED) {
-                // Elena Fuente (Dodge City): smí použít jako Vedle! LIBOVOLNOU kartu z ruky.
-                isValid = card.type === CardType.MISSED || card.type === CardType.UHYB ||
-                        (effectiveCharacter(player) === "Calamity Janet" && card.type === CardType.BANG) ||
-                        effectiveCharacter(player) === "Elena Fuente";
+                // Co se počítá za Vedle! (Úhyb, Elena Fuente, Calamity Janet i Zúčtování
+                // z Divokého západu) drží jediný predikát v core/playability.js – klient
+                // i bot se ptají stejně, takže se výčet nemůže rozejít.
+                isValid = playsAsMissed(this, player, card);
             } else if (this.pendingResponse.requiredCard === CardType.BANG) {
-                isValid = card.type === CardType.BANG ||
-                        (effectiveCharacter(player) === "Calamity Janet" && card.type === CardType.MISSED);
+                isValid = playsAsBang(this, player, card);
                 // High Noon – Kazatel: kartu Bang! nesmí hráč zahrát ani jako reakci
                 // v duelu, když je zrovna ON na tahu (FAQ H2). Duel pak automaticky
-                // prohrává, protože nemá čím odpovědět.
-                if (isValid && this._bangBlocked(playerIdx)) isValid = false;
+                // prohrává, protože nemá čím odpovědět. Zákaz platí na KARTU Bang!,
+                // takže pod Zúčtováním (Divoký západ) odpoví jinou kartou.
+                if (isValid && preacherBlocks(this, player, playerIdx, card)) isValid = false;
             }
 
             // High Noon – Želízka: hráč na tahu smí i jako reakci zahrát jen kartu

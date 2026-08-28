@@ -56,6 +56,161 @@ if (typeof require === 'function') {
     }
 }
 
+// ── Co se počítá za kartu Bang! a co za kartu Vedle! ────────────────────────
+// Jediný zdroj pravdy pro server (playBang, handleResponse, _rouletteValidCard,
+// _sniperValidCard), klienta (cardPlayability, decideCardClick, zvýraznění cílů)
+// i bota. Slévají se tu tři pravidla, která se dřív ručně držela v souladu na deseti
+// místech – a přesně kvůli tomu existuje invariant „bot se nikdy nezasekne":
+//   • Calamity Janet – Bang! a Vedle! jsou pro ni zaměnitelné,
+//   • Elena Fuente   – jako Vedle! jí poslouží libovolná karta z ruky,
+//   • Zúčtování (Divoký západ) – KAŽDÁ karta smí jít jako Bang!, každá karta Bang!
+//     navíc i jako Vedle!. Obě věty na kartě jsou POVOLUJÍCÍ (R1): Bang! zůstává
+//     kartou Bang! a Pivo se pořád smí vypít, jen k tomu přibude druhá možnost.
+//
+// Pozor: „jako karta Bang!" NENÍ totéž co bang-EFEKT (Úder, Springfield, zelené karty).
+// Ty mají vlastní typ, do limitu 1× Bang!/tah se nepočítají a ptá se na ně card.bangEffect.
+// Barvu si karta nese svou (Apache Kid, Barel, Jourdonnais fungují normálně) a Želízka
+// (High Noon) se ptají na SKUTEČNOU kartu, ne na to, čím se tváří – proto tady nejsou.
+function playsAsBang(state, me, card) {
+    if (!card || card._placeholder) return false;
+    if (card.type === "Bang!") return true;
+    if (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!") return true;
+    if (eventActive(state, 'ZUCTOVANI')) return true;      // Zúčtování: každá karta
+    return false;
+}
+
+function playsAsMissed(state, me, card) {
+    if (!card || card._placeholder) return false;
+    if (card.type === "Vedle!" || card.type === "Úhyb") return true;
+    if (effectiveCharacter(me) === "Elena Fuente") return true;
+    if (card.type === "Bang!") {
+        return effectiveCharacter(me) === "Calamity Janet" || eventActive(state, 'ZUCTOVANI');
+    }
+    return false;
+}
+
+// High Noon – Kazatel: ve svém tahu nesmí hráč zahrát KARTU Bang! – ani jako reakci
+// v duelu (FAQ H2). Zákaz míří na KARTU, ne na roli, ve které se hraje: Calamity Janet
+// pod něj spadá i se svým Vedle! (FAQ H5, karta se jí na Bang! doslova mění), zatímco
+// pod Zúčtováním (Divoký západ) je jiná karta zahraná „jako by to byl Bang!" pořád tou
+// svou kartou, takže projde. Bez `card` odpovídá na obecné „platí teď Kazatel?".
+function preacherBlocks(state, me, myIndex, card) {
+    if (!bangBlockedFor(state, myIndex)) return false;
+    if (!card) return true;
+    return card.type === "Bang!" ||
+        (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!");
+}
+
+// Divoký západ – Zúčtování: smí hráč TOUHLE kartou právě teď vystřelit, i když to karta
+// Bang! sama o sobě není? Vlastní akci karty to nepřebíjí (proto se ptá jen na karty,
+// které kartami Bang! nejsou) – v UI je to přepínač, ne náhrada. Podmínky výstřelu
+// zůstávají všechny: Kazatel, limit 1× Bang!/tah (Zúčtování z něj pumpu nedělá),
+// Odražená střela i Odstřelovač jako náhradní využití vyčerpaného limitu.
+function showdownBangOk(state, me, myIndex, card) {
+    if (!eventActive(state, 'ZUCTOVANI')) return false;
+    if (!card || card._placeholder) return false;
+    if (!isPlayTurn(state, myIndex)) return false;
+    if (card.type === "Bang!") return false;                                  // řeší větev pro pravý Bang!
+    if (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!") return false;
+    if (card.bangEffect && !card.green) return false;                         // Úder a spol. míří samy
+    return bangLimitFree(state, me) || ricochetAvailable(state, me, myIndex) ||
+           sniperOffer(state, me, myIndex, card);
+}
+
+// Smí se karta zahrát ve své VLASTNÍ roli (Bang! střílí, Pivo léčí, modrá jde na stůl)?
+// Vytažené z cardPlayability kvůli Zúčtování (Divoký západ): pod ním je hratelná i karta,
+// jejíž vlastní akce zrovna nedává smysl (Vedle! ve svém tahu, druhá zelená téhož jména) –
+// zahrát ji ale jde JEN jako Bang!. Kdo chce nabídnout vlastní akci karty (klient přes
+// getActionForCard, bot přes decidePlay), musí se proto ptát tímhle predikátem, jinak by
+// poslal akci, kterou server mlčky odmítne.
+// POZOR: je to DOPLNĚK cardPlayability, ne náhrada – zákazy platné pro celý tah
+// (Právo západu, Soudce, Želízka) zůstávají v ní.
+function nativePlayInTurn(state, me, myIndex, card) {
+    // Karta s bang-efektem (Úder, …) mimo zelené: nepočítá se do limitu Bang!.
+    // Vystřelit lze i sám na sebe (pravidla to umožňují), takže je hratelná vždy –
+    // i když není v dostřelu žádný soupeř (na sebe se klikne přes vlastní postavu).
+    if (card.bangEffect && !card.green) {
+        return true;
+    }
+    if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
+        // (Zúčtování sem NEpatří – karta, která je Bang! jen „jako by", si svou vlastní
+        //  akci ponechává; tu možnost přidává navrch showdownBangOk v cardPlayability.)
+        if (preacherBlocks(state, me, myIndex, card)) return false;   // Kazatel (High Noon)
+        if (bangLimitFree(state, me)) return true;
+        // Fistful – Odražená střela ani Odstřelovač se do limitu 1× Bang!/tah NEpočítají
+        // (FAQ Q07/Q09): i s vyčerpaným limitem je karta hratelná, jen s ní pak nejde
+        // klasicky vystřelit na postavu (klient podle bangAtPlayerOk zhasne postavy) –
+        // zbývá střela na vyloženou kartu nebo zaplacení Odstřelovače.
+        return ricochetAvailable(state, me, myIndex) || sniperOffer(state, me, myIndex, card);
+    }
+    if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
+    // Zelené karty se vykládají na stůl; nelze mít 2 stejného jména (D7).
+    if (card.green) return !(me.board || []).some(c => c.name === card.name);
+    // Dodge City „odhoď další kartu": potřebuje aspoň 1 další kartu k odhození +
+    // pro cílené efekty musí existovat smysluplný cíl (jinak by se nic nestalo).
+    if (card.discardExtra) {
+        // Musí zbýt ČÍM zaplatit. Vynucená karta (Právo západu) se počítat nesmí –
+        // zaplatit se jí nedá (lawProtectedCard), takže by hráč skončil ve fázi
+        // DISCARD_ANOTHER, ze které vede jen „zrušit" (a bot by se v ní zacyklil).
+        if (!(me.hand || []).some(c => c && !c._placeholder && c.id !== card.id &&
+            !lawProtectedCard(state, me, myIndex, c))) return false;
+        // Léčit lze každého VE HŘE – duch (Město duchů, High Noon) v ní na svůj tah je,
+        // takže i jeho (isInPlay, ne health > 0).
+        if (card.discardExtra === 'heal_self_2') return isInPlay(me) && me.health < me.maxHealth;
+        if (card.discardExtra === 'heal_any') return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
+        if (card.discardExtra === 'bang_any') return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
+        if (card.discardExtra === 'steal_any') return state.players.some((p, idx) =>
+            idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0))
+            || (me.weapon && me.weapon.id !== -1) || (me.board || []).length > 0;
+        if (card.discardExtra === 'brawl') return state.players.some((p, idx) =>
+            idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
+        return true;
+    }
+    if (card.type === "Vedle!") return false;   // Calamity Janet řeší větev výš, Zúčtování showdownBangOk
+    if (card.type === "Vězení") {
+        return state.players.some((p, idx) => idx !== myIndex && p.health > 0 && p.role !== "Sheriff" && !(p.board||[]).some(c => c.type === "Vězení"));
+    }
+    if (card.type === "Panika!") {
+        // Panika! potřebuje cíl do vzdálenosti 1 s alespoň jednou kartou
+        // Cílem může být i sám hráč (vlastní zbraň nebo modrá karta na stole)
+        const canTargetSelf = (me.weapon && me.weapon.id !== -1) ||
+                             (me.board && me.board.length > 0);
+        const canTargetOther = state.players.some((p, idx) =>
+            idx !== myIndex && p.health > 0 &&
+            computeDistance(state, myIndex, idx) <= 1 &&
+            (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board && p.board.length > 0))
+        );
+        return canTargetSelf || canTargetOther;
+    }
+    if (card.type === "Duel") return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
+    if (card.type === "Pivo") {
+        if (beerBlockedFor(state)) return false;   // Reverend (High Noon)
+        const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
+        if (aliveCount <= 2) return false;
+        if (!isInPlay(me) || me.health >= me.maxHealth) return false;   // duch se léčit smí
+        return true;
+    }
+    if (card.type === "Salon") return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
+    if (["Zbraň","Barel","Vybavení","Dynamit"].includes(card.type)) {
+        if (card.type === "Zbraň") { if (me.weapon?.id !== -1 && me.weapon?.name === card.name) return false; }
+        else { if ((me.board||[]).some(c => c.name === card.name)) return false; }
+        return true;
+    }
+    return true;
+}
+
+// Jakou akci karta spustí ve VLASTNÍM tahu. Nad getActionForCard přidává jedinou věc:
+// pod Zúčtováním (Divoký západ) je karta, jejíž vlastní akce zrovna nejde (Vedle!/Úhyb
+// ve svém tahu, druhá zelená téhož jména, Salon bez zraněných), hratelná už JEN jako
+// Bang! – takže se míří. Ptá se tím klient (decideCardClick), bot (forcedLawIntent)
+// i Právo západu (co vlastně vynucená karta dělá a jestli má cíl).
+function turnActionForCard(state, me, myIndex, card) {
+    const action = getActionForCard(card, effectiveCharacter(me));
+    if (action === 'SHOOT') return action;
+    if (eventActive(state, 'ZUCTOVANI') && !nativePlayInTurn(state, me, myIndex, card)) return 'SHOOT';
+    return action;
+}
+
 function cardPlayability(state, me, myIndex, card) {
     if (card?._placeholder) return null;
     // Fistful – Ruská ruleta: vlastní fáze mimo tah i mimo obranu, klikatelné jsou jen
@@ -77,12 +232,10 @@ function cardPlayability(state, me, myIndex, card) {
         // se před ní Pivem (ani Sidem) nejde, jinak by šlo za jedno Pivo ubránit kartu.
         if (card.type === "Pivo" && me.health === 1 && _aliveForBeer > 2 && !state.pendingResponse.ricochet)
             return !beerBlockedFor(state);
-        // Elena Fuente (Dodge City): libovolná karta z ruky funguje jako Vedle!.
-        if (req === "Vedle!") return card.type === "Vedle!" || card.type === "Úhyb" ||
-            (effectiveCharacter(me) === "Calamity Janet" && card.type === "Bang!") || effectiveCharacter(me) === "Elena Fuente";
+        // Co se počítá za Vedle! (Elena Fuente, Zúčtování) řeší playsAsMissed.
+        if (req === "Vedle!") return playsAsMissed(state, me, card);
         // Kazatel (High Noon): Bang! nesmí hráč zahrát ani jako reakci ve svém tahu (FAQ H2).
-        if (req === "Bang!")  return (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!"))
-            && !bangBlockedFor(state, myIndex);
+        if (req === "Bang!")  return playsAsBang(state, me, card) && !preacherBlocks(state, me, myIndex, card);
         return false;
     }
     if (isMyPlayTurn) {
@@ -96,75 +249,10 @@ function cardPlayability(state, me, myIndex, card) {
             lawLocksOther(state, me, myIndex, card)) return false;
         // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené, Vězení).
         if (judgeBlocksFor(state, card)) return false;
-        // Karta s bang-efektem (Úder, …) mimo zelené: nepočítá se do limitu Bang!.
-        // Vystřelit lze i sám na sebe (pravidla to umožňují), takže je hratelná vždy –
-        // i když není v dostřelu žádný soupeř (na sebe se klikne přes vlastní postavu).
-        if (card.bangEffect && !card.green) {
-            return true;
-        }
-        if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
-            if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
-            if (bangLimitFree(state, me)) return true;
-            // Fistful – Odražená střela ani Odstřelovač se do limitu 1× Bang!/tah NEpočítají
-            // (FAQ Q07/Q09): i s vyčerpaným limitem je karta hratelná, jen s ní pak nejde
-            // klasicky vystřelit na postavu (klient podle bangAtPlayerOk zhasne postavy) –
-            // zbývá střela na vyloženou kartu nebo zaplacení Odstřelovače.
-            return ricochetAvailable(state, me, myIndex) || sniperOffer(state, me, myIndex, card);
-        }
-        if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
-        // Zelené karty se vykládají na stůl; nelze mít 2 stejného jména (D7).
-        if (card.green) return !(me.board || []).some(c => c.name === card.name);
-        // Dodge City „odhoď další kartu": potřebuje aspoň 1 další kartu k odhození +
-        // pro cílené efekty musí existovat smysluplný cíl (jinak by se nic nestalo).
-        if (card.discardExtra) {
-            // Musí zbýt ČÍM zaplatit. Vynucená karta (Právo západu) se počítat nesmí –
-            // zaplatit se jí nedá (lawProtectedCard), takže by hráč skončil ve fázi
-            // DISCARD_ANOTHER, ze které vede jen „zrušit" (a bot by se v ní zacyklil).
-            if (!(me.hand || []).some(c => c && !c._placeholder && c.id !== card.id &&
-                !lawProtectedCard(state, me, myIndex, c))) return false;
-            // Léčit lze každého VE HŘE – duch (Město duchů, High Noon) v ní na svůj tah je,
-            // takže i jeho (isInPlay, ne health > 0).
-            if (card.discardExtra === 'heal_self_2') return isInPlay(me) && me.health < me.maxHealth;
-            if (card.discardExtra === 'heal_any') return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
-            if (card.discardExtra === 'bang_any') return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
-            if (card.discardExtra === 'steal_any') return state.players.some((p, idx) =>
-                idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0))
-                || (me.weapon && me.weapon.id !== -1) || (me.board || []).length > 0;
-            if (card.discardExtra === 'brawl') return state.players.some((p, idx) =>
-                idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
-            return true;
-        }
-        if (card.type === "Vedle!" && effectiveCharacter(me) !== "Calamity Janet") return false;
-        if (card.type === "Vězení") {
-            return state.players.some((p, idx) => idx !== myIndex && p.health > 0 && p.role !== "Sheriff" && !(p.board||[]).some(c => c.type === "Vězení"));
-        }
-        if (card.type === "Panika!") {
-            // Panika! potřebuje cíl do vzdálenosti 1 s alespoň jednou kartou
-            // Cílem může být i sám hráč (vlastní zbraň nebo modrá karta na stole)
-            const canTargetSelf = (me.weapon && me.weapon.id !== -1) ||
-                                 (me.board && me.board.length > 0);
-            const canTargetOther = state.players.some((p, idx) =>
-                idx !== myIndex && p.health > 0 &&
-                computeDistance(state, myIndex, idx) <= 1 &&
-                (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board && p.board.length > 0))
-            );
-            return canTargetSelf || canTargetOther;
-        }
-        if (card.type === "Duel") return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
-        if (card.type === "Pivo") {
-            if (beerBlockedFor(state)) return false;   // Reverend (High Noon)
-            const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
-            if (aliveCount <= 2) return false;
-            if (!isInPlay(me) || me.health >= me.maxHealth) return false;   // duch se léčit smí
-            return true;
-        }
-        if (card.type === "Salon") return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
-        if (["Zbraň","Barel","Vybavení","Dynamit"].includes(card.type)) {
-            if (card.type === "Zbraň") { if (me.weapon?.id !== -1 && me.weapon?.name === card.name) return false; }
-            else { if ((me.board||[]).some(c => c.name === card.name)) return false; }
-            return true;
-        }
-        return true;
+        if (nativePlayInTurn(state, me, myIndex, card)) return true;
+        // Divoký západ – Zúčtování: každá karta SMÍ jít jako Bang!, ale nemusí – proto
+        // se možnost jen přidává navrch vlastní akci karty (viz showdownBangOk).
+        return showdownBangOk(state, me, myIndex, card);
     }
     return null;
 }
@@ -197,7 +285,7 @@ function lawForcedCard(state, me, myIndex) {
 function _lawHasTarget(state, me, myIndex, card) {
     const other = (i) => i !== myIndex && state.players[i].health > 0;
     const hasCards = (p) => p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
-    switch (getActionForCard(card, effectiveCharacter(me))) {
+    switch (turnActionForCard(state, me, myIndex, card)) {
         case 'SHOOT':
             // Cíl je vždycky: když hráč nedosáhne na nikoho jiného, musí střelit SÁM NA SEBE
             // (viz lawSelfShootOnly – klient mu k tomu výjimečně zvýrazní vlastní postavu).
@@ -216,7 +304,7 @@ function _lawHasTarget(state, me, myIndex, card) {
 // jiného nedosáhne – pravidlo ho pak nutí střelit sebe. Jediný zdroj pravdy pro server
 // (playBang povolí cíl = útočník), klienta (zvýrazní vlastní postavu) i bota.
 function lawSelfShootOnly(state, me, myIndex, card) {
-    if (!card || getActionForCard(card, effectiveCharacter(me)) !== 'SHOOT') return false;
+    if (!card || turnActionForCard(state, me, myIndex, card) !== 'SHOOT') return false;
     const reach = bangEffectReach(card);
     return !state.players.some((p, i) =>
         i !== myIndex && p.health > 0 && computeCanHit(state, myIndex, i, reach));
@@ -353,9 +441,9 @@ function lawHandcuffsSuit(state, me, myIndex) {
 function rouletteDiscardable(state, me, card, fromBoard) {
     if (!card || card._placeholder) return false;
     if (fromBoard) return !!card.green && card.activate === 'miss' && !boardDeadFor(state);
-    return card.type === "Vedle!" || card.type === "Úhyb" ||
-        (effectiveCharacter(me) === "Calamity Janet" && card.type === "Bang!") ||
-        effectiveCharacter(me) === "Elena Fuente";
+    // Pozor (fáze 4): Big Spencer nesmí kartu Vedle! ZAHRÁT, ale ODHODIT ji smí – až
+    // se jeho zákaz doplní do playsAsMissed, musí se tady obejít (plán §5.1).
+    return playsAsMissed(state, me, card);
 }
 
 // Má hráč vůbec co odhodit? Kdo nemá (a neuhne ani barelem), ztrácí 2 životy a efekt končí.
@@ -385,8 +473,7 @@ function rouletteBarrelChecks(state, p) {
 function bangCardFromHand(state, me, myIndex, card) {
     if (!card || card._placeholder) return false;
     if (suitBlockedFor(state, myIndex, card)) return false;
-    return card.type === "Bang!" ||
-        (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!");
+    return playsAsBang(state, me, card);
 }
 
 // Zbývá hráči volný limit karet Bang! na tenhle tah? (Willy the Kid a Volcanic ho nemají;
@@ -414,7 +501,7 @@ function ricochetOffer(state, me, myIndex, card) {
     if (!eventActive(state, 'ODRAZENA_STRELA')) return false;
     if (!isPlayTurn(state, myIndex)) return false;
     if (!bangCardFromHand(state, me, myIndex, card)) return false;
-    if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
+    if (preacherBlocks(state, me, myIndex, card)) return false;   // Kazatel (High Noon)
     // Právo západu: zamčené jsou jen střely, po kterých by vynucená karta přestala jít
     // zahrát. Odražená střela limit Bang! nečerpá (R2) → noBangLimit.
     return !lawLocksOther(state, me, myIndex, card, { noBangLimit: true });
@@ -448,7 +535,7 @@ function sniperOffer(state, me, myIndex, card) {
     if (!eventActive(state, 'ODSTRELOVAC')) return false;
     if (!isPlayTurn(state, myIndex)) return false;
     if (!bangCardFromHand(state, me, myIndex, card)) return false;
-    if (bangBlockedFor(state, myIndex)) return false;   // Kazatel (High Noon)
+    if (preacherBlocks(state, me, myIndex, card)) return false;   // Kazatel (High Noon)
     // Právo západu: Odstřelovač stojí druhou kartu Bang! z ruky a do limitu se nepočítá
     // (FAQ Q07). Vynucená karta jako ta druhá posloužit nesmí – odhazuje se, nehraje.
     if (lawLocksOther(state, me, myIndex, card, { noBangLimit: true, discards: 1 })) return false;
@@ -459,9 +546,10 @@ function sniperOffer(state, me, myIndex, card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cardPlayability, lawForcedCard, lawSelfShootOnly, lawLocksOther,
+    module.exports = { cardPlayability, nativePlayInTurn, lawForcedCard, lawSelfShootOnly, lawLocksOther,
                        lawProtectedCard, lawHandcuffsSuit,
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
+                       playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer };
 }

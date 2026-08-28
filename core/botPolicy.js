@@ -63,6 +63,28 @@ if (typeof require === 'function') {
         globalThis.bangLimitFree = __pl2.bangLimitFree;
         globalThis.bangAtPlayerOk = __pl2.bangAtPlayerOk;
     }
+    // Divoký západ – Zúčtování: „co se počítá za kartu Bang! / Vedle!" a „smí se karta
+    // zahrát ve své VLASTNÍ roli". Samostatný guard ze stejného důvodu jako výš.
+    // Každý svůj guard: logic.js si z playability.js bere jen playsAsBang/playsAsMissed,
+    // takže společná podmínka by zbytek tiše přeskočila.
+    if (typeof playsAsBang === 'undefined') {
+        globalThis.playsAsBang = require('./playability.js').playsAsBang;
+    }
+    if (typeof playsAsMissed === 'undefined') {
+        globalThis.playsAsMissed = require('./playability.js').playsAsMissed;
+    }
+    if (typeof preacherBlocks === 'undefined') {
+        globalThis.preacherBlocks = require('./playability.js').preacherBlocks;
+    }
+    if (typeof showdownBangOk === 'undefined') {
+        globalThis.showdownBangOk = require('./playability.js').showdownBangOk;
+    }
+    if (typeof nativePlayInTurn === 'undefined') {
+        globalThis.nativePlayInTurn = require('./playability.js').nativePlayInTurn;
+    }
+    if (typeof turnActionForCard === 'undefined') {
+        globalThis.turnActionForCard = require('./playability.js').turnActionForCard;
+    }
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
@@ -483,7 +505,7 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
     };
     const special = (targetIdx) => ({ event: 'play_special', payload: { attackerIdx: myIndex, targetIdx, cardIdx } });
 
-    switch (getActionForCard(card, effectiveCharacter(me))) {
+    switch (turnActionForCard(state, me, myIndex, card)) {
         case 'SHOOT': {
             // Vyčerpaný limit 1× Bang!/tah: na POSTAVU se střílet nedá (playBang by akci
             // mlčky zahodil), karta je ale pořád vynucená. Zbývají Odstřelovač a Odražená
@@ -577,9 +599,35 @@ function decidePlay(state, myIndex, beliefs) {
         return { pos, neg };
     };
 
+    // ── Divoký západ – Zúčtování: vystřelit se dá KAŽDOU kartou ───────────────
+    // Je to náhrada za chybějící kartu Bang!, ne přednostní tah: skóre je nižší než
+    // u čehokoli, co bot s kartou umí udělat jinak (`consider` bere maximum), a sáhne
+    // jen po postradatelné kartě – zbraně, Piva ani karty za víc karet nevystřílí.
+    const _showdownShot = () => {
+        if (!eventActive(state, 'ZUCTOVANI')) return;
+        let cheap = -1;
+        me.hand.forEach((c, i) => {
+            if (cardPlayability(state, me, myIndex, c) !== true) return;
+            if (!showdownBangOk(state, me, myIndex, c)) return;
+            if (!bangAtPlayerOk(state, me, myIndex, c)) return;   // vyčerpaný limit 1× Bang!/tah
+            if (keepScore(c) > 4) return;
+            if (cheap === -1 || keepScore(c) < keepScore(me.hand[cheap])) cheap = i;
+        });
+        if (cheap === -1) return;
+        const tgt = shootTargets(state, myIndex, beliefs).find(e => computeCanHit(state, myIndex, e.idx));
+        // Ploché nízké skóre = poslední možnost před „ukončit tah" (0). Cokoli, co bot
+        // s kartou umí udělat jinak, má víc – i vypití Salonu při zranění (8).
+        if (tgt) consider(6, { event: 'play_bang',
+            payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: cheap } });
+    };
+
     // ── Karty v ruce ──────────────────────────────────────────────────────────
     me.hand.forEach((card, i) => {
         if (cardPlayability(state, me, myIndex, card) !== true) return;
+        // Divoký západ – Zúčtování: karta může být hratelná JEN jako Bang! (Vedle! ve
+        // vlastním tahu, druhá zelená téhož jména). Vlastní akci by server odmítl,
+        // takže se tady přeskočí – výstřel jí nabídne větev pod tímhle cyklem.
+        if (!nativePlayInTurn(state, me, myIndex, card)) return;
         const action = getActionForCard(card, effectiveCharacter(me));
 
         if (action === 'SHOOT') {
@@ -731,6 +779,8 @@ function decidePlay(state, myIndex, beliefs) {
         }
     });
 
+    _showdownShot();   // Divoký západ – Zúčtování (viz výš)
+
     // ── Aktivace zelených karet už ležících na stole (z minulých tahů) ──────────
     // Laso (Fistful): karty na stole nemají efekt → server aktivaci odmítne (stall).
     if (!boardDeadFor(state)) (me.board || []).forEach(card => {
@@ -859,11 +909,10 @@ function decideBotAction(state, myIndex, beliefs) {
             }
             // Kazatel (High Noon): ve svém tahu nesmí hráč zahrát Bang! ani jako odpověď
             // v duelu (FAQ H2) – server by kartu odmítl a bot by to zkoušel donekonečna.
-            const bangBanned = req === T.BANG && bangBlockedFor(state, myIndex);
             // Želízka (High Noon): ve vlastním tahu (duel) projde jen zvolená barva.
             const isDodge = (c) => !suitBlockedFor(state, myIndex, c) && (req === T.MISSED
-                ? (c.type === T.MISSED || c.type === T.UHYB || (effectiveCharacter(me) === 'Calamity Janet' && c.type === T.BANG) || effectiveCharacter(me) === 'Elena Fuente')
-                : (!bangBanned && (c.type === T.BANG || (effectiveCharacter(me) === 'Calamity Janet' && c.type === T.MISSED))));
+                ? playsAsMissed(state, me, c)
+                : (!preacherBlocks(state, me, myIndex, c) && playsAsBang(state, me, c)));
             const dodgeIdx = me.hand.findIndex(isDodge);
             if (dodgeIdx !== -1) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: dodgeIdx } };
 

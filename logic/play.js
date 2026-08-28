@@ -126,6 +126,11 @@ const PlayMixin = {
         if (this._suitBlocked(attackerIdx, card)) return;   // High Noon – Želízka
         // Fistful – Právo západu: vynucená karta musí ven jako první (viz _lawLocked).
         if (this._lawLocked(attackerIdx, card)) return;
+        // Co se vůbec smí zahrát jako karta Bang! (Calamity Janet, Zúčtování z Divokého
+        // západu) drží playsAsBang – tímtéž predikátem se ptá klient i bot. Karty
+        // s bang-EFEKTEM (Úder, Springfield, Derringer, zelené) kartami Bang! nejsou,
+        // míří se ale stejně, takže jdou mimo něj.
+        if (!card.bangEffect && !playsAsBang(this, attacker, card)) return;
 
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
@@ -136,8 +141,9 @@ const PlayMixin = {
 
         // High Noon – Kazatel: ve svém tahu nesmí hráč zahrát kartu Bang! (ani Willy,
         // ani s Volcanicem, ani Calamity Janet s kartou Vedle! – FAQ H5). Karty
-        // s bang-efektem (Úder, Nůž…) to neomezuje, nejsou to karty Bang!.
-        if (!isEffect && this._bangBlocked(attackerIdx)) return;
+        // s bang-efektem (Úder, Nůž…) to neomezuje, nejsou to karty Bang! – a stejně tak
+        // ne karta, která je Bang! jen pod Zúčtováním (Divoký západ), viz preacherBlocks.
+        if (!isEffect && preacherBlocks(this, attacker, attackerIdx, card)) return;
 
         if (!isEffect && !isWilly && !hasVolcanic && attacker.bangsPlayedThisTurn >= this._bangLimit()) {
             return;
