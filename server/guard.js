@@ -32,7 +32,7 @@ module.exports = function installActionGuard(ctx) {
         'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
         'grinner_give',
         'sniper_choose', 'play_ricochet',
-        'claus_give', 'uncle_will', 'flint_westwood',
+        'claus_give', 'uncle_will', 'flint_westwood', 'lee_van_kliff',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another',
         'activate_green_card',
         'bart_cassidy_draw', 'uhyb_draw', 'el_gringo_steal', 'suzy_draw',

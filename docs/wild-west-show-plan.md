@@ -1393,7 +1393,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **3** ✅ | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |
 | **4** ✅ | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |
 | **5** ✅ | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |
-| **6** | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |
+| **6** ✅ | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |
 | **7** | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |
 | **8** | Divoký západ | podmínka výhry, bot | střední |
 | **9** | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |

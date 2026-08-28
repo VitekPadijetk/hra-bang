@@ -19,6 +19,7 @@
 //   { type: 'ROULETTE_DISCARD', index, cardId }       – Ruská ruleta (Fistful): odhoď kartu Vedle!
 //   { type: 'GRINNER_GIVE', index, cardId }           – Youl Grinner (Divoký západ): dej mu kartu
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
+//   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
 
 if (typeof require === 'function') {
@@ -42,6 +43,10 @@ if (typeof require === 'function') {
     // Divoký západ – Zúčtování: karta, jejíž vlastní akce teď nejde, míří rovnou.
     if (typeof turnActionForCard === 'undefined') {
         globalThis.turnActionForCard = require('./playability.js').turnActionForCard;
+    }
+    // Divoký západ – Lee Van Kliff: čím se smí zaplatit opakování efektu.
+    if (typeof lvkPayOk === 'undefined') {
+        globalThis.lvkPayOk = require('./playability.js').lvkPayOk;
     }
     // Duch (Město duchů) se počítá za hráče ve hře – pravidlo „při dvou hráčích Pivo
     // nefunguje" se ho proto ptá přes inPlayCount, ne přes health > 0.
@@ -74,6 +79,15 @@ function decideCardClick(ctx) {
     // takže klik na kteroukoli kartu v ruce ji rovnou pošle (žádné označování).
     if (state.phase === "GRINNER_GIVE" && state.pendingGrinner?.queue?.[0] === myIndex) {
         return { type: 'GRINNER_GIVE', index, cardId: card.id };
+    }
+
+    // Divoký západ – Lee Van Kliff: nabitá schopnost čeká na kartu BANG!, kterou se
+    // opakování platí (pod Zúčtováním na libovolnou kartu). Stejně jako u Flinta to
+    // musí být dřív než odznačování i Sid režim – karta se nevybírá k zahrání.
+    if (selectedState.lvk && selectedState.lvk.cardId == null) {
+        return lvkPayOk(state, me, myIndex, card)
+            ? { type: 'LVK_PAY', index, cardId: card.id }
+            : { type: 'UNPLAYABLE_FLASH' };
     }
 
     // Divoký západ – Flint Westwood: cíl už je vybraný (klik na postavu), tohle je

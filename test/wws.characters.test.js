@@ -6,7 +6,8 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
-const { playsAsMissed, playsAsBang, rouletteDiscardable, bigSpencerBlocked } = require('../core/playability.js');
+const { playsAsMissed, playsAsBang, rouletteDiscardable, bigSpencerBlocked,
+        lvkOffer, lvkPayOk, lvkTargetOk } = require('../core/playability.js');
 const { startCardsForCharacter, baseHealthForCharacter, healthForCharacter } = require('../core/roles.js');
 const { pendingActor, describePendingCheck } = require('../core/pending.js');
 const { decideBotAction } = require('../core/botPolicy.js');
@@ -18,6 +19,7 @@ before(() => { console.log = () => {}; });
 const rd = (f) => JSON.parse(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'));
 const wwsData = rd('cards.divoky_zapad.json');
 const wws = key => wwsData.find(c => c.key === key);
+const ffData = rd('cards.fistful.json');   // Odstřelovač (Lee Van Kliff opakuje i jeho)
 
 const bang = (g, i, o = {}) => give(g, i, CardType.BANG, { name: 'Bang!', ...o });
 const miss = (g, i, o = {}) => give(g, i, CardType.MISSED, { name: 'Vedle!', ...o });
@@ -474,9 +476,9 @@ test('Flint Westwood: bot schopnost použije', () => {
 test('_characterPool: ostrá hra bere jen hotové postavy Divokého západu', () => {
     const g = mkGame([{}, {}]);
     const pool = g._characterPool({ expansions: { divoky_zapad: true } });
-    ['Big Spencer', 'Flint Westwood', 'Gary Looter', 'John Pain', 'Teren Kill', 'Youl Grinner']
+    ['Big Spencer', 'Flint Westwood', 'Gary Looter', 'John Pain', 'Lee Van Kliff', 'Teren Kill', 'Youl Grinner']
         .forEach(c => assert.ok(pool.includes(c), `${c} chybí v ostrém poolu`));
-    ['Lee Van Kliff', 'Greygory Deck']
+    ['Greygory Deck']
         .forEach(c => assert.ok(!pool.includes(c), `${c} ještě nemá schopnost, do ostré hry nepatří`));
     // Bez rozšíření se nepřidá nic.
     assert.equal(g._characterPool({}).some(c => WILD_WEST_CHARACTERS.includes(c)), false);
@@ -668,4 +670,290 @@ test('Teren Kill: sejmutou kartu bere John Pain (jde to normální check cestou)
     runTerenCheck(g);
     assert.equal(g.players[0].hand.length, 1, 'John Pain si vzal sejmutou kartu');
     assert.equal(g.players[0].hand[0].suit, Suits.HEARTS);
+});
+
+// ── Lee Van Kliff ───────────────────────────────────────────────────────────
+// „Během svého tahu smí odhodit kartu BANG! a zopakovat efekt hnědé karty, kterou
+// právě zahrál." Podrobnosti (a všechny FAQ, které se sem vešly) jsou v komentáři
+// u useLeeVanKliff v logic/wildWest.js.
+
+// Lee na tahu + `n` hráčů, turnId nastavené (paměť se váže na tah).
+function lvkGame(n = 3, opts = {}) {
+    const specs = [{ role: 'Sheriff', character: 'Lee Van Kliff', maxHealth: 4 }];
+    for (let i = 1; i < n; i++) specs.push({ role: i === 1 ? 'Outlaw' : 'Renegade' });
+    const g = mkGame(specs, { current: 0 });
+    g.turnId = 7;
+    if (opts.zuctovani) g.activeWws = wws('ZUCTOVANI');
+    return g;
+}
+
+test('Lee Van Kliff: hnědá karta se zapamatuje, modrá ani zelená paměť nesmažou', () => {
+    const g = lvkGame(3);
+    const b = bang(g, 0);
+    g.playBang(0, 1, b);
+    g.handleResponse(1, null);
+    assert.equal(g._lastBrown.effect, 'BANG');
+    assert.equal(g._lastBrown.cardId, g.deck.discardTop().id);
+    // Modrá (Mustang) i zelená (Čutora) jdou na stůl a paměti se netýkají.
+    g.playCard(give(g, 0, CardType.EQUIPMENT, { name: 'Mustang', props: { effect: 'mustang' } }));
+    g.playCard(give(g, 0, CardType.CANTEEN, { name: 'Čutora', props: { green: true, activate: 'heal_self' } }));
+    assert.equal(g._lastBrown.effect, 'BANG', 'paměť drží poslední HNĚDOU kartu');
+    // Vězení je modré, i když se vykládá před soupeře.
+    g.playSpecialCard(0, 1, give(g, 0, CardType.JAIL, { name: 'Vězení' }));
+    assert.equal(g._lastBrown.effect, 'BANG');
+});
+
+test('Lee Van Kliff: paměť patří jednomu tahu a na začátku dalšího mizí', () => {
+    const g = lvkGame(3);
+    g.players[0].health = 2;   // Salon bez zraněného hráče není zahraný
+    g.playCard(give(g, 0, CardType.SALOON, { name: 'Salon' }));
+    assert.equal(g._lastBrown.effect, 'SALOON');
+    g.phase = 'DISCARD';
+    g.nextTurn();
+    assert.equal(g._lastBrown, null);
+});
+
+test('Lee Van Kliff: opakovaný Bang! smí na JINÝ cíl a nečerpá limit 1×/tah (Q13)', () => {
+    const g = lvkGame(3);
+    const b = bang(g, 0);
+    bang(g, 0);                       // cena za opakování
+    g.playBang(0, 1, b);
+    g.handleResponse(1, null);
+    assert.equal(g.players[1].health, 3);
+    assert.equal(g.players[0].bangsPlayedThisTurn, 1);
+
+    const lb = lvkOffer(g, g.players[0], 0);
+    assert.equal(lb.effect, 'BANG');
+    const res = g.useLeeVanKliff(0, g.players[0].hand[0].id, 2);
+    assert.ok(res, 'opakování prošlo');
+    assert.equal(g.phase, 'RESPOND');
+    g.handleResponse(2, null);
+    assert.equal(g.players[2].health, 3, 'zasáhlo to jiného hráče');
+    assert.equal(g.players[0].bangsPlayedThisTurn, 1, 'limit se nezvýšil');
+    assert.equal(g.players[0].hand.length, 0, 'zaplacený Bang! je pryč');
+});
+
+test('Lee Van Kliff: každý efekt jen jednou', () => {
+    const g = lvkGame(3);
+    const b = bang(g, 0);
+    bang(g, 0); bang(g, 0);
+    g.playBang(0, 1, b);
+    g.handleResponse(1, null);
+    g.useLeeVanKliff(0, g.players[0].hand[0].id, 2);
+    g.handleResponse(2, null);
+    assert.equal(g._lastBrown.repeated, true);
+    assert.equal(lvkOffer(g, g.players[0], 0), null);
+    assert.equal(g.useLeeVanKliff(0, g.players[0].hand[0].id, 2), null);
+    assert.equal(g.players[0].hand.length, 1, 'druhá karta se nespotřebovala');
+});
+
+test('Lee Van Kliff: zaplatit jde jen kartou BANG! – pod Zúčtováním libovolnou', () => {
+    const g = lvkGame(3);
+    const b = bang(g, 0);
+    give(g, 0, CardType.BEER, { name: 'Pivo' });
+    g.playBang(0, 1, b);
+    g.handleResponse(1, null);
+    const beerCard = g.players[0].hand.find(c => c.type === CardType.BEER);
+    assert.equal(lvkPayOk(g, g.players[0], 0, beerCard), false);
+    assert.equal(g.useLeeVanKliff(0, beerCard.id, 2), null);
+    // Zúčtování dělá kartu Bang! z čehokoli (poznámka v pravidlech k Lee Van Kliffovi).
+    g.activeWws = wws('ZUCTOVANI');
+    assert.equal(lvkPayOk(g, g.players[0], 0, beerCard), true);
+    assert.ok(g.useLeeVanKliff(0, beerCard.id, 2));
+});
+
+test('Lee Van Kliff × Apache Kid: rozhoduje barva PŮVODNÍ karty (Sciarra Q12)', () => {
+    const g = mkGame([
+        { role: 'Sheriff', character: 'Lee Van Kliff' },
+        { role: 'Outlaw', character: 'Apache Kid' },
+        { role: 'Renegade' },
+    ], { current: 0 });
+    g.turnId = 3;
+    // Původní karta ♦ (Apache ji ignoruje), zaplacená ♣ – opakování ho stejně mine.
+    const b = bang(g, 0, { suit: Suits.DIAMONDS });
+    bang(g, 0, { suit: Suits.CLUBS });
+    g.playBang(0, 2, b);
+    g.handleResponse(2, null);
+    assert.ok(g.useLeeVanKliff(0, g.players[0].hand[0].id, 1));
+    assert.equal(g.phase, 'PLAY', 'kárový Bang! na Apache Kida nemá efekt');
+    assert.equal(g.players[1].health, 4);
+});
+
+test('Lee Van Kliff: opakovaný Dostavník NEOTOČÍ kartu Divokého západu (Sciarra Q19)', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Lee Van Kliff' }, {}, {}], { current: 0 });
+    g.turnId = 3;
+    g.wwsCardData = wwsData;
+    g._setupWwsDeck({ expansions: { divoky_zapad: true } });
+    for (let i = 0; i < 10; i++) g.deck.cards.push(mkCard(CardType.BANG, { name: 'Bang!' }));
+    g.playCard(give(g, 0, CardType.STAGECOACH, { name: 'Dostavník' }));
+    const afterFirst = g.activeWws;
+    assert.ok(afterFirst, 'první zahrání kartu odkrylo');
+    assert.equal(g.wwsDeck.length, 9);
+    // Dolízni obě karty, ať je zase fáze PLAY.
+    g.drawCard('deck'); g.drawCard('deck');
+    assert.equal(g.phase, 'PLAY');
+
+    const payId = g.players[0].hand.find(c => c.type === CardType.BANG).id;
+    assert.ok(g.useLeeVanKliff(0, payId, null));
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    assert.equal(g.activeWws, afterFirst, 'událost se nevyměnila');
+    assert.equal(g.wwsDeck.length, 9);
+});
+
+test('Lee Van Kliff: cena „odhoď další kartu" se podruhé neplatí (Sciarra Q29)', () => {
+    const g = lvkGame(3);
+    g.players[0].health = 1;
+    const w = give(g, 0, CardType.WHISKY, { name: 'Whisky', props: { discardExtra: 'heal_self_2' } });
+    give(g, 0, CardType.BANG, { name: 'Bang!' });   // cena za Whisky
+    give(g, 0, CardType.BANG, { name: 'Bang!' });   // cena za opakování
+    g.startDiscardExtra(w, { targetIdx: null });
+    g.discardAnotherCard(0, g.players[0].hand.findIndex(c => c.type === CardType.BANG));
+    assert.equal(g.players[0].health, 3);
+    assert.equal(g._lastBrown.effect, 'heal_self_2');
+    assert.equal(g.players[0].hand.length, 1);
+
+    assert.ok(g.useLeeVanKliff(0, g.players[0].hand[0].id, null));
+    assert.equal(g.players[0].health, 4, 'druhé +2 (do maxima), bez další ceny');
+    assert.equal(g.players[0].hand.length, 0);
+});
+
+test('Lee Van Kliff × Madam Zuzana: opakování je zahraná karta, cena ne (Sciarra Q24)', () => {
+    const g = lvkGame(3);
+    const b = bang(g, 0);
+    bang(g, 0);
+    g.players[0]._playedThisTurn = 0;
+    g.playBang(0, 1, b);
+    g.handleResponse(1, null);
+    assert.equal(g.players[0]._playedThisTurn, 1);
+    g.useLeeVanKliff(0, g.players[0].hand[0].id, 2);
+    assert.equal(g.players[0]._playedThisTurn, 2, 'zopakování se počítá, odhozený Bang! ne');
+});
+
+test('Lee Van Kliff: Panika! se opakuje přes normální výběr karty (i na jiný cíl)', () => {
+    const g = lvkGame(3);
+    const pan = give(g, 0, CardType.PANIC, { name: 'Panika!' });
+    bang(g, 0);
+    give(g, 1, CardType.BEER, { name: 'Pivo' });
+    give(g, 2, CardType.BEER, { name: 'Pivo' });
+    g.playSpecialCard(0, 1, pan);
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    g.resolveCardSelection(0, 'hand', null);
+    assert.equal(g.players[0].hand.length, 2, 'Bang! + ukradené Pivo');
+
+    assert.equal(lvkTargetOk(g, g.players[0], 0, 2), true);
+    const payId = g.players[0].hand.find(c => c.type === CardType.BANG).id;
+    assert.ok(g.useLeeVanKliff(0, payId, 2));
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    assert.equal(g.pendingSelection.targetIdx, 2);
+    g.resolveCardSelection(0, 'hand', null);
+    assert.equal(g.players[2].hand.length, 0);
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Lee Van Kliff: Panika! na dosah 1, Cat Balou bez omezení vzdálenosti', () => {
+    const g = lvkGame(4);
+    give(g, 2, CardType.BEER, { name: 'Pivo' });
+    const pan = give(g, 0, CardType.PANIC, { name: 'Panika!' });
+    bang(g, 0);
+    g.playSpecialCard(0, 1, pan);
+    g.resolveCardSelection(0, 'hand', null);   // p1 má prázdnou ruku, jen doběhne fáze
+    assert.equal(lvkTargetOk(g, g.players[0], 0, 2), false, 'p2 je na vzdálenost 2');
+    assert.equal(lvkTargetOk(g, g.players[0], 0, 1), false, 'p1 nemá co vzít');
+    assert.equal(lvkOffer(g, g.players[0], 0), null, 'bez cíle se opakování nenabízí');
+});
+
+test('Lee Van Kliff: opakovaný Ragtime smí i na VLASTNÍ stůl, z vlastní ruky ne', () => {
+    const g = lvkGame(3);
+    const rag = give(g, 0, CardType.RAGTIME, { name: 'Ragtime', props: { discardExtra: 'steal_any' } });
+    bang(g, 0);   // cena za Ragtime
+    bang(g, 0);   // cena za opakování
+    board(g, 0, CardType.DYNAMITE, { name: 'Dynamit' });
+    give(g, 1, CardType.BEER, { name: 'Pivo' });
+    g.startDiscardExtra(rag, { targetIdx: 1, area: 'hand', boardIdx: null });
+    g.discardAnotherCard(0, g.players[0].hand.findIndex(c => c.type === CardType.BANG));
+    assert.equal(g._lastBrown.effect, 'steal_any');
+
+    // Vlastní stůl je platný cíl (Dynamit si vezmu zpátky do ruky), vlastní ruka ne.
+    assert.equal(lvkTargetOk(g, g.players[0], 0, 0), true);
+    const payId = g.players[0].hand.find(c => c.type === CardType.BANG).id;
+    assert.ok(g.useLeeVanKliff(0, payId, 0));
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    const handBefore = g.players[0].hand.length;
+    g.resolveCardSelection(0, 'hand', null);
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD', 'z vlastní ruky se nebere');
+    assert.equal(g.players[0].hand.length, handBefore);
+    g.resolveCardSelection(0, 'board', 0);
+    assert.equal(g.players[0].board.length, 0);
+    assert.equal(g.players[0].hand.some(c => c.type === CardType.DYNAMITE), true);
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Lee Van Kliff: bot opakování nabídne a server ho přijme', () => {
+    const g = lvkGame(3);
+    const b = bang(g, 0);
+    bang(g, 0);
+    g.playBang(0, 1, b);
+    g.handleResponse(1, null);
+    const plain = JSON.parse(JSON.stringify(g));
+    const beliefs = computeBeliefs(plain, 0, {});
+    const act = decideBotAction(plain, 0, beliefs);
+    assert.equal(act.event, 'lee_van_kliff');
+    assert.ok(g.useLeeVanKliff(0, act.payload.cardId, act.payload.targetIdx),
+              'akce bota je pro server platná');
+});
+
+test('Lee Van Kliff: opakovaný Kulomet si nese barvu PŮVODNÍ karty (Apache Kid)', () => {
+    const g = mkGame([
+        { role: 'Sheriff', character: 'Lee Van Kliff' },
+        { role: 'Outlaw', character: 'Apache Kid' },
+        { role: 'Renegade' },
+    ], { current: 0 });
+    g.turnId = 6;
+    bang(g, 0, { suit: Suits.CLUBS });
+    g.playCard(give(g, 0, CardType.GATLING, { name: 'Kulomet', suit: Suits.DIAMONDS }));
+    while (g.phase === 'RESPOND') g.handleResponse(g.pendingResponse.targetIdx, null);
+    assert.equal(g.players[1].health, 4, 'kárový Kulomet Apache Kida minul');
+    assert.equal(g.players[2].health, 3);
+
+    assert.ok(g.useLeeVanKliff(0, g.players[0].hand[0].id, null));
+    while (g.phase === 'RESPOND') g.handleResponse(g.pendingResponse.targetIdx, null);
+    assert.equal(g.players[1].health, 4, 'opakování se řídí barvou Kulometu, ne odhozeného Bang!');
+    assert.equal(g.players[2].health, 2);
+});
+
+test('Lee Van Kliff: opakovaný Odstřelovač si pořád žádá dvě karty Vedle!', () => {
+    const g = mkGame([
+        { role: 'Sheriff', character: 'Lee Van Kliff' },
+        { role: 'Outlaw' }, { role: 'Renegade' },
+    ], { current: 0 });
+    g.turnId = 6;
+    g.activeFistful = ffData.find(c => c.key === 'ODSTRELOVAC');
+    const b = bang(g, 0);
+    bang(g, 0); bang(g, 0);
+    g.startSniper(b, 1);
+    g.discardAnotherCard(0, g.players[0].hand.findIndex(c => c.id !== g.pendingDiscardAnother.mainCardId));
+    assert.equal(g.missesRequired, 2);
+    g.handleResponse(1, null);
+    assert.equal(g.players[1].health, 3);
+    assert.equal(g._lastBrown.effect, 'sniper');
+
+    assert.ok(g.useLeeVanKliff(0, g.players[0].hand[0].id, 1));
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.missesRequired, 2, 'opakuje se Odstřelovač, ne obyčejný Bang!');
+});
+
+test('Lee Van Kliff: opakované Hokynářství rozdá druhou nabídku', () => {
+    const g = lvkGame(3);
+    for (let i = 0; i < 20; i++) g.deck.cards.push(mkCard(CardType.BANG, { name: 'Bang!' }));
+    bang(g, 0);
+    g.playCard(give(g, 0, CardType.STORE, { name: 'Hokynářství' }));
+    assert.equal(g.storeCards.length, 3);
+    while (g.phase === 'STORE') g.pickFromStore(g.storePickerIndex, 0);
+    assert.equal(g.phase, 'PLAY');
+
+    const payId = g.players[0].hand.find(c => c.type === CardType.BANG).id;
+    assert.ok(g.useLeeVanKliff(0, payId, null));
+    assert.equal(g.phase, 'STORE');
+    assert.equal(g.storeCards.length, 3, 'druhá nabídka leží na stole');
 });

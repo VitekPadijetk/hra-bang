@@ -103,6 +103,8 @@ const PlayMixin = {
                 // Karta nebyla sehrána
             } else {
                 this._trackCard(this.currentPlayerIndex, card.type);
+                // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty.
+                this._markBrownPlayed(this.currentPlayerIndex, card);
             }
             if (shouldDiscard) {
                 this.deck.discard(player.hand.splice(cardIndex, 1)[0]);
@@ -152,6 +154,9 @@ const PlayMixin = {
         if (!isEffect) attacker.bangsPlayedThisTurn++;
         attacker.stats.bangsFired++;
         this._trackCard(attackerIdx, card?.type || 'Bang!');
+        // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty (i karty, která je
+        // kartou Bang! jen pod Zúčtováním / u Calamity Janet, a bang-efektu Úderu).
+        this._markBrownPlayed(attackerIdx, card, { asBang: true });
         this.logEvent('bang', { who: attacker.name, target: target.name });
         this.deck.discard(attacker.hand.splice(cardIdx, 1)[0]);
         this.currentAttacker = attackerIdx;
@@ -259,6 +264,9 @@ const PlayMixin = {
         const card = attacker.hand.splice(cardIdx, 1)[0];
 
         if (card) this._trackCard(attIdx, card.type);
+        // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty (Vězení je modré,
+        // takže se do ní nedostane).
+        this._markBrownPlayed(attIdx, card);
         this.logEvent('special', { who: attacker.name, card: card.name, target: target ? target.name : null });
 
         if (card.type === CardType.JAIL) {
@@ -384,6 +392,10 @@ const PlayMixin = {
             const dist = this.getDistance(sel.attackerIdx, sel.targetIdx);
             if (dist > 1) { return; }
         }
+        // Ragtime (ignoreDistance) na VLASTNÍ stůl: z vlastní ruky se nekrade. Stejné
+        // pravidlo jako ve startDiscardExtra, kde se cíl volí předem – tady se cílová
+        // karta vybírá až po zahrání (Lee Van Kliff opakuje efekt, ne aktivaci).
+        if (sel.ignoreDistance && sel.attackerIdx === sel.targetIdx && targetCardArea === 'hand') return;
 
         const attacker = this.players[sel.attackerIdx];
         const target = this.players[sel.targetIdx];

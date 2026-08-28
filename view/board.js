@@ -558,6 +558,12 @@ function drawOpponents(ctx) {
         const isFlintPick = !!selectedState.flint && selectedState.flint.targetIdx == null &&
             !App.blockInput && state.phase === 'PLAY' && state.currentPlayerIndex === myIndex;
         const flintValid = isFlintPick && isInPlay(player) && (player.hand || []).length > 0;
+        // Divoký západ – Lee Van Kliff: karta BANG! je zaplacená, teď se vybírá CÍL
+        // opakovaného efektu (FAQ Q13 – smí být jiný než původní). Co je platný cíl,
+        // říká lvkTargetOk – tentýž predikát, jakým se ptá server i bot.
+        const isLvkPick = !!selectedState.lvk && selectedState.lvk.cardId != null &&
+            !App.blockInput && state.phase === 'PLAY' && state.currentPlayerIndex === myIndex;
+        const lvkValid = isLvkPick && lvkTargetOk(state, _selMe, myIndex, actualIdx);
         // Pat Brennan (Dodge City): ve své fázi lízání smí místo balíčku vzít 1 kartu ze
         // stolu libovolného hráče do ruky (klik na kartu na stole soupeře).
         // !App.blockInput: jakmile Pat kliknutím vezme kartu (nastaví blockInput), zvýraznění
@@ -757,6 +763,22 @@ function drawOpponents(ctx) {
                 sprite.on('pointerdown', () => {
                     if (!bloodValid || App.blockInput) return;
                     socket.emit('blood_brothers', { targetIdx: actualIdx });
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
+
+            // Divoký západ – Lee Van Kliff: klik na postavu = na koho míří opakovaný
+            // efekt. Kartu (u Paniky/Cat Balou/Ragtime) pak vybírá server-driven fáze.
+            if (isLvkPick) {
+                sprite.setInteractive({ useHandCursor: lvkValid });
+                sprite.setTint(lvkValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (lvkValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(lvkValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!lvkValid || App.blockInput) return;
+                    socket.emit('lee_van_kliff', { cardId: selectedState.lvk.cardId, targetIdx: actualIdx });
+                    selectedState = { cardIndex: null, action: null };
                     App.blockInput = true;
                     renderUI();
                 });
@@ -1401,9 +1423,13 @@ function drawMyArea(ctx) {
         // Dodge City: Tequila (DE_HEAL) může vyléčit +1 i sám sebe → moje postava klikatelná
         // (jen když jsem zraněný – léčení na plný život nedává smysl).
         const healSelfMode = selectedState.action === 'DE_HEAL' && selectedState.cardIndex !== null && me.health < me.maxHealth;
+        // Divoký západ – Lee Van Kliff: opakovaná Tequila léčí i mě, opakovaný Ragtime
+        // smí sáhnout na můj vlastní stůl – obojí se cílí klikem na moji postavu.
+        const lvkSelfMode = !!selectedState.lvk && selectedState.lvk.cardId != null &&
+            !App.blockInput && lvkTargetOk(state, me, myIndex, myIndex);
         const charNeedsCursor = (selectedState.action === "PLAY_BLUE" && selectedState.cardIndex !== null)
             || selectedState.action === 'SHOOT'
-            || healSelfMode
+            || healSelfMode || lvkSelfMode
             || (['Panika!', 'Cat Balou'].includes(selectedState.action) && me.board.length > 0);
         charImg.setInteractive({ useHandCursor: charNeedsCursor });
         charImg._zoomKey = 'char:' + myIndex;
@@ -1414,6 +1440,17 @@ function drawMyArea(ctx) {
             charImg.setTint(0x88ff88);
             charImg.on('pointerdown', () => {
                 socket.emit('discard_extra_choose', { cardIdx: selectedState.cardIndex, targetIdx: myIndex });
+                selectedState = { cardIndex: null, action: null };
+                App.blockInput = true;
+                renderUI();
+            });
+        }
+
+        if (lvkSelfMode) {
+            charImg.setTint(0x88ff88);
+            charImg.on('pointerdown', () => {
+                if (App.blockInput) return;
+                socket.emit('lee_van_kliff', { cardId: selectedState.lvk.cardId, targetIdx: myIndex });
                 selectedState = { cardIndex: null, action: null };
                 App.blockInput = true;
                 renderUI();
@@ -1520,10 +1557,15 @@ function drawMyArea(ctx) {
         // stav se vymění až po dojezdu animace, do té doby by šlo kliknout znovu.
         const isDaltonsMine = !App.blockInput && state.phase === 'SELECTING_TARGET_CARD' &&
             state.pendingSelection?.isDaltons && state.pendingSelection?.targetIdx === myIndex;
+        // Divoký západ – Lee Van Kliff opakující Ragtime na VLASTNÍ stůl: výběr karty
+        // řídí server (attacker === target === já), z vlastní ruky se nebere.
+        const isSelfStealMine = !App.blockInput && state.phase === 'SELECTING_TARGET_CARD' &&
+            state.pendingSelection?.ignoreDistance && state.pendingSelection?.attackerIdx === myIndex &&
+            state.pendingSelection?.targetIdx === myIndex;
         // Probíhá výběr karty na mém stole (Panika/Cat Balou/Krytý vůz/Kankán/Ragtime)?
         // Pak se zelená karta položená tento tah nešediví – je legitimní cíl a musí
         // vypadat normálně (a u Paniky/CB být vidět žluté zvýraznění).
-        const isPickingMyBoard = isPanicCBMyTurn || isGreenStealSelf || isRagtimeSelf || isDaltonsMine;
+        const isPickingMyBoard = isPanicCBMyTurn || isGreenStealSelf || isRagtimeSelf || isDaltonsMine || isSelfStealMine;
         // Reakce zelenou Vedle!-kartou ze stolu (Železný plát/Stetson/Sombrero/Bible).
         // Počítá se i pro kartu položenou TENTO tah (server ji jako reakci uznává, viz
         // handleResponse s boardCardId) → taková karta se nešediví, jde o ni.
@@ -1628,6 +1670,21 @@ function drawMyArea(ctx) {
         if (isDaltonsMine) {
             myBoardSprites.forEach(({ sprite, card, i }) => {
                 if (card._isColt || card.green) return;
+                sprite.setTint(0xffff44);
+                sprite.on('pointerdown', () => {
+                    const hasRealWeapon = me.weapon && me.weapon.id !== -1;
+                    const isWeapon = hasRealWeapon && i === 0;
+                    const area = isWeapon ? 'weapon' : 'board';
+                    const boardIdx = isWeapon ? null : (i - 1);
+                    handlePanicCBClick(myIndex, area, boardIdx);
+                });
+            });
+        }
+
+        // Lee Van Kliff opakující Ragtime na sebe: výběr karty na mém stole řídí server.
+        if (isSelfStealMine) {
+            myBoardSprites.forEach(({ sprite, card, i }) => {
+                if (card._isColt) return;
                 sprite.setTint(0xffff44);
                 sprite.on('pointerdown', () => {
                     const hasRealWeapon = me.weapon && me.weapon.id !== -1;
@@ -1829,6 +1886,11 @@ function drawMyArea(ctx) {
                 const isDocActive = !!selectedState.doc;
                 const isDocStaged = isDocActive && selectedState.doc.staged.includes(index);
                 const isJoseBlue = !!selectedState.jose && isBlueCard(card);
+                // Divoký západ – Lee Van Kliff: nabitá schopnost čeká na kartu BANG!
+                // (pod Zúčtováním na libovolnou). Stejná řeč jako u ceny „odhoď další
+                // kartu": platné karty červeně, ostatní zašedle.
+                const _lvkPayMode = !!selectedState.lvk && selectedState.lvk.cardId == null;
+                const _lvkPayOk = _lvkPayMode && lvkPayOk(state, me, myIndex, card);
                 // Fistful – Ranč: po fázi lízání se z ruky vybírá, co vyměnit. Označená karta
                 // se zmenší a zašedne – stejná řeč jako u Sida/Doca („tahle jde pryč“).
                 const isRanchMine = state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex;
@@ -1863,6 +1925,7 @@ function drawMyArea(ctx) {
                 // Doc: vybrané (2) karty zašednou; José Delgado: modré karty žlutě.
                 if (isDocStaged) cSprite.setTint(0xbbbbbb);
                 if (isJoseBlue) cSprite.setTint(0xffff44);
+                if (_lvkPayMode) cSprite.setTint(_lvkPayOk ? 0xff6666 : 0x777777);
                 // Ranč: celá ruka je klikací (světle modře), označené karty zašednou.
                 if (isRanchMine) cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff);
                 // Fistful – Právo západu: v režimech ceny je vynucená karta mimo hru.
@@ -2054,6 +2117,21 @@ function drawMyArea(ctx) {
                             App.blockInput = true;
                             renderUI();
                             return;
+                        case 'LVK_PAY': {
+                            // Divoký západ – Lee Van Kliff: karta BANG! je vybraná.
+                            // Efekt bez cíle (Pivo, Hokynářství, Rvačka…) se posílá
+                            // rovnou, cílený čeká na klik na postavu.
+                            if (state._lastBrown && state._lastBrown.aim) {
+                                selectedState = { cardIndex: null, action: null, lvk: { cardId: intent.cardId } };
+                                renderUI();
+                                return;
+                            }
+                            socket.emit('lee_van_kliff', { cardId: intent.cardId, targetIdx: null });
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
+                        }
                         case 'FLINT_EXCHANGE':
                             // Divoký západ – Flint Westwood: cíl je vybraný, tohle je
                             // jeho karta na výměnu.
@@ -2472,6 +2550,23 @@ function drawMyArea(ctx) {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, flint: { targetIdx: null } }; renderUI(); },
                 });
+            }
+            // Lee Van Kliff (Divoký západ): odhoď kartu BANG! a zopakuj efekt hnědé
+            // karty, kterou právě zahrál. Nabito → klik na kartu v ruce (cena),
+            // pak podle efektu buď rovnou odchází, nebo se čeká na klik na postavu.
+            // Co je k opakování a čím se smí platit, říká lvkOffer (core/playability.js).
+            {
+                const _lvk = (myPlayTurn || selectedState.lvk) ? lvkOffer(state, me, myIndex) : null;
+                if (_lvk) {
+                    const active = !!selectedState.lvk;
+                    const label = active
+                        ? (selectedState.lvk.cardId == null ? 'LEE: zrušit ↩' : 'LEE: vyber cíl ↩')
+                        : '🔁 OPAKOVAT: ' + _lvk.name;
+                    themeButton(gameScene, L.btnAbilX, BTN_Y, 360, 58, label, {
+                        ...themeToggleStyle(active), fontSize: '18px',
+                        onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, lvk: { cardId: null } }; renderUI(); },
+                    });
+                }
             }
             // Uncle Will (Fistful): 1× za tah zahraj libovolnou kartu jako Hokynářství.
             // Aktivní režim pak čeká na klik na kartu v ruce (stejně jako José/Doc).

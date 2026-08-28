@@ -91,6 +91,12 @@ if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
     globalThis.ricochetTargetOk = __pl.ricochetTargetOk;
     globalThis.ricochetAvailable = __pl.ricochetAvailable;
     globalThis.sniperOffer = __pl.sniperOffer;
+    // Divoký západ – Lee Van Kliff: „je co opakovat, je čím zaplatit a je na koho".
+    // Deskriptor `_lastBrown` staví server, ale ptá se na něj i klient a bot.
+    globalThis.lvkRepeat = __pl.lvkRepeat;
+    globalThis.lvkPayOk = __pl.lvkPayOk;
+    globalThis.lvkTargetOk = __pl.lvkTargetOk;
+    globalThis.lvkOffer = __pl.lvkOffer;
 }
 
 class GameState {
@@ -181,6 +187,7 @@ class GameState {
         this._deadManUsed = false;      // Mrtvý muž: návrat je jednorázový
         this.pendingRoulette = null;    // Ruská ruleta: kolečko odhazování karet Vedle!
         this._advanceRouletteAfterQueue = false;   // …a jeho posun až po frontě odložených akcí
+        this._lastBrown = null;        // Divoký západ – Lee Van Kliff: poslední hnědá karta tahu
         this._vendettaDone = false;     // Vendeta: sejmutí je v jednom tahu jen jednou
         this._extraTurn = false;        // Vendeta: běží tah navíc (nová událost se neodkrývá)
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do

@@ -91,6 +91,10 @@ const DodgeCityMixin = {
         const mainCard = mainIdx2 !== -1 ? player.hand.splice(mainIdx2, 1)[0] : null;
         this.deck.discard(extraCard);           // 1) odhozená karta
         if (mainCard) this.deck.discard(mainCard); // 2) hraná karta navrch
+        // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty. Opakuje se EFEKT,
+        // takže se cena („další karta") podruhé neplatí (Sciarra Q29); u Odstřelovače
+        // (Fistful) si paměť bere i barvu druhé karty Bang! kvůli Apache Kidovi.
+        this._markBrownPlayed(playerIdx, mainCard, { deEffect: effect, extraSuit: extraCard?.suit });
 
         this.pendingDiscardAnother = null;
         this.checkSuzyLafayette(player);

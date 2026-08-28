@@ -462,6 +462,238 @@ const WildWestMixin = {
         if (this._autoEndTurnPending) return;
         this._resumeAfterSpecial();
     },
+
+    // ── Lee Van Kliff ─────────────────────────────────────────────────────────────────
+    // „Během svého tahu smí odhodit kartu BANG! a zopakovat efekt hnědé karty, kterou
+    // právě zahrál."
+    //
+    // Schopnost stojí na PAMĚTI poslední hnědé karty (`_lastBrown`), kterou plní
+    // `_markBrownPlayed` na všech čtyřech cestách, jimiž se hnědá karta hraje: playCard,
+    // playBang, playSpecialCard (logic/play.js) a discardAnotherCard (logic/dodgeCity.js).
+    // Nuluje se na začátku tahu (`_beginTurn`, logic/highNoon.js) – i u Vendetina tahu
+    // navíc, protože ten jde stejným krokovačem.
+    //
+    // Zapamatovaný deskriptor nese i to, JAKÝ cíl opakování potřebuje (`aim`), takže se
+    // klient, bot i server ptají jedním predikátem (lvkOffer/lvkTargetOk,
+    // core/playability.js) a nemají jak se rozejít.
+    //
+    // Pasti, které pravidla explicitně řeší:
+    //   • Každý efekt jen jednou (`repeated`) – poznámka v pravidlech.
+    //   • Cenu „odhoď další kartu" (Rvačka, Ragtime, Whisky) se NEplatí znovu (Sciarra
+    //     Q29): opakuje se efekt, ne aktivace, takže opakování začíná rovnou od efektu.
+    //   • Cíl smí být jiný (FAQ Q13) – proto se vybírá znovu a ten původní se neukládá.
+    //   • Apache Kid: rozhoduje barva PŮVODNÍ hnědé karty, ne odhozeného BANG! (Sciarra Q12).
+    //   • Do limitu 1× Bang!/tah se nepočítá ani odhozený BANG! (není zahraný), ani
+    //     opakovaný efekt – stejný výklad jako u Odstřelovače (FAQ Q07 Fistfulu).
+    //   • Madam Zuzana: opakování se počítá jako zahraná karta, zaplacený BANG! ne (Q24).
+    //   • Dostavník / Wells Fargo: opakování NEMĚNÍ kartu Divokého západu (Sciarra Q19).
+    //   • Zúčtování: zaplatit smí libovolná karta – padá to samo z `bangCardFromHand`.
+
+    // Zapiš právě zahranou HNĚDOU kartu. Hnědá = všechno kromě modrých (isBlueCard,
+    // core/cardRules.js) a zelených. Modrá ani zelená paměť NEMAŽE – „karta, kterou právě
+    // zahrál" je poslední HNĚDÁ karta tohohle tahu; vyložení Mustangu mezitím schopnost
+    // nezruší.
+    // `opts.asBang` = hrálo se to jako karta Bang! / bang-efekt (playBang),
+    // `opts.deEffect` = efekt „odhoď další kartu" (Springfield/Tequila/Whisky/Ragtime/
+    // Rvačka a Odstřelovač z Fistfulu), `opts.extraSuit` = barva druhé karty Odstřelovače.
+    _markBrownPlayed(playerIdx, card, opts = {}) {
+        if (!card || card.green || isBlueCard(card)) return;
+        const spec = this._brownRepeatSpec(card, opts);
+        if (!spec) return;
+        this._lastBrown = Object.assign({
+            playerIdx, turnId: this.turnId,
+            cardId: card.id, name: card.name, type: card.type,
+            suit: card.suit,        // VYTIŠTĚNÁ barva; _effSuit se na ni ptá až při opakování
+            repeated: false,
+        }, spec);
+    },
+
+    // Co se dá u téhle karty zopakovat a jaký cíl na to je potřeba. `null` = nic
+    // (typicky karta, která se ve svém tahu vůbec nehraje).
+    _brownRepeatSpec(card, opts = {}) {
+        if (opts.deEffect) {
+            switch (opts.deEffect) {
+                case 'bang_any':    return { effect: 'bang_any',    aim: 'shoot', range: 'any' };
+                case 'heal_any':    return { effect: 'heal_any',    aim: 'heal' };
+                case 'heal_self_2': return { effect: 'heal_self_2', aim: null };
+                case 'steal_any':   return { effect: 'steal_any',   aim: 'steal' };
+                case 'brawl':       return { effect: 'brawl',       aim: null };
+                case 'sniper':      return { effect: 'sniper',      aim: 'shoot',
+                                             extraSuit: opts.extraSuit != null ? opts.extraSuit : null };
+                default:            return null;
+            }
+        }
+        if (opts.asBang) {
+            // Karta s bang-EFEKTEM (Úder) si nese svůj pevný dostřel; obyčejný Bang!
+            // (i ten, kterým je karta jen pod Zúčtováním) střílí na dostřel zbraně.
+            return card.bangEffect
+                ? { effect: 'BANG_EFFECT', aim: 'shoot', range: card.range != null ? card.range : null }
+                : { effect: 'BANG',        aim: 'shoot', range: null };
+        }
+        switch (card.type) {
+            case CardType.BEER:        return { effect: 'BEER',        aim: null };
+            case CardType.SALOON:      return { effect: 'SALOON',      aim: null };
+            case CardType.STORE:       return { effect: 'STORE',       aim: null };
+            case CardType.STAGECOACH:  return { effect: 'STAGECOACH',  aim: null };
+            case CardType.WELLS_FARGO: return { effect: 'WELLS_FARGO', aim: null };
+            case CardType.INDIANS:     return { effect: 'INDIANS',     aim: null };
+            case CardType.GATLING:     return { effect: 'GATLING',     aim: null };
+            case CardType.DUEL:        return { effect: 'DUEL',        aim: 'duel' };
+            case CardType.PANIC:       return { effect: 'PANIC',       aim: 'panic' };
+            case CardType.CAT_BALOU:   return { effect: 'CAT_BALOU',   aim: 'catbalou' };
+            default:                   return null;
+        }
+    },
+
+    // Hráč odhodil kartu BANG! a opakuje efekt. `targetIdx` = nový cíl (u efektů bez cíle
+    // null). Vrací { paidCardId, targetIdx, effect } pro animaci, nebo null u neplatné
+    // akce (tichý no-op – klient ani bot ji podle lvkOffer nenabídnou).
+    useLeeVanKliff(playerIdx, cardId, targetIdx = null) {
+        if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        if (!p) return null;
+        const lb = lvkOffer(this, p, playerIdx);
+        if (!lb) return null;
+        const i = p.hand.findIndex(c => c && c.id === cardId);
+        if (i === -1 || !lvkPayOk(this, p, playerIdx, p.hand[i])) return null;
+        if (lb.aim && !lvkTargetOk(this, p, playerIdx, targetIdx)) return null;
+
+        lb.repeated = true;                       // každý efekt jen jednou
+        const pay = p.hand.splice(i, 1)[0];
+        this.deck.discard(pay);
+        // Madam Zuzana: opakování je zahraná karta, zaplacený BANG! ne (Sciarra Q24).
+        this._trackCard(playerIdx, lb.type);
+        this.logEvent('special', { who: p.name, card: 'Lee Van Kliff',
+                                   msg: 'opakuje ' + lb.name,
+                                   target: targetIdx != null ? this.players[targetIdx]?.name : null });
+        // Suzy Lafayette: ruka se mohla zaplacením vyprázdnit. Líznutí jde do FRONTY
+        // a odbaví se, až doběhne efekt (viz „nejdřív doběhne efekt" v CLAUDE.md).
+        // Výjimka je stejná jako v playCard: fáze STORE/DRAW si karty rozdají samy
+        // a Suzy by rozdělanou nabídku hokynářství přebila.
+        if (lb.effect !== 'STORE' && lb.effect !== 'STAGECOACH' && lb.effect !== 'WELLS_FARGO') {
+            this.checkSuzyLafayette(p);
+        }
+        this._repeatBrownEffect(playerIdx, lb, targetIdx);
+        return { paidCardId: pay.id, targetIdx: lb.aim ? targetIdx : null, effect: lb.effect };
+    },
+
+    // Znovu spusť efekt zapamatované hnědé karty. Každá větev kopíruje cestu, kterou by
+    // šla karta sama (playCard / playBang / playSpecialCard / _dispatchDiscardExtraEffect),
+    // jen bez odhazování karty a bez placení ceny (Sciarra Q29).
+    _repeatBrownEffect(playerIdx, lb, targetIdx) {
+        const p = this.players[playerIdx];
+        const src = { suit: lb.suit };            // barva PŮVODNÍ hnědé karty (Sciarra Q12)
+        const done = () => { this.phase = "PLAY"; this._processSpecialQueue(); };
+
+        switch (lb.effect) {
+            case 'BANG':
+            case 'BANG_EFFECT':
+            case 'bang_any':
+            case 'sniper': {
+                p.stats.bangsFired++;
+                this.currentAttacker = playerIdx;
+                if (lb.effect === 'sniper') {
+                    // Odstřelovač byl složený ze DVOU karet, takže ho kárová imunita mine
+                    // jen tehdy, byly-li kárové obě (viz _sniperAttack).
+                    const bothD = this._effSuit(src) === Suits.DIAMONDS &&
+                                  this._effSuit({ suit: lb.extraSuit }) === Suits.DIAMONDS;
+                    if (bothD && this._apacheImmune(targetIdx, Suits.DIAMONDS, playerIdx)) { done(); return; }
+                    this.missesPlayed = 0;
+                    this._beginBangResolution(playerIdx, targetIdx, false, 'Odstřelovač', null, 2);
+                } else {
+                    if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx)) { done(); return; }
+                    // isEffect = bang-EFEKT (Úder, Springfield): bez Slabova bonusu.
+                    // Limit 1× Bang!/tah nečerpá ani opakovaný pravý Bang! (viz výš),
+                    // proto se `bangsPlayedThisTurn` nezvyšuje ani v jedné větvi.
+                    this._beginBangResolution(playerIdx, targetIdx, lb.effect !== 'BANG', lb.name);
+                }
+                break;
+            }
+            case 'DUEL': {
+                if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx)) { done(); return; }
+                this.pendingResponse = {
+                    active: true, originatorIdx: playerIdx, targetIdx,
+                    initialTargetIdx: targetIdx,
+                    requiredCard: CardType.BANG, sourceCard: CardType.DUEL, responded: []
+                };
+                this.phase = "RESPOND";
+                break;
+            }
+            case 'PANIC':
+            case 'CAT_BALOU': {
+                const type = lb.effect === 'PANIC' ? CardType.PANIC : CardType.CAT_BALOU;
+                if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx)) { done(); return; }
+                // Kartu si hráč vybere ve fázi SELECTING_TARGET_CARD (stejně jako po
+                // zahrání karty) – frontu proto nechej ležet, dobere ji resolveCardSelection.
+                this.phase = "SELECTING_TARGET_CARD";
+                this.pendingSelection = { attackerIdx: playerIdx, targetIdx, sourceCardType: type };
+                return;
+            }
+            case 'steal_any': {
+                // Ragtime: krádež bez ohledu na vzdálenost, i z vlastního stolu.
+                this.phase = "SELECTING_TARGET_CARD";
+                this.pendingSelection = { attackerIdx: playerIdx, targetIdx,
+                                          sourceCardType: CardType.PANIC, ignoreDistance: true };
+                return;
+            }
+            case 'INDIANS':
+            case 'GATLING': {
+                const type = lb.effect === 'INDIANS' ? CardType.INDIANS : CardType.GATLING;
+                this.missesRequired = 1;
+                this.missesPlayed = 0;
+                this._massAttackSuit = this._effSuit(src);
+                this._massAttackName = lb.name;
+                this._advanceMassAttack(playerIdx, playerIdx, type);
+                break;
+            }
+            case 'BEER': {
+                // Tequila Joe: karta Pivo mu dá +2. Při dvou hráčích Pivo efekt nemá –
+                // pak se ale nedalo ani zahrát, takže tahle paměť vzniknout nemohla.
+                this._heal(p, effectiveCharacter(p) === "Tequila Joe" ? 2 : 1);
+                done();
+                return;
+            }
+            case 'SALOON': {
+                this.players.forEach(q => { this._heal(q, 1); });
+                done();
+                return;
+            }
+            case 'heal_any': {
+                this._heal(this.players[targetIdx], 1);
+                done();
+                return;
+            }
+            case 'heal_self_2': {
+                this._heal(p, 2);
+                done();
+                return;
+            }
+            case 'STORE': {
+                this.openStore();
+                this._processSpecialQueue();
+                return;
+            }
+            case 'STAGECOACH':
+            case 'WELLS_FARGO': {
+                // Sciarra Q19: opakování NEOTÁČÍ kartu Divokého západu – proto se tady
+                // (na rozdíl od playCard) _flipWwsEvent nevolá.
+                this._setDrawPhase({ active: true, playerIdx, isStartOfTurn: false,
+                                     cardsNeeded: lb.effect === 'WELLS_FARGO' ? 3 : 2,
+                                     cardsDrawn: 0, options: ['deck'] });
+                this.phase = "DRAW";
+                this._processSpecialQueue();
+                return;
+            }
+            case 'brawl': {
+                this._startBrawl(playerIdx);
+                return;
+            }
+            default:
+                done();
+                return;
+        }
+        this._processSpecialQueue();
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) {

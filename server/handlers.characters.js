@@ -171,6 +171,30 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Lee Van Kliff (Divoký západ): odhodí kartu BANG! a zopakuje efekt hnědé karty,
+    // kterou právě zahrál. Zaplacená karta letí do odhozu jako každá jiná; efekt se pak
+    // rozjede úplně stejnou cestou jako po zahrání té původní karty (fáze RESPOND,
+    // SELECTING_TARGET_CARD, STORE, DRAW…), takže se veze i všechno kolem – včetně
+    // cinematiky míchání u zopakovaného Hokynářství.
+    on('lee_van_kliff', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const res = gs.useLeeVanKliff(idx, d?.cardId, d?.targetIdx ?? null);
+            if (!res) return;
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.paidCardId });
+            if (res.targetIdx != null && res.targetIdx !== idx) {
+                // Ledger: léčení je přátelské, všechno ostatní nepřátelské.
+                const kind = res.effect === 'heal_any' ? 'support' : 'hostile';
+                ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: res.targetIdx, kind });
+            }
+            if (gs.phase === 'STORE') {
+                const t = ctx.storeCinematicMs?.(gs);
+                room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;
+            }
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
     // Uncle Will (Fistful): 1× za tah zahraje libovolnou kartu z ruky jako Hokynářství.
     on('uncle_will', (d) => {
         withRoom((room, p, gs) => {

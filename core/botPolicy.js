@@ -79,6 +79,13 @@ if (typeof require === 'function') {
     if (typeof showdownBangOk === 'undefined') {
         globalThis.showdownBangOk = require('./playability.js').showdownBangOk;
     }
+    // Divoký západ – Lee Van Kliff: „je co opakovat, čím zaplatit a na koho".
+    if (typeof lvkOffer === 'undefined') {
+        const __pl3 = require('./playability.js');
+        globalThis.lvkOffer = __pl3.lvkOffer;
+        globalThis.lvkPayOk = __pl3.lvkPayOk;
+        globalThis.lvkTargetOk = __pl3.lvkTargetOk;
+    }
     if (typeof nativePlayInTurn === 'undefined') {
         globalThis.nativePlayInTurn = require('./playability.js').nativePlayInTurn;
     }
@@ -869,6 +876,64 @@ function decidePlay(state, myIndex, beliefs) {
         if (idx !== -1 && victim) {
             consider(30, { event: 'flint_westwood',
                            payload: { targetIdx: victim.idx, cardId: me.hand[idx].id } });
+        }
+    }
+    // Lee Van Kliff (Divoký západ): odhodí kartu BANG! a zopakuje efekt hnědé karty,
+    // kterou právě zahrál. Co je k opakování a jaký cíl to chce, říká `lvkOffer`
+    // (core/playability.js) – tentýž predikát, jakým se ptá server, takže se hra jen
+    // botů nemůže zaseknout na tiše odmítnuté akci.
+    // Cena je karta BANG!, takže se to nevyplatí vždycky: opakování „za nic" (léčení na
+    // plný život, krádež hráči bez karet) se rovnou nenabídne a skóre je nižší než
+    // u výstřelu tou samou kartou.
+    const _lvk = lvkOffer(state, me, myIndex);
+    if (_lvk) {
+        // Zaplať tou nejpostradatelnější kartou, kterou to jde (pod Zúčtováním jich
+        // může být víc než jen karty Bang!).
+        let payId = null, payLow = Infinity;
+        me.hand.forEach(c => {
+            if (!lvkPayOk(state, me, myIndex, c)) return;
+            if (keepScore(c) < payLow) { payLow = keepScore(c); payId = c.id; }
+        });
+        const okTarget = (i) => lvkTargetOk(state, me, myIndex, i);
+        let targetIdx = null, score = 0;
+        if (payId != null) {
+            switch (_lvk.aim) {
+                case 'shoot':
+                case 'duel': {
+                    const t = shootTargets(state, myIndex, beliefs).find(e => okTarget(e.idx));
+                    if (t) { targetIdx = t.idx; score = _lvk.effect === 'sniper' ? 34 : 30; }
+                    break;
+                }
+                case 'panic':
+                case 'catbalou':
+                case 'steal': {
+                    const t = rankEnemies(state, myIndex, beliefs)
+                        .find(e => okTarget(e.idx) && _hasWorthTaking(state.players[e.idx]));
+                    if (t) { targetIdx = t.idx; score = 26; }
+                    break;
+                }
+                case 'heal': {
+                    if (me.health < me.maxHealth) { targetIdx = myIndex; score = me.health <= 2 ? 30 : 10; }
+                    break;
+                }
+                default: {
+                    // Efekty bez cíle. Karty za víc karet vrací zaplacený BANG! s úrokem,
+                    // léčení má cenu jen se zraněním, hromadný útok jen s převahou nepřátel.
+                    if (_lvk.effect === 'WELLS_FARGO') score = 34;
+                    else if (_lvk.effect === 'STAGECOACH' || _lvk.effect === 'STORE') score = 30;
+                    else if (_lvk.effect === 'brawl') score = 24;
+                    else if (_lvk.effect === 'BEER' || _lvk.effect === 'SALOON' || _lvk.effect === 'heal_self_2') {
+                        if (me.health < me.maxHealth) score = me.health <= 2 ? 30 : 8;
+                    } else if (_lvk.effect === 'INDIANS' || _lvk.effect === 'GATLING') {
+                        const bal = aoeBalance();
+                        if (bal.pos > bal.neg) score = 26;
+                    }
+                    break;
+                }
+            }
+        }
+        if (payId != null && score > 0 && (!_lvk.aim || targetIdx != null)) {
+            consider(score, { event: 'lee_van_kliff', payload: { cardId: payId, targetIdx } });
         }
     }
     if (ch === 'Doc Holyday' && !me._docUsed && me.hand.length >= 3) {

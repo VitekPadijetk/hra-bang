@@ -561,6 +561,92 @@ function sniperOffer(state, me, myIndex, card) {
     return state.players.some((p, i) => i !== myIndex && isInPlay(p) && computeCanHit(state, myIndex, i));
 }
 
+// ── Divoký západ – Lee Van Kliff ─────────────────────────────────
+// „Během svého tahu smí odhodit kartu BANG! a zopakovat efekt hnědé karty, kterou
+// právě zahrál."
+//
+// Paměť poslední hnědé karty (`state._lastBrown`) staví server (`_markBrownPlayed`
+// v logic/wildWest.js) a nese v sobě i to, JAKÝ cíl opakování potřebuje (`aim`) –
+// klient, bot i server se tak ptají jedním a týmž predikátem a nemají jak se rozejít.
+// Aktivuje ji jen skutečná karta BANG! (Sciarra Q23), ne karta s bang-EFEKTEM – ptá se
+// proto přes `bangCardFromHand`, takže pod Zúčtováním postačí libovolná karta (poznámka
+// v pravidlech). Odhozený BANG! se do limitu 1× Bang!/tah nepočítá (není zahraný, Q24).
+
+// Co je teď k opakování? (deskriptor `_lastBrown`, nebo null)
+function lvkRepeat(state, me, myIndex) {
+    if (effectiveCharacter(me) !== "Lee Van Kliff") return null;
+    if (!isPlayTurn(state, myIndex)) return null;
+    const lb = state._lastBrown;
+    if (!lb || lb.repeated) return null;                       // každý efekt jen jednou
+    if (lb.playerIdx !== myIndex || lb.turnId !== state.turnId) return null;
+    return lb;
+}
+
+// Smí táhle karta z ruky zaplatit opakování?
+function lvkPayOk(state, me, myIndex, card) {
+    if (!lvkRepeat(state, me, myIndex)) return false;
+    if (!bangCardFromHand(state, me, myIndex, card)) return false;
+    // Právo západu (Fistful): vynucenou kartou se platit nedá a zamknout může i samotný
+    // úbytek karty z ruky. Opakování limit Bang! nečerpá → noBangLimit.
+    if (lawProtectedCard(state, me, myIndex, card)) return false;
+    return !lawLocksOther(state, me, myIndex, null, { noBangLimit: true, discards: 1 });
+}
+
+// Dostřel opakovaného výstřelu: undefined = dostřel zbraně (Bang!), číslo (Úder = 1),
+// Infinity (Springfield). Uložený `range` je syrová hodnota z karty, protože Infinity
+// by se přes JSON nepřeneslo.
+function lvkReach(lb) {
+    if (!lb || lb.aim !== 'shoot') return undefined;
+    if (lb.range === 'any') return Infinity;
+    return typeof lb.range === 'number' ? lb.range : undefined;
+}
+
+// Má hráč vůbec kartu, o kterou by šlo přijít? (Z vlastní ruky se nekrade – stejně
+// jako u Ragtime na sebe, viz startDiscardExtra.)
+function lvkHasCard(state, myIndex, i) {
+    const p = state.players[i];
+    if (!p) return false;
+    const hand = i === myIndex ? 0 : (p.hand || []).length;
+    return hand > 0 || (p.board || []).length > 0 || !!(p.weapon && p.weapon.id !== -1);
+}
+
+// Je hráč `targetIdx` platným cílem opakovaného efektu? (FAQ Q13: cíl smí být jiný než
+// původní.) Jediný zdroj pravdy pro server (useLeeVanKliff), klienta i bota.
+function lvkTargetOk(state, me, myIndex, targetIdx) {
+    const lb = lvkRepeat(state, me, myIndex);
+    if (!lb || !lb.aim) return false;
+    const t = state.players[targetIdx];
+    if (!t || !isInPlay(t)) return false;
+    switch (lb.aim) {
+        case 'shoot':
+            return targetIdx !== myIndex &&
+                   computeCanHit(state, myIndex, targetIdx, lvkReach(lb));
+        case 'duel':
+            return targetIdx !== myIndex;
+        case 'panic':    // Panika!: dosah 1 (Ragtime má vlastní aim)
+            return targetIdx !== myIndex && lvkHasCard(state, myIndex, targetIdx) &&
+                   computeDistance(state, myIndex, targetIdx) <= 1;
+        case 'catbalou':
+            return targetIdx !== myIndex && lvkHasCard(state, myIndex, targetIdx);
+        case 'steal':    // Ragtime: bez ohledu na vzdálenost, i na vlastní stůl
+            return lvkHasCard(state, myIndex, targetIdx);
+        case 'heal':     // Tequila: kdokoli ve hře (i sám sebe)
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Je opakování právě teď k dispozici? (Je co opakovat, je čím zaplatit a – potřebuje-li
+// efekt cíl – je i na koho.) Podle toho se kreslí tlačítko a rozhoduje bot.
+function lvkOffer(state, me, myIndex) {
+    const lb = lvkRepeat(state, me, myIndex);
+    if (!lb) return null;
+    if (!(me.hand || []).some(c => lvkPayOk(state, me, myIndex, c))) return null;
+    if (lb.aim && !state.players.some((p, i) => lvkTargetOk(state, me, myIndex, i))) return null;
+    return lb;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { cardPlayability, nativePlayInTurn, lawForcedCard, lawSelfShootOnly, lawLocksOther,
                        lawProtectedCard, lawHandcuffsSuit,
@@ -568,5 +654,6 @@ if (typeof module !== 'undefined' && module.exports) {
                        playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, bigSpencerBlocked,
                        turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
-                       ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer };
+                       ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer,
+                       lvkRepeat, lvkPayOk, lvkReach, lvkTargetOk, lvkOffer };
 }

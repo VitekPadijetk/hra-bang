@@ -97,6 +97,9 @@ const HighNoonMixin = {
         // fázi lízání (_startMineTurn). Zahodit ho je nutné tady: fáze 3 předchozího tahu
         // už proběhla a kontroly na Dynamit/Vězení pod důl nespadají.
         this._mineTurn = false;
+        // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty patří jednomu tahu.
+        // Sedí tady, protože tímhle krokovačem jde i Vendetin tah navíc (Fistful).
+        this._lastBrown = null;
         return this._runBeginTurn();
     },
 
