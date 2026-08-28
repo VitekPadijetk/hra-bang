@@ -647,3 +647,37 @@ test('3P: role zabírá první slot skupiny a modré se posunou za ni', () => {
     assert.deepEqual(getBoardCardPos(1, 1), blue);
     global.state = null; global.myIndex = null;
 });
+
+// ── Dráha životů soupeřů (Divoký západ: postavy nad 5 životů) ────────────────
+// Nad 5 životů leží v ose pohybu portrétu druhá karta životů (core/layout.js livesTrack).
+// Osa míří dovnitř stolu, takže se musí ohlídat, že na balíčky nedosáhne ANI JEDNA karta
+// dráhy – u žádného sedadla a žádného počtu hráčů. (Portrét sám při 9–10 životech na
+// balíčky dosáhnout smí; je to vědomá daň varianty „dráha v řadě" a týká se jen
+// Big Spencera u plného zdraví.)
+test('obě karty dráhy životů soupeře zůstanou mimo balíčky', () => {
+    const { livesTrack, CARD_ART_W: CARD_W, CARD_ART_H: CARD_H } = require('../core/layout.js');
+    const L = LAYOUT_PROFILES.desktop;
+    const deckLeft = L.centerX - L.deckOffX - CARD_W * L.scaleDeck / 2;
+    const deckRight = L.centerX + L.deckOffX + CARD_W * L.scaleDeck / 2;
+    const deckTop = L.pileY - CARD_H * L.scaleDeck / 2;
+    for (let total = 3; total <= 8; total++) {
+        setWorld(Array.from({ length: total }, () => ({ health: 4, hand: [], board: [], weapon: { id: -1 } })), 0);
+        const scale = oppScale(L, total - 1);
+        const t = livesTrack(10, scale);
+        assert.equal(t.cards, 2);
+        const halfW = CARD_W * scale / 2, halfH = CARD_H * scale / 2;
+        for (const a of getOpponentAnchors(total)) {
+            // Karta životů je otočená: u boků je „výška" vodorovně, nahoře svisle.
+            for (let i = 0; i < t.cards; i++) {
+                const off = i * t.cardOff;
+                if (a.side === 'left') {
+                    assert.ok(a.x + off + halfH <= deckLeft, `${total} hráčů, vlevo, karta ${i}`);
+                } else if (a.side === 'right') {
+                    assert.ok(a.x - off - halfH >= deckRight, `${total} hráčů, vpravo, karta ${i}`);
+                } else {
+                    assert.ok(a.y + off + halfW <= deckTop, `${total} hráčů, nahoře, karta ${i}`);
+                }
+            }
+        }
+    }
+});

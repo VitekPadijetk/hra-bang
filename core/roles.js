@@ -59,10 +59,18 @@ const LOW_HEALTH_CHARS = ["Paul Regret", "El Gringo",
     // Dodge City – postavy se 3 životy (Apache Kid a Vera Custer přibudou ve fázi 7).
     "Elena Fuente", "Pixie Pete", "Sean Mallory", "Apache Kid", "Vera Custer",
     // A Fistful of Cards
-    "Claus the Saint"];
+    "Claus the Saint",
+    // Divoký západ
+    "Teren Kill"];
+
+// Divoký západ přinesl PRVNÍ postavy nad 4 životy. Big Spencer je důvod, proč má karta
+// životů dvojče: dráha nad 5 životů se skládá ze dvou karet (core/layout.js livesTrack).
+// Jako šerif má Big Spencer 10 a Gary Looter 6.
+const HIGH_HEALTH_CHARS = { "Big Spencer": 9, "Gary Looter": 5 };
 
 // Základní počet životů postavy (bez šerifova bonusu).
 function baseHealthForCharacter(charName) {
+    if (HIGH_HEALTH_CHARS[charName]) return HIGH_HEALTH_CHARS[charName];
     return LOW_HEALTH_CHARS.includes(charName) ? 3 : 4;
 }
 
@@ -74,6 +82,6 @@ function healthForCharacter(charName, role) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { rolesForPlayerCount, baseHealthForCharacter, healthForCharacter,
-                       LOW_HEALTH_CHARS, ROLE_CZ, roleNameCz,
+                       LOW_HEALTH_CHARS, HIGH_HEALTH_CHARS, ROLE_CZ, roleNameCz,
                        TARGET_3P, isThreePlayerMode, firstPlayerIndex };
 }

@@ -75,6 +75,24 @@ test('baseHealthForCharacter: Paul Regret a El Gringo mají 3, ostatní 4', () =
     assert.equal(baseHealthForCharacter("Johnny Kisch"), 4);
 });
 
+// Divoký západ přinesl první postavy nad 4 životy – jsou důvodem druhé karty životů
+// (dráha o 10 slotech, core/layout.js livesTrack).
+test('baseHealthForCharacter: Divoký západ – 9, 5 a 3 životy', () => {
+    assert.equal(baseHealthForCharacter("Big Spencer"), 9);
+    assert.equal(baseHealthForCharacter("Gary Looter"), 5);
+    assert.equal(baseHealthForCharacter("Teren Kill"), 3);
+    // Zbylých pět postav rozšíření má obvyklé 4.
+    for (const ch of ["Flint Westwood", "Greygory Deck", "John Pain", "Lee Van Kliff", "Youl Grinner"]) {
+        assert.equal(baseHealthForCharacter(ch), 4, ch);
+    }
+});
+
+test('healthForCharacter: šerifův bonus platí i nad 5 životů', () => {
+    assert.deepEqual(healthForCharacter("Big Spencer", "Sheriff"), { base: 9, max: 10 });
+    assert.deepEqual(healthForCharacter("Big Spencer", "Outlaw"), { base: 9, max: 9 });
+    assert.deepEqual(healthForCharacter("Gary Looter", "Sheriff"), { base: 5, max: 6 });
+});
+
 test('healthForCharacter: šerif má +1, ostatní base', () => {
     assert.deepEqual(healthForCharacter("Bart Cassidy", "Sheriff"), { base: 4, max: 5 });
     assert.deepEqual(healthForCharacter("Bart Cassidy", "Outlaw"), { base: 4, max: 4 });

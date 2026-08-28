@@ -10,6 +10,7 @@ const {
     compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
     oppScale, handCardScale, myHandRow, myHandSlotX,
     boardBand, boardSlot,
+    LIVES_PER_CARD, livesTrack, livesSlot,
 } = require('../core/layout.js');
 
 before(() => { console.log = () => {}; });
@@ -440,18 +441,23 @@ describe('compactAnchors – sloupce soupeřů', () => {
 });
 
 describe('kompaktní sloupec se vejde do své šířky', () => {
-    // Portrét jede po nábojích doprava (jako soupeř vlevo), takže při 5 životech sahá
-    // skupina nejdál – nesmí přesto vylézt ze sloupce k sousedovi.
-    test('životy + portrét při plných 5 životech', () => {
+    // Portrét jede po nábojích doprava (jako soupeř vlevo), takže při plné dráze sahá
+    // skupina nejdál – nesmí přesto vylézt ze sloupce k sousedovi. Sloupec je široký
+    // jednu kartu, takže se dráha nedělí ani u postav nad 5 životů (Big Spencer 10):
+    // portrét se zastaví na 5. slotu a zbytek drží číslo (rozhodnutí R11).
+    test('životy + portrét na konci dráhy', () => {
         for (const [vw, vh] of STAGES) {
             const st = computeStage(vw, vh);
             for (let n = 1; n <= 7; n++) {
-                const m = compactMetrics(n, MOB, st);
-                const a = compactAnchors(n, MOB, st)[n - 1];
-                const bulletH = m.cardH * 0.93 / 5;
-                const right = a.x + bulletH * 5 + m.cardH / 2;
-                assert.ok(right <= compactColLeft(a, m) + m.colW + 1e-9,
-                    `${vw}×${vh} n=${n}: portrét vyčnívá`);
+                for (const maxHp of [4, 5, 9, 10]) {
+                    const m = compactMetrics(n, MOB, st);
+                    const a = compactAnchors(n, MOB, st)[n - 1];
+                    const t = livesTrack(maxHp, m.scale, 1);
+                    assert.strictEqual(t.cards, 1, 'kompaktní sloupec zůstává jednokartový');
+                    const right = a.x + t.step * livesSlot(t, maxHp) + m.cardH / 2;
+                    assert.ok(right <= compactColLeft(a, m) + m.colW + 1e-9,
+                        `${vw}×${vh} n=${n} hp=${maxHp}: portrét vyčnívá`);
+                }
             }
         }
     });
@@ -696,5 +702,82 @@ describe('boardBand – pás vyložených karet', () => {
                             CARD_ART_W * mob.scaleMe, mob.boardGap);
         assert.strictEqual(b.rows, 1);
         for (let i = 0; i < 15; i++) assert.strictEqual(boardSlot(i, b).row, 0);
+    });
+});
+
+// ── Dráha životů (Divoký západ: postavy nad 5 životů) ────────────────────────
+// Karta životů má 5 nábojů; nad 5 se v ose pohybu portrétu vyloží druhá karta a dvojice
+// tvoří jednu souvislou dráhu o 10 slotech. Pro postavy do 5 životů musí vyjít pixelově
+// dnešní stav – to je podmínka, ne cíl.
+describe('livesTrack – dráha životů', () => {
+    const DESK = LAYOUT_PROFILES.desktop;
+    const legacyStep = (scale) => CARD_ART_H * scale * 0.93 / 5;
+
+    test('do 5 životů je dráha jednokartová a krok je dnešní', () => {
+        for (const hp of [1, 3, 4, 5]) {
+            for (const scale of [DESK.scaleMe, DESK.scaleOpp, DESK.specScale, 0.25]) {
+                const t = livesTrack(hp, scale);
+                assert.strictEqual(t.cards, 1, `hp=${hp}`);
+                assert.strictEqual(t.slots, 5);
+                assert.strictEqual(t.counter, false);
+                assert.ok(Math.abs(t.step - legacyStep(scale)) < 1e-12, 'krok se nezměnil');
+            }
+        }
+    });
+
+    test('nad 5 životů přibude druhá karta o 5 nábojů dál', () => {
+        for (const hp of [6, 9, 10]) {
+            const t = livesTrack(hp, DESK.scaleMe);
+            assert.strictEqual(t.cards, 2, `hp=${hp}`);
+            assert.strictEqual(t.slots, 10);
+            assert.strictEqual(t.counter, false);
+            assert.ok(Math.abs(t.cardOff - LIVES_PER_CARD * t.step) < 1e-12);
+        }
+        // Karty se překrývají o 0,07 výšky karty (5 nábojů = 0,93), takže rozestup
+        // nábojů zůstane přes obě karty stejný.
+        const t = livesTrack(9, DESK.scaleMe);
+        assert.ok(t.cardOff < CARD_ART_H * DESK.scaleMe, 'druhá karta na první navazuje s překryvem');
+    });
+
+    test('kompaktní sloupec (maxCards 1) drží jednu kartu a hlásí číslo', () => {
+        const t = livesTrack(9, 0.25, 1);
+        assert.strictEqual(t.cards, 1);
+        assert.strictEqual(t.slots, 5);
+        assert.strictEqual(t.counter, true, 'přebytek se dopíše číslem');
+        assert.strictEqual(livesSlot(t, 9), 5, 'portrét se zastaví na konci dráhy');
+        assert.strictEqual(livesSlot(t, 3), 3);
+        assert.strictEqual(livesSlot(t, 0), 0);
+        assert.strictEqual(livesSlot(t, -2), 0, 'mrtvý portrét nejede pod nulu');
+    });
+
+    test('na plné dráze se portrét nezastavuje', () => {
+        const t = livesTrack(10, LAYOUT_PROFILES.desktop.scaleMe);
+        assert.strictEqual(livesSlot(t, 10), 10);
+        assert.strictEqual(livesSlot(t, 7), 7);
+    });
+});
+
+// Obě karty dráhy leží pod balíčky i pod pásmem soupeřů: druhá karta končí přesně tam,
+// kde dnes při 5 životech dosahuje portrét (cardOff = 5 × step), takže se nejtěsnější
+// místo rozložení nemění. Portrét sám nad 8 životů (Big Spencer) na balíčky dosáhne –
+// to je vědomá daň zvolené varianty „dráha v řadě".
+describe('moje dráha životů – druhá karta nedosáhne na balíčky', () => {
+    const halfH = (s) => CARD_ART_H * s / 2;
+
+    test('mobil: druhá karta zůstane pod pásmem soupeřů', () => {
+        for (const [vw, vh] of STAGES) {
+            const st = computeStage(vw, vh);
+            const L = resolveLayout(MOB, st);
+            const t = livesTrack(10, L.scaleMe);
+            const top = L.myBaseY - t.cardOff - halfH(L.scaleMe);
+            assert.ok(top >= L.oppTop + L.oppBandH + 1e-9, `${vw}×${vh}: druhá karta v pásmu soupeřů`);
+        }
+    });
+
+    test('desktop: druhá karta zůstane pod balíčky', () => {
+        const L = LAYOUT_PROFILES.desktop;
+        const t = livesTrack(10, L.scaleMe);
+        const top = L.myBaseY - t.cardOff - halfH(L.scaleMe);
+        assert.ok(top >= L.pileY + halfH(L.scaleDeck) + 1e-9, 'druhá karta na balíčcích');
     });
 });

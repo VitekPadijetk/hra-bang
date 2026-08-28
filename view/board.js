@@ -295,10 +295,14 @@ const STAR_DEPTH = 46;
 // správným směrem. Plovoucí sprite (mimo cardsSprites → přežije re-render) jede ze
 // staré pozice na aktuální (tx,ty = pozice pro nové životy); statická postava je po
 // tu dobu skrytá. dirX/dirY = směr posunu o +1 život. Vrací true → statickou skrýt.
-function runHealthSlide(playerIdx, curHealth, tx, ty, bulletH, dirX, dirY, angle, scale, charTex, starOpts) {
+// `slots` = kapacita dráhy životů (core/layout.js livesTrack): v kompaktním sloupci se
+// portrét nad 5 životy zastaví na konci dráhy a zbytek drží číslo, takže se o stejný
+// strop musí opřít i posun – jinak by slide vyjel z pozice, kde portrét nikdy nebyl.
+function runHealthSlide(playerIdx, curHealth, tx, ty, bulletH, dirX, dirY, angle, scale, charTex, starOpts, slots) {
     const anim = App.healthAnims[playerIdx];
     if (!anim) return false;
-    const delta = curHealth - anim.fromHealth;
+    const cap = (h) => Math.max(0, Math.min(slots ?? Infinity, h));
+    const delta = cap(curHealth) - cap(anim.fromHealth);
     if (delta === 0) { delete App.healthAnims[playerIdx]; return false; }
     if (!anim.sprite || !anim.sprite.active) {
         const sx = tx - dirX * bulletH * delta;
@@ -457,6 +461,33 @@ function reflowStatic(key, sprite, tex, scale, angle, sliding, depth = 0) {
     reflowCard(key, sprite, sprite.x, sprite.y, tex, scale, angle, depth);
 }
 
+// ── Druhá karta životů (postavy nad 5 životů – Divoký západ) ─────────────────
+// Leží v OSE POHYBU portrétu o 5 nábojů dál, takže dvojice tvoří jednu souvislou dráhu
+// o 10 slotech (livesTrack v core/layout.js) a portrét po ní jede beze změny vzorce.
+// Kreslí se hned za nultou kartou a PŘED portrétem, aby ji portrét překryl.
+function drawExtraLivesCards(track, x, y, dirX, dirY, scale, angle, key) {
+    const out = [];
+    for (let i = 1; i < track.cards; i++) {
+        const sp = gameScene.add.image(x + dirX * i * track.cardOff, y + dirY * i * track.cardOff, 'lives')
+            .setScale(scale).setAngle(angle);
+        gameScene.cardsSprites.add(sp);
+        if (key) reflowStatic(key + i, sp, 'lives', scale, angle, false);
+        out.push(sp);
+    }
+    return out;
+}
+
+// Kompaktní sloupec soupeře (mobil) je široký přesně jednu kartu, takže se dráha nedělí
+// a životy nad 5 se dopíšou číslem vedle portrétu (rozhodnutí R11 plánu).
+function drawLivesCounter(track, player, x, y) {
+    if (!track.counter) return;
+    const txt = gameScene.add.text(x, y, String(Math.max(0, player.health)),
+        { fontSize: '20px', color: '#ffdd66', fontStyle: 'bold',
+          backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 6, y: 2 } })
+        .setOrigin(0.5).setDepth(STAR_DEPTH);
+    gameScene.cardsSprites.add(txt);
+}
+
 // ── Soupeři kolem stolu (vykresleno relativně k mému indexu) ──────────────────
 function drawOpponents(ctx) {
     const { anchors, scaleOpp, getTex, getCharTex, isMyDraw, handlePanicCBClick, L } = ctx;
@@ -537,8 +568,12 @@ function drawOpponents(ctx) {
         const cardH = 500 * scaleOpp;
         const gap = L.oppGap;
 
-        const bulletsH = cardH * 0.93;
-        const bulletH = bulletsH / 5;
+        // Dráha životů: nad 5 životů (Big Spencer, Gary Looter) se v ose pohybu portrétu
+        // vyloží druhá karta a dvojice se chová jako jedna dráha o 10 slotech. Kompaktní
+        // sloupec (mobil) zůstává jednokartový a přebytek ukáže číslem (R11).
+        const livesT = livesTrack(player.maxHealth, scaleOpp, anchor.side === 'compact' ? 1 : 2);
+        const bulletH = livesT.step;
+        const healthSlot = livesSlot(livesT, player.health);
 
         let allBoardCards = [];
         if (player.weapon && player.weapon.id !== -1) allBoardCards.push(player.weapon);
@@ -859,7 +894,7 @@ function drawOpponents(ctx) {
         if (anchor.side === 'compact') {
             drawCompactOpponent({
                 player, actualIdx, anchor, scaleOpp, getCharTex, L,
-                cardW, cardH, bulletH, displayCards, handFan, handLen,
+                cardW, cardH, bulletH, livesT, healthSlot, displayCards, handFan, handLen,
                 isCurrent, isWaiting, isClausTarget, attack: _attack,
                 waiting: _waiting, waitTint: WAIT_TINT, starScale,
                 drawBoardCard, drawHandCard, addCharInteraction,
@@ -876,8 +911,9 @@ function drawOpponents(ctx) {
 
             let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
             gameScene.cardsSprites.add(livesOpp);
+            drawExtraLivesCards(livesT, livesCX, livesCY, 1, 0, scaleOpp, angle, 'olives' + actualIdx + '_');
 
-            let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
+            let charOpp = gameScene.add.image(livesCX + bulletH * healthSlot, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
             if (applyAttackTint(charOpp, actualIdx, _attack)) { /* útočník – červeně */ }
             else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
@@ -886,7 +922,7 @@ function drawOpponents(ctx) {
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
             const _slidingL = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 1, 0, angle, scaleOpp, getCharTex(player.character),
-                player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null);
+                player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingL);
             registerVeraPortrait(charOpp, player, getCharTex);
@@ -949,8 +985,9 @@ function drawOpponents(ctx) {
 
             let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
             gameScene.cardsSprites.add(livesOpp);
+            drawExtraLivesCards(livesT, livesCX, livesCY, 0, 1, scaleOpp, angle, 'olives' + actualIdx + '_');
 
-            let charOpp = gameScene.add.image(livesCX, livesCY + bulletH * player.health, getCharTex(player.character))
+            let charOpp = gameScene.add.image(livesCX, livesCY + bulletH * healthSlot, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
             if (applyAttackTint(charOpp, actualIdx, _attack)) { /* útočník – červeně */ }
             else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
@@ -959,7 +996,7 @@ function drawOpponents(ctx) {
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
             const _slidingT = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 0, 1, angle, scaleOpp, getCharTex(player.character),
-                player.role === "Sheriff" ? { dx: cardW * 0.42, dy: cardH * 0.45, scale: starScale } : null);
+                player.role === "Sheriff" ? { dx: cardW * 0.42, dy: cardH * 0.45, scale: starScale } : null, livesT.slots);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingT);
             registerVeraPortrait(charOpp, player, getCharTex);
@@ -1021,8 +1058,9 @@ function drawOpponents(ctx) {
 
             let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
             gameScene.cardsSprites.add(livesOpp);
+            drawExtraLivesCards(livesT, livesCX, livesCY, -1, 0, scaleOpp, angle, 'olives' + actualIdx + '_');
 
-            let charOpp = gameScene.add.image(livesCX - bulletH * player.health, livesCY, getCharTex(player.character))
+            let charOpp = gameScene.add.image(livesCX - bulletH * healthSlot, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
             if (applyAttackTint(charOpp, actualIdx, _attack)) { /* útočník – červeně */ }
             else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
@@ -1031,7 +1069,7 @@ function drawOpponents(ctx) {
             addCharInteraction(charOpp);
             gameScene.cardsSprites.add(charOpp);
             const _slidingR = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, -1, 0, angle, scaleOpp, getCharTex(player.character),
-                player.role === "Sheriff" ? { dx: -cardH * 0.45, dy: cardW * 0.42, scale: starScale } : null);
+                player.role === "Sheriff" ? { dx: -cardH * 0.45, dy: cardW * 0.42, scale: starScale } : null, livesT.slots);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingR);
             registerVeraPortrait(charOpp, player, getCharTex);
@@ -1096,7 +1134,7 @@ function drawOpponents(ctx) {
 // proto se sem předávají v ctx – tělo zůstává jen kreslení.
 function drawCompactOpponent(ctx) {
     const { player, actualIdx, anchor, scaleOpp, getCharTex, L,
-            cardW, cardH, bulletH, displayCards, handFan, handLen,
+            cardW, cardH, bulletH, livesT, healthSlot, displayCards, handFan, handLen,
             isCurrent, isWaiting, isClausTarget, attack, waiting, waitTint, starScale,
             drawBoardCard, drawHandCard, addCharInteraction } = ctx;
 
@@ -1108,7 +1146,7 @@ function drawCompactOpponent(ctx) {
     let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
     gameScene.cardsSprites.add(livesOpp);
 
-    let charOpp = gameScene.add.image(livesCX + bulletH * player.health, livesCY, getCharTex(player.character))
+    let charOpp = gameScene.add.image(livesCX + bulletH * healthSlot, livesCY, getCharTex(player.character))
         .setScale(scaleOpp).setAngle(angle);
     if (applyAttackTint(charOpp, actualIdx, attack)) { /* útočník – červeně */ }
     else if (isClausTarget) charOpp.setTint(CLAUS_TINT);
@@ -1117,7 +1155,7 @@ function drawCompactOpponent(ctx) {
     addCharInteraction(charOpp);
     gameScene.cardsSprites.add(charOpp);
     const _slidingC = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 1, 0, angle, scaleOpp, getCharTex(player.character),
-        player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null);
+        player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
     reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
     reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingC);
     registerVeraPortrait(charOpp, player, getCharTex);
@@ -1130,6 +1168,10 @@ function drawCompactOpponent(ctx) {
         gameScene.cardsSprites.add(star);
         reflowStatic('ostar' + actualIdx, star, 'sheriff_star', starScale, angle, _slidingC, STAR_DEPTH);
     }
+
+    // Sloupec je široký jednu kartu, takže se dráha životů nedělí – nad 5 se dopíše
+    // číslo do rohu naproti hvězdě (viz drawLivesCounter / R11 plánu).
+    drawLivesCounter(livesT, player, charOpp.x + cardH * 0.4, charOpp.y + cardW * 0.34);
 
     // Vyložené karty stojí (angle 0) v jedné řadě – čitelné stejně jako moje.
     displayCards.forEach((card, bIdx) => {
@@ -1216,11 +1258,19 @@ function drawMyArea(ctx) {
             }
         }
 
+        // Dráha životů (core/layout.js): nad 5 životů leží druhá karta o 5 nábojů výš
+        // a portrét po dvojici jede jako po jedné desetislotové dráze.
+        const myLivesT = livesTrack(me.maxHealth, scaleMe);
+        const myHealthSlot = livesSlot(myLivesT, me.health);
         let livesImg = gameScene.add.image(livesX, myBaseY, 'lives').setScale(scaleMe);
         // High Noon (přibalené) – Nová identita: odložená druhá postava JE tahle karta
         // (rub karty postavy = počítadlo životů), žádná další se nepřidává. Během
         // cinematiky výměny (App.niHideSecond) letí doprostřed → na svém místě není.
         if (App.niHideSecond) livesImg.setVisible(false);
+
+        // Obarvení a klik patří CELÉ dráze životů, ne jen nulté kartě – hráč klika na
+        // „životy". Větve níž je nastaví pro livesImg a druhá karta je pak převezme.
+        let _myLivesTint = null, _myLivesClick = null;
 
         const isMyDynamiteDamage = state.phase === "DYNAMITE_DAMAGE" &&
             state.pendingDynamiteDamage?.playerIdx === myIndex;
@@ -1229,9 +1279,8 @@ function drawMyArea(ctx) {
             state.pendingNoonDamage?.playerIdx === myIndex;
 
         if (state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex) {
-            livesImg.setTint(0xff4444);
-            livesImg.setInteractive({ useHandCursor: true });
-            livesImg.on('pointerdown', () => {
+            _myLivesTint = 0xff4444;
+            _myLivesClick = () => {
                 // Zamčené UI (běží animace / cinematika vyřazení) → klik ignoruj; jinak
                 // by šlo „schytat zásah" ještě jednou, než dorazí nový stav.
                 if (App.blockInput) return;
@@ -1239,38 +1288,41 @@ function drawMyArea(ctx) {
                 if (state.pendingResponse) state.pendingResponse.active = false;
                 App.blockInput = true;
                 renderUI();
-            });
+            };
         } else if (isMyDynamiteDamage) {
-            livesImg.setTint(0xff4444);
-            livesImg.setInteractive({ useHandCursor: true });
-            livesImg.on('pointerdown', () => {
+            _myLivesTint = 0xff4444;
+            _myLivesClick = () => {
                 if (App.blockInput) return;
                 socket.emit('take_dynamite_hit');
                 App.blockInput = true;
                 renderUI();
-            });
+            };
         } else if (isMyNoonDamage) {
-            livesImg.setTint(0xff4444);
-            livesImg.setInteractive({ useHandCursor: true });
-            livesImg.on('pointerdown', () => {
+            _myLivesTint = 0xff4444;
+            _myLivesClick = () => {
                 if (App.blockInput) return;
                 socket.emit('take_noon_hit');
                 App.blockInput = true;
                 renderUI();
-            });
+            };
         } else if (selectedState.chuck && state.phase === "PLAY" && state.currentPlayerIndex === myIndex) {
             // Chuck Wengam nabitý: klik na životy = ztrať 1 život → lízni 2 (ručně na balíček).
-            livesImg.setTint(0xff8844);
-            livesImg.setInteractive({ useHandCursor: true });
-            livesImg.on('pointerdown', () => {
+            _myLivesTint = 0xff8844;
+            _myLivesClick = () => {
                 if (App.blockInput) return;
                 socket.emit('chuck_wengam');
                 selectedState = { cardIndex: null, action: null };
                 App.blockInput = true;
                 renderUI();
-            });
+            };
         }
         gameScene.cardsSprites.add(livesImg);
+        // Druhá karta dráhy (nad 5 životů) dostane totéž obarvení i klik jako nultá.
+        const _myLivesAll = [livesImg, ...drawExtraLivesCards(myLivesT, livesX, myBaseY, 0, -1, scaleMe, 0, null)];
+        for (const sp of _myLivesAll) {
+            if (_myLivesTint !== null) sp.setTint(_myLivesTint);
+            if (_myLivesClick) { sp.setInteractive({ useHandCursor: true }); sp.on('pointerdown', _myLivesClick); }
+        }
 
         // Pravé poledne – výzva ke ztrátě života
         if (isMyNoonDamage) {
@@ -1291,16 +1343,14 @@ function drawMyArea(ctx) {
             gameScene.cardsSprites.add(ddTxt);
         }
 
-        const livesCardH = 500 * scaleMe;
-        const bulletsAreaH = livesCardH * 0.93;
-        const bulletH = bulletsAreaH / 5;
+        const bulletH = myLivesT.step;
 
-        let charImg = gameScene.add.image(livesX, myBaseY - (bulletH * me.health), getCharTex(me.character)).setScale(scaleMe);
+        let charImg = gameScene.add.image(livesX, myBaseY - (bulletH * myHealthSlot), getCharTex(me.character)).setScale(scaleMe);
         // Nová identita (High Noon, přibalené): stará postava se během cinematiky výměny
         // překlápí na rub a sjíždí na slot odložené karty → na svém místě zatím není.
         if (App.niHideChar) charImg.setVisible(false);
         gameScene.cardsSprites.add(charImg);
-        if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character))) charImg.setVisible(false);
+        if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character), null, myLivesT.slots)) charImg.setVisible(false);
         // Střílím zrovna na někoho? Červeně se útočník rozsvítí OSTATNÍM u stolu
         // (cíl musí vidět, kdo na něj míří) – sobě ne: já vím, že střílím já, a
         // vlastní portrét načervenalý jako terč jen mate (bug 5).
@@ -2353,7 +2403,10 @@ function drawSpectatorPlayer(ctx) {
         const sOpp = L.specScale;
         const cW = 325 * sOpp;
         const cH = 500 * sOpp;
-        const bH = cH * 0.93 / 5;   // pozice na životech: 5 nábojnic jako drawMyArea/drawOpponents
+        // Dráha životů jako u hráče u stolu (drawMyArea/drawOpponents): nad 5 životů
+        // se v ose pohybu portrétu vyloží druhá karta.
+        const specT = livesTrack(player.maxHealth, sOpp);
+        const bH = specT.step;   // pozice na životech: 5 nábojnic na kartu
         const g  = 8;
         const livesCX = L.centerX, livesCY = L.specLivesY;
 
@@ -2378,7 +2431,10 @@ function drawSpectatorPlayer(ctx) {
         const livesImg2 = gameScene.add.image(livesX_adj, livesCY, 'lives').setScale(sOpp);
         if (isCurrent) livesImg2.setTint(0x44ff44);
         gameScene.cardsSprites.add(livesImg2);
-        const charY2 = livesCY - bH * Math.max(0, player.health);
+        for (const sp of drawExtraLivesCards(specT, livesX_adj, livesCY, 0, -1, sOpp, 0, null)) {
+            if (isCurrent) sp.setTint(0x44ff44);
+        }
+        const charY2 = livesCY - bH * livesSlot(specT, player.health);
         const charImg2 = gameScene.add.image(livesX_adj, charY2, getCharTex(player.character)).setScale(sOpp);
         if (applyAttackTint(charImg2, 0, attackHighlight())) { /* útočník – červeně */ }
         else if (isCurrent) charImg2.setTint(0x88ff88);

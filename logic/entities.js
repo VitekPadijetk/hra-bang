@@ -66,11 +66,12 @@ const FISTFUL_CHARACTERS = [
     "Claus the Saint", "Johnny Kisch", "Uncle Will"
 ];
 
-// Postavy rozšíření Divoký západ (Wild West Show). Portréty 034–041 jsou hotové a
-// data (characters.json) taky, ale do výběru se ZATÍM nepřidávají: schopnosti a jejich
-// životy (Big Spencer 9, Gary Looter 5, Teren Kill 3) přijdou až s vlastními fázemi
-// implementace – do té doby by u stolu seděly postavy bez schopnosti a se špatným
-// počtem životů. Zapíná je pak `_characterPool` při options.expansions.divoky_zapad.
+// Postavy rozšíření Divoký západ (Wild West Show). Portréty 034–041, data
+// (characters.json) i životy (core/roles.js: Big Spencer 9, Gary Looter 5, Teren Kill 3)
+// jsou hotové, ale do OSTRÉ hry se ZATÍM nepřidávají: schopnosti přijdou až s vlastními
+// fázemi implementace a do té doby by u stolu seděly postavy bez schopnosti. V debug hře
+// se zapnutým rozšířením vybrat jdou (`_characterPool` + options.debugPool), ať se dá
+// vyzkoušet dráha životů; do ostré hry je pustí až `exps.divoky_zapad` bez té podmínky.
 const WILD_WEST_CHARACTERS = [
     "Big Spencer", "Flint Westwood", "Gary Looter", "Greygory Deck",
     "John Pain", "Lee Van Kliff", "Teren Kill", "Youl Grinner"

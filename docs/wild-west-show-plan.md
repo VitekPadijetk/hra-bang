@@ -1263,18 +1263,37 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0 hotová.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0 a 1 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
-> v lobby / hře botů / debugu. **Postavy 34–41 jsou v `characters.json` a jako
-> `WILD_WEST_CHARACTERS`, ale do `_characterPool` se ještě nepřidávají** — schopnosti
-> a životy (Big Spencer 9, Gary Looter 5, Teren Kill 3) přijdou s fázemi 4–10, do té doby
-> by u stolu seděly postavy bez schopnosti a se špatným počtem životů. Zapnout je stačí
-> jedním `if (exps.divoky_zapad …)` v `_characterPool` (logic/setup.js).
+> v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
+> **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
+> životy (core/roles.js), ale do OSTRÉ hry se ještě nepřidávají** — schopnosti přijdou
+> s fázemi 4–12 a do té doby by u stolu seděly postavy bez schopnosti. Vybrat je jde
+> v debug hře; do ostré je pustí zrušení podmínky `options.debugPool` v `_characterPool`
+> (logic/setup.js).
+>
+> **Fáze 1 dovybrala tři věci, které jsou v §7 popsané nejednoznačně:**
+>
+> - **Dvojice karet leží V ŘADĚ** (jedna souvislá dráha 10 nábojů), ne vedle sebe kolmo.
+>   Vzorec pro portrét se tím vůbec nemění (`zero + step × health`) a `positions.js` se
+>   nemuselo sahat: druhá karta roste směrem, kterým sloty vyložených karet nerostou,
+>   takže se vystředění skupiny (`numBluePrimary`/`numBlue`) nemění. **Daň:** portrét při
+>   9–10 životech zajede 36–70 px přes spodek odhazovacího balíčku (v mojí zóně leží karta
+>   životů přesně pod ním) a hornímu šerifovi s 10 životy o ~13 px na dobírací. Dráha o 10
+>   slotech potřebuje 515 px a mezi balíčky a spodkem jeviště je 465 – vejít se nemůže
+>   v žádném uspořádání. Týká se to jen Big Spencera u plného zdraví. Samotné karty dráhy
+>   na balíčky nedosáhnou nikdy (hlídá test/positions.test.js + test/layout.test.js).
+> - **Životy postav** (`core/roles.js` `HIGH_HEALTH_CHARS` + Teren Kill v `LOW_HEALTH_CHARS`)
+>   se dělaly už tady, ne až ve fázi 4: bez nich nemá nikdo víc než 5 životů a fáze 1 nejde
+>   v prohlížeči vůbec vidět. Schopnosti zůstávají na svých fázích.
+> - **Ověření v prohlížeči**: postavy 34–41 jdou vybrat v DEBUG hře se zapnutým Divokým
+>   západem (`_characterPool` + `options.debugPool`, logic/setup.js). Do ostré hry se pořád
+>   nepřidávají – tam by seděly bez schopnosti.
 
 | # | Fáze | Obsah | Riziko |
 |---|---|---|---|
 | **0** ✅ | Kostra | data, `logic/wildWest.js`, spouštěč, třetí sloupec, assety, loader, intro, lobby | nízké |
-| **1** | Render životů | `livesTrack`, druhá karta, mobilní číslo, testy geometrie | **render — nutné ověření v prohlížeči** |
+| **1** ✅ | Render životů | `livesTrack`, druhá karta, mobilní číslo, testy geometrie | **render — nutné ověření v prohlížeči** |
 | **2** | Zúčtování | stažení Calamity Janet do 2 predikátů, pak samotná karta | střední (dotýká se obrany) |
 | **2b** | Sacagaway | redakce ruky, přetáčení vějířů, lety karet lícem | **render — nutné ověření v prohlížeči; pravidla se nemění** |
 | **3** | Start / konec tahu | Miláček Valentýn, Madam Zuzana | nízké |

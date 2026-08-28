@@ -17,6 +17,12 @@ const SetupMixin = {
         if (exps.fistful && typeof FISTFUL_CHARACTERS !== 'undefined') {
             base.push(...FISTFUL_CHARACTERS);
         }
+        // Divoký západ: postavy 34–41 zatím nemají schopnosti (přijdou s vlastními fázemi
+        // implementace), takže do OSTRÉ hry nepatří. V DEBUG hře je ale vybrat jít musí –
+        // jinak se nedá vyzkoušet ani dráha životů Big Spencera (9, jako šerif 10).
+        if (exps.divoky_zapad && options.debugPool && typeof WILD_WEST_CHARACTERS !== 'undefined') {
+            base.push(...WILD_WEST_CHARACTERS);
+        }
         return base;
     },
 
@@ -98,7 +104,8 @@ const SetupMixin = {
         roles = roles.slice(0, playerCount);
         this.deck.shuffleArray(roles);
 
-        let chars = this._characterPool(options);
+        const debugOpts = { ...options, debugPool: true };
+        let chars = this._characterPool(debugOpts);
         this.deck.shuffleArray(chars);
 
         this.players = [];
@@ -106,7 +113,7 @@ const SetupMixin = {
             const role = roles[i];
             const name = playerNames[i] || `Debug${i + 1}`;
             const p = new Player(name, role, null, 4);
-            p.charChoices = this._characterPool(options);
+            p.charChoices = this._characterPool(debugOpts);
             this.players.push(p);
             this.logEvent('system', { msg: `Debug hráč #${i}: ${name} – role: ${role}` });
         }

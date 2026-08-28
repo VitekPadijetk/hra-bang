@@ -243,6 +243,39 @@ function boardSlot(idx, band) {
     return { row: Math.min(band.rows - 1, Math.floor(idx / p)), col: idx % p };
 }
 
+// ── Dráha životů ─────────────────────────────────────────────────────────────
+// Karta životů (`lives.webp`) má 5 nábojů a portrét po ní jede o `step` na jeden život.
+// Divoký západ přinesl postavy nad 5 životů (Big Spencer 9, jako šerif 10; Gary Looter
+// 5, jako šerif 6) – tam se v OSE POHYBU portrétu vyloží druhá karta a dvojice se chová
+// jako jedna souvislá dráha o 10 slotech. Karty se překrývají o 0,07 výšky karty
+// (5 nábojů = 0,93 výšky), takže rozestup nábojů zůstane přes obě karty stejný.
+//
+// `maxCards: 1` je pro kompaktní sloupec soupeře (mobil): ten je široký přesně jednu
+// kartu, druhá by ho zdvojnásobila a řada 7 sloupců by se nevešla – přebytek se tam
+// ukáže číslem (`counter`).
+//
+// Pro maxHealth ≤ 5 vrací pixelově dnešní stav (jedna karta, `step` beze změny).
+const LIVES_PER_CARD = 5;
+function livesTrack(maxHealth, scale, maxCards) {
+    const step = CARD_ART_H * scale * 0.93 / LIVES_PER_CARD;
+    const need = Math.max(1, Math.ceil((Number(maxHealth) || 0) / LIVES_PER_CARD));
+    const cards = Math.min(Math.max(1, maxCards || 2), need);
+    return {
+        cards, step,
+        slots: cards * LIVES_PER_CARD,
+        // Posun i-té karty od té nulté v ose pohybu portrétu.
+        cardOff: LIVES_PER_CARD * step,
+        // Dráha na životy nestačí (kompaktní sloupec) → hodnota se dopíše číslem.
+        counter: need > cards,
+    };
+}
+
+// Kolikátý slot dráhy portrét obsadí. Nad kapacitu dráhy se zastaví na jejím konci
+// (číslo pak drží pravdu za něj) – jinak by v kompaktním sloupci vyjel k sousedovi.
+function livesSlot(track, health) {
+    return Math.max(0, Math.min(track.slots, Number(health) || 0));
+}
+
 // Krajní soupeři se „přilepí" na okraj jeviště: kotvy se vodorovně roztáhnou tak, aby
 // levá/pravá zůstaly stejně daleko od OKRAJE (oppEdgeMargin) jako dnes od kraje plátna
 // a prostřední se mezi ně rovnoměrně rozestoupily. Střed (960) zůstává středem.
@@ -511,6 +544,7 @@ if (typeof module !== 'undefined' && module.exports) {
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile, shouldAskLayout,
         resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
         boardBand, boardSlot,
+        LIVES_PER_CARD, livesTrack, livesSlot,
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
         compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
         oppScale, handCardScale,

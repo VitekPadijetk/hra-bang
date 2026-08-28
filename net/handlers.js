@@ -243,6 +243,7 @@ socket.on('intro_phase', (data) => {
                 const slot = _introOppSlots(idx, health);
                 const { angle, scale: oppScale,
                         livesX: livesEndX, livesY: livesEndY,
+                        lives2X, lives2Y,
                         charX: charEndX, charY: charEndY,
                         nameX: NAME_X, nameY: NAME_Y, nameStyle: OPP_NAME_STYLE,
                         dx, dy } = slot;
@@ -267,6 +268,26 @@ socket.on('intro_phase', (data) => {
                         renderUI();
                     }
                 });
+
+                // Druhá karta dráhy životů (postavy nad 5 životů – Divoký západ) přilétá
+                // stejným vektorem jako první; dráha se tím chová jako jeden celek.
+                if (lives2X != null) {
+                    const lives2Sp = gameScene.add.image(lives2X + dx, lives2Y + dy, 'lives')
+                        .setScale(oppScale).setAngle(angle).setDepth(62);
+                    if (gameScene.introSprites) gameScene.introSprites.add(lives2Sp);
+                    gameScene.tweens.add({
+                        targets: lives2Sp, x: lives2X, y: lives2Y,
+                        delay, duration: dur, ease: 'Power2.easeOut',
+                        onComplete: () => {
+                            if (lives2Sp?.active) lives2Sp.destroy();
+                            if (_introState) _introState.placedCards.push(
+                                { tex: 'lives', x: lives2X, y: lives2Y, scale: oppScale, angle, depth: 21,
+                                  key: 'lives2:' + idx, rl: { kind: 'oppLives2', idx, hp: health } }
+                            );
+                            renderUI();
+                        }
+                    });
+                }
 
                 // Char karta
                 const charSp = gameScene.add.image(charEndX + dx, charEndY + dy, charTex)

@@ -288,6 +288,14 @@ function _introOppSlots(idx, health) {
     const angle = (side === 'left' || side === 'compact') ? 90 : side === 'top' ? 180 : side === 'right' ? -90 : 0;
     const cm = side === 'compact' ? compactMetrics(Math.max(1, total - 1), L) : null;
 
+    // Dráha životů (core/layout.js): nad 5 životů leží v ose pohybu portrétu DRUHÁ
+    // karta a dvojice tvoří jednu dráhu o 10 slotech. Kompaktní sloupec (mobil) je
+    // široký jednu kartu → zůstává jednokartový a portrét se zastaví na 5. slotu.
+    // maxHealth ze stavu; než ho server dopočítá, drží se předaných životů.
+    const oppMaxHp = (state?.players?.[idx]?.maxHealth) || health || 4;
+    const track = livesTrack(oppMaxHp, oppScl, side === 'compact' ? 1 : 2);
+    const hpSlot = livesSlot(track, health);
+
     // Jmenovka soupeře – PŘESNĚ na herní pozici (drawOpponents): x = anchor.x,
     // y = anchor.y + offset dle strany. Offset se MUSÍ počítat z rozměru karty, ne
     // z konstant pro měřítko 0,27: při 8 hráčích je měřítko 0,25 (oppScaleByCount) a
@@ -318,25 +326,36 @@ function _introOppSlots(idx, health) {
     if (side === 'compact') {
         // Kotva JE střed karty životů, portrét jede po nábojích doprava (jako 'left').
         livesEndX = ax; livesEndY = ay;
-        charEndX  = ax + oppBulletH * health; charEndY = ay;
+        charEndX  = ax + oppBulletH * hpSlot; charEndY = ay;
     } else if (side === 'left') {
         livesEndX = ax;
         livesEndY = ay + groupH / 2 - oppCardH / 2;
-        charEndX  = livesEndX + oppBulletH * health;
+        charEndX  = livesEndX + oppBulletH * hpSlot;
         charEndY  = livesEndY;
     } else if (side === 'top') {
         livesEndX = ax - groupH / 2 + cardW / 2; // groupStartX + cardW/2 (groupW === groupH)
         livesEndY = ay;
         charEndX  = livesEndX;
-        charEndY  = livesEndY + oppBulletH * health;
+        charEndY  = livesEndY + oppBulletH * hpSlot;
     } else if (side === 'right') {
         livesEndX = ax;
         livesEndY = ay - groupH / 2 + oppCardH / 2;
-        charEndX  = livesEndX - oppBulletH * health;
+        charEndX  = livesEndX - oppBulletH * hpSlot;
         charEndY  = livesEndY;
     } else {
         livesEndX = ax; livesEndY = ay;
         charEndX  = ax; charEndY  = ay;
+    }
+
+    // Druhá karta dráhy životů leží o 5 nábojů dál v ose pohybu portrétu (null = dráha
+    // je jednokartová, tedy i celý dnešní stav pro postavy do 5 životů).
+    const off = track.cards > 1 ? track.cardOff : 0;
+    let lives2X = null, lives2Y = null;
+    if (off) {
+        if (side === 'left')       { lives2X = livesEndX + off; lives2Y = livesEndY; }
+        else if (side === 'top')   { lives2X = livesEndX;       lives2Y = livesEndY + off; }
+        else if (side === 'right') { lives2X = livesEndX - off; lives2Y = livesEndY; }
+        else                       { lives2X = livesEndX;       lives2Y = livesEndY - off; }
     }
 
     // Start mimo obrazovku - obe karty se posunou o stejny vektor. Okraj se bere
@@ -358,6 +377,7 @@ function _introOppSlots(idx, health) {
     return {
         side, angle, scale: oppScl, cardW, cardH: oppCardH, bulletH: oppBulletH,
         livesX: livesEndX, livesY: livesEndY, charX: charEndX, charY: charEndY,
+        track, lives2X, lives2Y,
         nameX: NAME_X, nameY: NAME_Y, nameStyle: OPP_NAME_STYLE,
         starX: charEndX + starDx, starY: charEndY + starDy, starScale,
         dx, dy,
@@ -679,6 +699,13 @@ function MY_LIVES_Y()     { return currentLayout().myBaseY; }                   
 function MY_LIVES_SCALE() { return currentLayout().scaleMe; }                            // 0.36
 // charY = MY_LIVES_Y() - bulletH * health, bulletH = 500*0.36*0.93/5 = 33.48
 
+// Druhá karta MOJÍ dráhy životů (postavy nad 5 životů – Divoký západ) leží o 5 nábojů
+// výš; null = dráha je jednokartová, tedy dnešní stav.
+function MY_LIVES2_Y(maxHealth) {
+    const t = livesTrack(maxHealth, MY_LIVES_SCALE());
+    return t.cards > 1 ? MY_LIVES_Y() - t.cardOff : null;
+}
+
 function _myCharY(health) {
     const bulletH = (500 * MY_LIVES_SCALE() * 0.93) / 5;
     return MY_LIVES_Y() - bulletH * (health || 4);
@@ -743,6 +770,10 @@ function _introPlaceSurvivors() {
             s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(),
                 scale: MY_LIVES_SCALE(), depth: 21, key: 'lives:' + sv.idx,
                 rl: { kind: 'myLives' } });
+            const my2Y = MY_LIVES2_Y(p.maxHealth);
+            if (my2Y != null) s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: my2Y,
+                scale: MY_LIVES_SCALE(), depth: 21, key: 'lives2:' + sv.idx,
+                rl: { kind: 'myLives2', hp: p.maxHealth } });
             s.placedCards.push({ tex: charTex, x: MY_LIVES_X(), y: _myCharY(sv.health),
                 scale: MY_LIVES_SCALE(), depth: 23, key: 'char:' + sv.idx,
                 rl: { kind: 'myChar', hp: sv.health } });
@@ -756,6 +787,9 @@ function _introPlaceSurvivors() {
             s.placedCards.push({ tex: 'lives', x: sl.livesX, y: sl.livesY,
                 scale: sl.scale, angle: sl.angle, depth: 21, key: 'lives:' + sv.idx,
                 rl: { kind: 'oppLives', idx: sv.idx, hp: sv.health } });
+            if (sl.lives2X != null) s.placedCards.push({ tex: 'lives', x: sl.lives2X, y: sl.lives2Y,
+                scale: sl.scale, angle: sl.angle, depth: 21, key: 'lives2:' + sv.idx,
+                rl: { kind: 'oppLives2', idx: sv.idx, hp: sv.health } });
             s.placedCards.push({ tex: charTex, x: sl.charX, y: sl.charY,
                 scale: sl.scale, angle: sl.angle, depth: 23, key: 'char:' + sv.idx,
                 rl: { kind: 'oppChar', idx: sv.idx, hp: sv.health } });
@@ -886,6 +920,7 @@ function _introFlyBackToCharDeck(sp, idx) {
     // Životy i jmenovka odchází – hráč je zase „bez postavy" a všechno mu přiletí
     // znovu se slide-inem po výběru nové postavy (proto ho pustíme z placedForIdx).
     _introFadeAwayPlaced('lives:' + idx);
+    _introFadeAwayPlaced('lives2:' + idx);   // druhá karta dráhy (postavy nad 5 životů)
     _introRemovePlaced('char:' + idx);
     _introRemovePlaced('name:' + idx);
     if (s) {
@@ -1006,6 +1041,12 @@ function _introRelayoutPlaced() {
                 pc.x = sl.livesX; pc.y = sl.livesY; pc.scale = sl.scale; pc.angle = sl.angle;
                 break;
             }
+            case 'oppLives2': {
+                const sl = _introOppSlots(r.idx, r.hp ?? 4);
+                if (sl.lives2X != null) { pc.x = sl.lives2X; pc.y = sl.lives2Y; }
+                pc.scale = sl.scale; pc.angle = sl.angle;
+                break;
+            }
             case 'oppChar': {
                 const sl = _introOppSlots(r.idx, r.hp ?? 4);
                 pc.x = sl.charX; pc.y = sl.charY; pc.scale = sl.scale; pc.angle = sl.angle;
@@ -1027,6 +1068,12 @@ function _introRelayoutPlaced() {
             case 'myLives':
                 pc.x = MY_LIVES_X(); pc.y = MY_LIVES_Y(); pc.scale = MY_LIVES_SCALE();
                 break;
+            case 'myLives2': {
+                const y2 = MY_LIVES2_Y(r.hp ?? 4);
+                pc.x = MY_LIVES_X(); pc.scale = MY_LIVES_SCALE();
+                if (y2 != null) pc.y = y2;
+                break;
+            }
             case 'myChar':
                 pc.x = MY_LIVES_X(); pc.y = _myCharY(r.hp ?? 4); pc.scale = MY_LIVES_SCALE();
                 break;
@@ -1352,6 +1399,15 @@ function _confirmCharSelect(charName) {
                                     { tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(),
                                       scale: MY_LIVES_SCALE(), depth: 21,
                                       key: 'lives:me', rl: { kind: 'myLives' } }
+                                );
+                                // Postava nad 5 životů (Big Spencer, Gary Looter): druhá
+                                // karta dráhy nemá v intru vlastní zdroj (obě rozdané
+                                // karty jsou postavy), takže se usadí rovnou s první.
+                                const y2 = MY_LIVES2_Y(health);
+                                if (y2 != null) _introState.placedCards.push(
+                                    { tex: 'lives', x: MY_LIVES_X(), y: y2,
+                                      scale: MY_LIVES_SCALE(), depth: 21,
+                                      key: 'lives2:me', rl: { kind: 'myLives2', hp: health } }
                                 );
                             }
                             // Hned překresli, aby lives placedCard naskočila
