@@ -80,8 +80,20 @@ function healthForCharacter(charName, role) {
     return { base, max: role === "Sheriff" ? base + 1 : base };
 }
 
+// Kolik karet dostane postava na začátku hry. Pravidlo zní „tolik, kolik má životů",
+// takže se to skoro vždy rovná `base` – JEDINOU výjimkou je Big Spencer (Divoký západ),
+// který má 9 životů, ale začíná s 5 kartami. Ptá se tím logic/setup.js (skutečné
+// rozdání) i server/intro.js (animace rozdávání) – rozejít se nesmí, jinak by intro
+// rozdalo jiný počet karet, než jaký pak ukáže stav.
+const START_CARDS_CHARS = { "Big Spencer": 5 };
+function startCardsForCharacter(charName, base) {
+    if (START_CARDS_CHARS[charName]) return START_CARDS_CHARS[charName];
+    return base;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { rolesForPlayerCount, baseHealthForCharacter, healthForCharacter,
+                       startCardsForCharacter, START_CARDS_CHARS,
                        LOW_HEALTH_CHARS, HIGH_HEALTH_CHARS, ROLE_CZ, roleNameCz,
                        TARGET_3P, isThreePlayerMode, firstPlayerIndex };
 }

@@ -45,8 +45,9 @@ OTEVŘENÉ
 
 - 23 zkontroluj jestli funguje derringer správně s léčkou
 - 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě)
-- 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif
+- 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif. Taky když jsem tento poslední hráč, tak se mi zeleně ukáží karty až po HN/FF do té doby pořád šedé
 - 26 když zahraju jinou kartu u práva západu než je ta kterou musím (př. byla wells fargo, zahráli jsme bang) tak to nějak divně blikalo, vracelo se a podobně
+- 27 veře custer se na obrazovku nevejde 7 postav vedle sebe, pokud se hraje v 8, chtělo by to více smrsknout. Oddělej ty texty co tam jsou s názvy postav a taky hvězdička šerifa a karty HN/FF překrývají tyto karty postav, měla by být pod nimi
 
 
 HOTOVÉ

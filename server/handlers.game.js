@@ -682,11 +682,24 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const discardingIdx = gs.currentPlayerIndex;
             const player = gs.players[discardingIdx];
             const card = player?.hand[i];
-            // Fistful – Opuštěný důl: odhoz nad limit karet je FÁZE 3, takže pod dolem
-            // letí lícem dolů na DOBÍRACÍ balíček. `toDeck` je jediné, podle čeho to
-            // klient (cíl letu i doběh s překlopením) a držení botů poznají.
-            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: discardingIdx,
-                             cardId: card?.id, toDeck: !!gs._mineTurn });
+            // Divoký západ – Gary Looter: karta neletí do odhozu, ale do jeho ruky.
+            // Kdo ji zahodil, si ji vybral sám, takže se pod Sacagaway NEHRAJE gesto
+            // se zamícháním ruky (FAQ Q17 je o NÁHODNÉ krádeži) – nese to `chosen`.
+            // Líc vidí Gary i odhazující, ostatním letí rub.
+            const looter = card ? gs._garyLooterFor(discardingIdx) : null;
+            const looterIdx = looter ? gs.players.indexOf(looter) : -1;
+            if (looterIdx !== -1) {
+                const base = { type: 'ragtime_steal', attackerIdx: looterIdx, targetIdx: discardingIdx,
+                               area: 'hand', boardIdx: null, stolenIndex: i, chosen: true };
+                emitAnimPrivate(room, [looterIdx, discardingIdx],
+                                { ...base, stolenCardId: card.id }, { ...base, stolenCardId: null });
+            } else {
+                // Fistful – Opuštěný důl: odhoz nad limit karet je FÁZE 3, takže pod dolem
+                // letí lícem dolů na DOBÍRACÍ balíček. `toDeck` je jediné, podle čeho to
+                // klient (cíl letu i doběh s překlopením) a držení botů poznají.
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: discardingIdx,
+                                 cardId: card?.id, toDeck: !!gs._mineTurn });
+            }
             gs.discardCard(i);
             if (gs.phase !== 'DISCARD') {
                 broadcastRoomDelayed(room, 420);

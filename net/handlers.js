@@ -2134,7 +2134,9 @@ function _playCardAnim(data) {
         case 'ragtime_steal': {
             // Sacagaway: viz panic_sequence. Karta odlétá hned (žádná noha k cíli), takže
             // se vějíř přetáčí zpátky lícem nahoru rovnou se startem letu.
-            if (data.area === 'hand' && !data._sacaDone && _sacaStealGesture(data.targetIdx)) {
+            // `chosen` = kartu vybral její majitel (Gary Looter bere odhoz nad limit) –
+            // ruka se nemíchá, gesto z FAQ Q17 se tedy nehraje.
+            if (data.area === 'hand' && !data.chosen && !data._sacaDone && _sacaStealGesture(data.targetIdx)) {
                 _sacaHandGesture(data.targetIdx, 0, () => _playCardAnim({ ...data, _sacaDone: true }));
                 break;
             }

@@ -180,6 +180,10 @@ const SetupMixin = {
         p.maxHealth = max;
         p.health = p.maxHealth;
         p._baseHealth = base;
+        // Startovní ruka se skoro vždy rovná životům – Big Spencer (Divoký západ) je
+        // výjimka (9 životů, 5 karet). Stejné pole čte i animace rozdávání v intru
+        // (server/intro.js); bez toho by intro rozdalo jiný počet karet než stav.
+        p._startCards = startCardsForCharacter(charName, base);
 
         const allChosen = this.players.every(pl => pl.character);
 
@@ -187,7 +191,7 @@ const SetupMixin = {
             const firstIdx = this._firstPlayerIndex();
             this.logEvent('system', { msg: `Všichni vybrali postavy, hra začíná! Začíná: ${this.players[firstIdx]?.name} (${this.players[firstIdx]?.role})` });
             this.players.forEach(pl => {
-                const startCards = pl._baseHealth ?? (pl.health > 0 ? pl.health - (pl.role === "Sheriff" ? 1 : 0) : pl.health);
+                const startCards = pl._startCards ?? pl._baseHealth ?? (pl.health > 0 ? pl.health - (pl.role === "Sheriff" ? 1 : 0) : pl.health);
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
@@ -292,7 +296,9 @@ const SetupMixin = {
         p.health = p.maxHealth;
         // _baseHealth = počet startovních karet (viz _checkNextGameAllChosen a
         // intro rozdávání). Bez něj by šerif-přeživší dostal v animaci o kartu víc.
+        // U Big Spencera se ty dvě věci rozcházejí, proto ještě _startCards.
         p._baseHealth = base;
+        p._startCards = startCardsForCharacter(charName, base);
         this._checkNextGameAllChosen();
     },
 
@@ -329,7 +335,7 @@ const SetupMixin = {
         const allChosen = this.players.every(p => p.character);
         if (allChosen) {
             this.players.forEach(pl => {
-                const startCards = pl._baseHealth ?? (pl.role === "Sheriff" ? pl.health - 1 : pl.health);
+                const startCards = pl._startCards ?? pl._baseHealth ?? (pl.role === "Sheriff" ? pl.health - 1 : pl.health);
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů

@@ -140,6 +140,12 @@ const CharactersMixin = {
 
     // Vyhoď z fronty líznutí, které mezitím přestalo platit (karty už dostala / je mimo hru).
     _pruneSuzyQueue() {
+        // Divoký západ – John Pain: sejmutá karta se mu do ruky přesune teprve tady,
+        // tedy až doběhl efekt, kvůli kterému se snímalo (poznámka na kartě). Je to
+        // zároveň jediné místo, kde se to smí stát: kdo se rozhoduje podle DÉLKY fronty
+        // (viz „Rodina resume příznaků" v CLAUDE.md), musí po pročištění dostat frontu,
+        // ve které je jen to, co _processSpecialQueue opravdu rozeběhne.
+        this._drainJohnPain();
         for (let i = this.specialActionQueue.length - 1; i >= 0; i--) {
             const a = this.specialActionQueue[i];
             if (a.type !== 'SUZY_DRAW') continue;
@@ -381,6 +387,9 @@ const CharactersMixin = {
         // playLuckyDukeResult v game.js, kde se z vrchu odhozu i pozná).
         this.deck.discard(other);
         this.deck.discard(chosen);
+        // Divoký západ – John Pain bere OBĚ Lucky Dukeovy karty (Sciarra Q22), a to
+        // v pořadí SNÍMÁNÍ (ld.cards), ne v pořadí odhozu.
+        ld.cards.forEach(c => this._johnPainQueueCard(c, ld.checkContext?.playerIdx ?? 0));
         this.currentCheck = { ...ld.checkContext, card: chosen, active: false };
         this.luckyDukeState = null;
         this.phase = "CHECKING";

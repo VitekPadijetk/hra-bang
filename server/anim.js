@@ -44,8 +44,11 @@ module.exports = function installAnimService(ctx) {
     const HAND_STEAL_ANIMS = new Set(['panic_sequence', 'catbalou_sequence', 'ragtime_steal']);
     function holdForSacaSteal(room, data) {
         if (!data || !handsOpen(room)) return;
-        const isSteal = data.type === 'jesse_jones_draw' ||
-                        (HAND_STEAL_ANIMS.has(data.type) && data.area === 'hand');
+        // `chosen` = kartu vybral její majitel (Gary Looter bere odhoz nad limit), takže
+        // se ruka nemíchá a gesto z FAQ Q17 se nehraje – to je jen o NÁHODNÉ krádeži.
+        const isSteal = !data.chosen &&
+                        (data.type === 'jesse_jones_draw' ||
+                        (HAND_STEAL_ANIMS.has(data.type) && data.area === 'hand'));
         if (!isSteal) return;
         // Karta už je z ruky vyndaná (emituje se po resolvu) → před krádeží jich tam byla
         // o jednu víc. Vějíř oběti je u Jesseho/El Gringa `fromPlayerIdx`, jinak `targetIdx`.
@@ -86,6 +89,7 @@ module.exports = function installAnimService(ctx) {
     const SHUFFLED_HAND_ANIMS = new Set(['panic_sequence', 'ragtime_steal']);
     function fromShuffledHand(d) {
         if (!d) return false;
+        if (d.chosen) return false;                          // Gary Looter: kartu vybral majitel
         if (d.type === 'jesse_jones_draw') return true;      // Jesse Jones i El Gringo
         return SHUFFLED_HAND_ANIMS.has(d.type) && d.area === 'hand';
     }
@@ -425,6 +429,21 @@ module.exports = function installAnimService(ctx) {
         });
     }
 
+    // ── Divoký západ – John Pain: sejmutá karta odchází z odhozu do jeho ruky ─
+    // Pravidla jen označí, co si vzal (gs._johnPainAnim) – přesun se děje až ve chvíli,
+    // kdy doběhl efekt, kvůli kterému se snímalo, a ta chvíle je uvnitř pravidel
+    // (_drainJohnPain), ne u jedné konkrétní socket akce. Karta je v odhozu veřejná,
+    // takže letí stejnou animací jako vracení karty Sidu Ketchumovi.
+    function flushJohnPain(room) {
+        const gs = room.gameState;
+        const list = gs && gs._johnPainAnim;
+        if (!list || !list.length) return;
+        gs._johnPainAnim = null;
+        list.forEach(it => {
+            emitAnim(room, { type: 'discard_to_hand', toPlayerIdx: it.toPlayerIdx, cardId: it.cardId });
+        });
+    }
+
     // ── Divoký západ – Miláček Valentýn: odhoz celé ruky na začátku tahu ─────
     // Pravidla jen označí, co odletělo (gs._valentineAnim); emit řeší tenhle hák, protože
     // start tahu se spouští z pěti různých cest, ale všechny končí broadcastem.
@@ -452,6 +471,7 @@ module.exports = function installAnimService(ctx) {
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);
         flushSacaFlip(room);
+        flushJohnPain(room);
         flushValentine(room);
     }
 

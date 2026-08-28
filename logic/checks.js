@@ -54,6 +54,7 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
+            this._johnPainQueueCard(checkCard, pcd.playerIdx);   // Divoký západ – John Pain
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
@@ -72,6 +73,7 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
+            this._johnPainQueueCard(checkCard, pcd.playerIdx);   // Divoký západ – John Pain
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
@@ -90,6 +92,7 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
+            this._johnPainQueueCard(checkCard, pcd.playerIdx);   // Divoký západ – John Pain
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,

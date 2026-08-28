@@ -307,7 +307,9 @@ module.exports = function installIntroService(ctx) {
                 let t = 0;
                 cardOrder.forEach((pidx, orderIdx) => {
                     // Počet karet = počáteční ruka dle životů (_baseHealth = 3 nebo 4).
-                    const cnt = gs.players[pidx]?._baseHealth ?? gs.players[pidx]?.maxHealth ?? 4;
+                    // Big Spencer (Divoký západ) je jediná výjimka – 9 životů, 5 karet –
+                    // a nese si ji v _startCards (logic/setup.js).
+                    const cnt = gs.players[pidx]?._startCards ?? gs.players[pidx]?._baseHealth ?? gs.players[pidx]?.maxHealth ?? 4;
                     const isLast = orderIdx === cardOrder.length - 1;
                     setTimeout(() => {
                         // POŘADÍ: nejdřív soukromě pošli danému hráči ID jeho karet, AŽ POTÉ

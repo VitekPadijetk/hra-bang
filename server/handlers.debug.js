@@ -1,7 +1,7 @@
 // server/handlers.debug.js — debug socket handlery (start debug hry, dávání/mazání
 // karet, přiřazení postav). registerDebugHandlers(socket, ctx, withRoom) – těla
 // byte-identická. Pozn.: HP postav sdílí core/roles (LOW_HEALTH_CHARS – i Dodge City).
-const { baseHealthForCharacter } = require('../core/roles.js');
+const { baseHealthForCharacter, startCardsForCharacter } = require('../core/roles.js');
 module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
     const { rooms, makeRoom, broadcastRoom, broadcastLobbyList,
             findRoomBySocket, leaveRoom, cardData, dodgeCityCardData, highNoonCardData,
@@ -76,9 +76,11 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         const base = baseHealthForCharacter(d.charName);   // 3-životové vč. Dodge City
         p.maxHealth = p.role === "Sheriff" ? base + 1 : base;
         p.health = p.maxHealth; p._baseHealth = base; p.charChoices = null;
+        // Big Spencer (Divoký západ): 9 životů, ale jen 5 startovních karet.
+        p._startCards = startCardsForCharacter(d.charName, base);
         if (gs.players.every(pl => pl.character)) {
             gs.players.forEach(pl => {
-                const n = pl._baseHealth ?? (pl.role === "Sheriff" ? pl.health - 1 : pl.health);
+                const n = pl._startCards ?? pl._baseHealth ?? (pl.role === "Sheriff" ? pl.health - 1 : pl.health);
                 for (let i = 0; i < n; i++) pl.hand.push(gs.deck.draw());
             });
             gs._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů

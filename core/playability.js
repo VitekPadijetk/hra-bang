@@ -79,8 +79,18 @@ function playsAsBang(state, me, card) {
     return false;
 }
 
+// Divoký západ – Big Spencer: „nemůže hrát karty Vedle!". Zákaz míří na KARTU Vedle!,
+// ne na roli, ve které se hraje: Barel i Jourdonnais fungují (FAQ Q07, nejsou to karty),
+// zelené Vedle! ze stolu (Železný plát / Sombrero / Bible) mají vlastní typ, Úhyb je jiná
+// karta a pod Zúčtováním smí Big Spencer hrát jako Vedle! kartu BANG! (R9). Odhodit
+// kartu Vedle! (Ruská ruleta) smí – odhoz není zahrání, viz rouletteDiscardable.
+function bigSpencerBlocked(me, card) {
+    return effectiveCharacter(me) === "Big Spencer" && !!card && card.type === "Vedle!";
+}
+
 function playsAsMissed(state, me, card) {
     if (!card || card._placeholder) return false;
+    if (bigSpencerBlocked(me, card)) return false;
     if (card.type === "Vedle!" || card.type === "Úhyb") return true;
     if (effectiveCharacter(me) === "Elena Fuente") return true;
     if (card.type === "Bang!") {
@@ -441,9 +451,9 @@ function lawHandcuffsSuit(state, me, myIndex) {
 function rouletteDiscardable(state, me, card, fromBoard) {
     if (!card || card._placeholder) return false;
     if (fromBoard) return !!card.green && card.activate === 'miss' && !boardDeadFor(state);
-    // Pozor (fáze 4): Big Spencer nesmí kartu Vedle! ZAHRÁT, ale ODHODIT ji smí – až
-    // se jeho zákaz doplní do playsAsMissed, musí se tady obejít (plán §5.1).
-    return playsAsMissed(state, me, card);
+    // Big Spencer nesmí kartu Vedle! ZAHRÁT, ale ODHODIT ji smí – jeho zákaz z
+    // playsAsMissed se proto tady obchází (plán §5.1).
+    return playsAsMissed(state, me, card) || bigSpencerBlocked(me, card);
 }
 
 // Má hráč vůbec co odhodit? Kdo nemá (a neuhne ani barelem), ztrácí 2 životy a efekt končí.
@@ -549,7 +559,8 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { cardPlayability, nativePlayInTurn, lawForcedCard, lawSelfShootOnly, lawLocksOther,
                        lawProtectedCard, lawHandcuffsSuit,
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
-                       playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, turnActionForCard,
+                       playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, bigSpencerBlocked,
+                       turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer };
 }

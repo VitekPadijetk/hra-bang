@@ -168,6 +168,87 @@ const WildWestMixin = {
         this.phase = "DYNAMITE_DAMAGE";
         return true;
     },
+
+    // ── Postavy ───────────────────────────────────────────────────────────────
+
+    // Gary Looter: „Bere si všechny karty, které ostatní hráči odhodí nad limit na konci
+    // svého tahu." Vrací hráče, kterému karta místo odhozu připadne, nebo null.
+    //   • Své vlastní karty si nebere (FAQ Q14) – proto se hledá až od SOUSEDA.
+    //   • Víc Garyů (Vera Custer, Greygory Deck): první po směru od odhazujícího (R6).
+    //     Směr je vždy po směru hodinových ručiček – Zlatá horečka (High Noon) obrací
+    //     jen pořadí tahů (FAQ H3), ne efekty karet.
+    //   • Kocovina (High Noon) schopnost vypíná – dotaz proto jde přes effectiveCharacter.
+    //   • Mrtvý Gary nebere; duch (Město duchů) ve hře JE, takže bere (isInPlay).
+    // Volá se JEN z discardCard (fáze 3 = odhoz nad limit na konci tahu). Odhoz mimo něj
+    // (Ruská ruleta, cena „odhoď další kartu", Daltonové, Sid Ketchum) se Garyho netýká.
+    _garyLooterFor(discarderIdx) {
+        const n = this.players?.length || 0;
+        for (let k = 1; k < n; k++) {
+            const p = this.players[(discarderIdx + k) % n];
+            if (p && isInPlay(p) && effectiveCharacter(p) === "Gary Looter") return p;
+        }
+        return null;
+    },
+
+    // ── John Pain ─────────────────────────────────────────────────────────────
+    // „Má-li v ruce méně než 6 karet, bere si každou kartu, kterou kdokoli sejme."
+    // Karta se NESMÍ použít okamžitě – hráč musí počkat, až doběhne efekt, kvůli kterému
+    // se snímalo (poznámka na kartě: je-li to Pivo a zároveň ztrácíš poslední život,
+    // zahrát ho nesmíš). Řeší se to odložením: sejmutí kartu jen ZAPÍŠE (_johnPainQueue)
+    // a do ruky se přesune až při pročištění fronty odložených akcí, tedy ve chvíli,
+    // kdy je efekt hotový (viz _pruneSuzyQueue → _drainJohnPain).
+    //
+    // Které sejmutí: Dynamit, Vězení, Barel, Jourdonnais, Lucky Duke (obě karty,
+    // Sciarra Q22), Vendeta a barel v Ruské ruletě – tedy všechna, která procházejí
+    // check machinerií. NE Peyote (to je fáze lízání, ne sejmutí) a NE Helena Zontero
+    // (FAQ Q09 – karta se otáčí automaticky, ne hráčem).
+    _johnPainQueueCard(card, drawerIdx) {
+        if (!card) return;
+        if (!(this.players || []).some(p => p && isInPlay(p) && effectiveCharacter(p) === "John Pain")) return;
+        if (!this._johnPainQueue) this._johnPainQueue = [];
+        this._johnPainQueue.push({ cardId: card.id, drawerIdx });
+    },
+
+    // Komu karta připadne. „Kdokoli" zahrnuje i jeho samotného, takže se hledá od
+    // snímajícího VČETNĚ (k = 0); víc Johnů (Vera Custer, Greygory Deck) řeší oficiální
+    // FAQ Q11 – bere první po směru od toho, kdo snímal. Limit 6 karet se posuzuje až
+    // tady, takže Lucky Dukeovi s 5 kartami v ruce vezme John jen tu první (Q22).
+    _johnPainTakerFor(drawerIdx) {
+        const n = this.players?.length || 0;
+        for (let k = 0; k < n; k++) {
+            const p = this.players[(drawerIdx + k) % n];
+            if (p && isInPlay(p) && effectiveCharacter(p) === "John Pain" && p.hand.length < 6) return p;
+        }
+        return null;
+    },
+
+    // Přesune zapsané karty z odhozu do ruky. Volá se z _pruneSuzyQueue (logic/characters.js),
+    // takže se veze se VŠEMI místy, která frontu odložených akcí pročišťují nebo odbavují,
+    // a k tomu z nextTurn/startDrawPhase jako pojistka pro větve, které frontu neberou
+    // (Vězení, Vendeta, posun dynamitu). Karta, která už v odhozu není (domíchání balíčku),
+    // se prostě přeskočí.
+    _drainJohnPain() {
+        const list = this._johnPainQueue;
+        if (!list || !list.length) return;
+        // Rozložený zásah (výbuch dynamitu, Pravé poledne) se kliká po jednom, ale
+        // pravidlově je to JEDEN efekt – a jeho zásahy jsou přesně ta chvíle, kdy hráč
+        // smí zahrát Pivo na záchranu posledního života (beerLastLifeSave). Kdyby si
+        // sejmutou kartu vzal mezi zásahy, mohl by se jí zachránit – přesně to, co
+        // poznámka na kartě zakazuje. Zbytek zásahů se tedy počká.
+        if (this.pendingDynamiteDamage || this.pendingNoonDamage) return;
+        this._johnPainQueue = [];
+        list.forEach(e => {
+            const taker = this._johnPainTakerFor(e.drawerIdx);
+            if (!taker) return;
+            const card = this.deck.takeFromDiscard(e.cardId);
+            if (!card) return;
+            taker.hand.push(card);
+            const takerIdx = this.players.indexOf(taker);
+            if (!this._johnPainAnim) this._johnPainAnim = [];
+            this._johnPainAnim.push({ toPlayerIdx: takerIdx, cardId: card.id });
+            this.logEvent('special', { who: taker.name, card: 'John Pain', taken: card.name });
+        });
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) {

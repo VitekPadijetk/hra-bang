@@ -8,6 +8,9 @@ const KIT_REVEAL = 3;
 
 const DrawMixin = {
     startDrawPhase() {
+        // Divoký západ – John Pain: kontroly na Dynamit/Vězení doběhly, sejmutá karta
+        // tedy smí do ruky (pojistka pro větve, které frontu odložených akcí neberou).
+        this._drainJohnPain();
         const player = this.getCurrentPlayer();
         player.bangsPlayedThisTurn = 0;
         player._joseUses = 0;      // Dodge City: José Delgado max 2×/tah

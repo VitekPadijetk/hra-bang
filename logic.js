@@ -38,6 +38,10 @@ if (typeof rolesForPlayerCount === 'undefined' && typeof require === 'function')
     globalThis.rolesForPlayerCount = __roles.rolesForPlayerCount;
     globalThis.healthForCharacter = __roles.healthForCharacter;
 }
+// Divoký západ – Big Spencer: 9 životů, ale 5 startovních karet (core/roles.js).
+if (typeof startCardsForCharacter === 'undefined' && typeof require === 'function') {
+    globalThis.startCardsForCharacter = require('./core/roles.js').startCardsForCharacter;
+}
 // Hra pro 3 hráče (Město duchů): kruh cílů + dotaz „platí tady pravidla pro 3?"
 if (typeof TARGET_3P === 'undefined' && typeof require === 'function') {
     const __roles3 = require('./core/roles.js');
@@ -244,9 +248,18 @@ class GameState {
         const p = this.getCurrentPlayer();
         if (this.phase !== "DISCARD") return;
         const card = p.hand.splice(cardIdx, 1)[0];
+        // Divoký západ – Gary Looter si bere karty, které ostatní odhodí nad limit na
+        // konci svého tahu. Vyhrává i nad Opuštěným dolem (R7): karta se k balíčku vůbec
+        // nedostane, protože ji schopnost zachytí dřív, než se řeší, kam se odkládá.
+        const looter = card ? this._garyLooterFor(this.currentPlayerIndex) : null;
+        if (looter) {
+            looter.hand.push(card);
+            this.logEvent('special', { who: looter.name, card: 'Gary Looter',
+                                       target: p.name, taken: card.name });
+        }
         // A Fistful of Cards – Opuštěný důl: odhoz nad limit karet je FÁZE 3, takže pod
         // dolem jde lícem dolů navrch dobíracího balíčku (viz _mineDiscardEndTurn).
-        if (card) this._mineDiscardEndTurn(card);
+        else if (card) this._mineDiscardEndTurn(card);
         p.stats.cardsDiscarded++;
         if (p.hand.length <= this._handLimit(p)) {
             this.nextTurn();
@@ -254,6 +267,9 @@ class GameState {
     }
 
     nextTurn() {
+        // Divoký západ – John Pain: pojistka pro větve, které frontu odložených akcí
+        // neberou (Vězení sebralo tah, Vendeta neuspěla) – nejpozději na konci tahu.
+        this._drainJohnPain();
         // Divoký západ – Madam Zuzana: kdo za svůj tah nezahrál 3 karty, ztrácí život.
         // Je to úplně první gate: pořadí na konci tahu je fáze 3 (odhoz nad limit) →
         // Zuzana → Vendeta → nový tah. Sedí tady (a ne v tryEndTurn), protože se do

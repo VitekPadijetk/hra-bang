@@ -370,6 +370,7 @@ const PlayMixin = {
 
         const checkCard = this.deck.draw();
         this.deck.discard(checkCard);
+        this._johnPainQueueCard(checkCard, targetIdx);   // Divoký západ – John Pain
         this.phase = "CHECKING";
         this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette };
     },
