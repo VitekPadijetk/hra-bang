@@ -568,11 +568,21 @@ module.exports = function installAnimService(ctx) {
         return true;
     }
 
+    // Divoký západ – Zuřivá Doroty: pojistka na vrácení vypůjčeného sedadla. Vrací ho
+    // sice `_dorothyPlay` sám (ve `finally`), ale hák před broadcastem je jediný bod,
+    // kterým projde každá změna stavu, než ji uvidí klient i bot – takže tady se pozná,
+    // kdyby ho někdy nějaká cesta půjčila déle. `_dorothySettle` si klid ověřuje sám
+    // (viz logic/wildWest.js).
+    function flushDorothy(room) {
+        room.gameState?._dorothySettle?.();
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
     // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost
     // a teprve za ní (poslední krok startu tahu) vyměnit ruku Miláček Valentýn.
     function beforeBroadcast(room) {
         ctx.flushBotQuips?.(room);
+        flushDorothy(room);
         flushGhostLeave(room);
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);

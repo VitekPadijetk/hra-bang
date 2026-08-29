@@ -27,7 +27,8 @@ const SEAT_KEYS = new Set([
     'playerIdx', 'targetIdx', 'attackerIdx', 'originatorIdx', 'initialTargetIdx',
     'fromIdx', 'toIdx', 'fromPlayerIdx', 'toPlayerIdx',
     'deadIdx', 'killerIdx', 'drawerIdx', 'grinnerIdx', 'takerIdx', 'discarderIdx',
-    'sourceIdx', 'ownerIdx', 'winClaimIdx', 'brawlAttackerIdx',
+    'sourceIdx', 'ownerIdx', 'winClaimIdx', 'brawlAttackerIdx', 'commandedIdx',
+    '_dorothyOwnerIdx',
     '_firstDeadIdx', '_deadPlayerIdx', '_deathAnimPlayerIdx', '_mollyDeferredIdx',
     '_terenDyingIdx', '_pendingDeathReveal', '_winClaim3p',
 ]);
@@ -1123,6 +1124,160 @@ const WildWestMixin = {
                 return;
         }
         this._processSpecialQueue();
+    },
+
+    // ── Zuřivá Doroty ─────────────────────────────
+    // „Hráč na tahu může jmenovat kartu a vybrat hráče, který ji musí zahrát (pokud ji má)."
+    // Poznámka v pravidlech: nemá-li ji, ukáže ruku; má-li ji, musí ji zahrát, JAKO BY BYL
+    // NA TAHU (i pro počítání vzdáleností), ale cíl(e) vybírá poroučející.
+    //
+    // Technicky je to VYPŮJČENÉ SEDADLO: `currentPlayerIndex` se na dobu efektu přepíše na
+    // poručeného a karta jde běžnou cestou (playCard / playBang / playSpecialCard). Tím se
+    // zdarma veze úplně všechno – vzdálenosti i schopnosti poručeného (FAQ Q05: Slab jako
+    // poručený si vyžádá 2× Vedle!), duel prohraje poručený a karty za Dostavník si líže
+    // poručený (FAQ Q06), limit 1× Bang!/tah se počítá jemu, Madam Zuzaně se karta připíše
+    // jemu a Johnny Kisch i odkrytí nové karty Divokého západu fungují beze změny.
+    //
+    // Sedadlo je vypůjčené JEN po dobu synchronního zahrání (vrací ho `finally`
+    // v `_dorothyPlay`) – proč zrovna tak a co by se stalo jinak, je u něj.
+
+    // Katalog DRUHŮ karet, ze kterých se jmenuje. Staví se z dat balíčku, ne z ruky –
+    // jmenovat lze i kartu, kterou nikdo nedrží (a právě v tom je ta karta zajímavá).
+    _dorothyKinds() {
+        return distinctCardKinds(this._deckDataFor(this.options || {}));
+    },
+
+    // Kdo je doopravdy na tahu. Po dobu vypůjčeného sedadla to NENÍ currentPlayerIndex –
+    // ptá se tím `handlePlayerDeath` (kdo umřel „na svém tahu") i `tryEndTurn`.
+    _turnOwner() {
+        return this._dorothyOwnerIdx != null ? this._dorothyOwnerIdx : this.currentPlayerIndex;
+    },
+
+    // Krok 1: „jmenuji KARTU a vybírám HRÁČE". Vrací popis toho, co se stalo, nebo null
+    // u neplatného poručení:
+    //   { revealed: true }   – poručený kartu nemá, ukázal ruku (tah pokračuje)
+    //   { needTarget: true } – čeká se, až poroučející vybere cíl (fáze DOROTHY_TARGET)
+    //   { played: true }     – karta už jde svou běžnou cestou
+    dorothyCommand(playerIdx, cardName, commandedIdx) {
+        if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return null;
+        if (this._dorothyOwnerIdx != null) return null;      // sedadlo je zrovna vypůjčené
+        // Levá závora (aktivní karta, strop poručení, Právo západu) je JINÝ dotaz než
+        // „smí se tahle karta poručit tomuhle hráči" – server musí projít oběma, jinak
+        // by pustil poručení bez karty na stole nebo přes strop.
+        if (!dorothyReady(this, playerIdx)) return null;
+        const kind = this._dorothyKinds().find(c => c.name === cardName);
+        if (!kind) return null;
+        if (!dorothyPlayerOk(this, playerIdx, kind, commandedIdx)) return null;
+
+        // Strop i zákaz opakování dvojice se spotřebují HNED – i neúspěšné poručení
+        // (poručený kartu nemá) je poručení. Bez toho by ho bot posílal donekonečna:
+        // stav se jím nezmění o jediné pole.
+        this._dorothyUsed = (this._dorothyUsed || 0) + 1;
+        this._dorothyDone = (this._dorothyDone || []).concat([{ name: cardName, commandedIdx }]);
+
+        const commanded = this.players[commandedIdx];
+        const owner = this.players[playerIdx];
+        const cardIdx = (commanded.hand || []).findIndex(c => c && !c._placeholder && c.name === cardName);
+        if (cardIdx === -1) {
+            // „Nemá-li poručený hráč jmenovanou kartu, musí ukázat ruku." Ruka se odkryje
+            // jen na chvíli – je to vedle Sacagaway jediné místo, kde událost sahá do
+            // redakce stavu (viz redactState v server/rooms.js). Zhasne ji server po
+            // dojezdu, jinak by odkrytá zůstala napořád.
+            this._dorothyReveal = { playerIdx: commandedIdx };
+            this.logEvent('event', { card: 'Zuřivá Doroty', who: owner.name, target: commanded.name,
+                                     msg: 'poručil ' + cardName + ' – nemá ji, ukazuje ruku' });
+            return { revealed: true, playerIdx: commandedIdx };
+        }
+
+        this.logEvent('event', { card: 'Zuřivá Doroty', who: owner.name, target: commanded.name,
+                                 msg: 'poroučí zahrát ' + cardName });
+        const card = commanded.hand[cardIdx];
+        if (dorothyNeedsTarget(this, commandedIdx, card)) {
+            this.pendingDorothy = {
+                playerIdx, commandedIdx, cardId: card.id, cardName,
+                targets: dorothyTargets(this, commandedIdx, card),
+            };
+            this.phase = "DOROTHY_TARGET";
+            return { needTarget: true, commandedIdx };
+        }
+        this._dorothyPlay(playerIdx, commandedIdx, card.id, null);
+        return { played: true, commandedIdx, cardId: card.id };
+    },
+
+    // Krok 2: poroučející vybral cíl ze seznamu, který mu poslal server (R5) – stejná
+    // dohoda jako u Pokrevních bratří, aby se klient s pravidly nemohl rozejít.
+    dorothyChooseTarget(playerIdx, targetIdx) {
+        const pd = this.pendingDorothy;
+        if (this.phase !== "DOROTHY_TARGET" || !pd || pd.playerIdx !== playerIdx) return null;
+        if (!(pd.targets || []).includes(targetIdx)) return null;
+        this.pendingDorothy = null;
+        const commandedIdx = pd.commandedIdx;
+        const res = this._dorothyPlay(playerIdx, commandedIdx, pd.cardId, targetIdx);
+        if (!res) { this.phase = "PLAY"; return null; }
+        return { played: true, commandedIdx, cardId: pd.cardId, targetIdx };
+    },
+
+    // Zrušení rozmyšleného poručení (cíl se nakonec nevybral). Do stropu je poručení
+    // započítané už z kroku 1, takže se hra nemá jak zacyklit ani tudy.
+    dorothyCancel(playerIdx) {
+        if (this.phase !== "DOROTHY_TARGET" || this.pendingDorothy?.playerIdx !== playerIdx) return false;
+        this.pendingDorothy = null;
+        this.phase = "PLAY";
+        return true;
+    },
+
+    // Vypůjčení sedadla + zahrání karty běžnou cestou.
+    _dorothyPlay(ownerIdx, commandedIdx, cardId, targetIdx) {
+        const commanded = this.players[commandedIdx];
+        const cardIdx = (commanded?.hand || []).findIndex(c => c && c.id === cardId);
+        if (cardIdx === -1) return null;
+        const card = commanded.hand[cardIdx];
+        // Omezení vázaná na VLASTNÍ tah, která poručenému zbyla z toho minulého (nulují se
+        // až na začátku jeho dalšího tahu). Kdyby zůstala, server by poručenou kartu tiše
+        // odmítl – přesně ta třída chyby, kterou hlídá invariant „bot se nikdy nezasekne".
+        // Zrcadlí to `dorothyAsIf` (core/playability.js), kterým se ptá klient i bot.
+        commanded._handcuffsSuit = null;
+        commanded._lawCardId = null;
+
+        // Sedadlo se půjčuje jen na SYNCHRONNÍ zahrání karty – to je jediné místo, kde
+        // pravidla čtou `currentPlayerIndex` (vzdálenosti, limit Bang!, Kazatel, Želízka,
+        // počítadlo Madam Zuzany, odkrytí nové karty za Dostavník). Všechno, co pak běží dál
+        // (RESPOND, barel, výběr karty, lízání, hokynářství), si své sedadlo nese výslovně
+        // v `pending*` / `drawPhaseState`, takže se sedadlo vrací HNED. To je záměr:
+        // kdyby zůstalo vypůjčené přes celou obranu, byl by po tu dobu „na tahu" poručený
+        // – tah by mu šlo ukončit, jeho smrt by tah ukončila za někoho jiného a fáze PLAY
+        // by po doběhnutí efektu čekala na špatného hráče (a hra jen botů by zamrzla).
+        this._dorothyOwnerIdx = ownerIdx;
+        this.currentPlayerIndex = commandedIdx;
+        this.phase = "PLAY";
+        const action = turnActionForCard(this, commanded, commandedIdx, card);
+        try {
+            if (action === 'SHOOT') {
+                this.playBang(commandedIdx, targetIdx, cardIdx);
+            } else if (DOROTHY_AIMED.includes(action)) {
+                this.playSpecialCard(commandedIdx, targetIdx, cardIdx);
+            } else {
+                this.playCard(cardIdx);
+            }
+        } finally {
+            this.currentPlayerIndex = ownerIdx;
+            this._dorothyOwnerIdx = null;
+        }
+        return { commandedIdx, cardId, targetIdx };
+    },
+
+    // Pojistka na vrácení sedadla. `_dorothyPlay` ho vrací sám (ve `finally`), takže tohle
+    // je jen záchranná síť pro případ, že by nějaká budoucí cesta sedadlo půjčila déle:
+    // volá se z fronty odložených akcí (_resumeAfterSpecial) i z háku před broadcastem
+    // (server/anim.js), tedy odkud vede cesta ke každému klidnému stavu.
+    //
+    // „Klid" = fáze PLAY a prázdná fronta odložených akcí.
+    _dorothySettle() {
+        if (this._dorothyOwnerIdx == null) return false;
+        if (this.phase !== "PLAY" || (this.specialActionQueue || []).length > 0) return false;
+        this.currentPlayerIndex = this._dorothyOwnerIdx;
+        this._dorothyOwnerIdx = null;
+        return true;
     },
 };
 

@@ -95,6 +95,12 @@ if (typeof require === 'function') {
     if (typeof roseSwapOffer === 'undefined') {
         globalThis.roseSwapOffer = require('./playability.js').roseSwapOffer;
     }
+    // Divoký západ – Zuřivá Doroty: „co jde poručit, komu a s jakým cílem".
+    if (typeof dorothyOffer === 'undefined') {
+        const __pl4 = require('./playability.js');
+        globalThis.dorothyOffer = __pl4.dorothyOffer;
+        globalThis.dorothyTargets = __pl4.dorothyTargets;
+    }
     if (typeof nativePlayInTurn === 'undefined') {
         globalThis.nativePlayInTurn = require('./playability.js').nativePlayInTurn;
     }
@@ -909,6 +915,40 @@ function decidePlay(state, myIndex, beliefs) {
         const _roseEp = enemyProbability(me.role, beliefs[_roseIdx], hostOpts(state, beliefs, myIndex));
         if (_roseEp >= 0.5) consider(14, { event: 'lady_rose', payload: {} });
     }
+    // Zuřivá Doroty (Divoký západ): „jmenuj kartu a vyber hráče, který ji musí zahrát".
+    // Bot poroučí JEN Bang!, a jen tehdy, když ho má kdo vystřelit na nepřítele – cizí
+    // rukou se střílí zadarmo (včetně jeho limitu 1× Bang!/tah), zatímco poručit
+    // nesmysl („zahraj Pivo") by bylo jen plýtvání stropem. Co jde poručit, říká
+    // dorothyOffer (core/playability.js) – tentýž predikát, kterým se ptá server.
+    //
+    // Katalog druhů karet zná jen GameState (`_dorothyKinds`); nad prostým stavem
+    // (testy) se karta jednoduše nenabídne – je to nepovinná akce, nic se tím nezasekne.
+    const _dorKinds = typeof state._dorothyKinds === 'function' ? state._dorothyKinds() : null;
+    const _dorOffer = _dorKinds ? dorothyOffer(state, myIndex, _dorKinds) : null;
+    if (_dorOffer) {
+        const _dorBang = _dorOffer.find(o => o.card && o.card.type === 'Bang!');
+        const _dorRank = rankEnemies(state, myIndex, beliefs);
+        const _dorPos = (i) => {
+            const k = _dorRank.findIndex(e => e.idx === i);
+            return k === -1 ? Infinity : k;
+        };
+        // Brzda proti přátelské palbě platí i tady: cíl v rukách někoho jiného je pořád
+        // můj výstřel (shootTargets už nejisté spojence vyhazuje sám).
+        const _dorShoot = shootTargets(state, myIndex, beliefs).map(e => e.idx);
+        let _dorBest = null;
+        if (_dorBang && _dorShoot.length) {
+            _dorBang.players.forEach(j => {
+                if (!(state.players[j].hand || []).length) return;   // prázdná ruka = jen ukáže karty
+                if (_dorPos(j) === Infinity) return;                 // spojence nenutím střílet
+                if (!dorothyTargets(state, j, _dorBang.card).some(t => _dorShoot.includes(t))) return;
+                if (!_dorBest || _dorPos(j) < _dorPos(_dorBest)) _dorBest = j;
+            });
+        }
+        if (_dorBest != null) {
+            consider(24, { event: 'dorothy_command',
+                           payload: { cardName: _dorBang.card.name, targetIdx: _dorBest } });
+        }
+    }
     // Lee Van Kliff (Divoký západ): odhodí kartu BANG! a zopakuje efekt hnědé karty,
     // kterou právě zahrál. Co je k opakování a jaký cíl to chce, říká `lvkOffer`
     // (core/playability.js) – tentýž predikát, jakým se ptá server, takže se hra jen
@@ -1284,6 +1324,19 @@ function decideBotAction(state, myIndex, beliefs) {
             const score = cur.reduce((a, c) => a + (CHAR_RANK[c] || 0), 0);
             const swap = cur.length < Math.min(2, free) || score < GREYGORY_AVG * cur.length;
             return { event: 'greygory_choice', payload: { swap: !!swap } };
+        }
+
+        // Divoký západ – Zuřivá Doroty: kartu i poručeného už jsem jmenoval, teď vybírám
+        // CÍL (R5). Seznam legálních cílů počítá server z pozice PORUČENÉHO (FAQ Q05)
+        // a posílá ho v `pendingDorothy.targets` – vybírám z něj toho nejnepřátelskějšího.
+        // Prázdný seznam nemůže nastat (server by fázi nezaložil), ale i tak se z něj
+        // musí dát vycouvat – jinak by hra jen botů zamrzla.
+        case 'DOROTHY_TARGET': {
+            const _dt = state.pendingDorothy?.targets || [];
+            if (!_dt.length) return { event: 'dorothy_cancel', payload: {} };
+            const ranked = rankEnemies(state, myIndex, beliefs)
+                .map(e => e.idx).filter(i => _dt.includes(i));
+            return { event: 'dorothy_target', payload: { targetIdx: ranked.length ? ranked[0] : _dt[0] } };
         }
 
         case 'SELECTING_TARGET_CARD': {

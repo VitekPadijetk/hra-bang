@@ -1877,6 +1877,24 @@ function playLuckyDukeResult(chosenId) {
 
 
 // ── DEBUG: galerie karet ──────────────────────────────────────────────────────
+// ── Divoký západ – Zuřivá Doroty: katalog DRUHŮ karet ──────────────────
+// Jmenuje se DRUH karty, ne konkrétní kus, takže se z dat balíčku vezme od každého
+// jména první karta jako zástupce (distinctCardKinds, logic/entities.js). Server dělá
+// pravděpodobně totéž ze svých dat (`_dorothyKinds`) – tady se berů z Phaser cache,
+// aby se katalog nemusel vozit v každém broadcastu stavu.
+//
+// Cachuje se: seznam se během hry nemění (jen se zapnutým Dodge City je delší).
+function clientCardKinds() {
+    const dodge = !!state?.options?.expansions?.dodge_city;
+    if (App._cardKinds && App._cardKindsDodge === dodge) return App._cardKinds;
+    const base = gameScene?.cache?.json?.get('cards_data') || [];
+    const dc = dodge ? (gameScene?.cache?.json?.get('cards_dodge_city_data') || []) : [];
+    if (!base.length) return [];
+    App._cardKindsDodge = dodge;
+    App._cardKinds = distinctCardKinds(base.concat(dc));
+    return App._cardKinds;
+}
+
 // Mřížka všech karet (miniatury z reálných textur card_<id>) + náhled vybrané karty
 // ve 100 % (scale 1.0 = nativní velikost baked textury, CARD_TEX_W×H). Slouží k
 // vizuální kontrole nového vykreslování (art + marky). Otevírá debug tlačítko.
@@ -2781,6 +2799,10 @@ function renderUI() {
     if (state.phase === "NEW_IDENTITY") renderNewIdentityOverlay();
     // Divoký západ – Greygory Deck si na začátku tahu vybírá, jestli dvojici vymění.
     if (state.phase === "GREYGORY_OFFER") renderGreygoryOverlay();
+    // Divoký západ – Zuřivá Doroty: mřížka druhů karet, ze které se jmenuje. Není to
+    // fáze (jméno karty se ještě nikam neposlalo), ale nabitá schopnost – stejně jako
+    // „DOC: 2 karty → BANG" žije v `selectedState`, dokud hráč nedoklikne.
+    if (selectedState?.dorothy && !selectedState.dorothy.cardName) renderDorothyOverlay();
     // board.js právě zapsal přesné pozice rezervovaných slotů → zaměř na ně letící líznutí.
     retargetDrawAnims();
     // Nové sprity vznikly bez zvýraznění → hned nasaď hover na kartu pod kurzorem (bez čekání

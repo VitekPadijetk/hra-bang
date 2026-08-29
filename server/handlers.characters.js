@@ -2,6 +2,7 @@
 // (Bart Cassidy, El Gringo, Suzy) a vyhodnocení checků/Black Jacku + get_taken_names.
 // registerCharacterHandlers(socket, ctx, withRoom) – těla byte-identická.
 const { lawRevealMs } = require('../core/fistfulAnim.js');
+const { dorothyRevealMs } = require('../core/wwsAnim.js');
 module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
     const { rooms, emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn,
             handleReshuffleAndBroadcast, broadcastRoom, broadcastRoomDelayed } = ctx;
@@ -207,6 +208,118 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             ctx.swapRoomSeats?.(room, res.fromIdx, res.toIdx);
             emitAnim(room, { type: 'wws_seat_swap', fromIdx: res.fromIdx, toIdx: res.toIdx });
             broadcastRoomDelayed(room);
+        });
+    });
+
+    // ── Zuřivá Doroty (Divoký západ) ──────────────────────────────────
+    // Hráč na tahu jmenuje kartu a hráče, který ji musí zahrát. Pravidla (včetně
+    // vypůjčeného sedadla) jsou v logic/wildWest.js; tady se řeší jen to, co pravidla
+    // nevidí – animace odcházející karty, dočasně odkrytá ruka a ledger chování.
+
+    // Karta poručeného odchází z jeho ruky úplně stejně jako kdyby ji zahrál sám – modrá
+    // a zelená na stůl, Vězení před cíl, Panika/Cat Balou vícedílnou sekvencí (kterou
+    // dohraje select_target_card) a zbytek do odhozu.
+    const dorothyAnim = (room, gs, commandedIdx, card, cardIdx, targetIdx, boardLenBefore) => {
+        if (!card) return;
+        const blueTypes = ['Zbraň', 'Barel', 'Vybavení', 'Dynamit'];
+        if (blueTypes.includes(card.type) || card.green) {
+            const boardIdx = card.type === 'Zbraň' ? 0 : 1 + boardLenBefore;
+            emitAnim(room, { type: 'hand_to_board', playerIdx: commandedIdx, cardId: card.id, boardIdx });
+            return;
+        }
+        if (card.type === 'Vězení') {
+            const jailBoardIdx = 1 + (gs.players[targetIdx]?.board?.length || 0);
+            emitAnim(room, { type: 'jail_sequence', attackerIdx: commandedIdx, targetIdx,
+                             cardId: card.id, boardIdx: jailBoardIdx });
+            return;
+        }
+        const isPanicCB = card.type === 'Panika!' || card.type === 'Cat Balou';
+        if (isPanicCB && gs.phase === 'SELECTING_TARGET_CARD') {
+            // Stejný trik jako v play_special: kartu podržíme mimo odhoz (a vizuálně
+            // v ruce), dokud ji tam nedoveze animace spuštěná až při výběru karty.
+            room._pendingPanicCard = {
+                type: card.type === 'Panika!' ? 'panic_sequence' : 'catbalou_sequence',
+                attackerIdx: commandedIdx, targetIdx, cardId: card.id,
+            };
+            const heldCard = gs.deck.takeFromDiscard(card.id);
+            const hand = gs.players[commandedIdx].hand;
+            if (heldCard) hand.splice(Math.min(cardIdx, hand.length), 0, heldCard);
+            room._pendingPanicCard.held = heldCard ? [heldCard] : [];
+            room._pendingPanicCard.heldInHand = !!heldCard;
+            return;
+        }
+        emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: commandedIdx, cardId: card.id });
+    };
+
+    // Ledger chování: nepřátelský je PORUČUJÍCÍ, ne poručený – cíl si vybral on
+    // (poručený kartu jen fyzicky zahrál). Bez toho by dedukce rolí (core/beliefs.js)
+    // obvinila hráče z útoku, který mu někdo nakázal.
+    const dorothyLedger = (room, ownerIdx, targetIdx) => {
+        if (targetIdx == null || targetIdx === ownerIdx) return;
+        ctx.recordBehavior?.(room, { actorIdx: ownerIdx, targetIdx, kind: 'hostile' });
+    };
+
+    on('dorothy_command', (d) => {
+        withRoom((room, p, gs) => {
+            const ownerIdx = gs.currentPlayerIndex;
+            const commandedIdx = d?.targetIdx;
+            const commanded = gs.players[commandedIdx];
+            if (!commanded) return;
+            // Snapshot PŘED zahráním – po něm už karta v ruce není.
+            const cardIdx = (commanded.hand || []).findIndex(
+                c => c && !c._placeholder && c.name === d?.cardName);
+            const card = cardIdx === -1 ? null : commanded.hand[cardIdx];
+            const boardLenBefore = (commanded.board || []).length;
+
+            const res = gs.dorothyCommand(ownerIdx, d?.cardName, commandedIdx);
+            if (!res) return;
+            if (res.revealed) {
+                // „Musí ukázat ruku." Redakce ji na tu chvíli pustí (server/rooms.js);
+                // zhasnout ji musíme my, jinak by zůstala odkrytá napořád.
+                const ms = dorothyRevealMs();
+                room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0, Date.now() + ms);
+                broadcastRoom(room);
+                setTimeout(() => {
+                    if (gs._dorothyReveal?.playerIdx !== commandedIdx) return;
+                    gs._dorothyReveal = null;
+                    broadcastRoom(room);
+                }, ms);
+                return;
+            }
+            if (res.needTarget) { broadcastRoom(room); return; }
+            dorothyAnim(room, gs, commandedIdx, card, cardIdx, null, boardLenBefore);
+            if (gs.phase === 'STORE') {
+                const t = ctx.storeCinematicMs?.(gs);
+                room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;
+            }
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    on('dorothy_target', (d) => {
+        withRoom((room, p, gs) => {
+            const pd = gs.pendingDorothy;
+            if (!pd) return;
+            const ownerIdx = pd.playerIdx;
+            const commandedIdx = pd.commandedIdx;
+            const commanded = gs.players[commandedIdx];
+            const cardIdx = (commanded?.hand || []).findIndex(c => c && c.id === pd.cardId);
+            const card = cardIdx === -1 ? null : commanded.hand[cardIdx];
+            const boardLenBefore = (commanded?.board || []).length;
+            const targetIdx = d?.targetIdx;
+
+            const res = gs.dorothyChooseTarget(ownerIdx, targetIdx);
+            if (!res) { broadcastRoom(room); return; }
+            dorothyAnim(room, gs, commandedIdx, card, cardIdx, targetIdx, boardLenBefore);
+            dorothyLedger(room, ownerIdx, targetIdx);
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    on('dorothy_cancel', () => {
+        withRoom((room, p, gs) => {
+            if (!gs.dorothyCancel(gs.pendingDorothy?.playerIdx)) return;
+            broadcastRoom(room);
         });
     });
 

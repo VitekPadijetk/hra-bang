@@ -564,6 +564,19 @@ function drawOpponents(ctx) {
         const isLvkPick = !!selectedState.lvk && selectedState.lvk.cardId != null &&
             !App.blockInput && state.phase === 'PLAY' && state.currentPlayerIndex === myIndex;
         const lvkValid = isLvkPick && lvkTargetOk(state, _selMe, myIndex, actualIdx);
+        // Divoký západ – Zuřivá Doroty: druh karty už je vybraný v mřížce
+        // (renderDorothyOverlay), teď se kliká na postavu PORUČENÉHO. Komu to jde
+        // poručit, spočítal `dorothyOffer` – tentýž predikát, kterým se ptá server.
+        const isDorothyPick = !!selectedState.dorothy?.cardName && !App.blockInput &&
+            state.phase === 'PLAY' && state.currentPlayerIndex === myIndex;
+        const dorothyPickValid = isDorothyPick &&
+            (selectedState.dorothy.players || []).includes(actualIdx);
+        // …a druhé kliknutí: CÍL poručené karty (R5). Seznam legálních cílů počítá server
+        // z pozice PORUČENÉHO (FAQ Q05) a posílá ho v `pendingDorothy.targets`.
+        const isDorothyAim = state.phase === 'DOROTHY_TARGET' && !App.blockInput &&
+            state.pendingDorothy?.playerIdx === myIndex;
+        const dorothyAimValid = isDorothyAim &&
+            (state.pendingDorothy.targets || []).includes(actualIdx);
         // Pat Brennan (Dodge City): ve své fázi lízání smí místo balíčku vzít 1 kartu ze
         // stolu libovolného hráče do ruky (klik na kartu na stole soupeře).
         // !App.blockInput: jakmile Pat kliknutím vezme kartu (nastaví blockInput), zvýraznění
@@ -803,6 +816,36 @@ function drawOpponents(ctx) {
                 sprite.on('pointerdown', () => {
                     if (!flintValid || App.blockInput) return;
                     selectedState.flint = { targetIdx: actualIdx };
+                    renderUI();
+                });
+            }
+
+            // Divoký západ – Zuřivá Doroty: klik na postavu = komu poručím jmenovanou
+            // kartu. Jestli ji doopravdy má, se člověk dozví až teď (jinak ukáže ruku).
+            if (isDorothyPick) {
+                sprite.setInteractive({ useHandCursor: dorothyPickValid });
+                sprite.setTint(dorothyPickValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (dorothyPickValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(dorothyPickValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!dorothyPickValid || App.blockInput) return;
+                    socket.emit('dorothy_command', { cardName: selectedState.dorothy.cardName, targetIdx: actualIdx });
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
+
+            // …a klik na CÍL poručené karty (fáze DOROTHY_TARGET).
+            if (isDorothyAim) {
+                sprite.setInteractive({ useHandCursor: dorothyAimValid });
+                sprite.setTint(dorothyAimValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (dorothyAimValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(dorothyAimValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!dorothyAimValid || App.blockInput) return;
+                    socket.emit('dorothy_target', { targetIdx: actualIdx });
+                    App.blockInput = true;
                     renderUI();
                 });
             }
@@ -2647,6 +2690,46 @@ function drawMyArea(ctx) {
                     });
                 }
             }
+            // Divoký západ – Zuřivá Doroty: „jmenuj kartu a vyber hráče, který ji musí
+            // zahrát". Nabito → přes desku se rozloží mřížka DRUHŮ karet
+            // (renderDorothyOverlay, view/screens.js), po výběru se kliká na postavu.
+            // Co jde poručit a komu, říká dorothyOffer (core/playability.js) – tentýž
+            // predikát, jakým se ptá server i bot. (S Lady Růží se o slot nepere: obě
+            // jsou karty událostí Divokého západu a platí vždycky jen jedna z nich.)
+            if (myPlayTurn && !_abilSlotUsed) {
+                const _dorOffer = dorothyOffer(state, myIndex, clientCardKinds());
+                if (_dorOffer) {
+                    _abilSlotUsed = true;
+                    const _dorArmed = !!selectedState.dorothy;
+                    themeButton(gameScene, L.btnAbilX, BTN_Y, 360, 58,
+                        _dorArmed ? 'DOROTY: zrušit ↩' : '🎭 DOROTY: porouč kartu', {
+                        ...themeToggleStyle(_dorArmed), fontSize: '19px',
+                        onClick: () => {
+                            selectedState = _dorArmed ? { cardIndex: null, action: null }
+                                : { cardIndex: null, action: null, dorothy: { cardName: null, offer: _dorOffer } };
+                            renderUI();
+                        },
+                    });
+                }
+            }
+        }
+
+        // Divoký západ – Zuřivá Doroty: rozmyslet si už jmenovanou kartu jde do chvíle,
+        // než se vybere cíl. Samo poručení je už započítané do stropu za tah, takže se
+        // tím nedá nic vyzískat (a hra se nemá jak zacyklit).
+        if (state.phase === 'DOROTHY_TARGET' && state.pendingDorothy?.playerIdx === myIndex) {
+            const { bg: _dorCancel } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH,
+                'DOROTY: zrušit poručení ↩', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '19px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('dorothy_cancel', {});
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _dorCancel.setAlpha(0.45); _dorCancel.disableInteractive(); }
         }
 
         if (state.isDebug) {

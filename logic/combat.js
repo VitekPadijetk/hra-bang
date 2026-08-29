@@ -185,7 +185,12 @@ const CombatMixin = {
 
         this.checkWinCondition();
 
-        if (!this.winner && deadIdx === this.currentPlayerIndex &&
+        // Divoký západ – Zuřivá Doroty: po dobu vypůjčeného sedadla NENÍ
+        // `currentPlayerIndex` hráč na tahu, ale poručený. Tah končí jen tehdy, když
+        // umřel ten, komu tah patří (`_turnOwner`, logic/wildWest.js) – jinak by se
+        // smrtí poručeného tah ukončil za nevinného a smrt poroučejícího by naopak
+        // zůstala bez posunu.
+        if (!this.winner && deadIdx === this._turnOwner() &&
             (this.phase === "PLAY" || this.phase === "DRAW")) {
             this._autoEndTurnPending = true;
             this._deadPlayerIdx = deadIdx;

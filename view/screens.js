@@ -520,6 +520,70 @@ function confirmNewIdentity(take) {
 // hraje – Vera Custer si dvojici líže rovnou při volbě kopie.
 // Kolik karet je ve skutečném balíčku postav volných, je v nabídce vidět: výměna může
 // vyjít i na jedinou kartu nebo na žádnou, a to je past, kterou hráč musí vidět dopředu.
+// ── Divoký západ – Zuřivá Doroty: mrřížka druhů karet ──────────────────
+// „Hráč na tahu může jmenovat kartu a vybrat hráče, který ji musí zahrát."
+//
+// Jmenuje se z ARTŮ, ne ze seznamu jmen: hra je celá o obrázcích karet a hráč hledá
+// „tu s dynamitem", ne řetězec. Textury `card_<id>` jsou zapečené pro každou kartu
+// (buildCardTextures), takže se pro každý druh vezme první id z dat jako zástupce.
+//
+// Není to fáze – dokud se jméno neodešle, žije volba jen v `selectedState.dorothy`
+// (stejně jako nabité schopnosti Doca nebo Flinta). Nabídku (co jde poručit a komu)
+// spočítal `dorothyOffer` už při nabití – tentýž predikát, kterým se ptá server.
+function renderDorothyOverlay() {
+    const sel = selectedState.dorothy;
+    const offer = sel && sel.offer;
+    if (!offer || !offer.length) return;
+
+    const backdrop = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.82)
+        .setInteractive();   // spolkne kliknutí mimo karty
+    gameScene.cardsSprites.add(backdrop);
+
+    themeTitle(gameScene, 960, stageTop() + 90, '🎭 Zuřivá Doroty – jmenuj kartu', { fontSize: '40px' });
+    const hint = gameScene.add.text(960, stageTop() + 145,
+        'Vybranou kartu pak musí zahrát hráč, na kterého klikneš – pokud ji má. Jestli ne, ukáže ruku.',
+        { fontFamily: THEME.fontUI, fontSize: '22px', color: THEME.color.textMuted }).setOrigin(0.5);
+    gameScene.cardsSprites.add(hint);
+
+    // Mřížka se škáluje podle počtu druhů (se zapnutým Dodge City jich je kolem 30) –
+    // stejný princip jako rozteč v Clausově řadě: raději menší karty než přetečený stůl.
+    const n = offer.length;
+    const cols = Math.min(n, Math.ceil(Math.sqrt(n * 1.9)));
+    const rows = Math.ceil(n / cols);
+    const availW = (stageRight() - stageLeft()) - 120;
+    const availH = 1080 - 300;
+    const scale = Math.min(availW / (cols * 340), availH / (rows * 520), 0.5);
+    const cw = 325 * scale * 1.06;
+    const ch = 500 * scale * 1.12;
+    const startX = 960 - (cols - 1) * cw / 2;
+    const startY = 540 + 40 - (rows - 1) * ch / 2;
+
+    offer.forEach((entry, i) => {
+        const cx = startX + (i % cols) * cw;
+        const cy = startY + Math.floor(i / cols) * ch;
+        const texKey = gameScene.textures.exists('card_' + entry.card.id)
+            ? 'card_' + entry.card.id : 'placeholder';
+        const img = gameScene.add.image(cx, cy, texKey).setScale(scale)
+            .setInteractive({ useHandCursor: true });
+        gameScene.cardsSprites.add(img);
+        img.on('pointerover', () => img.setScale(scale * 1.18).setDepth(1005));
+        img.on('pointerout', () => img.setScale(scale).setDepth(0));
+        img.on('pointerdown', () => {
+            if (App.blockInput) return;
+            // Jméno je vybrané – teď se kliká na postavu poručeného (viz drawOpponents).
+            selectedState.dorothy = { cardName: entry.card.name, players: entry.players, offer };
+            renderUI();
+        });
+    });
+
+    const { bg: cancel } = themeButton(gameScene, 960, 1080 - 46, 220, 52, '✕ Zrušit', {
+        fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+        fontSize: '20px',
+        onClick: () => { selectedState = { cardIndex: null, action: null }; renderUI(); },
+    });
+    cancel.setDepth(1006);
+}
+
 function renderGreygoryOverlay() {
     const pg = state.pendingGreygory;
     if (!pg || pg.playerIdx !== myIndex) return;

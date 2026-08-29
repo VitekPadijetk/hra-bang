@@ -40,6 +40,11 @@ if (typeof CardType === 'undefined' && typeof require === 'function') {
     globalThis.Player = __ent.Player;
     globalThis.Deck = __ent.Deck;
 }
+// Samostatný shim: katalog druhů karet (Zuřivá Doroty) přibyl později, takže by ho
+// blok výš hlídaný CardType přeskočil, kdyby entity už načetl někdo jiný.
+if (typeof distinctCardKinds === 'undefined' && typeof require === 'function') {
+    globalThis.distinctCardKinds = require('./logic/entities.js').distinctCardKinds;
+}
 
 // Čisté helpery rolí/výhry. V prohlížeči globály z core/*, v Node přes require.
 if (typeof rolesForPlayerCount === 'undefined' && typeof require === 'function') {
@@ -109,6 +114,15 @@ if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
     // Strop použití za sebou je pravidlo, ne politika UI, takže se jím ptá server i bot.
     globalThis.roseRightNeighbor = __pl.roseRightNeighbor;
     globalThis.roseSwapOffer = __pl.roseSwapOffer;
+    // Divoký západ – Zuřivá Doroty: co jde poručit, komu a s jakým cílem. Tytéž
+    // predikáty kreslí klientovi mřížku druhů karet a živí bota – rozejít se nesmějí.
+    globalThis.dorothyReady = __pl.dorothyReady;
+    globalThis.dorothyPlayerOk = __pl.dorothyPlayerOk;
+    globalThis.dorothyNeedsTarget = __pl.dorothyNeedsTarget;
+    globalThis.dorothyTargets = __pl.dorothyTargets;
+    globalThis.DOROTHY_AIMED = __pl.DOROTHY_AIMED;
+    // „Jakou akci karta spustí ve vlastním tahu" (nad getActionForCard přidává Zúčtování).
+    globalThis.turnActionForCard = __pl.turnActionForCard;
 }
 
 class GameState {
@@ -211,6 +225,15 @@ class GameState {
         // podle toho se série na začátku dalšího tahu buď drží, nebo nuluje.
         this._roseStreak = 0;
         this._roseUsedThisTurn = false;
+        // Divoký západ – Zuřivá Doroty: vypůjčené sedadlo (`_dorothyOwnerIdx` = kdo je na
+        // tahu doopravdy), strop poručení za tah (`_dorothyUsed`, R4/FAQ Q08), už použité
+        // dvojice (druh karty, poručený) a dočasně odkrytá ruka toho, kdo kartu neměl.
+        // Viz logic/wildWest.js.
+        this.pendingDorothy = null;
+        this._dorothyOwnerIdx = null;
+        this._dorothyUsed = 0;
+        this._dorothyDone = [];
+        this._dorothyReveal = null;
         this._vendettaDone = false;     // Vendeta: sejmutí je v jednom tahu jen jednou
         this._extraTurn = false;        // Vendeta: běží tah navíc (nová událost se neodkrývá)
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do
@@ -303,6 +326,13 @@ class GameState {
     }
 
     nextTurn() {
+        // Divoký západ – Zuřivá Doroty: pojistka pro případ, že vypůjčené sedadlo ještě
+        // nikdo nevrátil (efekt skončil někde, kde se `_dorothySettle` nevolá). Tah se
+        // MUSÍ posouvat od skutečného hráče na tahu, ne od poručeného.
+        if (this._dorothyOwnerIdx != null) {
+            this.currentPlayerIndex = this._dorothyOwnerIdx;
+            this._dorothyOwnerIdx = null;
+        }
         // Divoký západ – John Pain: pojistka pro větve, které frontu odložených akcí
         // neberou (Vězení sebralo tah, Vendeta neuspěla) – nejpozději na konci tahu.
         this._drainJohnPain();
@@ -363,6 +393,11 @@ class GameState {
         // Divoký západ – Madam Zuzana: totéž pro její penalizaci (jen jednou za tah)
         // a pro počítadlo zahraných karet, které patří vždy jednomu tahu jednoho hráče.
         this._zuzanaDone = false;
+        // Divoký západ – Zuřivá Doroty: strop poručení i zakázané dvojice patří jednomu
+        // tahu jednoho hráče (na rozdíl od Lady Růže, kde je strop na použití ZA SEBOU).
+        this._dorothyUsed = 0;
+        this._dorothyDone = [];
+        this.pendingDorothy = null;
         const cp = this.players[this.currentPlayerIndex];
         if (cp) cp._playedThisTurn = 0;
         this.logEvent('turn', { who: cp?.name, role: cp?.role, hp: cp?.health, max: cp?.maxHealth, hand: cp?.hand?.length });
@@ -430,6 +465,9 @@ class GameState {
         // na „Ukončit tah" doručený už během lízání/reakce by jinak tah zahodil rovnou
         // (bez líznutí) nebo ukončil tah někomu jinému uprostřed obrany.
         if (this.phase !== "PLAY" && this.phase !== "DISCARD") return;
+        // Divoký západ – Zuřivá Doroty: dokud je sedadlo vypůjčené, sedí na něm
+        // poručený hráč – ten by tím ukončil CIZÍ tah.
+        if (this._dorothyOwnerIdx != null) return;
         const p = this.getCurrentPlayer();
         if (!p) {
             this.nextTurn();

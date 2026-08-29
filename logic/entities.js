@@ -253,6 +253,31 @@ class Deck {
     }
 }
 
+// ── Katalog DRUHŮ karet (Divoký západ – Zuřivá Doroty) ───────────────────────
+// „Hráč na tahu může jmenovat kartu…" – jmenuje se DRUH karty, ne konkrétní kus,
+// takže se z dat balíčku vezme od každého jména první karta jako zástupce. Jde
+// o stejnou konverzi, jakou dělá `Deck.initializeStandardDeck` (typ i barva se
+// překládají přes CardType/Suits a metadata rozšíření nese Card z props), aby se
+// zástupce choval při dotazech pravidel přesně jako karta v ruce.
+//
+// Data jsou u serveru v `this.cardData` (viz `_deckDataFor`), u klienta v Phaser
+// cache – proto to není metoda GameState, ale čistá funkce nad syrovým seznamem.
+function distinctCardKinds(rawCardData) {
+    const out = [];
+    const seen = new Set();
+    (rawCardData || []).forEach(c => {
+        if (!c || !c.name || seen.has(c.name)) return;
+        seen.add(c.name);
+        const card = new Card(c.id, c.name, CardType[c.type], Suits[c.suit], c.value, c.props || {});
+        card.effect = c.props?.effect || c.effect || null;
+        card.art = c.art || null;
+        card.exp = c.exp || null;
+        card.border = c.border || null;
+        out.push(card);
+    });
+    return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, Card, Player, Deck };
+    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, Card, Player, Deck, distinctCardKinds };
 }

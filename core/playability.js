@@ -694,6 +694,148 @@ function roseSwapOffer(state, myIndex) {
     return j;
 }
 
+// ── Divoký západ – Zuřivá Doroty ────────────────────────────────
+// „Hráč na tahu může jmenovat kartu a vybrat hráče, který ji musí zahrát (pokud ji má)."
+// Poznámka v pravidlech: nemá-li ji, ukáže ruku; má-li ji, hraje ji, JAKO BY BYL NA TAHU
+// (i pro počítání vzdáleností), ale cíl(e) vybírá poroučející.
+//
+// Tenhle blok je jediný zdroj pravdy pro server (dorothyCommand v logic/wildWest.js),
+// klienta (tlačítko + mřížka druhů karet) i bota. Rozejít se nesmí: server by poručení
+// mlčky odmítl, bot by ho poslal znovu a hra jen botů by zamrzla.
+//
+// POZOR: všechny dotazy jsou HYPOTETICKÉ – ptají se „šlo by to, KDYBY tu kartu měl".
+// Jestli ji doopravdy má, se poroučející dozvědět nesmí (zjistí to až tím, že ji zahraje,
+// nebo že ukáže prázdné ruce).
+
+// Druhy karet, které Doroty poroučet neumí: „odhoď další kartu" (Dodge City). Cenu by
+// platil poručený kartou VLASTNÍ volby a u Ragtime by si sám vybíral i okradenou kartu,
+// takže by věta „cíl(e) vybíráš ty" neplatila ani z poloviny.
+function dorothyCommandable(card) {
+    return !!card && !card._placeholder && !card.discardExtra;
+}
+
+// Kolik poručení ještě zbývá. Strop = počet ŽIJÍCÍCH hráčů (R4, pravidlo palce z FAQ Q08).
+// Není to kosmetika: neúspěšné poručení (cíl kartu nemá → jen ukáže ruku) stav nezmění,
+// takže bez stropu by ho bot posílal donekonečna.
+function dorothyBudget(state) {
+    const alive = ((state && state.players) || []).filter(p => p && p.health > 0).length;
+    return alive - ((state && state._dorothyUsed) || 0);
+}
+
+// Tutéž dvojici (druh karty, poručený) nelze v jednom tahu poručit dvakrát – podruhé
+// už se nic nedozvíš a nic se nestane.
+function dorothyDone(state, cardName, commandedIdx) {
+    return ((state && state._dorothyDone) || []).some(
+        d => d && d.name === cardName && d.commandedIdx === commandedIdx);
+}
+
+// Levá závora: smí hráč vůbec poroučet? (Bez katalogu karet, takže se jí ptá i tlačítko.)
+function dorothyReady(state, myIndex) {
+    if (!eventActive(state, 'ZURIVA_DOROTY')) return false;
+    if (!isPlayTurn(state, myIndex)) return false;
+    if (dorothyBudget(state) <= 0) return false;
+    const me = state.players[myIndex];
+    if (!me) return false;
+    // A Fistful of Cards – Právo západu: dokud drží vynucenou kartu, nesmí dělat nic
+    // jiného než ji zahrát (poručení je „něco jiného").
+    if (me._lawCardId != null && lawForcedCard(state, me, myIndex)) return false;
+    return state.players.some((p, i) => i !== myIndex && isInPlay(p));
+}
+
+// Stav „jako by byl poručený na tahu" (FAQ Q05: vzdálenosti i schopnosti se počítají
+// podle NĚJ). Dvě omezení vázaná na VLASTNÍ tah se přitom musí sundat – Želízka
+// (High Noon) i Právo západu (Fistful) drží hráč jen ve svém tahu a stejně se mu nulují
+// na jeho začátku, takže by tu jinak strašila jeho minulá volba.
+function dorothyAsIf(state, commandedIdx) {
+    const players = (state.players || []).slice();
+    const p = players[commandedIdx];
+    if (p && (p._handcuffsSuit || p._lawCardId != null)) {
+        players[commandedIdx] = Object.assign({}, p, { _handcuffsSuit: null, _lawCardId: null });
+    }
+    return Object.assign({}, state, { players, currentPlayerIndex: commandedIdx, phase: 'PLAY' });
+}
+
+// Jakou akci poručená karta spustí (z pohledu poručeného) a potřebuje-li cíl.
+const DOROTHY_AIMED = ['SHOOT', 'Panika!', 'Cat Balou', 'Duel', 'Vězení'];
+
+function dorothyAction(state, commandedIdx, card) {
+    const p = state.players[commandedIdx];
+    if (!p || !card) return null;
+    return turnActionForCard(dorothyAsIf(state, commandedIdx), p, commandedIdx, card);
+}
+
+function dorothyNeedsTarget(state, commandedIdx, card) {
+    return DOROTHY_AIMED.includes(dorothyAction(state, commandedIdx, card));
+}
+
+// Legální cíle poručené karty – měřené OD PORUČENÉHO (FAQ Q05). Vybírá z nich
+// poroučející (R5), ale seznam počítá server a posílá ho v `pendingDorothy.targets`,
+// aby se klient s pravidly nemohl rozejít. Prázdné pole u necílené karty znamená
+// „cíl není potřeba", u cílené „takhle to poručit nejde".
+function dorothyTargets(state, commandedIdx, card) {
+    const action = dorothyAction(state, commandedIdx, card);
+    if (!DOROTHY_AIMED.includes(action)) return [];
+    const sim = dorothyAsIf(state, commandedIdx);
+    const hasCards = (q) => (q.hand || []).length > 0 ||
+        (q.weapon && q.weapon.id !== -1) || (q.board || []).length > 0;
+    const out = [];
+    (state.players || []).forEach((q, i) => {
+        if (i === commandedIdx || !q || !isInPlay(q)) return;
+        switch (action) {
+            case 'SHOOT':
+                if (computeCanHit(sim, commandedIdx, i, bangEffectReach(card))) out.push(i);
+                break;
+            case 'Panika!':
+                if (hasCards(q) && computeDistance(sim, commandedIdx, i) <= 1) out.push(i);
+                break;
+            case 'Cat Balou':
+                if (hasCards(q)) out.push(i);
+                break;
+            case 'Duel':
+                out.push(i);
+                break;
+            case 'Vězení':
+                if (q.role !== 'Sheriff' && !(q.board || []).some(c => c.type === 'Vězení')) out.push(i);
+                break;
+            default:
+                break;
+        }
+    });
+    return out;
+}
+
+// Smí se TENHLE druh karty poručit TOMUHLE hráči? (FAQ Q04: akce musí být pro něj
+// proveditelná – nejde poručit výstřel mimo jeho dostřel.)
+function dorothyPlayerOk(state, myIndex, card, commandedIdx) {
+    if (commandedIdx === myIndex) return false;   // „vybrat hráče" = jiného než sebe
+    const p = state.players && state.players[commandedIdx];
+    if (!p || !isInPlay(p)) return false;
+    if (!dorothyCommandable(card)) return false;
+    if (dorothyDone(state, card.name, commandedIdx)) return false;
+    const sim = dorothyAsIf(state, commandedIdx);
+    if (cardPlayability(sim, sim.players[commandedIdx], commandedIdx, card) !== true) return false;
+    if (DOROTHY_AIMED.includes(dorothyAction(state, commandedIdx, card)) &&
+        dorothyTargets(state, commandedIdx, card).length === 0) return false;
+    return true;
+}
+
+// Celá nabídka poručení: [{ card, players: [seat…] }, …], nebo null když teď nejde nic.
+// `kinds` = katalog DRUHŮ karet (distinctCardKinds, logic/entities.js) – server ho staví
+// z dat balíčku, klient z Phaser cache, bot z GameState.
+function dorothyOffer(state, myIndex, kinds) {
+    if (!dorothyReady(state, myIndex)) return null;
+    const out = [];
+    (kinds || []).forEach(card => {
+        if (!dorothyCommandable(card)) return;
+        const players = [];
+        (state.players || []).forEach((p, j) => {
+            if (dorothyPlayerOk(state, myIndex, card, j)) players.push(j);
+        });
+        if (players.length) out.push({ card, players });
+    });
+    return out.length ? out : null;
+}
+
 // Je opakování právě teď k dispozici? (Je co opakovat, je čím zaplatit a – potřebuje-li
 // efekt cíl – je i na koho.) Podle toho se kreslí tlačítko a rozhoduje bot.
 function lvkOffer(state, me, myIndex) {
@@ -713,5 +855,8 @@ if (typeof module !== 'undefined' && module.exports) {
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer,
                        lvkRepeat, lvkPayOk, lvkReach, lvkTargetOk, lvkOffer,
-                       roseRightNeighbor, roseSwapOffer };
+                       roseRightNeighbor, roseSwapOffer,
+                       dorothyCommandable, dorothyBudget, dorothyDone, dorothyReady,
+                       dorothyAsIf, dorothyAction, dorothyNeedsTarget, dorothyTargets,
+                       dorothyPlayerOk, dorothyOffer, DOROTHY_AIMED };
 }

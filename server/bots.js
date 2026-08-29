@@ -136,6 +136,10 @@ module.exports = function installBotService(ctx) {
         // kterými karta jen PŘESKAKUJE z ruky do ruky (Gary Looter bere odhoz nad limit,
         // Youl Grinner si nechá dát kartu, Flint Westwood mění 1 za 2) – součet se u nich
         // nezmění a stall guard hlásil zaseknutí tam, kde hra normálně běžela.
+        // A Zuřivá Doroty přidala pokrok, který se ve stavu neprojeví VŮBEC: poručení
+        // hráči, který jmenovanou kartu nemá, jen na chvíli odkryje jeho ruku. Karty,
+        // životy ani fáze se nehnou – posune se jen strop poručení za tah, takže musí
+        // být v otisku (jinak je z legálního tahu falešný stall).
         const hands = [];
         let boardSum = 0, hpSum = 0;
         for (const p of gs.players) {
@@ -154,6 +158,7 @@ module.exports = function installBotService(ctx) {
             gs.pendingResponse?.responded?.length || 0,
             (gs.storeCards || []).filter(c => c).length,
             gs.pendingDynamiteDamage?.hitsLeft ?? -1,
+            gs._dorothyUsed || 0,
         ].join('|');
     }
 

@@ -948,6 +948,55 @@ test('20 her jen botů jede i s balíčkem samých Lady Růží (a nepřesedáva
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Lady Růží');
 });
 
+// Zuřivá Doroty je pravidlově nejdivčejší karta rozšíření: na dobu jedné karty se
+// PROHODÍ, kdo je na tahu (poručený zahraje kartu „jako by byl na tahu"). Kdyby se
+// sedadlo nevrátilo, čekala by fáze PLAY na špatného hráče – ten by tah ukončit
+// nesměl a hra jen botů by zamrzla. K tomu strop poručení za tah: neúspěšné poručení
+// (poručený kartu nemá) stav nezmení, takže bez stropu by ho bot posílal donekonečna.
+test('20 her jen botů jede i s balíčkem samých Zuřivých Doroty', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const wwsEv = (key) => {
+        const c = wwsCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0, commanded = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: k % 2 === 0, high_noon: k % 3 === 0,
+                                         fistful: k % 4 === 0, divoky_zapad: true } };
+            const room = { id: 'wws12_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            const deck = [wwsEv('DIVOKY_ZAPAD')];
+            for (let i = 0; i < 12; i++) deck.push(wwsEv('ZURIVA_DOROTY'));
+            gs.wwsDeck = deck;
+            // Kolik poručení za hru padlo (ať test opravdu testuje kartu, ne prázdno).
+            const origEvent = gs._onEvent;
+            gs._onEvent = (e) => { if (e && e.card === 'Zuřivá Doroty') commanded++; if (origEvent) origEvent(e); };
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `WWS12 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `WWS12 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            // Vypůjčené sedadlo se vždycky vrátí – na konci hry po něm nesmí zbýt stopa.
+            assert.equal(gs._dorothyOwnerIdx, null, `WWS12 hra #${k}: sedadlo se vrátilo`);
+            if (gs.wwsPile.length) flipped++;
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 10, `Zuřivá Doroty se opravdu odkrývala (jen ${flipped} z 20 her)`);
+    assert.ok(commanded > 0, 'bot kartu opravdu použil (jinak test nic netestuje)');
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Zuřivou Doroty');
+});
+
 // Hřbitov je nejrizikovější karta rozšíření pro zaseknutí: vyřazení hráči se v pořadí
 // NEPŘESKAKUJÍ a vracejí se do hry, takže by se stůl teoreticky nemusel nikdy vyprázdnit.
 // Výhra se ale vyhodnocuje v okamžiku vyřazení (dřív, než Hřbitov kohokoli vrátí), takže

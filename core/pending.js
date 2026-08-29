@@ -44,6 +44,10 @@ function pendingActor(state) {
         case 'GRINNER_GIVE':     return state.pendingGrinner?.queue?.length
             ? { idx: state.pendingGrinner.queue[0], kind: 'GRINNER_GIVE' } : null;
         case 'NEW_IDENTITY':     return state.pendingNewIdentity ? { idx: state.pendingNewIdentity.playerIdx, kind: 'NEW_IDENTITY' } : null;
+        // Divoký západ – Zuřivá Doroty: kartu i poručeného už hráč na tahu jmenoval,
+        // teď vybírá CÍL poručené karty (R5) – pořád se čeká na NĚJ, ne na poručeného.
+        case 'DOROTHY_TARGET':   return state.pendingDorothy
+            ? { idx: state.pendingDorothy.playerIdx, kind: 'DOROTHY_TARGET' } : null;
         // Divoký západ – Greygory Deck: nechat si dvojici postav, nebo líznout novou?
         case 'GREYGORY_OFFER':   return state.pendingGreygory ? { idx: state.pendingGreygory.playerIdx, kind: 'GREYGORY_OFFER' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
@@ -86,6 +90,7 @@ const _WAIT_LABELS = {
     GRINNER_GIVE:          'Youl Grinner – dává kartu',
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     GREYGORY_OFFER:        'Greygory Deck – vybírá si postavy',
+    DOROTHY_TARGET:        'Zuřivá Doroty – vybírá cíl poručené karty',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     EL_GRINGO_STEAL:       'El Gringo – bere kartu',

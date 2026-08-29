@@ -252,6 +252,9 @@ const CharactersMixin = {
         } else {
             this.phase = this.interruptedPhase || "PLAY";
             this.interruptedPhase = null;
+            // Divoký západ – Zuřivá Doroty: efekt poručené karty doběhl včetně fronty,
+            // takže se vypůjčené sedadlo vrací jeho majiteli (viz `_dorothySettle`).
+            this._dorothySettle();
             // Divoký západ – Roubík: fáze je obnovená a nic neběží, takže je teprve TEĎ
             // klid na odloženou pokutu (výš se _processSpecialQueue ptal ještě ve fázi
             // právě dokončené schopnosti). Zásah může frontu naplnit znovu.

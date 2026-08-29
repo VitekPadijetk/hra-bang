@@ -65,6 +65,11 @@ module.exports = function installRoomService(ctx) {
         // Z ruky se přesto pořád bere NÁHODNĚ (FAQ Q17) – pravidla se nemění ani o řádek,
         // odkrytá ruka mění jen to, co je vidět.
         const handsOpen = eventActive(gs, 'SACAGAWAY');
+        // Divoký západ – Zuřivá Doroty: „nemá-li poručený hráč jmenovanou kartu, musí
+        // ukázat ruku." Je to vedle Sacagaway JEDINÁ další výjimka z redakce, a na rozdíl
+        // od ní dočasná a jednomu hráči: zhasne ji server po `dorothyRevealMs()`
+        // (server/handlers.characters.js). Skryté zůstává všechno ostatní – role i balíčky.
+        const revealIdx = gs._dorothyReveal ? gs._dorothyReveal.playerIdx : null;
         const players = (gs.players || []).map((p, i) => {
             if (i === viewerIdx) return p;
             // Jediným vodítkem je `_roleRevealed` – NE `health <= 0`. Nastaví se při
@@ -84,7 +89,7 @@ module.exports = function installRoomService(ctx) {
             return {
                 ...p,
                 role: roleVisible ? p.role : null,
-                hand: handsOpen ? p.hand : (p.hand || []).map(() => HIDDEN_CARD),
+                hand: (handsOpen || i === revealIdx) ? p.hand : (p.hand || []).map(() => HIDDEN_CARD),
                 _lawCardId: null,
                 _secondChar: null,   // odložená identita je lícem dolů (klient ji nečte)
             };

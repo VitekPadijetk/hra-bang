@@ -167,8 +167,22 @@ function seatSwapMs() {
     return D.preMs + D.flyMs + D.tailMs;
 }
 
+// ── Zuřivá Doroty: „nemá-li poručenou kartu, musí ukázat ruku" ───────────
+// Ruka se neodhazuje ani nikam neletí – jen se na chvíli otočí lícem nahoru. Není to
+// tedy animace (klient kreslí odkryté karty sám, jakmile mu je pustí redakce, viz
+// redactState v server/rooms.js), ale ČAS: jak dlouho zůstává vidět. Server podle něj
+// naplánuje zhasnutí i držení botů, ať se hra pod odkrytou rukou neposune.
+const DOROTHY_REVEAL = {
+    holdMs: 2600,   // jak dlouho je ruka vidět
+};
+
+function dorothyRevealMs() {
+    return DOROTHY_REVEAL.holdMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SACA_FLIP, sacaFlipMs, SACA_STEAL,
+    module.exports = { DOROTHY_REVEAL, dorothyRevealMs,
+                       SACA_FLIP, sacaFlipMs, SACA_STEAL,
                        sacaStealPreMs, sacaStealPostMs, sacaStealExtraMs,
                        HELENA_ANIM, helenaRevealMs,
                        ROLE_SHUFFLE, roleShuffleOpts, roleShuffleMs,

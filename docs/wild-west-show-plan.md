@@ -780,6 +780,34 @@ a **poručený** si líže karty za Dostavník/Paniku.
   strukturální test „každý kind z pendingActor má svou větev"). Volí nejcennější poručení
   = Bang! na svého nepřítele z ruky nepřítele.
 
+**Jak to nakonec vyšlo (odchylky od plánu, fáze 12 hotová):**
+
+- **Jen JEDNA nová fáze, ne dvě.** `DOROTHY_NAME` nakonec nevznikla: jméno karty
+  i poručený se vybírají ještě ve fázi PLAY, klientsky (`selectedState.dorothy`, stejně
+  jako nabitá schopnost Doca nebo Flinta) a na server odejdou naráz jako `dorothy_command`.
+  Serverová fáze je tedy jen `DOROTHY_TARGET` (výběr cíle, R5). Ubyl tím celý jeden
+  oběh klient–server a s ním i riziko, že bot vejde do fáze, ze které nemá kam – nabídku
+  počítá `dorothyOffer` ještě před odesláním.
+- **Vypůjčené sedadlo se vrací HNED**, ne až po doběhnutí efektu. `currentPlayerIndex`
+  čtou pravidla jen během synchronního zahrání karty; všechno, co běží dál (RESPOND,
+  barel, výběr karty, lízání, hokynářství), si své sedadlo nese výslovně v `pending*` /
+  `drawPhaseState`. Držet ho přes celou obranu se ukázalo jako past: po tu dobu by byl
+  „na tahu" poručený – tah by mu šlo ukončit, jeho smrt by ukončila tah někomu jinému
+  a fáze PLAY by po doběhnutí čekala na špatného hráče (hra jen botů se tím doopravdy
+  zasekla). `_dorothyRestoreAfterQueue` z plánu proto neexistuje; `_dorothySettle`
+  zůstává jen jako pojistka volaná z `_resumeAfterSpecial` a z háku před broadcastem.
+- **Karty „odhoď další kartu" (Dodge City) se poručit nedají** (`dorothyCommandable`).
+  Cenu by platil poručený kartou VLASTNÍ volby a u Ragtime by si sám vybíral i okradenou
+  kartu – věta „cíl(e) vybíráš ty" by neplatila ani z poloviny.
+- **Katalog druhů karet se nevozí ve stavu.** `distinctCardKinds` (logic/entities.js) ho
+  postaví ze syrových dat – server ze svých (`_dorothyKinds`), klient z Phaser cache
+  (`clientCardKinds`, game.js). Ve stavu by to bylo pár kB navíc v KAŽDÉM broadcastu.
+- **Neúspěšné poručení přibylo do otisku pokroku bota** (`progressSig`, server/bots.js).
+  Ukázat ruku nezmění karty, životy ani fázi, takže to stall guard hlásil jako zaseknutí;
+  posune se jedině `_dorothyUsed`, a ten proto v otisku být musí.
+- **Bot poroučí jen Bang!** – a jen tehdy, když má kdo vystřelit na nepřítele
+  (`shootTargets` včetně brzdy proti přátelské palbě). Je to politika, ne pravidlo.
+
 **Testy:** poručený Bang! podle vzdálenosti poručeného; Slab jako poručený vyžaduje 2×
 Vedle!; poručující Slab ne; duel prohraje poručený; Dostavník líže poručený; nemá kartu →
 ukáže ruku; akce bez legálního cíle se nenabídne; sedadlo se vrátí i když efekt přeruší
@@ -1267,14 +1295,14 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1, 2, 2b, 3, 4, 5, 6, 7, 8 a 9 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: rozšíření je HOTOVÉ – fáze 0–12.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
-> životy (core/roles.js), ale do OSTRÉ hry se ještě nepřidávají** — schopnosti přijdou
-> s fázemi 4–12 a do té doby by u stolu seděly postavy bez schopnosti. Vybrat je jde
-> v debug hře; do ostré je pustí zrušení podmínky `options.debugPool` v `_characterPool`
-> (logic/setup.js).
+> životy (core/roles.js), a všech osm už má schopnost** — `WILD_WEST_READY` je tedy dnes
+> celý seznam a do ostré hry jdou všechny. Rozdvojka `options.debugPool`
+> v `_characterPool` (logic/setup.js) zůstává jako pojistka pro další rozšíření: postava
+> bez pravidel patří do debug hry, ne k ostrému stolu.
 >
 > **Fáze 1 dovybrala tři věci, které jsou v §7 popsané nejednoznačně:**
 >
@@ -1489,7 +1517,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **9** ✅ | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |
 | **10** ✅ | `hasAbility` + Greygory Deck | refaktor ~85 míst, pak postava | **vysoké (šířka)** |
 | **11** ✅ | Lady Růže z Texasu | výměna sedadel, přemapování indexů, animace | **vysoké** |
-| **12** | Zuřivá Doroty | vypůjčený tah | **nejvyšší** |
+| **12** ✅ | Zuřivá Doroty | vypůjčený tah | **nejvyšší** |
 
 Fáze 1 je hned na druhém místě schválně: bez ní se Big Spencer nedá ani ukázat, a je to
 jediná položka, kterou nejde ověřit testem — čím dřív se na ni podíváš v prohlížeči, tím líp.

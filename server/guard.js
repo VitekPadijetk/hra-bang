@@ -33,6 +33,7 @@ module.exports = function installActionGuard(ctx) {
         'grinner_give',
         'sniper_choose', 'play_ricochet',
         'claus_give', 'uncle_will', 'flint_westwood', 'lee_van_kliff', 'lady_rose',
+        'dorothy_command', 'dorothy_target', 'dorothy_cancel',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another',
         'activate_green_card',
         'bart_cassidy_draw', 'uhyb_draw', 'el_gringo_steal', 'suzy_draw',
