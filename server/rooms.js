@@ -154,6 +154,34 @@ module.exports = function installRoomService(ctx) {
         rooms.delete(room.id);
     }
 
+    // Divoký západ – Lady Růže z Texasu: hráči si vyměnili sedadla. Sedadlo je index do
+    // `gs.players` a `room.players` drží PŘESNĚ stejné pořadí (`playerIdx === pozice`,
+    // viz leaveRoom) – tudy chodí `myIndex` do každého klienta. Prohození ve stavu proto
+    // musí mít protějšek tady, jinak by oba hráči po výměně viděli desku očima toho
+    // druhého (a guard by jim zahazoval akce).
+    //
+    // Vedle toho žije na `room` ještě dvojí stav klíčovaný sedadlem: ledger chování
+    // (server/ledger.js) a snímek pro hlášky botů. Snímek se nepřemapovává, ale ZAHAZUJE –
+    // diff proti němu by po výměně vypadal jako by oba hráči naráz utrpěli zásah a boti
+    // by prohlásili hlášku o něčem, co se nestalo. `survivorKeepVotes` se netýká:
+    // výměna jde jen ve fázi PLAY, hlasování o postavách běží až po konci hry.
+    function swapRoomSeats(room, i, j) {
+        if (!room || i === j) return;
+        const list = room.players || [];
+        if (!list[i] || !list[j]) return;
+        const tmp = list[i];
+        list[i] = list[j];
+        list[j] = tmp;
+        list.forEach((p, k) => { p.playerIdx = k; });
+        ctx.swapLedgerSeats?.(room, i, j);
+        room._quipSnap = null;
+        if (room._quipTurn) {
+            const t = room._quipTurn[i];
+            room._quipTurn[i] = room._quipTurn[j];
+            room._quipTurn[j] = t;
+        }
+    }
+
     // Smí se do místnosti ještě emitovat? (viz closeRoom)
     function roomAlive(room) { return !!room && !room._closed && rooms.has(room.id); }
 
@@ -328,6 +356,7 @@ module.exports = function installRoomService(ctx) {
         rooms, genId, makeRoom, roomPayload, broadcastRoom, broadcastRoomDelayed,
         broadcastLobbyList, getLobbyList, getGameList, findRoomBySocket,
         leaveRoom, leaveSpectate, disbandRoom, closeRoom, roomAlive, emitChat,
+        swapRoomSeats,
     });
     return ctx;
 };

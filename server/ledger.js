@@ -24,6 +24,24 @@ module.exports = function installLedger(ctx) {
         else cell.hostile++;
     }
 
-    Object.assign(ctx, { initLedger, recordBehavior });
+    // Divoký západ – Lady Růže z Texasu: sedadlo je klíč ledgeru na OBOU úrovních
+    // (kdo jednal i na koho), takže se výměna míst musí promítnout sem – jinak by bot
+    // po přesednutí přisuzoval chování špatnému hráči a dedukoval podle staré mapy.
+    // Ledger žije na `room`, ne ve stavu hry, takže ho `_swapSeats` (logic/wildWest.js)
+    // přemapovat nemůže a volá se odsud, ze socket handleru.
+    function swapLedgerSeats(room, i, j) {
+        const pairs = room && room.behaviorLedger && room.behaviorLedger.pairs;
+        if (!pairs || i === j) return;
+        const m = (k) => (k === String(i) ? String(j) : (k === String(j) ? String(i) : k));
+        const out = {};
+        Object.keys(pairs).forEach(a => {
+            const row = {};
+            Object.keys(pairs[a]).forEach(t => { row[m(t)] = pairs[a][t]; });
+            out[m(a)] = row;
+        });
+        room.behaviorLedger.pairs = out;
+    }
+
+    Object.assign(ctx, { initLedger, recordBehavior, swapLedgerSeats });
     return ctx;
 };

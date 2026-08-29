@@ -1671,6 +1671,72 @@ function playRolePeek(data) {
     });
 }
 
+// ── Divoký západ – Lady Růže z Texasu: výměna sedadel ────────────────────────
+// „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici a ten
+//  tak přeskočí svůj nejbližší tah."
+//
+// Sedadlo je v celém projektu index do `players`, takže výměna přeskládá stůl naráz –
+// a tomu, kdo se stěhuje sám, se dokonce pootočí celý okruh (deska se kreslí z jeho
+// pohledu). Bez cinematiky by to byl skok, který nejde přečíst; oba portréty proto
+// přeletí po oblouku na místo toho druhého a nový stav dorazí, teprve až doletí
+// (fronta animací ho drží, viz `seatSwapMs`). Oblouky mají opačné vyklenutí, takže
+// se postavy vyhnou jedna druhé a je vidět, že si jdou po ose vyměnit místo.
+//
+// Cache klíčované indexem se přitom ZAHAZUJÍ, ne přemapovávají: staví se od nuly při
+// každém renderu desky, kdežto klouzání karet (`cardSlides`) by po výměně táhlo karty
+// přes půl stolu k novému majiteli.
+function playSeatSwap(data) {
+    if (!gameScene || !state) return;
+    const a = data.fromIdx, b = data.toIdx;
+    const pa = state.players && state.players[a];
+    const pb = state.players && state.players[b];
+    if (!pa || !pb || a === b) return;
+
+    App.healthAnims = {};
+    App.veraPortraits = [];
+    App.attackPulse = [];
+    App.vultureSplitIdx = null;
+    if (typeof resetBoardSlides === 'function') resetBoardSlides();
+    renderUI();
+
+    const D = SEAT_SWAP;
+    const posA = getPlayerHandPos(a), posB = getPlayerHandPos(b);
+    const angA = _renderSideAngle(a), angB = _renderSideAngle(b);
+
+    // Jeden portrét po oblouku. `sign` určuje, na kterou stranu se let vyklene –
+    // dvojice ho dostane opačný, takže si sprity nejdou hlavou proti sobě.
+    const fly = (from, to, angFrom, angTo, scFrom, scTo, charName, sign, depth) => {
+        const tex = _niCharTex(charName);
+        const spr = gameScene.add.image(from.x, from.y, tex).setScale(scFrom)
+                              .setAngle(angFrom).setDepth(depth);
+        // Řídicí bod kvadratické Bézierovy křivky: střed spojnice posunutý kolmo na ni.
+        const cx = (from.x + to.x) / 2 - (to.y - from.y) * D.lift * sign;
+        const cy = (from.y + to.y) / 2 + (to.x - from.x) * D.lift * sign;
+        const aim = nearestAngle360(angFrom, angTo);
+        const proxy = { t: 0 };
+        gameScene.tweens.add({
+            targets: proxy, t: 1, duration: D.flyMs, delay: D.preMs, ease: 'Cubic.easeInOut',
+            onUpdate: () => {
+                if (!spr.active) return;
+                const t = proxy.t, u = 1 - t;
+                spr.x = u * u * from.x + 2 * u * t * cx + t * t * to.x;
+                spr.y = u * u * from.y + 2 * u * t * cy + t * t * to.y;
+                // Nad stolem portrét povyroste a před dosednutím se zase srovná do
+                // měřítka CÍLOVÉHO sedadla (na mobilu se soupeři a moje zóna liší).
+                const grow = 1 + (D.grow - 1) * Math.sin(Math.PI * t);
+                spr.setScale((scFrom + (scTo - scFrom) * t) * grow);
+                spr.setAngle(angFrom + (aim - angFrom) * t);
+            },
+            onComplete: () => { if (spr.active) spr.destroy(); }
+        });
+    };
+
+    fly(posA, posB, angA, angB, _renderSideScale(a), _renderSideScale(b),
+        pa.character, 1, 880);
+    fly(posB, posA, angB, angA, _renderSideScale(b), _renderSideScale(a),
+        pb.character, -1, 881);
+}
+
 function _playCardAnim(data) {
     if (!gameScene || !state) return;   // divák (myIndex === null) animace také vidí
     const deck    = deckTopPos();      // vrch balíčku (odkud karta vzlétá / kam dosedá)
@@ -2327,6 +2393,10 @@ function _playCardAnim(data) {
             }
             break;
         }
+        // Divoký západ – Lady Růže z Texasu: dva hráči si vyměnili sedadla.
+        case 'wws_seat_swap':
+            playSeatSwap(data);
+            break;
         // Divoký západ – Sacagaway: karta přišla (ruce se odkryjí) nebo ji vystřídala
         // jiná (ruce se zase zakryjí) – vlna přetáčení vějířů obejde stůl.
         case 'saca_flip':
@@ -2748,6 +2818,9 @@ function _animDurationMs(data) {
     if (data.type === 'helena_reveal') return helenaRevealMs();
     if (data.type === 'roles_reshuffle') return roleShuffleMs((data.playerIdxs || []).length);
     if (data.type === 'role_peek') return rolePeekMs();
+    // Divoký západ – Lady Růže z Texasu: výměna sedadel přeskládá půlku stolu naráz,
+    // takže stav smí dorazit, teprve až oba portréty doletí na místo toho druhého.
+    if (data.type === 'wws_seat_swap') return seatSwapMs();
     // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
     if (data.type === 'vulture_split_death') return deathFallMs();
     if (data.type === 'player_death_reveal') {
@@ -2790,7 +2863,8 @@ socket.on('card_animation', (data) => {
                       data.type === 'vulture_split_death' || data.type === 'player_death_reveal' ||
                       data.type === 'high_noon_reveal' || data.type === 'new_identity_result' ||
                       data.type === 'ranch_discard' || data.type === 'saca_flip' ||
-                      data.type === 'roles_reshuffle' || data.type === 'role_peek';
+                      data.type === 'roles_reshuffle' || data.type === 'role_peek' ||
+                      data.type === 'wws_seat_swap';
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 

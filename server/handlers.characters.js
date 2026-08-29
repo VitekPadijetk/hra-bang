@@ -195,6 +195,21 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Lady Růže z Texasu (Divoký západ): hráč na tahu si vymění místo se sousedem po
+    // pravici a ten přeskočí svůj nejbližší tah. Sedadlo je index, takže se výměnou
+    // přemapuje kus stavu naráz (`_swapSeats`, logic/wildWest.js) – a co na `room`
+    // nevidí, dorovná se tady: ledger chování je klíčovaný sedadly stejně jako stav.
+    on('lady_rose', () => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const res = gs.useLadyRose(idx);
+            if (!res) return;
+            ctx.swapRoomSeats?.(room, res.fromIdx, res.toIdx);
+            emitAnim(room, { type: 'wws_seat_swap', fromIdx: res.fromIdx, toIdx: res.toIdx });
+            broadcastRoomDelayed(room);
+        });
+    });
+
     // Uncle Will (Fistful): 1× za tah zahraje libovolnou kartu z ruky jako Hokynářství.
     on('uncle_will', (d) => {
         withRoom((room, p, gs) => {

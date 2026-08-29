@@ -1488,7 +1488,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **8** ✅ | Divoký západ | podmínka výhry, bot | střední |
 | **9** ✅ | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |
 | **10** ✅ | `hasAbility` + Greygory Deck | refaktor ~85 míst, pak postava | **vysoké (šířka)** |
-| **11** | Lady Růže z Texasu | výměna sedadel, přemapování indexů, animace | **vysoké** |
+| **11** ✅ | Lady Růže z Texasu | výměna sedadel, přemapování indexů, animace | **vysoké** |
 | **12** | Zuřivá Doroty | vypůjčený tah | **nejvyšší** |
 
 Fáze 1 je hned na druhém místě schválně: bez ní se Big Spencer nedá ani ukázat, a je to

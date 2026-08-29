@@ -20,6 +20,33 @@
 // do konce hry (dalším Dostavníkem se už nevyměňuje).
 const LAST_WWS_KEY = 'DIVOKY_ZAPAD';
 
+// ── Klasifikace indexových polí stavu (Lady Růže z Texasu, viz `_swapSeats`) ──────
+// Sedadlo = index do `players`. Klíč, jehož hodnota sedadlo JE:
+const SEAT_KEYS = new Set([
+    'currentPlayerIndex', 'storePickerIndex', 'currentAttacker',
+    'playerIdx', 'targetIdx', 'attackerIdx', 'originatorIdx', 'initialTargetIdx',
+    'fromIdx', 'toIdx', 'fromPlayerIdx', 'toPlayerIdx',
+    'deadIdx', 'killerIdx', 'drawerIdx', 'grinnerIdx', 'takerIdx', 'discarderIdx',
+    'sourceIdx', 'ownerIdx', 'winClaimIdx', 'brawlAttackerIdx',
+    '_firstDeadIdx', '_deadPlayerIdx', '_deathAnimPlayerIdx', '_mollyDeferredIdx',
+    '_terenDyingIdx', '_pendingDeathReveal', '_winClaim3p',
+]);
+// Klíč, jehož hodnota je POLE sedadel (fronty, pořadí, seznamy):
+const SEAT_LIST_KEYS = new Set([
+    'responded', 'daltonsQueue', 'brawlQueue', 'queue', 'order', 'pickers',
+    '_gagPending', 'visible', 'peek', 'playerIdxs', 'idxs',
+]);
+// Klíč, který se na sedadlo jen podobá – je to index do JINÉHO pole (stůl, ruka,
+// nabídka postav) a přemapovat se nesmí:
+const NOT_SEAT_KEYS = new Set([
+    'boardIdx', 'fromBoardIdx', 'toBoardIdx', 'visBoardIdx', 'visualBoardIdx',
+    'dynamiteIdx', 'jailIdx', 'handIdx', 'cardIdx', 'cardIndex', 'cardIndices',
+    'targetCardIdx', 'extraCardIdx', 'charSelectIndex', 'stolenIndex', 'revealIdx',
+    'keptIdxs', 'randomIdx', 'randomIndex',
+]);
+// Podstromy, do kterých se při přemapování vůbec nechodí (viz `_remapSeats`).
+const SEAT_SKIP_KEYS = new Set(['players', 'deck', 'storeCards', 'cardData', '_deathAnimData']);
+
 const WildWestMixin = {
     // ── Příprava balíčku (setupGame / setupDebugGame / setupNextGame) ──────────
     // Bez zapnutého rozšíření zůstane balíček prázdný a `hasEvent` vrací pro jeho klíče
@@ -300,6 +327,99 @@ const WildWestMixin = {
         this.pendingDynamiteDamage = { playerIdx: this.currentPlayerIndex, hitsLeft: 1, source: 'ZUZANA', resume: 'NEXT_TURN' };
         this.phase = "DYNAMITE_DAMAGE";
         return true;
+    },
+
+    // ── Lady Růže z Texasu ────────────────────────────────────
+    // „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici a ten
+    //  tak přeskočí svůj nejbližší tah."
+    //
+    // Nepovinná akce ve fázi PLAY. Kdo je „po pravici", jestli se smí a kolikrát ještě,
+    // rozhoduje `roseSwapOffer` (core/playability.js) – tentýž predikát, kterým se ptá
+    // klient (tlačítko) i bot, takže se nemají jak rozejít.
+    //
+    // Vrací { fromIdx, toIdx } pro animaci, nebo null u neplatné akce.
+    useLadyRose(playerIdx) {
+        if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return null;
+        const j = roseSwapOffer(this, playerIdx);
+        if (j == null) return null;
+        const me = this.players[playerIdx];
+        const other = this.players[j];
+        // Strop „x použití za sebou" (FAQ Q08). Sérii nuluje začátek tahu, ve kterém se
+        // předtím neměnilo (`_beginTurn`, logic/highNoon.js).
+        this._roseStreak = (this._roseStreak || 0) + 1;
+        this._roseUsedThisTurn = true;
+        // „…a ten tak přeskočí svůj nejbližší tah." Příznak cestuje s hráčem (prohazují
+        // se prvky pole players), takže je jedno, na kterém sedadle skončí.
+        other._skipNextTurn = true;
+        this.logEvent('event', { card: 'Lady Růže z Texasu', who: me.name, target: other.name,
+                                 msg: 'vyměnili si místo' });
+        this._swapSeats(playerIdx, j);
+        return { fromIdx: playerIdx, toIdx: j };
+    },
+
+    // Přeskočí tenhle hráč tah? Dotaz je zároveň spotřebou – příznak platí jednorázově.
+    // Volá ho smyčka v `nextTurn` (logic.js) na stejném místě, kde se přeskakují vyřazení:
+    // přeskočení je „jako by tam neseděl", takže neproběhne start tahu (a s ním ani
+    // sejmutí na Dynamit či Vězení) ani penalizace Madam Zuzany – hráč sice nehrál,
+    // ale ani hrát nesměl.
+    _roseSkip(p) {
+        if (!p || !p._skipNextTurn) return false;
+        p._skipNextTurn = false;
+        if (isInPlay(p)) {
+            this.logEvent('event', { card: 'Lady Růže z Texasu', who: p.name, msg: 'přeskakuje tah' });
+        }
+        return true;
+    },
+
+    // ── Výměna sedadel ────────────────────────────────────────────
+    // Sedadlo je v tomhle kódu INDEX do `players`, a spousta stavu je jím klíčovaná.
+    // Výměna proto není jen prohození dvou prvků pole: musí se přemapovat každé číslo
+    // ve stavu, které sedadlo znamená.
+    //
+    // Dělá se to OBECNÝM průchodem stavu, ne ručním výčtem polí – na ruční výčet by se
+    // při každém dalším pravidle zapomnělo. Každý klíč, který vypadá jako index, musí být
+    // v jedné ze tří tabulek výš; že žádný nechybí, hlídá strukturální test
+    // (test/wws.seats.test.js), který projde zdrojáky `logic/*`.
+    //
+    // Druhá pojistka je pravidlová: výměna je povolená JEN ve fázi PLAY bez rozdělaného
+    // efektu, takže je většina těch polí prokazatelně prázdná (`pendingResponse`,
+    // `pendingSelection`, fronty hromadných útoků…). Přemapovat se doopravdy musí
+    // `currentPlayerIndex`, paměť Lee Van Kliffa, čekající pokuty Roubíku, `_firstDeadIdx`
+    // (Mrtvý muž) a payloady cinematik – ostatní se veze s nimi.
+    _swapSeats(i, j) {
+        if (i === j || !this.players[i] || !this.players[j]) return;
+        const tmp = this.players[i];
+        this.players[i] = this.players[j];
+        this.players[j] = tmp;
+        const map = (x) => (x === i ? j : (x === j ? i : x));
+        this._remapSeats(this, map, new Set());
+        // `_deathAnimData` je jediné pole, které je sedadlem KLÍČOVANÉ (ne hodnotou),
+        // takže ho obecný průchod minul.
+        if (this._deathAnimData) {
+            const out = {};
+            Object.keys(this._deathAnimData).forEach(k => { out[map(Number(k))] = this._deathAnimData[k]; });
+            this._deathAnimData = out;
+        }
+    },
+
+    // Rekurzivní přemapování. Do `players`/`deck`/`storeCards`/`cardData` se nechodí:
+    // hráči ani karty žádné sedadlo nedrží (příznaky jako `_skipNextTurn` cestují
+    // s hráčem samy) a jsou to největší kusy stavu.
+    _remapSeats(node, map, seen) {
+        if (!node || typeof node !== 'object' || seen.has(node)) return;
+        seen.add(node);
+        if (Array.isArray(node)) { node.forEach(v => this._remapSeats(v, map, seen)); return; }
+        Object.keys(node).forEach(k => {
+            if (SEAT_SKIP_KEYS.has(k)) return;
+            const v = node[k];
+            if (SEAT_KEYS.has(k)) {
+                if (typeof v === 'number') node[k] = map(v);
+            } else if (SEAT_LIST_KEYS.has(k)) {
+                if (Array.isArray(v)) node[k] = v.map(x => (typeof x === 'number' ? map(x) : x));
+            } else {
+                this._remapSeats(v, map, seen);
+            }
+        });
     },
 
     // ── Roubík ────────────────────────────────────────────────────────────────
@@ -1005,6 +1125,11 @@ const WildWestMixin = {
         this._processSpecialQueue();
     },
 };
+
+// Tabulky ven pro strukturální test (test/wws.seats.test.js) – ten hlídá, že každý
+// indexový klíč ze `logic/*` je v některé z nich. Je to prototypová vlastnost, takže
+// se do broadcastovaného stavu nedostane (JSON serializuje jen vlastní pole).
+WildWestMixin._SEAT_TABLES = { SEAT_KEYS, SEAT_LIST_KEYS, NOT_SEAT_KEYS, SEAT_SKIP_KEYS };
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = WildWestMixin;

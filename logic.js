@@ -105,6 +105,10 @@ if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
     globalThis.lvkPayOk = __pl.lvkPayOk;
     globalThis.lvkTargetOk = __pl.lvkTargetOk;
     globalThis.lvkOffer = __pl.lvkOffer;
+    // Divoký západ – Lady Růže z Texasu: „kdo sedí po pravici" a „smí se teď měnit místo".
+    // Strop použití za sebou je pravidlo, ne politika UI, takže se jím ptá server i bot.
+    globalThis.roseRightNeighbor = __pl.roseRightNeighbor;
+    globalThis.roseSwapOffer = __pl.roseSwapOffer;
 }
 
 class GameState {
@@ -202,6 +206,11 @@ class GameState {
         this.pendingRoulette = null;    // Ruská ruleta: kolečko odhazování karet Vedle!
         this._advanceRouletteAfterQueue = false;   // …a jeho posun až po frontě odložených akcí
         this._lastBrown = null;        // Divoký západ – Lee Van Kliff: poslední hnědá karta tahu
+        // Divoký západ – Lady Růže z Texasu: strop „x použití ZA SEBOU" (x = počet žijících,
+        // FAQ Q08). `_roseUsedThisTurn` drží, jestli se v probíhajícím tahu měnilo místo –
+        // podle toho se série na začátku dalšího tahu buď drží, nebo nuluje.
+        this._roseStreak = 0;
+        this._roseUsedThisTurn = false;
         this._vendettaDone = false;     // Vendeta: sejmutí je v jednom tahu jen jednou
         this._extraTurn = false;        // Vendeta: běží tah navíc (nová událost se neodkrývá)
         // Hra pro 3 hráče (Město duchů): odkryté role a cíle v kruhu. mode3p jde i do
@@ -332,7 +341,13 @@ class GameState {
         const boneOrchard = this.hasEvent('HRBITOV');
         this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
         let p = this.players[this.currentPlayerIndex];
-        while (p.health <= 0 && !ghostTown && !boneOrchard && this.currentPlayerIndex !== deadManIdx) {
+        // Divoký západ – Lady Růže z Texasu: kdo si s někým vyměnil místo, „přeskočí svůj
+        // nejbližší tah". Přeskočení sedí ve stejné smyčce jako přeskakování vyřazených,
+        // protože je to totéž: jako by na tom sedadle nikdo neseděl. Příznak je
+        // jednorázový a shodí ho `_roseSkip` (logic/wildWest.js), takže smyčka vždycky
+        // doběhne – každá další otočka jich má o jeden míň.
+        while (this._roseSkip(p) ||
+               (p.health <= 0 && !ghostTown && !boneOrchard && this.currentPlayerIndex !== deadManIdx)) {
             this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
             p = this.players[this.currentPlayerIndex];
         }

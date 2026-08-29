@@ -644,6 +644,56 @@ function lvkTargetOk(state, me, myIndex, targetIdx) {
     }
 }
 
+// ── Divoký západ – Lady Růže z Texasu ────────────────────────────
+// „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici a ten tak
+// přeskočí svůj nejbližší tah."
+//
+// Počet použití karta neomezuje. Strop je podle FAQ Q08 „x použití ZA SEBOU", kde
+// x = počet ŽIJÍCÍCH hráčů (`state._roseStreak`, nuluje ho začátek tahu, ve kterém
+// místo nikdo neměnil). Je to jediná pojistka proti smyčce, ve které jeden hráč nikdy
+// nepřijde na tah, takže ji musí znát server, klient i bot – tedy tenhle helper.
+
+// Kdo sedí „po pravici"? = předchozí hráč PO SMĚRU hodinových ručiček, tedy
+// (i − 1 + n) % n, a to BEZ ohledu na Zlatou horečku (High Noon). Je to efekt karty,
+// a ty jdou v tomhle projektu vždycky po směru (FAQ H3 – stejné pravidlo jako posun
+// dynamitu, hokynářství nebo Daltonové). Vyřazení se přeskakují: s prázdným sedadlem
+// se místo neměří. Duch (Město duchů) ve hře je, ten se počítá.
+function roseRightNeighbor(state, myIndex) {
+    const list = (state && state.players) || [];
+    const n = list.length;
+    for (let k = 1; k < n; k++) {
+        const j = ((myIndex - k) % n + n) % n;
+        if (j === myIndex) break;
+        if (isInPlay(list[j])) return j;
+    }
+    return null;
+}
+
+// Smí hráč TEĎ vyměnit místo? Vrací sedadlo souseda po pravici, nebo null.
+// Podle toho se kreslí tlačítko, rozhoduje bot i pouští server.
+function roseSwapOffer(state, myIndex) {
+    if (!eventActive(state, 'LADY_RUZE_Z_TEXASU')) return null;
+    if (!isPlayTurn(state, myIndex)) return null;
+    const j = roseRightNeighbor(state, myIndex);
+    if (j == null) return null;
+    const alive = ((state && state.players) || []).filter(p => p && p.health > 0).length;
+    if ((state._roseStreak || 0) >= alive) return null;
+    // A Fistful of Cards – Právo západu: vynucená karta zamyká jen akce, po kterých už
+    // by nešla zahrát (viz lawLocksOther). Výměna míst sice kartami nehýbe, ale MĚNÍ
+    // VZDÁLENOSTI – přesednutím by se hráč mohl vyvléknout z dostřelu vynuceného Bang!
+    // (nebo z dosahu Paniky) a povinnost tím zrušit. Ověří se to na kopii stavu
+    // s prohozenými sedadly, ne odhadem.
+    const me = state.players[myIndex];
+    if (me && me._lawCardId != null && lawForcedCard(state, me, myIndex)) {
+        const seats = state.players.slice();
+        seats[myIndex] = state.players[j];
+        seats[j] = me;
+        const sim = Object.assign({}, state, { players: seats, currentPlayerIndex: j });
+        if (!lawForcedCard(sim, me, j)) return null;
+    }
+    return j;
+}
+
 // Je opakování právě teď k dispozici? (Je co opakovat, je čím zaplatit a – potřebuje-li
 // efekt cíl – je i na koho.) Podle toho se kreslí tlačítko a rozhoduje bot.
 function lvkOffer(state, me, myIndex) {
@@ -662,5 +712,6 @@ if (typeof module !== 'undefined' && module.exports) {
                        turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer,
-                       lvkRepeat, lvkPayOk, lvkReach, lvkTargetOk, lvkOffer };
+                       lvkRepeat, lvkPayOk, lvkReach, lvkTargetOk, lvkOffer,
+                       roseRightNeighbor, roseSwapOffer };
 }

@@ -4,7 +4,8 @@
 const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 const { hnRevealMs } = require('../core/highNoonAnim.js');
 const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
-const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs } = require('../core/wwsAnim.js');
+const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs,
+        seatSwapMs } = require('../core/wwsAnim.js');
 const { eventActive } = require('../core/highNoon.js');
 const { hasAbility, isInPlay } = require('../core/distance.js');
 
@@ -58,10 +59,19 @@ module.exports = function installAnimService(ctx) {
                                        Date.now() + sacaStealExtraMs(left + 1));
     }
 
+    // Divoký západ – Lady Růže z Texasu: dokud oba portréty přelétají na sedadlo toho
+    // druhého, drží klient stav ve frontě – boti se o stejnou dobu zastaví, jinak by
+    // hráli „přes" cinematiku a hra by se pod ní posunula dál.
+    function holdForSeatSwap(room, data) {
+        if (!data || data.type !== 'wws_seat_swap') return;
+        room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0, Date.now() + seatSwapMs());
+    }
+
     function emitAnim(room, data) {
         if (!roomAlive(room)) return;
         holdForMineLand(room, data);
         holdForSacaSteal(room, data);
+        holdForSeatSwap(room, data);
         // V DEBUG hře sdílí jeden socket VÍC hráčů (room.players mají stejný socketId) –
         // dedup přes seen, jinak by tentýž socket dostal animaci N× (= N překrývajících se letů).
         const seen = new Set();

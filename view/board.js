@@ -2271,6 +2271,12 @@ function drawMyArea(ctx) {
             });
         }
 
+        // Slot tlačítka schopnosti (L.btnAbilX/Y) je JEDEN a všechna tlačítka postav
+        // se do něj kreslí přes sebe. Divoký západ – Lady Růže z Texasu do něj přidala
+        // první nabídku, která NENÍ schopností postavy: je to událost, takže se může
+        // potkat s kteroukoli postavou a platí desítky tahů. Zabrat slot natrvalo nesmí,
+        // proto tlačítku postavy ustupuje – kreslí se, jen když slot nikdo nezabral.
+        let _abilSlotUsed = false;
         if (state.phase === "PLAY" && (!state.pendingResponse?.active) &&
         state.currentPlayerIndex === myIndex &&
         selectedState.sidKetchum === undefined &&
@@ -2357,6 +2363,7 @@ function drawMyArea(ctx) {
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
             && state.sidKetchumPending?.playerIdx !== myIndex) {
+            _abilSlotUsed = true;
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
             themeButton(gameScene, L.btnAbilX, L.btnAbilY, 320, L.btnH, btnLabel, {
@@ -2546,6 +2553,7 @@ function drawMyArea(ctx) {
             const BTN_Y = L.btnAbilY;   // stejné místo jako [ SID: … ]
             // Chuck Wengam: klik → nabít (zvýrazní se životy); klik na životy = −1 ❤ → 2 karty.
             if (myPlayTurn && hasAbility(me, "Chuck Wengam") && me.health > 1) {
+                _abilSlotUsed = true;
                 const armed = !!selectedState.chuck;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, armed ? 'CHUCK: zrušit ↩' : 'CHUCK: −1 ❤ → 2 🂠', {
                     ...themeToggleStyle(armed), fontSize: '21px',
@@ -2555,6 +2563,7 @@ function drawMyArea(ctx) {
             // José Delgado: odhoď modrou → 2 karty (max 2×). Aktivní režim vybere modrou v ruce.
             if (hasAbility(me, "José Delgado") && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
                 (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput && !_sniperCan && !_showdownCan) {
+                _abilSlotUsed = true;
                 const active = !!selectedState.jose;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
                     ...themeToggleStyle(active), fontSize: '21px',
@@ -2564,6 +2573,7 @@ function drawMyArea(ctx) {
             // Doc Holyday: odhoď 2 karty → bang-efekt na cíl v dostřelu (1×/tah).
             if (hasAbility(me, "Doc Holyday") && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
                 !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput && !_sniperCan && !_showdownCan) {
+                _abilSlotUsed = true;
                 const active = !!selectedState.doc;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
                     ...themeToggleStyle(active), fontSize: '21px',
@@ -2576,6 +2586,7 @@ function drawMyArea(ctx) {
             if (myPlayTurn && hasAbility(me, "Flint Westwood") &&
                 me._flintUsedTurn !== state.turnId && (selectedState.flint || me.hand.length > 0) &&
                 state.players.some((pl, i) => i !== myIndex && isInPlay(pl) && (pl.hand || []).length > 0)) {
+                _abilSlotUsed = true;
                 const active = !!selectedState.flint;
                 const label = active
                     ? (selectedState.flint.targetIdx == null ? 'FLINT: zrušit ↩' : 'FLINT: vyber kartu ↩')
@@ -2592,6 +2603,7 @@ function drawMyArea(ctx) {
             {
                 const _lvk = (myPlayTurn || selectedState.lvk) ? lvkOffer(state, me, myIndex) : null;
                 if (_lvk) {
+                    _abilSlotUsed = true;
                     const active = !!selectedState.lvk;
                     const label = active
                         ? (selectedState.lvk.cardId == null ? 'LEE: zrušit ↩' : 'LEE: vyber cíl ↩')
@@ -2606,11 +2618,34 @@ function drawMyArea(ctx) {
             // Aktivní režim pak čeká na klik na kartu v ruce (stejně jako José/Doc).
             if (myPlayTurn && hasAbility(me, "Uncle Will") &&
                 me._willUsedTurn !== state.turnId && (selectedState.will || me.hand.length > 0)) {
+                _abilSlotUsed = true;
                 const active = !!selectedState.will;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'WILL: zrušit ↩' : 'WILL: karta → 🏪', {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, will: true }; renderUI(); },
                 });
+            }
+            // Divoký západ – Lady Růže z Texasu: „vyměnit si místo s hráčem po své
+            // pravici". Jediné kliknutí, žádné míření – kdo je po pravici a jestli se
+            // to ještě smí (strop x použití za sebou, FAQ Q08), říká roseSwapOffer
+            // (core/playability.js), tedy tentýž predikát, jakým se ptá server i bot.
+            if (myPlayTurn && !_abilSlotUsed) {
+                const _roseIdx = roseSwapOffer(state, myIndex);
+                if (_roseIdx != null) {
+                    const _roseName = state.players[_roseIdx]?.name || '';
+                    themeButton(gameScene, L.btnAbilX, BTN_Y, 360, 58, '🔄 VYMĚNIT MÍSTO: ' + _roseName, {
+                        fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum,
+                        stroke: THEME.color.goldNum,
+                        fontSize: '18px',
+                        onClick: () => {
+                            if (App.blockInput) return;
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            socket.emit('lady_rose', {});
+                            renderUI();
+                        },
+                    });
+                }
             }
         }
 

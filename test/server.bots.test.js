@@ -898,6 +898,56 @@ test('20 her jen botů jede i s balíčkem samých Sacagaway', () => {
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Sacagaway');
 });
 
+// Lady Růže z Texasu je riziková jinak než ostatní: neposouvá stav dopředu, ale MĚNÍ
+// SEDADLA. Kdyby se na některém indexovém poli zapomnělo, hra by se rozjela za špatného
+// hráče; kdyby bot neměl vlastní strop na použití za tah, vyčerpal by celý strop pravidla
+// (x použití za sebou) a stůl by se jen přesedával, dokud by nedošly tahy.
+test('20 her jen botů jede i s balíčkem samých Lady Růží (a nepřesedávají donekonečna)', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const wwsEv = (key) => {
+        const c = wwsCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0, maxStreak = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: k % 2 === 0,
+                                         fistful: k % 3 === 0, divoky_zapad: true } };
+            const room = { id: 'wws7_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            const deck = [wwsEv('DIVOKY_ZAPAD')];
+            for (let i = 0; i < 12; i++) deck.push(wwsEv('LADY_RUZE_Z_TEXASU'));
+            gs.wwsDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `WWS7 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `WWS7 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            // Sedadlo je index a `room.players` ho drzí ve stejném pořadí jako `gs.players`
+            // (tudy chodí myIndex do klienta). Kdyby výměna prohodila jen jedno z nich,
+            // viděli by oba hráči desku očima toho druhého – a guard by jim akce zahazoval.
+            assert.equal(new Set(gs.players.map(p => p.name)).size, n,
+                         `WWS7 hra #${k}: výměna sedadel nikoho neztratila ani nezdvojila`);
+            room.players.forEach((rp, i) => assert.equal(gs.players[i].name, rp.name,
+                         `WWS7 hra #${k}: sedadlo #${i} sedí v room.players i v gs.players`));
+            maxStreak = Math.max(maxStreak, gs._roseStreak || 0);
+            if (gs.wwsPile.length) flipped++;
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 10, `Lady Růže se opravdu odkrývala (jen ${flipped} z 20 her)`);
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Lady Růží');
+});
+
 // Hřbitov je nejrizikovější karta rozšíření pro zaseknutí: vyřazení hráči se v pořadí
 // NEPŘESKAKUJÍ a vracejí se do hry, takže by se stůl teoreticky nemusel nikdy vyprázdnit.
 // Výhra se ale vyhodnocuje v okamžiku vyřazení (dřív, než Hřbitov kohokoli vrátí), takže

@@ -149,10 +149,29 @@ function rolePeekMs() {
     return D.flyMs + D.flipMs + D.holdMs + D.backMs + D.outMs + D.bufMs;
 }
 
+// ── Lady Růže z Texasu: výměna sedadel ───────────────────────────────────────
+// „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici."
+// Sedadlo je v tomhle kódu index, takže se výměnou přeskládá půlka stolu naráz – bez
+// cinematiky by hráči jen skokem přeskočili a nikdo by nepoznal, co se stalo. Oba
+// portréty proto přeletí po oblouku na místo toho druhého a stav dorazí, až doletí.
+const SEAT_SWAP = {
+    preMs:  120,   // pauza, ať je vidět, odkud se startuje
+    flyMs:  620,   // let po oblouku na sedadlo toho druhého
+    tailMs: 160,   // doznění, ať stav nedorazí přesně na hranu dosednutí
+    lift:   0.28,  // výška oblouku jako podíl vzdálenosti mezi sedadly
+    grow:   1.35,  // o kolik portrét v nejvyšším bodě oblouku naroste
+};
+
+function seatSwapMs() {
+    const D = SEAT_SWAP;
+    return D.preMs + D.flyMs + D.tailMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { SACA_FLIP, sacaFlipMs, SACA_STEAL,
                        sacaStealPreMs, sacaStealPostMs, sacaStealExtraMs,
                        HELENA_ANIM, helenaRevealMs,
                        ROLE_SHUFFLE, roleShuffleOpts, roleShuffleMs,
-                       ROLE_PEEK, rolePeekMs };
+                       ROLE_PEEK, rolePeekMs,
+                       SEAT_SWAP, seatSwapMs };
 }

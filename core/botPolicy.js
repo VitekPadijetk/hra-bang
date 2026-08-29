@@ -91,6 +91,10 @@ if (typeof require === 'function') {
         globalThis.lvkPayOk = __pl3.lvkPayOk;
         globalThis.lvkTargetOk = __pl3.lvkTargetOk;
     }
+    // Divoký západ – Lady Růže z Texasu: „smí se teď měnit místo a s kým".
+    if (typeof roseSwapOffer === 'undefined') {
+        globalThis.roseSwapOffer = require('./playability.js').roseSwapOffer;
+    }
     if (typeof nativePlayInTurn === 'undefined') {
         globalThis.nativePlayInTurn = require('./playability.js').nativePlayInTurn;
     }
@@ -887,6 +891,23 @@ function decidePlay(state, myIndex, beliefs) {
             consider(30, { event: 'flint_westwood',
                            payload: { targetIdx: victim.idx, cardId: me.hand[idx].id } });
         }
+    }
+    // Lady Růže z Texasu (Divoký západ): výměna místa se sousedem po pravici, který
+    // za to přeskočí svůj nejbližší tah. Přeskočený tah je čistý zisk – ale jen když je
+    // soused nepřítel; spojenci by bot tímhle sebral tah zadarmo.
+    //
+    // Bot se navíc vymění NEJVÝŠ JEDNOU ZA SVŮJ TAH. Pravidlo mu povoluje víc (strop je
+    // x použití za sebou, FAQ Q08), ale je to pravidlo pro hráče, ne rozumná politika:
+    // bez vlastní brzdy by bot vyčerpal celý strop v jednom tahu a hra jen botů by se
+    // zvrhla v přesedávání. Pozná se to bez nového pole: ve VLASTNÍM tahu smí měnit místo
+    // jen hráč na tahu, takže `_roseUsedThisTurn` znamená "už jsem se stěhoval".
+    //
+    // Skóre je nízké – přesednutí je pořád jen příprava, ne akce,
+    // a nesmí přebít výstřel ani líznutí karet navíc.
+    const _roseIdx = roseSwapOffer(state, myIndex);
+    if (_roseIdx != null && !state._roseUsedThisTurn) {
+        const _roseEp = enemyProbability(me.role, beliefs[_roseIdx], hostOpts(state, beliefs, myIndex));
+        if (_roseEp >= 0.5) consider(14, { event: 'lady_rose', payload: {} });
     }
     // Lee Van Kliff (Divoký západ): odhodí kartu BANG! a zopakuje efekt hnědé karty,
     // kterou právě zahrál. Co je k opakování a jaký cíl to chce, říká `lvkOffer`
