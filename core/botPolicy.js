@@ -28,6 +28,11 @@ if (typeof require === 'function') {
         globalThis.effectiveCharacter = __d.effectiveCharacter;
     }
     // Samostatný guard – viz stejná poznámka u suitBlockedFor níž.
+    if (typeof hasAbility === 'undefined') {
+        const __ab = require('./distance.js');
+        globalThis.hasAbility = __ab.hasAbility;
+        globalThis.abilitiesOf = __ab.abilitiesOf;
+    }
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
     }
@@ -641,7 +646,7 @@ function decidePlay(state, myIndex, beliefs) {
         // vlastním tahu, druhá zelená téhož jména). Vlastní akci by server odmítl,
         // takže se tady přeskočí – výstřel jí nabídne větev pod tímhle cyklem.
         if (!nativePlayInTurn(state, me, myIndex, card)) return;
-        const action = getActionForCard(card, effectiveCharacter(me));
+        const action = getActionForCard(card, abilitiesOf(me));
 
         if (action === 'SHOOT') {
             // Fistful – Odstřelovač: dvě karty Bang! naráz, ubránit se lze JEN dvěma
@@ -836,11 +841,10 @@ function decidePlay(state, myIndex, beliefs) {
     });
 
     // ── Aktivní schopnosti postav (Dodge City) ─────────────────────────────────
-    const ch = effectiveCharacter(me);
-    if (ch === 'Chuck Wengam' && me.health >= 3 && me.hand.length <= 2) {
+    if (hasAbility(me, 'Chuck Wengam') && me.health >= 3 && me.hand.length <= 2) {
         consider(28, { event: 'chuck_wengam' });        // ztrať 1 HP → lízni 2 (když jsi na kartách chudý)
     }
-    if (ch === 'José Delgado' && (me._joseUses || 0) < 2) {
+    if (hasAbility(me, 'José Delgado') && (me._joseUses || 0) < 2) {
         let blueIdx = -1, blueScore = Infinity;
         me.hand.forEach((c, i) => {
             if (lawProtectedCard(state, me, myIndex, c)) return;   // Právo západu
@@ -852,7 +856,7 @@ function decidePlay(state, myIndex, beliefs) {
     // se to hlavně z přebytku – karta, kterou by stejně odhodil na konci tahu, se změní
     // v novou z balíčku (a vybírá si první). Podmínky musí sedět se serverem
     // (useUncleWill), jinak by server akci odmítl a bot ji zkoušel donekonečna.
-    if (ch === 'Uncle Will' && me._willUsedTurn !== state.turnId && me.hand.length > me.health) {
+    if (hasAbility(me, 'Uncle Will') && me._willUsedTurn !== state.turnId && me.hand.length > me.health) {
         let idx = -1, low = Infinity;
         me.hand.forEach((c, i) => {
             if (suitBlockedFor(state, myIndex, c)) return;   // Želízka
@@ -865,7 +869,7 @@ function decidePlay(state, myIndex, beliefs) {
     // z ruky jiného hráče. Je to čistý zisk karty, takže se to vyplatí skoro vždycky –
     // dá se nejlevnější karta a bere se od nejpravděpodobnějšího nepřítele s nejplnější
     // rukou (dostřel neplatí). Podmínky musí sedět se serverem (useFlintWestwood).
-    if (ch === 'Flint Westwood' && me._flintUsedTurn !== state.turnId && me.hand.length > 0) {
+    if (hasAbility(me, 'Flint Westwood') && me._flintUsedTurn !== state.turnId && me.hand.length > 0) {
         let idx = -1, low = Infinity;
         me.hand.forEach((c, i) => {
             if (lawProtectedCard(state, me, myIndex, c)) return;   // Právo západu
@@ -938,7 +942,7 @@ function decidePlay(state, myIndex, beliefs) {
             consider(score, { event: 'lee_van_kliff', payload: { cardId: payId, targetIdx } });
         }
     }
-    if (ch === 'Doc Holyday' && !me._docUsed && me.hand.length >= 3) {
+    if (hasAbility(me, 'Doc Holyday') && !me._docUsed && me.hand.length >= 3) {
         const reach = weaponReach(state, me.weapon);
         const tgt = shootTargets(state, myIndex, beliefs).find(e => computeDistance(state, myIndex, e.idx) <= reach);
         if (tgt) {
@@ -1011,7 +1015,7 @@ function decideBotAction(state, myIndex, beliefs) {
             // (jinak by handleResponse kartu nespotřeboval a bot by ji zkoušel donekonečna = stall).
             const attacker = state.players[state.pendingResponse.originatorIdx];
             const belleIgnores = state.pendingResponse.originatorIdx === state.currentPlayerIndex
-                && effectiveCharacter(attacker) === 'Belle Star';
+                && hasAbility(attacker, 'Belle Star');
             // Laso (Fistful) ruší karty na stole úplně stejně – a ze stejného důvodu.
             if (req === T.MISSED && !belleIgnores && !boardDeadFor(state)) {
                 const greenMiss = (me.board || []).find(c => c.green && c.activate === 'miss'
@@ -1025,7 +1029,7 @@ function decideBotAction(state, myIndex, beliefs) {
                 const beerIdx = beerBlockedFor(state) ? -1
                     : me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
                 if (beerIdx !== -1) return { event: 'respond_with_beer', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
-                if (effectiveCharacter(me) === 'Sid Ketchum' && me.hand.length >= 2) {
+                if (hasAbility(me, 'Sid Ketchum') && me.hand.length >= 2) {
                     const order = me.hand.map((c, i) => i).sort((a, b) => keepScore(me.hand[a]) - keepScore(me.hand[b]));
                     return { event: 'sid_ketchum_discard_both', payload: { playerIdx: myIndex, cardIdx1: order[0], cardIdx2: order[1] } };
                 }

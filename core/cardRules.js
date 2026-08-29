@@ -5,7 +5,13 @@
 // Vrací jeden z: "SHOOT" | "PLAY_BLUE" | "PLAY_CARD" | název cílené karty
 // ("Panika!" | "Cat Balou" | "Duel" | "Vězení").
 
+// `character` je BUĎ jméno postavy, NEBO pole jmen (abilitiesOf) – Greygory Deck
+// (Divoký západ) má schopnosti dvou postav naráz, takže se sem Calamity Janet může
+// dostat jako jedna položka seznamu. Volající z jádra posílají `abilitiesOf(me)`.
 function getActionForCard(card, character) {
+    const isJanet = Array.isArray(character)
+        ? character.includes("Calamity Janet")
+        : character === "Calamity Janet";
     // Dodge City „odhoď další kartu": hráč nejdřív zvolí CÍL (balíček / postava /
     // karta soupeře) a teprve pak platí druhou kartou. Klient podle akce ví, co je
     // klikatelné: DE_DECK = balíček (Whisky/Rvačka), DE_HEAL = postava (Tequila),
@@ -23,7 +29,7 @@ function getActionForCard(card, character) {
     if (card.green) return "PLAY_BLUE";
     // Karty s bang-efektem (Úder, …) se míří jako Bang!. (Zelené sem nedojdou – výše.)
     if (card.bangEffect && !card.green) return "SHOOT";
-    if (card.type === "Bang!" || (character === "Calamity Janet" && card.type === "Vedle!")) {
+    if (card.type === "Bang!" || (isJanet && card.type === "Vedle!")) {
         return "SHOOT";
     }
     if (["Panika!", "Cat Balou", "Duel", "Vězení"].includes(card.type)) {

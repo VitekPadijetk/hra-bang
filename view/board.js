@@ -1579,7 +1579,7 @@ function drawMyArea(ctx) {
         const _origIdx = state.pendingResponse?.originatorIdx;
         const _belleIgnoresBoard = _origIdx != null &&
             state.currentPlayerIndex === _origIdx &&
-            effectiveCharacter(state.players[_origIdx]) === "Belle Star";
+            hasAbility(state.players[_origIdx], "Belle Star");
         const isRespondMiss = (state.phase === 'RESPOND' && state.pendingResponse?.active &&
             state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
             !_belleIgnoresBoard && !boardDeadFor(state))
@@ -2210,7 +2210,7 @@ function drawMyArea(ctx) {
                             socket.emit('discard_card', intent.index);
                             optimisticRemoveCard(intent.index);
                             // Sean Mallory (Dodge City) drží až 10 karet místo počtu životů.
-                            const _limit = effectiveCharacter(me) === "Sean Mallory" ? 10 : me.health;
+                            const _limit = hasAbility(me, "Sean Mallory") ? 10 : me.health;
                             if (me.hand.length <= _limit) {
                                 state.phase = "TRANSITIONING";
                                 App.blockInput = true;
@@ -2244,7 +2244,7 @@ function drawMyArea(ctx) {
         state.currentPlayerIndex === myIndex &&
         selectedState.sidKetchum === undefined &&
         state.sidKetchumPending?.playerIdx !== myIndex) {
-            const sidCanHeal = effectiveCharacter(me) === "Sid Ketchum" &&
+            const sidCanHeal = hasAbility(me, "Sid Ketchum") &&
                 me.hand.filter(c => !c._placeholder).length >= 2 &&
                 isInPlay(me) && me.health < me.maxHealth;
             // Zelená karta na mém stole, kterou lze teď aktivovat, se počítá jako
@@ -2272,11 +2272,10 @@ function drawMyArea(ctx) {
             });
             // Aktivní schopnosti postav se počítají jako hratelná akce → blikání „Ukončit
             // tah" pak nemá smysl (zrcadlí podmínky tlačítek Chuck/Doc/José níže).
-            const _ec = effectiveCharacter(me);
             const hasActiveAbility =
-                (_ec === "Chuck Wengam" && me.health > 1) ||
-                (_ec === "Doc Holyday" && !me._docUsed && me.hand.length >= 2) ||
-                (_ec === "José Delgado" && (me._joseUses || 0) < 2 && me.hand.some(isBlueCard));
+                (hasAbility(me, "Chuck Wengam") && me.health > 1) ||
+                (hasAbility(me, "Doc Holyday") && !me._docUsed && me.hand.length >= 2) ||
+                (hasAbility(me, "José Delgado") && (me._joseUses || 0) < 2 && me.hand.some(isBlueCard));
             const hasPlayable = sidCanHeal || hasPlayableGreen || hasActiveAbility || me.hand.some((card, idx) => {
                 const p = getCardPlayability(card, idx);
                 return p !== false;
@@ -2317,7 +2316,7 @@ function drawMyArea(ctx) {
             }
         }
 
-        if (effectiveCharacter(me) === "Sid Ketchum" && me.hand.length >= 2 && isInPlay(me) && me.health < me.maxHealth
+        if (hasAbility(me, "Sid Ketchum") && me.hand.length >= 2 && isInPlay(me) && me.health < me.maxHealth
             // PEYOTE/RANCH (Fistful) mají OBA slotky tlačítek obsazené (tip na barvu,
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
@@ -2348,7 +2347,7 @@ function drawMyArea(ctx) {
         // Sid Ketchum záchrana při posledním životě (RESPOND nebo DYNAMITE_DAMAGE)
         {
             const _aliveForSid = inPlayCount(state.players);   // duch se počítá (Město duchů)
-            const _sidLastLifeCtx = effectiveCharacter(me) === "Sid Ketchum" && me.health === 1 &&
+            const _sidLastLifeCtx = hasAbility(me, "Sid Ketchum") && me.health === 1 &&
                 me.hand.filter(c => !c._placeholder).length >= 2 && _aliveForSid > 2 &&
                 ((state.phase === "RESPOND" && state.pendingResponse?.active && state.pendingResponse.targetIdx === myIndex
                   && !state.pendingResponse.ricochet) ||
@@ -2493,7 +2492,7 @@ function drawMyArea(ctx) {
                     if (App.blockInput) return;
                     if (_sdArmed) {
                         delete selectedState.showdown;
-                        selectedState.action = getActionForCard(_selHandCard, effectiveCharacter(me));
+                        selectedState.action = getActionForCard(_selHandCard, abilitiesOf(me));
                         selectedState.reach = bangEffectReach(_selHandCard);
                     } else {
                         selectedState.showdown = true;
@@ -2515,7 +2514,7 @@ function drawMyArea(ctx) {
                 !App.blockInput && !_lawForced && !_sniperCan && !_showdownCan;
             const BTN_Y = L.btnAbilY;   // stejné místo jako [ SID: … ]
             // Chuck Wengam: klik → nabít (zvýrazní se životy); klik na životy = −1 ❤ → 2 karty.
-            if (myPlayTurn && effectiveCharacter(me) === "Chuck Wengam" && me.health > 1) {
+            if (myPlayTurn && hasAbility(me, "Chuck Wengam") && me.health > 1) {
                 const armed = !!selectedState.chuck;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, armed ? 'CHUCK: zrušit ↩' : 'CHUCK: −1 ❤ → 2 🂠', {
                     ...themeToggleStyle(armed), fontSize: '21px',
@@ -2523,7 +2522,7 @@ function drawMyArea(ctx) {
                 });
             }
             // José Delgado: odhoď modrou → 2 karty (max 2×). Aktivní režim vybere modrou v ruce.
-            if (effectiveCharacter(me) === "José Delgado" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
+            if (hasAbility(me, "José Delgado") && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
                 (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput && !_sniperCan && !_showdownCan) {
                 const active = !!selectedState.jose;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
@@ -2532,7 +2531,7 @@ function drawMyArea(ctx) {
                 });
             }
             // Doc Holyday: odhoď 2 karty → bang-efekt na cíl v dostřelu (1×/tah).
-            if (effectiveCharacter(me) === "Doc Holyday" && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
+            if (hasAbility(me, "Doc Holyday") && (state.phase === "PLAY") && state.currentPlayerIndex === myIndex &&
                 !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput && !_sniperCan && !_showdownCan) {
                 const active = !!selectedState.doc;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
@@ -2543,7 +2542,7 @@ function drawMyArea(ctx) {
             // Flint Westwood (Divoký západ): 1× za tah vymění 1 kartu z ruky za 2 náhodné
             // z ruky jiného hráče. Nabito → klik na postavu (drawOpponents), pak na kartu
             // v ruce (decideCardClick). Dostřel neplatí, cíl jen musí mít karty.
-            if (myPlayTurn && effectiveCharacter(me) === "Flint Westwood" &&
+            if (myPlayTurn && hasAbility(me, "Flint Westwood") &&
                 me._flintUsedTurn !== state.turnId && (selectedState.flint || me.hand.length > 0) &&
                 state.players.some((pl, i) => i !== myIndex && isInPlay(pl) && (pl.hand || []).length > 0)) {
                 const active = !!selectedState.flint;
@@ -2574,7 +2573,7 @@ function drawMyArea(ctx) {
             }
             // Uncle Will (Fistful): 1× za tah zahraj libovolnou kartu jako Hokynářství.
             // Aktivní režim pak čeká na klik na kartu v ruce (stejně jako José/Doc).
-            if (myPlayTurn && effectiveCharacter(me) === "Uncle Will" &&
+            if (myPlayTurn && hasAbility(me, "Uncle Will") &&
                 me._willUsedTurn !== state.turnId && (selectedState.will || me.hand.length > 0)) {
                 const active = !!selectedState.will;
                 themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'WILL: zrušit ↩' : 'WILL: karta → 🏪', {

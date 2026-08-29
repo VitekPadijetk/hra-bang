@@ -48,7 +48,7 @@ const ChecksMixin = {
         // žádná karta na stole, jen důvod – jinak jede úplně stejnou cestou jako
         // Dynamit/Vězení, takže se zdarma veze i Lucky Duke a klientská cinematika.
         if (pcd.reason) {
-            if (effectiveCharacter(p) === "Lucky Duke") {
+            if (hasAbility(p, "Lucky Duke")) {
                 this.startLuckyDukeCheck({ reason: pcd.reason, playerIdx: pcd.playerIdx, boardIdx: null, checksLeft: 1, active: false });
                 return;
             }
@@ -67,7 +67,7 @@ const ChecksMixin = {
         }
 
         if (pcd.dynamiteIdx !== null) {
-            if (effectiveCharacter(p) === "Lucky Duke") {
+            if (hasAbility(p, "Lucky Duke")) {
                 this.startLuckyDukeCheck({ reason: "DYNAMITE", playerIdx: pcd.playerIdx, boardIdx: pcd.dynamiteIdx, checksLeft: 1, active: false });
                 return;
             }
@@ -86,7 +86,7 @@ const ChecksMixin = {
         }
 
         if (pcd.jailIdx !== null) {
-            if (effectiveCharacter(p) === "Lucky Duke") {
+            if (hasAbility(p, "Lucky Duke")) {
                 this.startLuckyDukeCheck({ reason: "JAIL", playerIdx: pcd.playerIdx, boardIdx: pcd.jailIdx, checksLeft: 1, active: false });
                 return;
             }
@@ -213,7 +213,7 @@ const ChecksMixin = {
                 // je záloha pro cesty, které check staví bez něj (Kulomet).
                 // Bang-efekt: Slabův bonus neplatí (barel = uhnul napoprvé).
                 const needed = check.missesNeeded ||
-                    ((!check.bangEffect && effectiveCharacter(attacker) === "Slab the Killer") ? 2 : 1);
+                    ((!check.bangEffect && hasAbility(attacker, "Slab the Killer")) ? 2 : 1);
 
                 // Úspěšný barel se počítá za JEDNU kartu Vedle! – u dvojnásobné obrany
                 // (Slab the Killer, Odstřelovač) tedy zbytek musí hráč ještě dohrát.
@@ -260,7 +260,7 @@ const ChecksMixin = {
         const p = this.players[check.playerIdx];
         check.active = false;
 
-        if (effectiveCharacter(p) === "Lucky Duke") {
+        if (hasAbility(p, "Lucky Duke")) {
             this.startLuckyDukeCheck(check);
             return;
         }

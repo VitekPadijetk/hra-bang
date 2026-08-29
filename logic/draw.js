@@ -51,12 +51,12 @@ const DrawMixin = {
         // i každé líznutí. Viz _startMineTurn v logic/fistful.js.
         this._startMineTurn();
 
-        if (effectiveCharacter(player) === "Kit Carlson") {
+        if (hasAbility(player, "Kit Carlson")) {
             this.startKitCarlsonDraw();
             return;
         }
 
-        if (effectiveCharacter(player) === "Claus the Saint") {
+        if (hasAbility(player, "Claus the Saint")) {
             this.startClausDraw();
             return;
         }
@@ -74,8 +74,8 @@ const DrawMixin = {
     // FAQ X3: duch Pixie Pete líže 4 (3+1), duch Bill Noface 5 (vlastní vzorec s 0 životy).
     _drawCountFor(player) {
         let n = player._ghost ? 3 : 2;
-        if (effectiveCharacter(player) === "Pixie Pete") n += 1;
-        else if (effectiveCharacter(player) === "Bill Noface") n = 1 + (player.maxHealth - player.health);
+        if (hasAbility(player, "Pixie Pete")) n += 1;
+        else if (hasAbility(player, "Bill Noface")) n = 1 + (player.maxHealth - player.health);
         if (this.hasEvent('ZIZEN')) n -= 1;
         if (this.hasEvent('PRIJEZD_VLAKU')) n += 1;
         return Math.max(1, n);
@@ -95,15 +95,15 @@ const DrawMixin = {
 
     _getDrawOptions(player) {
         const opts = this._drawOptionsBase(player);
-        if (effectiveCharacter(player) === "Jesse Jones") opts.push('opponent_hand');
+        if (hasAbility(player, "Jesse Jones")) opts.push('opponent_hand');
         // Opuštěný důl (Fistful): odhoz JE dobírací balíček, takže by Pedro bral tutéž
         // kartu jako „z balíčku" – volba nic nepřidává a jen by obešla trychtýř draw()
         // (a s ním vypnutí dolu, až odhoz dojde).
         // Pod Opuštěným dolem se ve fázi 1 líže z odhozu tak jako tak, takže by Pedrova
         // volba brala tutéž kartu – nenabízí se.
-        if (effectiveCharacter(player) === "Pedro Ramirez" && !this._mineTurn) opts.push('discard');
+        if (hasAbility(player, "Pedro Ramirez") && !this._mineTurn) opts.push('discard');
         // Dodge City: Pat Brennan smí místo lízání vzít 1 kartu ze stolu libovolného hráče.
-        if (effectiveCharacter(player) === "Pat Brennan") opts.push('board');
+        if (hasAbility(player, "Pat Brennan")) opts.push('board');
         return opts;
     },
 
@@ -130,7 +130,7 @@ const DrawMixin = {
 
         // Dodge City: Pat Brennan – místo lízání vezmi 1 kartu ze stolu (výzbroj/modrá/zelená)
         // libovolného hráče do ruky; tím jeho fáze lízání končí (bere jen tuto jednu kartu).
-        if (source === 'board' && effectiveCharacter(player) === "Pat Brennan" && ds.cardsDrawn === 0) {
+        if (source === 'board' && hasAbility(player, "Pat Brennan") && ds.cardsDrawn === 0) {
             const target = this.players[sourceIdx];
             if (!target || target.health <= 0) return;
             let card = null;
@@ -152,7 +152,7 @@ const DrawMixin = {
             return;
         }
 
-        if (source === 'opponent_hand' && effectiveCharacter(player) === "Jesse Jones" && ds.cardsDrawn === 0) {
+        if (source === 'opponent_hand' && hasAbility(player, "Jesse Jones") && ds.cardsDrawn === 0) {
             const opponent = this.players[sourceIdx];
             if (!opponent || opponent.health <= 0 || opponent.hand.length === 0) return;
             const randomIdx = Math.floor(Math.random() * opponent.hand.length);
@@ -180,7 +180,7 @@ const DrawMixin = {
                 }
             }
         }
-        else if (source === 'discard' && effectiveCharacter(player) === "Pedro Ramirez" && ds.cardsDrawn === 0) {
+        else if (source === 'discard' && hasAbility(player, "Pedro Ramirez") && ds.cardsDrawn === 0) {
             if (this.deck.discardPile.length === 0) return;
             const card = this.deck.discardPile.pop();
             player.hand.push(card);
@@ -200,7 +200,7 @@ const DrawMixin = {
 
             this.drawPhaseState.options = ['deck'];
 
-            if (effectiveCharacter(player) === "Kit Carlson" && ds.isKitCarlson) {
+            if (hasAbility(player, "Kit Carlson") && ds.isKitCarlson) {
                 // Odkrývá VŽDY 3 karty (to je jeho schopnost) – mění se jen kolik si z nich
                 // nechá: běžně 2, se Žízní 1. Příjezd vlaku počet odkrytých nezvyšuje: nechá
                 // si 2 a kartu navíc si pak lízne klasicky z balíčku (ds.kitExtra, viz
@@ -228,7 +228,7 @@ const DrawMixin = {
             // do řady uprostřed stolu – přesně jako u Kita Carlsona, jen karet může být až
             // devět a vidí je jen on (ostatním leží rubem, viz redactState). Rozdělí je pak
             // klikáním: nejdřív si vezme svoje, pak po jedné ostatním (fáze CLAUS_GIVE).
-            if (ds.isClaus && effectiveCharacter(player) === "Claus the Saint") {
+            if (ds.isClaus && hasAbility(player, "Claus the Saint")) {
                 const order = (ds.clausOrder || []).filter(i => isInPlay(this.players[i]));
                 const total = (ds.clausKeep || 2) + order.length;
                 const revealed = [card];
@@ -252,7 +252,7 @@ const DrawMixin = {
                 return;
             }
 
-            if (effectiveCharacter(player) === "Black Jack" && ds.cardsDrawn === 1 && ds.isStartOfTurn && !ds.blackJackWaitingForThird) {
+            if (hasAbility(player, "Black Jack") && ds.cardsDrawn === 1 && ds.isStartOfTurn && !ds.blackJackWaitingForThird) {
                 ds.blackJackCard = card;
                 this.phase = "BLACK_JACK_CHECK";
                 return;

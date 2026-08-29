@@ -32,6 +32,31 @@ function effectiveCharacter(player) {
     return player._copiedCharacter || player.character;
 }
 
+// Které schopnosti hráči právě PLATÍ (pole jmen postav). Jediný trychtýř pro všechny
+// kontroly „umí X?" v pravidlech, v botovi i v UI – `effectiveCharacter` zůstává vedle
+// pro to, kde jde o JEDNU postavu k zobrazení (portrét, overlay volby kopie, štítek).
+// Rozdíl je Greygory Deck (Divoký západ): má schopnosti DVOU náhodně líznutých postav
+// naráz, takže se dotaz musí ptát na seznam, ne na rovnost jednoho jména.
+//   • Kocovina (High Noon, `_noAbility`) vypíná všechny naráz → prázdné pole,
+//   • Vera Custer se ptá skrz kopii (`_copiedCharacter`),
+//   • a kopíruje-li Vera Greygoryho, platí JEJÍ vlastní líznutá dvojice (R10) –
+//     `_greygoryChars` proto nese ten, kdo schopnost právě má, ne sám Greygory.
+function abilitiesOf(player) {
+    if (!player || player._noAbility) return [];
+    const base = player._copiedCharacter || player.character;
+    if (base === "Greygory Deck") return [...(player._greygoryChars || [])];
+    return base ? [base] : [];
+}
+
+// Zkratka nad abilitiesOf bez alokace pole – volá se v computeDistance, tedy v horké
+// cestě bota. Chová se přesně jako `abilitiesOf(p).includes(name)`.
+function hasAbility(player, name) {
+    if (!player || player._noAbility) return false;
+    const base = player._copiedCharacter || player.character;
+    if (base === "Greygory Deck") return !!player._greygoryChars && player._greygoryChars.includes(name);
+    return base === name;
+}
+
 // High Noon – Město duchů (`_ghost`): vyřazený hráč se na JEDEN svůj tah vrací do hry.
 // Nastupuje s 0 životy, ale po dobu svého tahu sedí zase v kole: má vzdálenost, může cílit
 // i být cílen, počítá se do hokynářství a **léčit se smí** (naléčené životy pak utratí
@@ -64,12 +89,12 @@ function computeDistance(state, fromIdx, toIdx) {
     let dist = eventActive(state, 'LECKA') ? 1 : Math.min(diff, alivePlayers.length - diff);
     const attacker = state.players[fromIdx];
     const target = state.players[toIdx];
-    if (effectiveCharacter(target) === "Paul Regret") dist += 1;
-    if (effectiveCharacter(attacker) === "Rose Doolan") dist -= 1;
+    if (hasAbility(target, "Paul Regret")) dist += 1;
+    if (hasAbility(attacker, "Rose Doolan")) dist -= 1;
     // Belle Star (Dodge City): v jejím tahu nemají cizí karty na stole žádný efekt →
     // ignoruj cizí Mustang/Skrýš (dosah) i vlastní Dalekohled/Hledí, pokud útočí někdo jiný.
     const belleActiveIdx = (typeof state.currentPlayerIndex === 'number' &&
-        effectiveCharacter(state.players[state.currentPlayerIndex]) === "Belle Star")
+        hasAbility(state.players[state.currentPlayerIndex], "Belle Star"))
         ? state.currentPlayerIndex : -1;
     // A Fistful of Cards – Laso: karty na stole nemají efekt vůbec nikomu, tedy ani
     // vlastní Dalekohled/Hledí útočníka (na rozdíl od Belle Star, která ruší jen cizí).
@@ -111,5 +136,5 @@ function bangEffectReach(card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, isInPlay, inPlayCount };
+    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, abilitiesOf, hasAbility, isInPlay, inPlayCount };
 }

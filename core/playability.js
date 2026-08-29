@@ -12,6 +12,13 @@ if (typeof require === 'function') {
         if (typeof bangEffectReach === 'undefined') globalThis.bangEffectReach = __d.bangEffectReach;
         if (typeof effectiveCharacter === 'undefined') globalThis.effectiveCharacter = __d.effectiveCharacter;
     }
+    // Samostatný guard: `hasAbility`/`abilitiesOf` (Greygory Deck – Divoký západ) je nový
+    // trychtýř dotazů „umí X?"; blok výš hlídaný effectiveCharacter by ho mohl minout.
+    if (typeof hasAbility === 'undefined') {
+        const __ab = require('./distance.js');
+        globalThis.hasAbility = __ab.hasAbility;
+        globalThis.abilitiesOf = __ab.abilitiesOf;
+    }
     // Samostatný guard: kdo načte distance.js dřív (botPolicy), doplní si jen část globálů.
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
@@ -74,7 +81,7 @@ if (typeof require === 'function') {
 function playsAsBang(state, me, card) {
     if (!card || card._placeholder) return false;
     if (card.type === "Bang!") return true;
-    if (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!") return true;
+    if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return true;
     if (eventActive(state, 'ZUCTOVANI')) return true;      // Zúčtování: každá karta
     return false;
 }
@@ -85,16 +92,16 @@ function playsAsBang(state, me, card) {
 // karta a pod Zúčtováním smí Big Spencer hrát jako Vedle! kartu BANG! (R9). Odhodit
 // kartu Vedle! (Ruská ruleta) smí – odhoz není zahrání, viz rouletteDiscardable.
 function bigSpencerBlocked(me, card) {
-    return effectiveCharacter(me) === "Big Spencer" && !!card && card.type === "Vedle!";
+    return hasAbility(me, "Big Spencer") && !!card && card.type === "Vedle!";
 }
 
 function playsAsMissed(state, me, card) {
     if (!card || card._placeholder) return false;
     if (bigSpencerBlocked(me, card)) return false;
     if (card.type === "Vedle!" || card.type === "Úhyb") return true;
-    if (effectiveCharacter(me) === "Elena Fuente") return true;
+    if (hasAbility(me, "Elena Fuente")) return true;
     if (card.type === "Bang!") {
-        return effectiveCharacter(me) === "Calamity Janet" || eventActive(state, 'ZUCTOVANI');
+        return hasAbility(me, "Calamity Janet") || eventActive(state, 'ZUCTOVANI');
     }
     return false;
 }
@@ -108,7 +115,7 @@ function preacherBlocks(state, me, myIndex, card) {
     if (!bangBlockedFor(state, myIndex)) return false;
     if (!card) return true;
     return card.type === "Bang!" ||
-        (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!");
+        (hasAbility(me, "Calamity Janet") && card.type === "Vedle!");
 }
 
 // Divoký západ – Zúčtování: smí hráč TOUHLE kartou právě teď vystřelit, i když to karta
@@ -121,7 +128,7 @@ function showdownBangOk(state, me, myIndex, card) {
     if (!card || card._placeholder) return false;
     if (!isPlayTurn(state, myIndex)) return false;
     if (card.type === "Bang!") return false;                                  // řeší větev pro pravý Bang!
-    if (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!") return false;
+    if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return false;
     if (card.bangEffect && !card.green) return false;                         // Úder a spol. míří samy
     return bangLimitFree(state, me) || ricochetAvailable(state, me, myIndex) ||
            sniperOffer(state, me, myIndex, card);
@@ -142,7 +149,7 @@ function nativePlayInTurn(state, me, myIndex, card) {
     if (card.bangEffect && !card.green) {
         return true;
     }
-    if (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!")) {
+    if (card.type === "Bang!" || (hasAbility(me, "Calamity Janet") && card.type === "Vedle!")) {
         // (Zúčtování sem NEpatří – karta, která je Bang! jen „jako by", si svou vlastní
         //  akci ponechává; tu možnost přidává navrch showdownBangOk v cardPlayability.)
         if (preacherBlocks(state, me, myIndex, card)) return false;   // Kazatel (High Noon)
@@ -215,7 +222,7 @@ function nativePlayInTurn(state, me, myIndex, card) {
 // Bang! – takže se míří. Ptá se tím klient (decideCardClick), bot (forcedLawIntent)
 // i Právo západu (co vlastně vynucená karta dělá a jestli má cíl).
 function turnActionForCard(state, me, myIndex, card) {
-    const action = getActionForCard(card, effectiveCharacter(me));
+    const action = getActionForCard(card, abilitiesOf(me));
     if (action === 'SHOOT') return action;
     if (eventActive(state, 'ZUCTOVANI') && !nativePlayInTurn(state, me, myIndex, card)) return 'SHOOT';
     return action;
@@ -341,7 +348,7 @@ function _lawDrawGain(card) {
 // – Úder, Springfield, zelené – se do něj nepočítají, viz playBang isEffect.)
 function _lawCountsBang(me, card) {
     return !!card && !card.bangEffect &&
-        (card.type === "Bang!" || (effectiveCharacter(me) === "Calamity Janet" && card.type === "Vedle!"));
+        (card.type === "Bang!" || (hasAbility(me, "Calamity Janet") && card.type === "Vedle!"));
 }
 
 // Hypotetický stav PO akci, z pohledu vynucené karty. Kopíruje se MĚLCE (skutečným
@@ -378,7 +385,7 @@ function _lawAfterAction(state, me, myIndex, forcedCard, card, opts) {
     const heal = (p, n) => { if (isInPlay(p)) p.health = Math.max(0, Math.min(p.maxHealth, (p.health || 0) + n)); };
     if (opts.heal) heal(simMe, opts.heal);
     if (card) {
-        if (card.type === "Pivo") heal(simMe, effectiveCharacter(me) === "Tequila Joe" ? 2 : 1);
+        if (card.type === "Pivo") heal(simMe, hasAbility(me, "Tequila Joe") ? 2 : 1);
         else if (card.type === "Salon") players.forEach((p, i) => {
             if (i === myIndex) { heal(simMe, 1); return; }
             const q = Object.assign({}, p); players[i] = q; heal(q, 1);
@@ -477,7 +484,7 @@ function rouletteHasCard(state, p) {
 function rouletteBarrelChecks(state, p) {
     if (!p) return 0;
     const hasBarrel = !boardDeadFor(state) && (p.board || []).some(c => c.type === "Barel");
-    const jourdonnais = effectiveCharacter(p) === "Jourdonnais";
+    const jourdonnais = hasAbility(p, "Jourdonnais");
     return (hasBarrel ? 1 : 0) + (jourdonnais ? 1 : 0);
 }
 
@@ -495,7 +502,7 @@ function bangCardFromHand(state, me, myIndex, card) {
 // Zbývá hráči volný limit karet Bang! na tenhle tah? (Willy the Kid a Volcanic ho nemají;
 // Laso zbraň na stole vypíná, takže s ním Volcanic neplatí. Přestřelka zvedá limit na 2.)
 function bangLimitFree(state, me) {
-    if (effectiveCharacter(me) === "Willy the Kid") return true;
+    if (hasAbility(me, "Willy the Kid")) return true;
     if (!boardDeadFor(state) && me.weapon?.name?.includes("Volcanic")) return true;
     return me.bangsPlayedThisTurn < bangLimitFor(state);
 }
@@ -574,7 +581,7 @@ function sniperOffer(state, me, myIndex, card) {
 
 // Co je teď k opakování? (deskriptor `_lastBrown`, nebo null)
 function lvkRepeat(state, me, myIndex) {
-    if (effectiveCharacter(me) !== "Lee Van Kliff") return null;
+    if (!hasAbility(me, "Lee Van Kliff")) return null;
     if (!isPlayTurn(state, myIndex)) return null;
     const lb = state._lastBrown;
     if (!lb || lb.repeated) return null;                       // každý efekt jen jednou

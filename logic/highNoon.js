@@ -328,7 +328,7 @@ const HighNoonMixin = {
             const i = (idx + step) % this.players.length;
             const p = this.players[i];
             if (i === idx || !p || !isInPlay(p)) continue;   // duch sbírá taky (viz handlePlayerDeath)
-            if (effectiveCharacter(p) === "Vulture Sam") vultures.push(i);
+            if (hasAbility(p, "Vulture Sam")) vultures.push(i);
         }
 
         if (vultures.length > 1 && leftCount > 0) {
@@ -370,10 +370,10 @@ const HighNoonMixin = {
 
         this.players.forEach((p, i) => {
             if (i === idx || p.health <= 0) return;
-            if (effectiveCharacter(p) === "Greg Digger") {
+            if (hasAbility(p, "Greg Digger")) {
                 p.health = Math.min(p.health + 2, p.maxHealth);
             }
-            if (effectiveCharacter(p) === "Herb Hunter") {
+            if (hasAbility(p, "Herb Hunter")) {
                 this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: i, cardsNeeded: 2 });
             }
         });

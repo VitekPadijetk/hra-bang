@@ -404,7 +404,7 @@ const WildWestMixin = {
         const n = this.players?.length || 0;
         for (let k = 1; k < n; k++) {
             const p = this.players[(discarderIdx + k) % n];
-            if (p && isInPlay(p) && effectiveCharacter(p) === "Gary Looter") return p;
+            if (p && isInPlay(p) && hasAbility(p, "Gary Looter")) return p;
         }
         return null;
     },
@@ -423,7 +423,7 @@ const WildWestMixin = {
     // (FAQ Q09 – karta se otáčí automaticky, ne hráčem).
     _johnPainQueueCard(card, drawerIdx) {
         if (!card) return;
-        if (!(this.players || []).some(p => p && isInPlay(p) && effectiveCharacter(p) === "John Pain")) return;
+        if (!(this.players || []).some(p => p && isInPlay(p) && hasAbility(p, "John Pain"))) return;
         if (!this._johnPainQueue) this._johnPainQueue = [];
         this._johnPainQueue.push({ cardId: card.id, drawerIdx });
     },
@@ -436,7 +436,7 @@ const WildWestMixin = {
         const n = this.players?.length || 0;
         for (let k = 0; k < n; k++) {
             const p = this.players[(drawerIdx + k) % n];
-            if (p && isInPlay(p) && effectiveCharacter(p) === "John Pain" && p.hand.length < 6) return p;
+            if (p && isInPlay(p) && hasAbility(p, "John Pain") && p.hand.length < 6) return p;
         }
         return null;
     },
@@ -481,7 +481,7 @@ const WildWestMixin = {
         if (this._grinnerTurn === this.turnId) return false;   // v tomhle tahu už proběhlo
         const idx = this.currentPlayerIndex;
         const me = this.players[idx];
-        if (!me || effectiveCharacter(me) !== "Youl Grinner") return false;
+        if (!me || !hasAbility(me, "Youl Grinner")) return false;
         this._grinnerTurn = this.turnId;
         const n = this.players.length;
         const mine = me.hand.length;
@@ -565,7 +565,7 @@ const WildWestMixin = {
     useFlintWestwood(playerIdx, targetIdx, cardId) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return null;
         const p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "Flint Westwood") return null;
+        if (!p || !hasAbility(p, "Flint Westwood")) return null;
         if (p._flintUsedTurn === this.turnId) return null;
         const t = this.players[targetIdx];
         if (!t || targetIdx === playerIdx || !isInPlay(t) || !t.hand.length) return null;
@@ -625,7 +625,7 @@ const WildWestMixin = {
         const p = this.players[deadIdx];
         if (!p || p._ghost) return false;
         if (this._terenDyingIdx === deadIdx) return false;   // sejmutí padlo na pik → umírá
-        if (effectiveCharacter(p) !== "Teren Kill") return false;
+        if (!hasAbility(p, "Teren Kill")) return false;
 
         p.health = 1;
         this.pendingTerenKill = { playerIdx: deadIdx, killerArg, phase: this.phase };
@@ -868,7 +868,7 @@ const WildWestMixin = {
             case 'BEER': {
                 // Tequila Joe: karta Pivo mu dá +2. Při dvou hráčích Pivo efekt nemá –
                 // pak se ale nedalo ani zahrát, takže tahle paměť vzniknout nemohla.
-                this._heal(p, effectiveCharacter(p) === "Tequila Joe" ? 2 : 1);
+                this._heal(p, hasAbility(p, "Tequila Joe") ? 2 : 1);
                 done();
                 return;
             }

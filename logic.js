@@ -16,6 +16,14 @@ if (typeof inPlayCount === 'undefined' && typeof require === 'function') {
     globalThis.inPlayCount = require('./core/distance.js').inPlayCount;
 }
 
+// Samostatný guard: `hasAbility`/`abilitiesOf` (Greygory Deck – Divoký západ) je nový
+// trychtýř dotazů „umí X?"; bloky výš hlídané jiným globálem by ho mohly minout.
+if (typeof hasAbility === 'undefined' && typeof require === 'function') {
+    const __ab = require('./core/distance.js');
+    globalThis.hasAbility = __ab.hasAbility;
+    globalThis.abilitiesOf = __ab.abilitiesOf;
+}
+
 // V Node nejsou entity globály — načteme je z logic/entities.js a vystavíme na globalThis,
 // aby na ně metody GameState mohly sahat bez kvalifikace. V prohlížeči jsou to globály
 // z <script src="logic/entities.js"> načteného PŘED logic.js.
@@ -233,7 +241,7 @@ class GameState {
     _apacheImmune(targetIdx, cardSuit, attackerIdx = null) {
         if (attackerIdx !== null && attackerIdx === targetIdx) return false;
         const t = this.players[targetIdx];
-        return !!t && effectiveCharacter(t) === "Apache Kid" && cardSuit === Suits.DIAMONDS;
+        return !!t && hasAbility(t, "Apache Kid") && cardSuit === Suits.DIAMONDS;
     }
 
     // Belle Star (Dodge City): v jejím tahu nemají cizí karty na stole (Barel, Mustang/Skrýš,
@@ -241,13 +249,13 @@ class GameState {
     // computeDistance (core/distance.js), tady se gate-uje Barel a zelené reakce.
     _belleIgnoresBoard(attackerIdx) {
         return attackerIdx === this.currentPlayerIndex &&
-               effectiveCharacter(this.players[this.currentPlayerIndex]) === "Belle Star";
+               hasAbility(this.players[this.currentPlayerIndex], "Belle Star");
     }
 
     // Limit karet v ruce na konci tahu. Normálně = počet životů; Sean Mallory (Dodge City)
     // drží až 10 karet.
     _handLimit(player) {
-        if (player && effectiveCharacter(player) === "Sean Mallory") return 10;
+        if (player && hasAbility(player, "Sean Mallory")) return 10;
         return player ? (player.health || 0) : 0;
     }
 

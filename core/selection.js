@@ -37,6 +37,11 @@ if (typeof require === 'function') {
     if (typeof effectiveCharacter === 'undefined') {
         globalThis.effectiveCharacter = require('./distance.js').effectiveCharacter;
     }
+    if (typeof hasAbility === 'undefined') {
+        const __ab = require('./distance.js');
+        globalThis.hasAbility = __ab.hasAbility;
+        globalThis.abilitiesOf = __ab.abilitiesOf;
+    }
     if (typeof beerBlockedFor === 'undefined') {
         globalThis.beerBlockedFor = require('./highNoon.js').beerBlockedFor;
     }

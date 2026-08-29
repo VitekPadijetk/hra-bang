@@ -6,7 +6,7 @@ const { hnRevealMs } = require('../core/highNoonAnim.js');
 const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs } = require('../core/wwsAnim.js');
 const { eventActive } = require('../core/highNoon.js');
-const { effectiveCharacter, isInPlay } = require('../core/distance.js');
+const { hasAbility, isInPlay } = require('../core/distance.js');
 
 // Délka jedné animace ragtime_steal – MUSÍ sedět s ANIM_MS v net/handlers.js (o tuhle
 // dobu drží klientská fronta stav a o stejnou se musí podržet boti).
@@ -164,11 +164,11 @@ module.exports = function installAnimService(ctx) {
             return;
         }
         // Stejné dotazy jako pravidla (handlePlayerDeath v logic/combat.js): schopnost může
-        // mít i Vera Custer (effectiveCharacter) a sbírat smí i duch Města duchů, který má
+        // mít i Vera Custer (hasAbility) a sbírat smí i duch Města duchů, který má
         // nula životů, ale ve hře je (isInPlay). Bez toho se karty ve stavu přesunuly Samovi,
         // ale animace je poslala do odhozu.
         const vultureIdx = gs.players.findIndex(
-            (p, idx) => idx !== deadIdx && p && isInPlay(p) && effectiveCharacter(p) === "Vulture Sam"
+            (p, idx) => idx !== deadIdx && p && isInPlay(p) && hasAbility(p, "Vulture Sam")
         );
         // Role jde s animací, ne ze stavu: stav se na klientu aplikuje až ZA cinematikou
         // (fronta animací), takže v tu chvíli je vyřazený hráč pro klienta ještě živý

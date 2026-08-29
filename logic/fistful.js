@@ -115,10 +115,9 @@ const FistfulMixin = {
     // a Pat Brennan naopak můžou vzít míň (jednu berou odjinud) – počítá se ta horní
     // hranice, protože se rozhoduje dřív, než si hráč zvolí.
     _mineNeeded(player) {
-        const ch = effectiveCharacter(player);
-        if (ch === "Kit Carlson") return 3;   // KIT_REVEAL (logic/draw.js)
-        if (ch === "Black Jack") return this._drawCountFor(player) + 1;   // ♥/♦ → karta navíc
-        if (ch === "Claus the Saint") {
+        if (hasAbility(player, "Kit Carlson")) return 3;   // KIT_REVEAL (logic/draw.js)
+        if (hasAbility(player, "Black Jack")) return this._drawCountFor(player) + 1;   // ♥/♦ → karta navíc
+        if (hasAbility(player, "Claus the Saint")) {
             const others = this.players.filter((q, i) => i !== this.currentPlayerIndex && isInPlay(q)).length;
             return this._drawCountFor(player) + others;
         }
@@ -567,7 +566,7 @@ const FistfulMixin = {
                 targetIdx: idx,
                 attackerIdx: null,
                 checksLeft: checks,
-                reason: checks === 2 || effectiveCharacter(p) === "Jourdonnais" ? "JOURDONNAIS" : "BARREL",
+                reason: checks === 2 || hasAbility(p, "Jourdonnais") ? "JOURDONNAIS" : "BARREL",
                 sourceCard: null,
                 sourceCardName: 'Ruská ruleta',
                 bangEffect: false,

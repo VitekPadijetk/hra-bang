@@ -47,7 +47,7 @@ const PlayMixin = {
                 // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
                 // Přes _heal, který ohlídá i to, že mrtvého léčit nejde (duch při Městě
                 // duchů ale ano) – jinak se Pivo vůbec nezahraje.
-                const gain = effectiveCharacter(player) === "Tequila Joe" ? 2 : 1;
+                const gain = hasAbility(player, "Tequila Joe") ? 2 : 1;
                 return this._heal(player, gain) > 0;
             },
             [CardType.SALOON]: () => {
@@ -137,7 +137,7 @@ const PlayMixin = {
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
         const isEffect = !!card.bangEffect;
-        const isWilly = effectiveCharacter(attacker) === "Willy the Kid";
+        const isWilly = hasAbility(attacker, "Willy the Kid");
         // Fistful – Laso: zbraň je karta na stole, takže Volcanic nedovolí Bang! bez limitu.
         const hasVolcanic = !this._boardDead() && attacker.weapon && attacker.weapon.name.includes("Volcanic");
 
@@ -188,7 +188,7 @@ const PlayMixin = {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
         const needed = missesNeeded ||
-            ((!isEffect && effectiveCharacter(attacker) === "Slab the Killer") ? 2 : 1);
+            ((!isEffect && hasAbility(attacker, "Slab the Killer")) ? 2 : 1);
 
         let barrelChecksLeft = 0;
         let barrelReason = "BARREL";
@@ -198,10 +198,10 @@ const PlayMixin = {
         const hasBarrelCard = !this._boardDead() && !this._belleIgnoresBoard(attackerIdx) &&
                               target.board.some(c => c.type === CardType.BARREL);
 
-        if (effectiveCharacter(target) === "Jourdonnais" && hasBarrelCard) {
+        if (hasAbility(target, "Jourdonnais") && hasBarrelCard) {
             barrelChecksLeft = 2;
             barrelReason = "JOURDONNAIS";
-        } else if (effectiveCharacter(target) === "Jourdonnais") {
+        } else if (hasAbility(target, "Jourdonnais")) {
             barrelChecksLeft = 1;
             barrelReason = "JOURDONNAIS";
         } else if (hasBarrelCard) {
@@ -370,7 +370,7 @@ const PlayMixin = {
     startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null, roulette = false) {
         const target = this.players[targetIdx];
 
-        if (effectiveCharacter(target) === "Lucky Duke") {
+        if (hasAbility(target, "Lucky Duke")) {
             const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette };
             this.startLuckyDukeCheck(checkContext);
             return;
@@ -494,10 +494,10 @@ const PlayMixin = {
             // Belle Star útočí (originator) / Laso → Barel neplatí; Jourdonnaisova vrozená ano.
             const hasBarrelCard = !this._boardDead() && !this._belleIgnoresBoard(originatorIdx) &&
                                   target.board.some(c => c.type === CardType.BARREL);
-            if (effectiveCharacter(target) === "Jourdonnais" && hasBarrelCard) {
+            if (hasAbility(target, "Jourdonnais") && hasBarrelCard) {
                 barrelChecksLeft = 2;
                 barrelReason = "JOURDONNAIS";
-            } else if (effectiveCharacter(target) === "Jourdonnais") {
+            } else if (hasAbility(target, "Jourdonnais")) {
                 barrelChecksLeft = 1;
                 barrelReason = "JOURDONNAIS";
             } else if (hasBarrelCard) {
@@ -548,7 +548,7 @@ const PlayMixin = {
         if (!this.missesPlayed || this.missesPlayed === 0) {
             // Bang-efekt: Slabův bonus (2× Vedle!) neplatí → vždy 1.
             this.missesRequired = missesNeeded ||
-                ((!bangEffect && effectiveCharacter(attacker) === "Slab the Killer" && sourceCard !== CardType.GATLING) ? 2 : 1);
+                ((!bangEffect && hasAbility(attacker, "Slab the Killer") && sourceCard !== CardType.GATLING) ? 2 : 1);
             this.missesPlayed = 0;
         }
         this.phase = "RESPOND";

@@ -27,10 +27,10 @@ const CombatMixin = {
             }
         }
 
-        if (effectiveCharacter(target) === "Bart Cassidy") {
+        if (hasAbility(target, "Bart Cassidy")) {
             this.specialActionQueue.push({ type: 'BART_DRAW', playerIdx: targetIdx });
         }
-        if (effectiveCharacter(target) === "El Gringo" && attackerIdx !== null && attackerIdx !== targetIdx) {
+        if (hasAbility(target, "El Gringo") && attackerIdx !== null && attackerIdx !== targetIdx) {
             const attacker = this.players[attackerIdx];
             if (attacker && attacker.health > 0 && attacker.hand.length > 0) {
                 this.specialActionQueue.push({ type: 'EL_GRINGO_STEAL', playerIdx: targetIdx, attackerIdx });
@@ -93,7 +93,7 @@ const CombatMixin = {
             const i = (deadIdx + step) % this.players.length;
             const p = this.players[i];
             if (i === deadIdx || !p || !isInPlay(p)) continue;   // duch (Město duchů) sbírá taky
-            if (effectiveCharacter(p) === "Vulture Sam") vultures.push(i);
+            if (hasAbility(p, "Vulture Sam")) vultures.push(i);
         }
 
         // Skutečná zbraň (ne výchozí Colt) jde do hry stejně jako modré/ruka – buď ji sebere
@@ -128,10 +128,10 @@ const CombatMixin = {
         // než odměna za roli (a u zabijáka-Herba se tak jeho 2 karty nesmíchají s 3 kartami).
         this.players.forEach((p, idx) => {
             if (idx === deadIdx || p.health <= 0) return;
-            if (effectiveCharacter(p) === "Greg Digger") {
+            if (hasAbility(p, "Greg Digger")) {
                 p.health = Math.min(p.health + 2, p.maxHealth);
             }
-            if (effectiveCharacter(p) === "Herb Hunter") {
+            if (hasAbility(p, "Herb Hunter")) {
                 this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: idx, cardsNeeded: 2 });
             }
         });
@@ -273,7 +273,7 @@ const CombatMixin = {
         // Pivo z karty, kterou si zrovna líznul). Nejde to přes handleDamage: ten by
         // spustil i cizí reakce (El Gringo), jenže u dynamitu žádný útočník není. Do fronty
         // se dává jen za PŘEŽITÝ zásah – stejně jako v handleDamage (smrt řeší větev výš).
-        if (effectiveCharacter(p) === "Bart Cassidy") {
+        if (hasAbility(p, "Bart Cassidy")) {
             this.specialActionQueue.push({ type: 'BART_DRAW', playerIdx });
         }
 

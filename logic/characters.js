@@ -5,7 +5,7 @@
 (function () {
 const CharactersMixin = {
     checkSuzyLafayette(player) {
-        if (player && effectiveCharacter(player) === "Suzy Lafayette" && player.hand.length === 0 && player.health > 0) {
+        if (player && hasAbility(player, "Suzy Lafayette") && player.hand.length === 0 && player.health > 0) {
             const playerIdx = this.players.findIndex(p => p === player);
             const alreadyInQueue = this.specialActionQueue.some(a => a.type === 'SUZY_DRAW' && a.playerIdx === playerIdx);
             const alreadyPending = this.pendingSuzyDraw && this.pendingSuzyDraw.playerIdx === playerIdx;
@@ -33,7 +33,7 @@ const CharactersMixin = {
     useUncleWill(playerIdx, cardIdx) {
         if (this.phase !== "PLAY" || playerIdx !== this.currentPlayerIndex) return false;
         const p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "Uncle Will") return false;
+        if (!p || !hasAbility(p, "Uncle Will")) return false;
         if (p._willUsedTurn === this.turnId) return false;
         const card = p.hand[cardIdx];
         if (!card) return false;
@@ -62,7 +62,7 @@ const CharactersMixin = {
     // opouští hru). Animaci dohraje server podle `_johnnyPurgeAnim` (server/anim.js).
     _johnnyKischPurge(ownerIdx, cardName, justPlayed) {
         const owner = this.players[ownerIdx];
-        if (!owner || effectiveCharacter(owner) !== "Johnny Kisch" || !cardName) return;
+        if (!owner || !hasAbility(owner, "Johnny Kisch") || !cardName) return;
         const removed = [];
         this.players.forEach((p, i) => {
             if (p.weapon && p.weapon.id !== -1 && p.weapon.name === cardName && p.weapon !== justPlayed) {
@@ -368,7 +368,7 @@ const CharactersMixin = {
 
     sidKetchumDiscardOne(playerIdx, cardIdx) {
         const p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
+        if (!p || !hasAbility(p, "Sid Ketchum")) return;
         // Mrtvý se neléčí – jinak by se dvěma kartami „obživl". Duch (Město duchů) ve hře
         // je, takže se léčit smí (na konci svého tahu o to stejně přijde).
         if (!isInPlay(p) || p.health >= p.maxHealth) return;
@@ -422,7 +422,7 @@ const CharactersMixin = {
 
     useSidKetchum(playerIdx, cardIndices) {
         let p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "Sid Ketchum") return;
+        if (!p || !hasAbility(p, "Sid Ketchum")) return;
         if (!isInPlay(p) || p.health >= p.maxHealth) return;   // duch (Město duchů) se léčit smí
         if (cardIndices.length !== 2) return;
         cardIndices.sort((a, b) => b - a);
@@ -447,7 +447,7 @@ const CharactersMixin = {
         // líznuté), takže vynucenou kartu vypnout nemůže – projde skoro vždycky.
         if (this._lawLocked(playerIdx, null, { draws: 2, heal: -1 })) return false;
         const p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "Chuck Wengam" || p.health <= 1) return false;
+        if (!p || !hasAbility(p, "Chuck Wengam") || p.health <= 1) return false;
         p.health--;
         this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 2 });
         this._processSpecialQueue();
@@ -458,7 +458,7 @@ const CharactersMixin = {
     useJoseDelgado(playerIdx, cardIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
         const p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "José Delgado") return false;
+        if (!p || !hasAbility(p, "José Delgado")) return false;
         if ((p._joseUses || 0) >= 2) return false;
         // Fistful – Právo západu: vynucenou modrou kartu schopnost odhodit nesmí; jinak
         // ruka o jednu zhubne a o dvě povyroste, takže vynucené kartě nic nehrozí.
@@ -479,7 +479,7 @@ const CharactersMixin = {
     useDocHolyday(playerIdx, cardIndices, targetIdx) {
         if (this.phase !== "PLAY" || this.currentPlayerIndex !== playerIdx) return false;
         const p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "Doc Holyday" || p._docUsed) return false;
+        if (!p || !hasAbility(p, "Doc Holyday") || p._docUsed) return false;
         if (!Array.isArray(cardIndices) || cardIndices.length !== 2 || new Set(cardIndices).size !== 2) return false;
         if (!p.hand[cardIndices[0]] || !p.hand[cardIndices[1]]) return false;
         // Fistful – Právo západu: vynucenou kartu schopnost odhodit nesmí. Jeho bang je
@@ -503,7 +503,7 @@ const CharactersMixin = {
         p._docUsed = true;
         this.checkSuzyLafayette(p);
 
-        if (bothDiamonds && effectiveCharacter(target) === "Apache Kid") {
+        if (bothDiamonds && hasAbility(target, "Apache Kid")) {
             this.phase = "PLAY";
             this._processSpecialQueue();
             return true;

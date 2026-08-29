@@ -17,7 +17,7 @@ const ResponseMixin = {
         // Tequila Joe (Dodge City): Pivo mu dá 2 životy i při záchraně před vyřazením.
         // Jeden život vždy zaplatí zásah, který ho měl vyřadit; přebytek se použije dál
         // (u dynamitu na další zásah, jinak jako skutečné vyléčení).
-        const gain = effectiveCharacter(p) === "Tequila Joe" ? 2 : 1;
+        const gain = hasAbility(p, "Tequila Joe") ? 2 : 1;
 
         // Validace fáze PŘED odhozením karty – jinak by se pivo ztratilo i při návratu false.
         if (this.phase === "DYNAMITE_DAMAGE") {
@@ -87,7 +87,7 @@ const ResponseMixin = {
     // ── SID KETCHUM záchrana při posledním životě ──────────────────────────────
     sidLastLifeSave(playerIdx, cardIdx1, cardIdx2) {
         const p = this.players[playerIdx];
-        if (!p || p.health !== 1 || effectiveCharacter(p) !== "Sid Ketchum") return false;
+        if (!p || p.health !== 1 || !hasAbility(p, "Sid Ketchum")) return false;
         const aliveCount = inPlayCount(this.players);   // duch (Město duchů) se počítá
         if (aliveCount <= 2) return false;
         if (p.hand.length < 2) return false;
@@ -161,7 +161,7 @@ const ResponseMixin = {
     // odhozenou kartu. Během Duelu se náhrady odloží až do konce Duelu. ────────────
     _mollyPlayedOutOfTurn(playerIdx, isDuel) {
         const p = this.players[playerIdx];
-        if (!p || effectiveCharacter(p) !== "Molly Stark") return;
+        if (!p || !hasAbility(p, "Molly Stark")) return;
         if (this.currentPlayerIndex === playerIdx) return;   // jen mimo její tah
         if (isDuel) {
             this._mollyDeferred = (this._mollyDeferred || 0) + 1;
