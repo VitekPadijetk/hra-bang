@@ -76,7 +76,83 @@ function sacaStealExtraMs(n) {
     return sacaStealPreMs(n) + sacaStealPostMs(n - 1);
 }
 
+// ── Helena Zontero: sejmutí, které rozhoduje o přerozdání rolí ───────────────
+// Karta se otáčí AUTOMATICKY (FAQ Q09), takže NEJDE cestou sejmutí – Lucky Duke ani
+// John Pain se u ní neuplatní. Vizuálně je to ale totéž co Peyote: karta vyletí
+// z balíčku doprostřed, překlopí se, chvíli drží s pulzující markou barvy a sjede do
+// odhozu. Výdrž je delší než u Peyote – u stolu se na ni dívají všichni a rozhoduje
+// o tom, jestli se za chvíli přerozdají role.
+const HELENA_ANIM = {
+    flyMs: 450,     // balíček → střed (uvnitř běží překlopení rub→líc, 2× 225)
+    holdMs: 1700,   // odkrytá karta drží s pulzující markou barvy
+    landMs: 400,    // do odhozu
+    bufMs: 100,     // rezerva, ať stav nedorazí přesně na hranu dosednutí
+};
+
+function helenaRevealMs() {
+    const D = HELENA_ANIM;
+    return D.flyMs + D.holdMs + D.landMs + D.bufMs;
+}
+
+// ── Přerozdání rolí (Hřbitov, Helena Zontero): veřejná půlka ─────────────────
+// Karty rolí, které LEŽÍ na stole (u Hřbitova vyřazení hráči, ve hře pro 3 všichni),
+// odletí ze svých slotů doprostřed, cestou se přetočí na rub a složí se do hromádky;
+// nad ní se přehraje stávající riffle cinematika (core/shuffleAnim.js) a pak se karty
+// rozdají zpátky – rubem nahoru, protože role je od té chvíle zase tajná.
+//
+// Míchá se pár karet (2–7), takže riffle jede rychleji než u herního balíčku: přebíjí
+// se `riffleMs`/`perCardMax`, ať se cinematika nevleče. Vzorec musí být jediný – klient
+// podle něj animuje, fronta podle něj zdrží stav a server o stejnou dobu drží boty.
+const ROLE_SHUFFLE = {
+    gatherMs:  520,   // karty ze slotů doprostřed (cestou překlopení lícem → rub)
+    holdMs:    220,   // hromádka chvíli leží, než se do ní sáhne
+    dealMs:    520,   // rozdání zpátky na sloty
+    tailMs:    180,   // doznění, ať stav nedorazí přesně na hranu dosednutí
+    riffleMs:  900,   // zkrácený riffle (parametr core/shuffleAnim.js)
+    perCardMax: 130,
+};
+
+// Parametry riffle míchání pro hromádku rolí – předávají se do core/shuffleAnim.js.
+function roleShuffleOpts() {
+    return { riffleMs: ROLE_SHUFFLE.riffleMs, perCardMax: ROLE_SHUFFLE.perCardMax };
+}
+
+// `n` = kolik karet rolí se sesbíralo doprostřed. Nula = veřejná půlka se nehraje vůbec
+// (role živých hráčů na stole neleží – Helena mimo hru pro 3).
+function roleShuffleMs(n, shuffleDurationFn) {
+    if (!n) return 0;
+    const D = ROLE_SHUFFLE;
+    // shuffleDurationMs je v core/shuffleAnim.js (v prohlížeči globál, v Node require).
+    const dur = typeof shuffleDurationFn === 'function'
+        ? shuffleDurationFn
+        : (typeof shuffleDurationMs === 'function' ? shuffleDurationMs
+           : (typeof require === 'function' ? require('./shuffleAnim.js').shuffleDurationMs : null));
+    const shuffleMs = dur ? dur(n, roleShuffleOpts()) : 0;
+    return D.gatherMs + D.holdMs + shuffleMs + D.dealMs + D.tailMs;
+}
+
+// ── Přerozdání rolí: soukromá půlka („každý hráč se podívá na svou novou roli") ──
+// Rub karty role přiletí z okraje jeviště doprostřed, otočí se JEN svému majiteli,
+// chvíli drží a odletí zpátky za okraj. Přehraje si ji každý klient sám za sebe –
+// ostatní z ní nevidí nic, takže se nedá odečíst ani to, kdo se zrovna dívá.
+const ROLE_PEEK = {
+    flyMs:   420,   // z okraje jeviště doprostřed (rubem nahoru)
+    flipMs:  300,   // překlopení rub → líc (2× 150)
+    holdMs: 1800,   // vlastní role drží, ať se stihne přečíst
+    backMs:  300,   // překlopení zpátky na rub
+    outMs:   380,   // odlet za okraj jeviště
+    bufMs:   120,
+};
+
+function rolePeekMs() {
+    const D = ROLE_PEEK;
+    return D.flyMs + D.flipMs + D.holdMs + D.backMs + D.outMs + D.bufMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { SACA_FLIP, sacaFlipMs, SACA_STEAL,
-                       sacaStealPreMs, sacaStealPostMs, sacaStealExtraMs };
+                       sacaStealPreMs, sacaStealPostMs, sacaStealExtraMs,
+                       HELENA_ANIM, helenaRevealMs,
+                       ROLE_SHUFFLE, roleShuffleOpts, roleShuffleMs,
+                       ROLE_PEEK, rolePeekMs };
 }

@@ -272,8 +272,23 @@ test('redakce: role vyřazeného hráče je veřejná', () => {
     ['s1', 's2', 's3'].forEach(addSocket);
     const room = mkPlaying(ctx);
     room.gameState.players[2].health = 0;
+    // Veřejnou ji dělá `_roleRevealed` (nastaví ho handlePlayerDeath), ne nula životů.
+    room.gameState.players[2]._roleRevealed = true;
     ctx.broadcastRoom(room);
     assert.equal(payloadFor(emits, 's1').players[2].role, 'Renegade');
+});
+
+// Divoký západ – Hřbitov / Helena Zontero: přerozdáním se role zase stane TAJNOU.
+// Redakce se proto ptá výhradně `_roleRevealed` – kdyby propouštěla i `health <= 0`,
+// utekla by nová role vyřazeného hráče klientovi hned prvním broadcastem po zamíchání.
+test('redakce: po přerozdání rolí je role vyřazeného hráče zase tajná', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.players[2].health = 0;
+    room.gameState.players[2]._roleRevealed = false;
+    ctx.broadcastRoom(room);
+    assert.equal(payloadFor(emits, 's1').players[2].role, null);
 });
 
 test('redakce: po konci hry jsou role všech veřejné', () => {

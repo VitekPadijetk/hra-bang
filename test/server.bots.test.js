@@ -898,6 +898,50 @@ test('20 her jen botů jede i s balíčkem samých Sacagaway', () => {
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Sacagaway');
 });
 
+// Hřbitov je nejrizikovější karta rozšíření pro zaseknutí: vyřazení hráči se v pořadí
+// NEPŘESKAKUJÍ a vracejí se do hry, takže by se stůl teoreticky nemusel nikdy vyprázdnit.
+// Výhra se ale vyhodnocuje v okamžiku vyřazení (dřív, než Hřbitov kohokoli vrátí), takže
+// hra doběhne. Helena Zontero k tomu přerozdává role živých – bot musí přežít i to, že
+// se mu uprostřed hry změní role pod rukama (ledger se resetuje, dedukce začíná od nuly).
+test('20 her jen botů jede i s balíčkem samých Hřbitovů a Helen Zontero', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const wwsEv = (key) => {
+        const c = wwsCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: k % 2 === 0,
+                                         fistful: k % 3 === 0, divoky_zapad: true } };
+            const room = { id: 'wws5_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Líže se pop() z konce → karta „vespod" (Divoký západ) zůstává na indexu 0.
+            const deck = [wwsEv('DIVOKY_ZAPAD')];
+            for (let i = 0; i < 12; i++) deck.push(wwsEv(i % 2 ? 'HELENA_ZONTERO' : 'HRBITOV'));
+            gs.wwsDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `WWS5 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `WWS5 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            if (gs.wwsPile.length) flipped++;
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 10, `karty se opravdu odkrývaly (jen ${flipped} z 20 her)`);
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Hřbitovem');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

@@ -173,6 +173,12 @@ class GameState {
         this.wwsPile = [];              // už odkryté karty Divokého západu (nejstarší → nejnovější)
         this.activeWws = null;
         this._wwsEntering = null;
+        // Divoký západ – Hřbitov / Helena Zontero: obě karty přerozdávají role. Payloady
+        // pro cinematiky (vyzvedne je hák před broadcastem, server/anim.js) a příznak
+        // „ledger chování je po výměně rolí nepravda" – ledger žije na `room`, ne tady.
+        this._helenaAnim = null;
+        this._roleShuffleAnim = null;
+        this._ledgerResetPending = false;
         this.pendingPeyote = null;      // Peyote: čeká se na tip červená/černá
         this.pendingRanch = null;       // Ranč: čeká se na výměnu karet (po fázi lízání)
         this.pendingBlood = null;       // Pokrevní bratři: nabídka darovat 1 život (před lízáním)
@@ -308,13 +314,17 @@ class GameState {
         // se v pořadí taky nepřeskakuje. Test je dřív než `_ghost` – když běží obě události,
         // vrací se doopravdy, ne jako duch (návrat pak dokončí krok 0 startu tahu).
         const deadManIdx = this._deadManReturnIdx();
+        // Divoký západ – Hřbitov: KAŽDÝ vyřazený hráč se na svůj tah vrací do hry, a to
+        // natrvalo (a opakovaně). V pořadí se tedy taky nepřeskakuje – a protože je návrat
+        // trvalý, nesmí místo něj nastoupit duch: pořadí testů je Mrtvý muž → Hřbitov → duch.
+        const boneOrchard = this.hasEvent('HRBITOV');
         this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
         let p = this.players[this.currentPlayerIndex];
-        while (p.health <= 0 && !ghostTown && this.currentPlayerIndex !== deadManIdx) {
+        while (p.health <= 0 && !ghostTown && !boneOrchard && this.currentPlayerIndex !== deadManIdx) {
             this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
             p = this.players[this.currentPlayerIndex];
         }
-        if (ghostTown && p.health <= 0 && this.currentPlayerIndex !== deadManIdx) {
+        if (ghostTown && !boneOrchard && p.health <= 0 && this.currentPlayerIndex !== deadManIdx) {
             p._ghost = true;
             this.logEvent('event', { card: 'Město duchů', who: p.name, msg: 'vrací se na jeden tah do hry' });
         }

@@ -822,6 +822,10 @@ function drawOpponents(ctx) {
             if (!card._isRole && App.stealHideIds.has(card.id)) return;
             // Karta role letí zrovna doprostřed obrazovky (odhalení) – slot drž prázdný.
             if (card._isRole && _deathStage === 'settled') return;
+            // Divoký západ – Hřbitov / Helena Zontero: karta role zrovna letí doprostřed
+            // stolu na zamíchání (roles_reshuffle, net/handlers.js). Slot zůstává
+            // rezervovaný, karta se v něm nekreslí – jinak by byla vidět dvakrát.
+            if (card._isRole && App.roleShuffleHide.has(actualIdx)) return;
             const tex = card._isRole ? card._roleTex : getTex(card.id);
             let bCard = gameScene.add.image(x, y, tex).setScale(scaleOpp).setAngle(angle);
 
@@ -2653,7 +2657,9 @@ function drawSpectatorPlayer(ctx) {
         const texOf = (c) => c._isRole ? c._roleTex : getTex(c.id);
         // Skrytá při letu Paniky/Cat Balou i při odhazování karet po smrti; karta role
         // se nekreslí, dokud letí doprostřed obrazovky (fáze 'settled').
-        const stealHidden = (c) => c._isRole ? (_deathStage === 'settled') : App.stealHideIds.has(c.id);
+        const stealHidden = (c) => c._isRole
+            ? (_deathStage === 'settled' || App.roleShuffleHide.has(0))
+            : App.stealHideIds.has(c.id);
         const specBoardKey = (c) => 'ob0_' + (c._isRole ? 'role' : c.id);
         // Divák si karty jen prohlíží (nikam neklika), ale zvětšit si je musí umět stejně
         // jako hráč – včetně odhalené karty role (klíč jako v drawOpponents).

@@ -127,7 +127,10 @@ function computeBeliefs(state, ledger, myIndex) {
     // stůl a klient ji dál ukazuje (viz redactState v server/rooms.js). Duch (Město duchů) je
     // zvláštní případ téhož – na svůj tah má životy nad nulou. Bez tohohle by bot byl jediný
     // u stolu, kdo na jednou odhalenou roli zapomene, a hádal by ji znovu od nuly.
-    players.forEach((p, i) => { if (p.health <= 0 || p._roleRevealed || p._ghost) known[i] = p.role; });
+    // Rozhoduje VÝHRADNĚ `_roleRevealed`, ne `health <= 0`: přerozdání rolí (Hřbitov,
+    // Helena Zontero – Divoký západ) příznak zase shodí, takže je role vyřazeného hráče
+    // znovu tajná a bot ji nesmí „znát" o nic víc než ostatní. Zrcadlí to redakci stavu.
+    players.forEach((p, i) => { if (p._roleRevealed) known[i] = p.role; });
     // Hra pro 3 (Město duchů): všechny tři role leží lícem nahoru, takže se nic nededukuje.
     if (state.mode3p) players.forEach((p, i) => { known[i] = p.role; });
 
@@ -135,9 +138,13 @@ function computeBeliefs(state, ledger, myIndex) {
     const pool = { ...comp };
     for (const i in known) { const r = known[i]; if (pool[r] !== undefined) pool[r]--; }
 
-    // Neznámí = živí hráči bez jisté role.
+    // Neznámí = hráči bez jisté role. Normálně jsou to právě ti živí (každý vyřazený má
+    // roli odkrytou), po přerozdání rolí mezi VYŘAZENÝMI (Hřbitov – Divoký západ) sem ale
+    // patří i oni: jejich role zase nikdo nezná a pod Hřbitovem se navíc vracejí do hry.
+    // Musí být v poolu, jinak by se jejich role rozprostřely na živé a součet rozdělení
+    // by přesáhl 1. Na cílení to nemá vliv – bot střílí jen na hráče ve hře.
     const unknown = [];
-    players.forEach((p, i) => { if (p.health > 0 && known[i] === undefined) unknown.push(i); });
+    players.forEach((p, i) => { if (known[i] === undefined) unknown.push(i); });
 
     // Prior: pool rovnoměrně rozprostřený na neznámé (respektuje složení – role, které
     // v poolu nezbyly, mají 0). Neznámý nikdy není Sheriff (šerif je veřejný).

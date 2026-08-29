@@ -29,6 +29,11 @@ const WildWestMixin = {
         this.wwsPile = [];
         this.activeWws = null;
         this._wwsEntering = null;
+        // Payloady cinematik přerozdání rolí (Hřbitov / Helena Zontero) patří jedné hře –
+        // navazující hra přebírá hráče z předchozí, takže po nich zůstat nesmí.
+        this._helenaAnim = null;
+        this._roleShuffleAnim = null;
+        this._ledgerResetPending = false;
         const on = options.expansions && options.expansions.divoky_zapad;
         if (!on || !Array.isArray(this.wwsCardData)) return;
 
@@ -83,7 +88,131 @@ const WildWestMixin = {
         const key = this._wwsEntering;
         this._wwsEntering = null;
         if (!key) return false;
+        // Helena Zontero je JEDINÁ karta balíčku s okamžitým efektem při příchodu.
+        // Nepozastavuje hru: sejmutí i přerozdání rolí proběhne rovnou (hráč se na nic
+        // neptá), takže se vrací false a Dostavník / Wells Fargo pokračuje lízáním.
+        if (key === 'HELENA_ZONTERO') this._helenaZontero();
         return false;
+    },
+
+    // ── Přerozdání rolí (Hřbitov, Helena Zontero) ─────────────────────────────
+    // Společné tělo obou karet: vezmi role uvedených hráčů, zamíchej je a rozdej
+    // zpátky týmž hráčům. Míchá se jen od DVOU rolí výš – s jednou není co míchat
+    // a role zůstává tam, kde je (u Hřbitova s jediným vyřazeným je to no-op).
+    //
+    // `opts.visible` = seaty, na jejichž stole karta role LEŽÍ (a klient ji tedy vidí)
+    // – u Hřbitova vyřazení hráči, ve hře pro 3 (Město duchů) všichni. Podle toho se
+    // pozná, co se má přehrát veřejně (sesbírání → zamíchání → rozdání) a komu se
+    // nová role ukáže jen soukromě.
+    //
+    // Šerif se do výměny nikdy nedostane: jeho maximum životů je o 1 vyšší (core/roles.js),
+    // takže by se s rolí musel přepočítat i `maxHealth`. Helena ho vyjímá textem karty,
+    // u Hřbitova to nemůže nastat (smrt šerifa hru končí) – vyjímá se pro jistotu, ať
+    // to neshodí ani debug hra, ve které se výhra nevyhodnocuje.
+    _reshuffleRoles(idxs, opts = {}) {
+        const list = (idxs || []).filter(i => this.players[i]);
+        if (list.length < 2) return false;
+        const roles = list.map(i => this.players[i].role);
+        this.deck.shuffleArray(roles);
+        list.forEach((i, k) => {
+            const p = this.players[i];
+            p.role = roles[k];
+            // Přerozdaná role je zase TAJNÁ. Redakce stavu (server/rooms.js) se proto
+            // ptá výhradně `_roleRevealed`, ne `health <= 0` – jinak by role vyřazených
+            // hráčů utekla klientovi hned prvním broadcastem po zamíchání.
+            p._roleRevealed = false;
+        });
+        // Ledger chování (server/ledger.js) je veřejná mapa „kdo na koho útočil" a boti
+        // z něj přes core/beliefs.js dedukují skryté role. Přerozdáním se stal nepravdou:
+        // bez resetu by bot střílel podle staré mapy. Vlastní reset udělá server v háku
+        // před broadcastem (flushRoleShuffle, server/anim.js) – ledger žije na `room`,
+        // ne ve stavu hry.
+        this._ledgerResetPending = true;
+        this._roleShuffleAnim = {
+            card: opts.card || null,
+            visible: (opts.visible || []).filter(i => list.includes(i)),
+            // Ve hře pro 3 (Město duchů) leží role lícem nahoru – přerozdají se veřejně
+            // a soukromé nahlédnutí nemá smysl.
+            peek: this.mode3p ? [] : list.slice(),
+        };
+        this.logEvent('event', { card: opts.card || 'Role', msg: `přerozdání rolí (${list.length})` });
+        return true;
+    },
+
+    // ── Hřbitov ───────────────────────────────────────────────────────────────
+    // „Na začátku svého tahu se všichni vyřazení hráči vrátí do hry s 1 životem.
+    //  Role vyřazených hráčů zamíchejte a rozdejte náhodně."
+    //
+    // „Svého" je zvratné a patří k podmětu → každý vyřazený se vrací na začátku SVÉHO
+    // tahu (přesně jako Mrtvý muž). Návrat je TRVALÝ a OPAKOVATELNÝ – kdo padne znovu,
+    // vrátí se zas (Sciarra Q21). Proto `nextTurn` (logic.js) vyřazené nepřeskakuje,
+    // dokud karta platí, a duchem (Město duchů) se pod ní nikdo nestává.
+    //
+    // Je to krok 0b krokovače startu tahu, hned ZA Mrtvým mužem (logic/highNoon.js):
+    // ten se vrací se 2 životy a 2 kartami, což je striktně lepší, a je jednorázový.
+    //
+    // Karta o kartách nemluví → hráč se vrací s prázdnou rukou a líže si až v normální
+    // fázi lízání. Vulture Sam / Greg Digger / Herb Hunter se spustili už při původním
+    // vyřazení; návrat nespouští nic.
+    _boneOrchardReturn() {
+        if (!this.hasEvent('HRBITOV')) return false;
+        const idx = this.currentPlayerIndex;
+        const p = this.players[idx];
+        if (!p || p.health > 0) return false;
+        // Míchají se role všech, kdo jsou v TENHLE okamžik vyřazení – včetně toho, kdo
+        // se právě vrací (R2). Není to jednorázová akce při příchodu karty: při pěti
+        // vyřazených se zamíchá čtyřikrát (5, 4, 3 a 2 zbylé role), u poslední už ne.
+        const dead = [];
+        this.players.forEach((q, i) => {
+            if (q && q.health <= 0 && q.role !== 'Sheriff') dead.push(i);
+        });
+        p._ghost = false;
+        p.health = 1;
+        this.logEvent('event', { card: 'Hřbitov', who: p.name, msg: 'vrací se do hry s 1 životem' });
+        this._reshuffleRoles(dead, { visible: dead, card: 'Hřbitov' });
+        // Návrat i přerozdání může výhru zrušit (mrtvý je zpátky ve hře) i způsobit
+        // (odpadlík dostal roli bandity).
+        this.checkWinCondition();
+        return !!this.winner;
+    },
+
+    // ── Helena Zontero ────────────────────────────────────────────────────────
+    // „Když přijde Helena do hry, otočte vrchní kartu z dobíracího balíčku: jsou-li to
+    //  srdce ♥ nebo káry ♦, zamíchejte všechny aktivní role s výjimkou Šerifa a znovu
+    //  je náhodně a tajně rozdejte. Každý hráč se podívá na svou novou roli."
+    //
+    // Karta se otáčí AUTOMATICKY, ne hráčem → Lucky Duke ani John Pain se neuplatní
+    // (FAQ Q09, R3). Proto se schválně NEJDE cestou `pendingCheckDraw` (ta oba veze
+    // zdarma), ale je to vlastní jednorázové otočení s vlastní animací.
+    //
+    // Barva se čte přes `_effSuit`, takže Požehnání (vždy ♥) i Prokletí (vždy ♠) platí
+    // i tady – na rozdíl od Peyote, které je jedinou výjimkou v celé hře.
+    //
+    // „Aktivní role" = hráči ve hře (`isInPlay`, tedy i duch) kromě šerifa. Maximum
+    // životů se proto nemění: +1 má jen šerif a ten si roli drží.
+    _helenaZontero() {
+        const card = this.deck.draw();
+        if (!card) return false;
+        const suit = this._effSuit(card);
+        const red = suit === Suits.HEARTS || suit === Suits.DIAMONDS;
+        this.deck.discard(card);
+        // Karta je veřejná (letí do odhozu) → animace ji smí nést celou.
+        this._helenaAnim = { card, red };
+        this.logEvent('event', { card: 'Helena Zontero',
+                                 msg: `${card.name} → ${red ? 'ČERVENÁ, role se přerozdají' : 'ČERNÁ, nic se neděje'}` });
+        if (!red) return false;
+        const idxs = [];
+        this.players.forEach((q, i) => {
+            if (q && isInPlay(q) && q.role !== 'Sheriff') idxs.push(i);
+        });
+        // Hra pro 3 (Město duchů): šerif u stolu není, takže se míchají všechny tři role –
+        // a leží lícem nahoru, takže se přerozdají VEŘEJNĚ.
+        this._reshuffleRoles(idxs, { visible: this.mode3p ? idxs : [], card: 'Helena Zontero' });
+        // Hra pro 3: nárok „vyřadil jsem osobně svého určeného nepřítele" je po výměně
+        // cílů bezpředmětný.
+        if (this.mode3p) this._winClaim3p = null;
+        this.checkWinCondition();
+        return true;
     },
 
     // ── Miláček Valentýn ──────────────────────────────────────────────────────

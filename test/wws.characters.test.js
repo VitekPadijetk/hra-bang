@@ -634,7 +634,7 @@ test('Teren Kill × dynamit: pik na vlastním tahu tah posune', () => {
 
 test('Teren Kill × Pravé poledne: pik nechá tah posunout serveru (_autoEndTurnPending)', () => {
     const g = terenGame(Suits.SPADES, { current: 1, health: 1 });
-    g._beginTurnStep = 6;
+    g._beginTurnStep = 7;   // krokovač je za Pravým polednem (viz _runBeginTurn)
     g.pendingNoonDamage = { playerIdx: 1 };
     g.phase = 'NOON_DAMAGE';
     g.takeNoonHit(1);

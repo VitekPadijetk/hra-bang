@@ -132,6 +132,11 @@ const App = {
     // Klíč = reálný index hráče (u diváka je spodní hráč 0, viz drawSpectatorPlayer).
     sacaHandHide: new Set(),
     sacaHandDown: new Set(),
+    // Divoký západ – Hřbitov / Helena Zontero (core/wwsAnim.js): seaty, jejichž karta
+    // role zrovna letí doprostřed stolu na zamíchání. Slot na stole zůstává rezervovaný
+    // (půdorys se nemění), ale karta se v něm nekreslí – přesně jako ve fázi 'settled'
+    // cinematiky vyřazení. Klíč = reálný index hráče.
+    roleShuffleHide: new Set(),
     // ID karet právě odlétajících z RUKY vlastníka (hraná/odhazovaná karta, panika/CB).
     // Server ji může dočasně vrátit do ruky a znovu rozeslat (aby zůstala vidět, než ji
     // zvedne animace) → room_update by ji jinak vrátil zpět doprostřed letu a přepočítal

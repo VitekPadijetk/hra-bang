@@ -1522,6 +1522,155 @@ function _sacaHandUp(victimIdx) {
                   D.upMs + (ids.length - 1) * D.cardStaggerMs);
 }
 
+// ── Divoký západ – Hřbitov / Helena Zontero: přerozdání rolí ────────────────
+// Cinematika má dvě půlky (obě jdou frontou animací, obě jsou `essential`):
+//   • roles_reshuffle = VEŘEJNÁ. Karty rolí, které leží na stole (vyřazení hráči pod
+//     Hřbitovem, ve hře pro 3 všichni), odletí ze svých slotů doprostřed, cestou se
+//     přetočí lícem dolů, nad hromádkou se přehraje stávající riffle (core/shuffleAnim.js)
+//     a karty se rozdají zpátky – rubem nahoru, protože role je od té chvíle zase tajná.
+//   • role_peek = SOUKROMÁ. „Každý hráč se podívá na svou novou roli."
+// Časování drží core/wwsAnim.js, aby o stejnou dobu podržel boty i server.
+const ROLE_PILE_PX = 3;                       // překryv vrstev hromádky rolí
+function ROLE_CX() { return (stageLeft() + stageRight()) / 2; }
+function ROLE_CY() { return 470; }
+const ROLE_PILE_SCALE = 0.34;
+
+// Kde karta role u daného hráče leží (slot 0 jeho skupiny) a pod jakým úhlem/měřítkem.
+function _roleSlotView(pid) {
+    return { pos: getDeadRoleCardPos(pid), angle: _renderSideAngle(pid), scale: _renderSideScale(pid) };
+}
+
+// Překlopení spritu na místě (líc→rub nebo naopak) uvnitř probíhajícího letu.
+function _roleFlipTo(spr, tex, ms, delayMs, endScaleX) {
+    gameScene.tweens.add({
+        targets: spr, scaleX: 0, duration: ms / 2, delay: delayMs || 0, ease: 'Sine.easeIn',
+        onComplete: () => {
+            if (!spr.active) return;
+            spr.setTexture(tex);
+            gameScene.tweens.add({ targets: spr, scaleX: endScaleX, duration: ms / 2, ease: 'Sine.easeOut' });
+        }
+    });
+}
+
+function playRolesReshuffle(data) {
+    if (!gameScene || !state) return;
+    const idxs = (data.playerIdxs || []).filter(i => state.players && state.players[i]);
+    if (!idxs.length) return;
+    const D = ROLE_SHUFFLE;
+    const n = idxs.length;
+    const cx = ROLE_CX(), cy = ROLE_CY();
+    const topY = cy - (n - 1) * ROLE_PILE_PX / 2;
+    // Po dobu letu se karta ve slotu na stole NEkreslí (slot ale zůstává rezervovaný,
+    // takže se půdorys skupiny nemění) – viz drawOpponents ve view/board.js.
+    App.roleShuffleHide = new Set(idxs);
+    renderUI();
+
+    // 1) sesbírání: každá karta letí ze svého slotu na svou vrstvu hromádky a cestou se
+    //    přetočí lícem dolů (stav je pořád ten starý, takže líc = STARÁ role).
+    const sprites = idxs.map((pid, k) => {
+        const v = _roleSlotView(pid);
+        const faceTex = RoleImages[state.players[pid].role] || 'role_card_back';
+        const spr = gameScene.add.image(v.pos.x, v.pos.y, faceTex)
+            .setScale(v.scale).setAngle(v.angle).setDepth(830 + (n - 1 - k));
+        gameScene.tweens.add({ targets: spr, x: cx, y: topY + k * ROLE_PILE_PX,
+                               scaleY: ROLE_PILE_SCALE, duration: D.gatherMs, ease: 'Cubic.easeInOut' });
+        if (v.angle !== 0) {
+            gameScene.tweens.add({ targets: spr, angle: nearestAngle360(v.angle, 0),
+                                   duration: D.gatherMs, ease: 'Cubic.easeInOut' });
+        }
+        _roleFlipTo(spr, 'role_card_back', D.gatherMs, 0, ROLE_PILE_SCALE);
+        return spr;
+    });
+
+    // 2) riffle nad hromádkou – týž vzorec jako míchání balíčků (jen kratší, viz
+    //    roleShuffleOpts), takže se choreografie nerozejdou.
+    const opts = roleShuffleOpts();
+    const perCard = shufflePerCard(n, opts);
+    const half = shuffleCutHalf(n, opts);
+    const order = shuffleRiffleOrder(n, opts);
+    const cutX = 325 * ROLE_PILE_SCALE * 0.6;
+    const shuffleStart = D.gatherMs + D.holdMs;
+    if (n >= 2) {
+        gameScene.time.delayedCall(shuffleStart + SHUFFLE_ANIM.preMs, () => {
+            sprites.forEach((spr, i) => {
+                if (!spr.active) return;
+                const isTop = i < half;
+                gameScene.tweens.add({ targets: spr, x: cx + (isTop ? cutX : -cutX),
+                                       duration: SHUFFLE_ANIM.cutMs, ease: 'Cubic.easeInOut' });
+            });
+        });
+        const riffleStart = shuffleStart + SHUFFLE_ANIM.preMs + SHUFFLE_ANIM.cutMs + SHUFFLE_ANIM.gapMs;
+        order.forEach((i, j) => {
+            const spr = sprites[i];
+            const slot = n - 1 - j;               // 0 = vrch hotové hromádky
+            gameScene.time.delayedCall(riffleStart + j * perCard, () => {
+                if (!spr.active) return;
+                spr.setDepth(830 + n + j);
+                gameScene.tweens.add({ targets: spr, x: cx, y: topY + slot * ROLE_PILE_PX,
+                                       duration: SHUFFLE_ANIM.cardMs, ease: 'Cubic.easeIn',
+                                       onComplete: () => { if (spr.active) spr.setDepth(830 + j); } });
+            });
+        });
+    }
+
+    // 3) rozdání zpátky. Karta, která po zamíchání leží na m-té vrstvě, jde na m-tý slot –
+    //    hromádka je promíchaná, takže je i rozdávání „náhodné" (všechny jsou rubem
+    //    nahoru, takže z něj stejně nikdo nic nevyčte).
+    const dealStart = shuffleStart + shuffleDurationMs(n, opts);
+    const newOrder = order.slice().reverse();     // shora dolů po zamíchání
+    newOrder.forEach((sprIdx, m) => {
+        const spr = sprites[sprIdx];
+        const pid = idxs[m];
+        const v = _roleSlotView(pid);
+        gameScene.time.delayedCall(dealStart, () => {
+            if (!spr.active) return;
+            gameScene.tweens.add({ targets: spr, x: v.pos.x, y: v.pos.y,
+                                   scaleX: v.scale, scaleY: v.scale,
+                                   duration: D.dealMs, ease: 'Cubic.easeInOut' });
+            if (v.angle !== 0) {
+                gameScene.tweens.add({ targets: spr, angle: nearestAngle360(0, v.angle),
+                                       duration: D.dealMs, ease: 'Cubic.easeInOut' });
+            }
+        });
+    });
+
+    // 4) úklid: sprity pryč a sloty se kreslí zase staticky (rubem – role je tajná).
+    gameScene.time.delayedCall(dealStart + D.dealMs + D.tailMs, () => {
+        sprites.forEach(spr => { if (spr && spr.active) spr.destroy(); });
+        App.roleShuffleHide = new Set();
+        renderUI();
+    });
+}
+
+// „Každý hráč se podívá na svou novou roli." Event chodí všem se STEJNÝM `playerIdxs`
+// (aby fronta držela stav stejně dlouho u všech), ale `role` v něm má jen ten, komu
+// nahlédnutí patří – ostatním přijde null a nepřehrají nic. Roli nese payload, ne stav:
+// nový stav dorazí až ZA celou cinematikou, takže by ve `state` byla pořád ta stará.
+function playRolePeek(data) {
+    if (!gameScene || !state || !data.role) return;
+    const view = myIndex === null ? 0 : myIndex;
+    if (!(data.playerIdxs || []).includes(view)) return;
+    const D = ROLE_PEEK;
+    const from = _deathRoleStartPos(view);
+    const cx = ROLE_CX(), cy = ROLE_CY();
+    const BIG = 0.80;
+    const faceTex = RoleImages[data.role] || 'role_card_back';
+    const spr = gameScene.add.image(from.x, from.y, 'role_card_back')
+        .setScale(ROLE_PILE_SCALE).setDepth(900);
+    gameScene.tweens.add({ targets: spr, x: cx, y: cy, scaleX: BIG, scaleY: BIG,
+                           duration: D.flyMs, ease: 'Power2' });
+    gameScene.time.delayedCall(D.flyMs, () => { if (spr.active) _roleFlipTo(spr, faceTex, D.flipMs, 0, BIG); });
+    gameScene.time.delayedCall(D.flyMs + D.flipMs + D.holdMs,
+                               () => { if (spr.active) _roleFlipTo(spr, 'role_card_back', D.backMs, 0, BIG); });
+    gameScene.time.delayedCall(D.flyMs + D.flipMs + D.holdMs + D.backMs, () => {
+        if (!spr.active) return;
+        gameScene.tweens.add({ targets: spr, x: from.x, y: from.y,
+                               scaleX: ROLE_PILE_SCALE, scaleY: ROLE_PILE_SCALE,
+                               duration: D.outMs, ease: 'Power2',
+                               onComplete: () => { if (spr.active) spr.destroy(); } });
+    });
+}
+
 function _playCardAnim(data) {
     if (!gameScene || !state) return;   // divák (myIndex === null) animace také vidí
     const deck    = deckTopPos();      // vrch balíčku (odkud karta vzlétá / kam dosedá)
@@ -2183,6 +2332,17 @@ function _playCardAnim(data) {
         case 'saca_flip':
             playSacaFlip(data);
             break;
+        // Divoky zapad - Helena Zontero: sejmuti, ktere rozhoduje o prerozdani roli.
+        case 'helena_reveal':
+            startDeckCardReveal(data.card, null, HELENA_ANIM, { pulse: true, toDiscard: true });
+            break;
+        // Divoky zapad - Hrbitov / Helena Zontero: prerozdani roli (verejna / soukroma pulka).
+        case 'roles_reshuffle':
+            playRolesReshuffle(data);
+            break;
+        case 'role_peek':
+            playRolePeek(data);
+            break;
         case 'player_death_discard':
         case 'vulture_sam_steal':
             playDeathSequence(data);
@@ -2582,6 +2742,12 @@ function _animDurationMs(data) {
     if (data.type === 'law_reveal') return lawRevealMs();
     // Fistful – Ranč: celá vyměňovaná dávka je jedna položka fronty (karty po jedné).
     if (data.type === 'ranch_discard') return ranchDiscardMs((data.cardIds || []).length);
+    // Divoký západ – Helena Zontero a obě půlky přerozdání rolí (Hřbitov i Helena).
+    // `role_peek` trvá stejně u všech, i u těch, kdo si ho nepřehrají (role: null) –
+    // jinak by se fronty klientů rozešly a stav by u každého dorazil jindy.
+    if (data.type === 'helena_reveal') return helenaRevealMs();
+    if (data.type === 'roles_reshuffle') return roleShuffleMs((data.playerIdxs || []).length);
+    if (data.type === 'role_peek') return rolePeekMs();
     // Smrt rozdělená na dva kusy kvůli dělení karet mezi víc Vulture Samů.
     if (data.type === 'vulture_split_death') return deathFallMs();
     if (data.type === 'player_death_reveal') {
@@ -2623,7 +2789,8 @@ socket.on('card_animation', (data) => {
                       data.type === 'sheriff_penalty_discard' ||
                       data.type === 'vulture_split_death' || data.type === 'player_death_reveal' ||
                       data.type === 'high_noon_reveal' || data.type === 'new_identity_result' ||
-                      data.type === 'ranch_discard' || data.type === 'saca_flip';
+                      data.type === 'ranch_discard' || data.type === 'saca_flip' ||
+                      data.type === 'roles_reshuffle' || data.type === 'role_peek';
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 

@@ -67,13 +67,15 @@ module.exports = function installRoomService(ctx) {
         const handsOpen = eventActive(gs, 'SACAGAWAY');
         const players = (gs.players || []).map((p, i) => {
             if (i === viewerIdx) return p;
-            // Duch (Město duchů) má roli odkrytou od svého vyřazení – i ve chvíli, kdy si
-            // během svého tahu naléčil životy (a `health <= 0` tedy neplatí). Totéž platí
-            // pro Mrtvého muže (Fistful), který se vrací do hry natrvalo: `_roleRevealed`
-            // se nastaví při vyřazení a už nezmizí.
+            // Jediným vodítkem je `_roleRevealed` – NE `health <= 0`. Nastaví se při
+            // vyřazení (logic/combat.js) a drží roli veřejnou i po návratu do hry: duch
+            // (Město duchů) má na svůj tah životy nad nulou, Mrtvý muž (Fistful) se vrací
+            // natrvalo. Zpátky na tajnou ji přepne jedině přerozdání rolí – Hřbitov
+            // a Helena Zontero (Divoký západ, logic/wildWest.js `_reshuffleRoles`).
+            // Kdyby se redakce ptala i na `health <= 0`, role přerozdaná mezi VYŘAZENÝMI
+            // hráči by utekla klientovi hned prvním broadcastem po zamíchání.
             // Hra pro 3 (Město duchů): všechny tři role leží od začátku lícem nahoru.
-            const roleVisible = gs.mode3p || p.role === 'Sheriff' || p.health <= 0 ||
-                                !!p._ghost || !!p._roleRevealed;
+            const roleVisible = gs.mode3p || p.role === 'Sheriff' || !!p._roleRevealed;
             // A Fistful of Cards – Právo západu: vynucená karta se ukáže VEŘEJNĚ hned při
             // líznutí (cinematika law_reveal, viz server/handlers.game.js) a pak leží v ruce
             // jako každá jiná – rubem nahoru. Ve stavu proto zůstat nesmí ani její ID:

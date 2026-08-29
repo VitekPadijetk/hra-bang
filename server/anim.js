@@ -4,7 +4,7 @@
 const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = require('../core/deathAnim.js');
 const { hnRevealMs } = require('../core/highNoonAnim.js');
 const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
-const { sacaFlipMs, sacaStealExtraMs } = require('../core/wwsAnim.js');
+const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs } = require('../core/wwsAnim.js');
 const { eventActive } = require('../core/highNoon.js');
 const { effectiveCharacter, isInPlay } = require('../core/distance.js');
 
@@ -374,6 +374,81 @@ module.exports = function installAnimService(ctx) {
             Date.now() + sacaFlipMs(hands.map(h => h.cardIds ? h.cardIds.length : h.count)));
     }
 
+    // ── Divoký západ – Hřbitov / Helena Zontero: přerozdání rolí ─────────────
+    // Pravidla jen označí, co se stalo (gs._helenaAnim / gs._roleShuffleAnim); emit řeší
+    // tenhle hák, protože obě karty se spouštějí z úplně jiných míst (Helena uprostřed
+    // cizí fáze 2 při zahrání Dostavníku, Hřbitov v krokovači startu tahu) a jediné, co
+    // mají společné, je následující broadcast.
+    //
+    // Pořadí je pořadí v čase:
+    //   1. helena_reveal   – sejmutí, které o přerozdání teprve rozhoduje,
+    //   2. roles_reshuffle – VEŘEJNÁ půlka: karty rolí, které leží na stole (vyřazení
+    //                        hráči pod Hřbitovem, ve hře pro 3 všichni), se sesbírají
+    //                        doprostřed, zamíchají a rozdají zpátky rubem nahoru,
+    //   3. role_peek       – SOUKROMÁ půlka: „každý hráč se podívá na svou novou roli".
+    //                        Jde jedním veřejným eventem se seznamem seatů; každý klient
+    //                        si přehraje jen tu svou (stejně jako new_identity_result),
+    //                        takže z animace nejde odečíst ani to, kdo se dívá.
+    //
+    // Tady se taky RESETUJE ledger chování: dedukce „střílel na šerifa, tedy bandita"
+    // se přerozdáním stala nepravdou a bot by cílil podle staré mapy. Ledger žije na
+    // `room` (mimo broadcastovaný stav), takže si pravidla umí říct jen příznakem.
+    // „Každý hráč se podívá na svou novou roli." Payload musí být PRO KAŽDÝ SOCKET JINÝ
+    // (roli v něm má jen její majitel), takže na to nestačí ani emitAnim, ani
+    // emitAnimPrivate. `playerIdxs` je naopak u všech stejné – fronta animací na klientu
+    // podle něj drží stav stejně dlouho, i u toho, kdo si nepřehraje nic (role: null),
+    // takže se klienti nerozejdou. Divák nevidí žádnou roli.
+    // Roli nese animace, ne stav: nový stav dorazí až ZA cinematikou, takže by si klient
+    // ve `state` přečetl pořád tu starou.
+    function emitRolePeek(room, peek) {
+        if (!roomAlive(room)) return;
+        const gs = room.gameState;
+        const base = { type: 'role_peek', playerIdxs: peek };
+        const seen = new Set();
+        room.players.forEach(rp => {
+            if (seen.has(rp.socketId)) return;
+            seen.add(rp.socketId);
+            const s = io.sockets.sockets.get(rp.socketId);
+            if (!s) return;
+            const mine = peek.includes(rp.playerIdx) ? (gs.players[rp.playerIdx] || {}).role : null;
+            s.emit('card_animation', { ...base, role: mine || null });
+        });
+        io.to(room.id + '_spectators').emit('card_animation', { ...base, role: null });
+    }
+
+    function flushWwsRoles(room) {
+        const gs = room.gameState;
+        if (!gs) return;
+        let holdMs = 0;
+        if (gs._helenaAnim) {
+            const ha = gs._helenaAnim;
+            gs._helenaAnim = null;
+            emitAnim(room, { type: 'helena_reveal', card: ha.card, red: !!ha.red });
+            holdMs += helenaRevealMs();
+        }
+        if (gs._ledgerResetPending) {
+            gs._ledgerResetPending = false;
+            if (typeof ctx.initLedger === 'function') ctx.initLedger(room);
+        }
+        const rs = gs._roleShuffleAnim;
+        if (rs) {
+            gs._roleShuffleAnim = null;
+            const visible = rs.visible || [];
+            if (visible.length) {
+                emitAnim(room, { type: 'roles_reshuffle', playerIdxs: visible });
+                holdMs += roleShuffleMs(visible.length);
+            }
+            const peek = rs.peek || [];
+            if (peek.length) {
+                emitRolePeek(room, peek);
+                holdMs += rolePeekMs();
+            }
+        }
+        // Boti po tu dobu nehrají – klient drží stav ve frontě a hra by se pod
+        // cinematikou posunula dál (stejný důvod jako u odkrytí karty události).
+        if (holdMs) room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0, Date.now() + holdMs);
+    }
+
     // ── Město duchů: duch odchází ze hry a odkládá, co mu zbylo na stole ─────
     // Vizuálně TOTÉŽ jako šerifova ztráta karet za pomocníka (karty po jedné do odhozu,
     // bez poklesu životů a bez odhalení role) – duch svou roli odhalil už při vyřazení.
@@ -471,6 +546,7 @@ module.exports = function installAnimService(ctx) {
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);
         flushSacaFlip(room);
+        flushWwsRoles(room);
         flushJohnPain(room);
         flushValentine(room);
     }

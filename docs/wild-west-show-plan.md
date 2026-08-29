@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1, 2, 2b, 3, 4 a 5 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1, 2, 2b, 3, 4, 5, 6 a 7 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1384,6 +1384,44 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 >   tam, kam by ho poslaly dobrané zásahy (`_afterDamageClicks`), ne posunem na dalšího
 >   hráče.
 >
+> **Fáze 7 rozhodla pět věcí, které §4.5 a §4.6 nechávají otevřené:**
+>
+> - **Nahlédnutí na novou roli není interaktivní.** Plán chtěl u Hřbitova recyklovat
+>   potvrzení role z intra (tlačítko OK), jenže to je vlastní fáze – a s ní `pendingActor`,
+>   větev bota, guard a štítek. Helena přitom stejnou věc („každý hráč se podívá na svou
+>   novou roli") dělá pro víc hráčů naráz, kde se tlačítky čekat nedá vůbec. Obě karty proto
+>   používají TOTOŽNOU neinteraktivní cinematiku `role_peek`: rub přiletí z okraje jeviště,
+>   otočí se jen svému majiteli, chvíli drží a odletí. Nic se nezastavuje, jen se o její
+>   délku podrží boti a fronta animací (`rolePeekMs`, core/wwsAnim.js).
+> - **Novou roli si prohlédne KAŽDÝ, komu ji přerozdání dalo** – ne jen vracející se hráč.
+>   U Hřbitova to jsou i ostatní vyřazení: dostali novou roli a její jediná další příležitost
+>   ji uvidět by přišla až při jejich vlastním návratu, kdy už se ale nemusí míchat nic
+>   (poslední vyřazená role zůstává, jak je). Bez toho by hráč mohl vypadnout ze hry, vrátit
+>   se a nevědět, za koho hraje.
+> - **Payload `role_peek` je pro každý socket jiný.** Roli nese ANIMACE, ne stav – nový stav
+>   dorazí až za celou cinematikou, takže by si klient ve `state` přečetl pořád tu starou.
+>   Na to nestačí `emitAnim` (všem stejné) ani `emitAnimPrivate` (dvě varianty), takže má
+>   `flushWwsRoles` (server/anim.js) vlastní emit. `playerIdxs` je naopak u VŠECH stejné,
+>   aby fronta animací držela stav stejně dlouho i u toho, kdo si nepřehraje nic – jinak by
+>   se klienti rozešli.
+> - **Šerif je z přerozdání vyňatý i u Hřbitova**, ne jen u Heleny. Text karty ho neuvádí,
+>   ale mrtvý šerif hru končí, takže je to v ostré hře no-op – a v DEBUG hře (kde se výhra
+>   nevyhodnocuje) to je jediná pojistka proti tomu, aby roli se šerifovým +1 k životům
+>   dostal hráč, kterému by se `maxHealth` nikdo nepřepočítal.
+> - **Helena hru nepozastavuje.** Plán počítal s tím, že `_flipWwsEvent` bude umět vrátit
+>   `true` a Dostavník si lízání odloží do `_wwsResumeDraw`. Ukázalo se, že to není potřeba:
+>   sejmutí se nikoho na nic neptá (nejde cestou `pendingCheckDraw`, protože se karta otáčí
+>   automaticky – FAQ Q09), takže celý efekt proběhne synchronně a viditelný je jen
+>   animacemi. `_wwsResumeDraw` proto nevznikl.
+>
+> **Redakce dostala nové jediné pravidlo:** odkrytou roli drží **výhradně** `_roleRevealed`.
+> Dnešní `health <= 0` z ní muselo ustoupit – jinak by role přerozdaná mezi vyřazenými hráči
+> utekla klientovi hned prvním broadcastem. Stejné pravidlo platí pro `computeBeliefs`
+> (core/beliefs.js), který navíc musel začít počítat vyřazeného hráče bez odhalené role mezi
+> NEZNÁMÉ: jeho role se jinak rozprostřela na živé a rozdělení pravděpodobností nedalo 1.
+> Klient se měnit nemusel vůbec – `deadRoleMap[null]` už dnes padá na `role_card_back`
+> a slot ze skupiny nemizí, takže se ani nehnul půdorys.
+>
 | # | Fáze | Obsah | Riziko |
 |---|---|---|---|
 | **0** ✅ | Kostra | data, `logic/wildWest.js`, spouštěč, třetí sloupec, assety, loader, intro, lobby | nízké |
@@ -1394,7 +1432,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **4** ✅ | Postavy bez zásahu do jádra | Big Spencer, Gary Looter, John Pain, Flint Westwood, Youl Grinner | nízké |
 | **5** ✅ | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |
 | **6** ✅ | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |
-| **7** | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |
+| **7** ✅ | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |
 | **8** | Divoký západ | podmínka výhry, bot | střední |
 | **9** | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |
 | **10** | `hasAbility` + Greygory Deck | refaktor ~45 míst, pak postava | **vysoké (šířka)** |

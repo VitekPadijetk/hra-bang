@@ -77,11 +77,12 @@ const HighNoonMixin = {
     // do handleStartOfTurnChecks(), o to se postará _resumeBeginTurn().
     //
     // Kroky jsou očíslované (`_beginTurnStep`), aby se dalo kdykoli pauznout a vrátit
-    // se přesně sem: 0 = návrat Mrtvého muže (Fistful), 1 = odkrytí událostí (obou
-    // balíčků), 2 = změna platnosti schopností (Kocovina) + okamžité líznutí Suzy,
-    // 3 = okamžitý efekt karty High Noon, 4 = okamžitý efekt karty Fistful,
-    // 5 = Pravé poledne, 6 = zásahy od Fistful of Cards, 7 = Nová identita,
-    // 8 = Pokrevní bratři (Fistful), 9 = Miláček Valentýn (Divoký západ).
+    // se přesně sem: 0 = návrat Mrtvého muže (Fistful), 1 = návrat vyřazeného hráče
+    // pod Hřbitovem (Divoký západ), 2 = odkrytí událostí (obou balíčků), 3 = změna
+    // platnosti schopností (Kocovina) + okamžité líznutí Suzy, 4 = okamžitý efekt karty
+    // High Noon, 5 = okamžitý efekt karty Fistful, 6 = Pravé poledne, 7 = zásahy od
+    // Fistful of Cards, 8 = Nová identita, 9 = Pokrevní bratři (Fistful),
+    // 10 = Miláček Valentýn (Divoký západ).
     _beginTurn() {
         this._beginTurnStep = 0;
         // Želízka (High Noon) platí přesně jeden tah. Barvu je nutné zahodit hned na
@@ -143,7 +144,11 @@ const HighNoonMixin = {
         // před kontrolami na Dynamit/Vězení: je to „na začátku svého tahu" a hráč má do
         // sejmutí jít s novou rukou (mohl si vyměnit Pivo, kterým se před dynamitem
         // zachrání). Viz _startValentine (logic/wildWest.js).
-        const steps = [this._deadManReturn, this._flipEvent, this._applyAbilitiesOnEnter,
+        // Divoký západ – Hřbitov je krok 0b, hned ZA Mrtvým mužem: vyřazený hráč musí být
+        // zpátky ve hře dřív, než na něj cokoli dopadne, a Mrtvý muž má přednost (vrací
+        // se s 2 životy a 2 kartami, což je striktně lepší, a je jednorázový).
+        const steps = [this._deadManReturn, this._boneOrchardReturn,
+                       this._flipEvent, this._applyAbilitiesOnEnter,
                        this._applyEventOnEnter,
                        this._applyFfEventOnEnter, this._noonDamage, this._fistfulHits,
                        this._newIdentityOffer, this._startBloodBrothers,

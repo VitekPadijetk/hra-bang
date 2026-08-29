@@ -30,10 +30,27 @@ test('prior: neznámý nikdy není šerif; rozdělení dle poolu (4 hráči = be
 });
 
 test('veřejný šerif má jistotu {Sheriff:1}; mrtvý má odhalenou roli', () => {
-    const state = { players: [mk('Outlaw'), mk('Sheriff'), mk('Renegade', 0)] }; // idx2 mrtvý
+    // Odhalenou roli drží `_roleRevealed` (nastaví ho vyřazení), ne `health <= 0` –
+    // přerozdání rolí (Hřbitov, Divoký západ) ho zase shodí. Viz redakce v server/rooms.js.
+    const dead = mk('Renegade', 0); dead._roleRevealed = true;
+    const state = { players: [mk('Outlaw'), mk('Sheriff'), dead] }; // idx2 mrtvý
     const b = computeBeliefs(state, empty, 0);
     assert.deepEqual(b[1], { Sheriff: 1, Deputy: 0, Outlaw: 0, Renegade: 0 });
     assert.deepEqual(b[2], { Sheriff: 0, Deputy: 0, Outlaw: 0, Renegade: 1 }); // mrtvý = veřejný
+});
+
+// Divoký západ – Hřbitov: přerozdáním rolí mezi vyřazenými přestává být role veřejná.
+// Bot na ni nesmí „vědět" víc než ostatní a nesmí jí ani pokazit rozdělení pravděpodobností:
+// vyřazený bez odhalené role zůstává v poolu, takže rozdělení živých pořád dává součet 1.
+test('přerozdaná role vyřazeného hráče je pro bota zase neznámá', () => {
+    const dead = mk('Renegade', 0);   // bez _roleRevealed = po přerozdání
+    const state = { players: [mk('Sheriff'), mk('Outlaw'), mk('Outlaw'), dead] };
+    const b = computeBeliefs(state, empty, 0);
+    assert.notDeepEqual(b[3], { Sheriff: 0, Deputy: 0, Outlaw: 0, Renegade: 1 });
+    for (const i of [1, 2, 3]) {
+        const tot = b[i].Sheriff + b[i].Deputy + b[i].Outlaw + b[i].Renegade;
+        assert.ok(Math.abs(tot - 1) < 1e-9, `rozdělení hráče ${i} má dát 1 (je ${tot})`);
+    }
 });
 
 // ── Update z ledgeru ─────────────────────────────────────────────────────────
