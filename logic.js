@@ -289,6 +289,10 @@ class GameState {
         // Divoký západ – John Pain: pojistka pro větve, které frontu odložených akcí
         // neberou (Vězení sebralo tah, Vendeta neuspěla) – nejpozději na konci tahu.
         this._drainJohnPain();
+        // Divoký západ – Roubík: pokuta za promluvení do chatu, na kterou se během tahu
+        // nenašel klid. Konec tahu je poslední klidné místo, takže se vybírá i mimo fázi
+        // PLAY; vrátí true, když si vzala tok hry (výhra / rozdělaná fronta odložených akcí).
+        if (this._gagAtTurnEnd()) return;
         // Divoký západ – Madam Zuzana: kdo za svůj tah nezahrál 3 karty, ztrácí život.
         // Je to úplně první gate: pořadí na konci tahu je fáze 3 (odhoz nad limit) →
         // Zuzana → Vendeta → nový tah. Sedí tady (a ne v tryEndTurn), protože se do

@@ -946,6 +946,59 @@ test('20 her jen botů jede i s balíčkem samých Hřbitovů a Helen Zontero', 
 // výhry na „zůstaň poslední ve hře“, takže přestává platit dělení na strany. Bez větve
 // `lastManStanding` v roleHostility (core/beliefs.js) by strana šerifa v koncovce jen lízala
 // a odhazovala – spojenec podle role není nepřítel – a hra by nikdy nedoběhla.
+// Divoký západ – Roubík: promluvení stojí 1 život, a boti od fáze 9 do chatu opravdu
+// mluví (core/botChat.js). Hra jen botů tedy musí doběhnout i tehdy, když si k zásahům
+// od spoluhráčů přidávají pokuty za vlastní hlášky – a nikdo se přitom nesmí upovídat
+// k smrti (bot na 1 životě pod Roubíkem mlčí). Hlášky se pouštějí ručně: broadcasty jsou
+// v buildCtx no-op, takže by se hák `beforeBroadcast` (a s ním flushBotQuips) nespustil.
+test('20 her jen botů jede i s balíčkem samých Roubíků (a nikdo se neupovídá k smrti)', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const wwsEv = (key) => {
+        const c = wwsCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0, quips = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: k % 2 === 0,
+                                         fistful: k % 3 === 0, divoky_zapad: true } };
+            const room = { id: 'wws7_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            const deck = [wwsEv('DIVOKY_ZAPAD')];
+            for (let i = 0; i < 12; i++) deck.push(wwsEv('ROUBIK'));
+            gs.wwsDeck = deck;
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            let guard = 0;
+            while (!gs.winner && guard++ < 8000) {
+                const pa = pendingActor(gs);
+                if (!pa || !room.players[pa.idx]?.isBot) break;
+                ctx.runBotTickOnce(room);
+                ctx.flushBotQuips(room);          // zastupuje hák beforeBroadcast
+            }
+            quips += Object.keys(room._quipTurn || {}).length;
+            assert.ok(gs.winner, `WWS7 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `WWS7 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            // Nikdo nesmí ležet s nevybranou pokutou – ta by se ztratila i s tím, že mluvil.
+            assert.ok(!(gs._gagPending || []).length || gs.winner, `WWS7 hra #${k}: pokuta nezůstala viset`);
+            if (gs.wwsPile.length) flipped++;
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 10, `Roubík se opravdu odkrýval (jen ${flipped} z 20 her)`);
+    assert.ok(quips > 0, 'boti se opravdu ozvali (jinak by test Roubík vůbec neprověřil)');
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Roubíkem');
+});
+
 test('20 her jen botů jede i s balíčkem samých Divokých západů', () => {
     const ctx = buildCtx();
     let stalls = 0;

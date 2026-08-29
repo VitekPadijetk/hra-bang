@@ -298,6 +298,96 @@ const WildWestMixin = {
         return true;
     },
 
+    // ── Roubík ────────────────────────────────────────────────────────────────
+    // „Hráči nesmí mluvit (mohou gestikulovat, sténat atd.). Každý kdo promluví, ztrácí
+    // 1 život." U stolu se to vynutit nedá, ve hře s chatem ano: odeslání zprávy stojí
+    // 1 život. Zpráva se přitom NEZAHAZUJE – karta mluvení zakazuje pod pokutou, ne
+    // úplně – a nevaruje se ani nepotvrzuje: karta leží odkrytá na stole a je na hráči,
+    // aby věděl, co platí (potvrzovací okno by z vtipu udělalo formulář).
+    //
+    // Pokuta je ODLOŽENÁ. Chat přichází asynchronně a může trefit libovolnou fázi
+    // (RESPOND, míchání, cinematiku vyřazení); zásah uprostřed by rozbil rozdělaný
+    // efekt. Seat se proto jen zapíše do `_gagPending` a vybere se na nejbližším klidném
+    // místě – hned tady (když je zrovna klid), jinak v `_processSpecialQueue` /
+    // `_resumeAfterSpecial`, nejpozději na konci tahu (`_gagAtTurnEnd`).
+    //
+    // Zásah jde přes `handleDamage(idx, null)`: Bart Cassidy si za ztracený život lízne,
+    // El Gringo nekrade (není útočník). Divák není hráč, takže ho nic nestojí; mrtvý
+    // hráč (a duch mimo svůj tah, který je taky na nule) taky o nic nepřijde.
+    gagSpeak(playerIdx) {
+        if (!this.hasEvent('ROUBIK')) return false;
+        const p = this.players?.[playerIdx];
+        if (!p || p.health <= 0) return false;
+        if (!this._gagPending) this._gagPending = [];
+        this._gagPending.push(playerIdx);
+        this.logEvent('event', { card: 'Roubík', who: p.name, msg: 'promluvil → −1 život' });
+        return true;
+    },
+
+    // Je klid na to vybrat odloženou pokutu? Fáze PLAY znamená, že neběží obrana,
+    // sejmutí, výběr karty ani klikané zásahy; k tomu prázdná fronta odložených akcí
+    // (do rozdělané schopnosti se sahat nesmí) a žádný čekající automatický konec tahu.
+    _gagCalm() {
+        if (this.winner || this._autoEndTurnPending) return false;
+        if (this.phase !== "PLAY") return false;
+        if (this.specialActionQueue?.length) return false;
+        if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;
+        return true;
+    },
+
+    // Vybere odložené pokuty. Vrací true, když nějaká opravdu dopadla (volající pak musí
+    // počítat s tím, že se změnily životy, mohla vzniknout fronta odložených akcí nebo
+    // dokonce padnout hráč). `force` = volající si klid zaručuje sám (konec tahu).
+    _drainGag(force = false) {
+        if (!this._gagPending || !this._gagPending.length) return false;
+        if (!force && !this._gagCalm()) return false;
+        const queue = this._gagPending;
+        this._gagPending = [];
+        let hit = false;
+        for (const idx of queue) {
+            if (this.winner) break;
+            const p = this.players?.[idx];
+            if (!p || p.health <= 0) continue;   // mezitím vypadl ze hry → pokuta propadá
+            this.handleDamage(idx, null);
+            hit = true;
+        }
+        return hit;
+    },
+
+    // Vybrat pokutu a rovnou nechat rozeběhnout, co tím vzniklo (Bart Cassidy si za
+    // ztracený život líže). Tohle je vstup pro volající ZVENČÍ pravidel – server po
+    // příchodu zprávy do chatu a `_resumeAfterSpecial`. Uvnitř `_processSpecialQueue`
+    // se volá holý `_drainGag`: frontu tam dobere kód hned pod ním.
+    gagFlush() {
+        if (!this._drainGag()) return false;
+        if (this.specialActionQueue.length) this._processSpecialQueue();
+        return true;
+    },
+
+    // Konec tahu je poslední klidné místo, takže se tady vybírá i mimo fázi PLAY.
+    // Vrací true, když si pokuta vzala tok hry (výhra / rozdělaná fronta odložených
+    // akcí) a `nextTurn` má skončit – vrátí se do něj až `_resumeAfterSpecial`.
+    _gagAtTurnEnd() {
+        if (!this._gagPending || !this._gagPending.length || this.winner) return false;
+        // Zásah mohl vyřadit hráče, jehož tah právě končí. `handlePlayerDeath` na to ve
+        // fázi PLAY nastaví `_autoEndTurnPending` – jenže tah se posouvá právě teď, takže
+        // by ho server posunul podruhé. Příznak se proto vrátí na původní hodnotu.
+        const autoEnd = this._autoEndTurnPending;
+        if (!this._drainGag(true)) return false;
+        if (this.winner) return true;
+        this._autoEndTurnPending = autoEnd;
+        if (this.specialActionQueue.length) {
+            // Bart Cassidy / Herb Hunter / odměna za banditu se musí dobrat DŘÍV, než se
+            // posune tah. Pojistka podle CLAUDE.md: příznak se nechává nastavený jen
+            // tehdy, když se z fronty opravdu něco rozeběhlo (_pruneSuzyQueue ji umí
+            // vyprázdnit a hra by na `_nextTurnAfterQueue` čekala navždy).
+            this._nextTurnAfterQueue = true;
+            if (this._processSpecialQueue()) return true;
+            this._nextTurnAfterQueue = false;
+        }
+        return false;
+    },
+
     // ── Postavy ───────────────────────────────────────────────────────────────
 
     // Gary Looter: „Bere si všechny karty, které ostatní hráči odhodí nad limit na konci

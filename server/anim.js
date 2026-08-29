@@ -538,10 +538,31 @@ module.exports = function installAnimService(ctx) {
                                           Date.now() + ranchDiscardMs(va.cardIds.length));
     }
 
+    // ── Divoký západ – Roubík: promluvení stojí 1 život ─────────────────────────
+    // Pravidla si pokutu jen zapíšou (gs.gagSpeak) a vyberou ji na nejbližším klidném
+    // místě – `_drainGag` je tady jen pokus „nedá se to rovnou?". Když ano, musí se
+    // změna dostat ven přesně tou cestou jako po každé jiné akci: možná smrt (cinematika
+    // vyřazení, automatický konec tahu) → případné domíchání → broadcast. Když ne,
+    // pokuta počká na `_processSpecialQueue` / konec tahu a odejde s jejich broadcastem.
+    function applyGagPenalty(room, playerIdx) {
+        const gs = room && room.gameState;
+        if (!gs || typeof gs.gagSpeak !== 'function') return false;
+        if (!gs.gagSpeak(playerIdx)) return false;   // Roubík neplatí / mluvčí není ve hře
+        if (!gs.gagFlush()) return true;             // zapsáno, vybere se později
+        handleAutoEndTurn(room, gs);
+        if (gs._deathAnimPlayerIdx !== undefined && gs._deathAnimPlayerIdx !== null) {
+            emitDeathAnim(room, gs, gs._deathAnimPlayerIdx);
+            gs._deathAnimPlayerIdx = null;
+        }
+        handleReshuffleAndBroadcast(room, gs, 0);
+        return true;
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
     // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost
     // a teprve za ní (poslední krok startu tahu) vyměnit ruku Miláček Valentýn.
     function beforeBroadcast(room) {
+        ctx.flushBotQuips?.(room);
         flushGhostLeave(room);
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);
@@ -553,6 +574,7 @@ module.exports = function installAnimService(ctx) {
 
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
                          handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
+                         applyGagPenalty,
                          revealCinematicMs,
                          beforeBroadcast });
     return ctx;

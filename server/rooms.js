@@ -308,10 +308,26 @@ module.exports = function installRoomService(ctx) {
         broadcastLobbyList();
     }
 
+    // Jedna zpráva do chatu místnosti (hráči + diváci). Kromě lidského `chat_message`
+    // ji používají i hlášky botů (server/bots.js) – ti reálný socket nemají, takže by
+    // jinak neměli kudy promluvit. Divoký západ – Roubík se ptá až volajícího: zpráva
+    // odejde vždycky, pokutu za ni řeší handler.
+    function emitChat(room, name, text) {
+        if (!roomAlive(room)) return null;
+        const msg = { name, text: String(text).slice(0, 300), ts: Date.now() };
+        ctx.glog.system(`[chat ${room.name}] ${name}: ${msg.text}`);
+        room.players.forEach(rp => {
+            const s = io.sockets.sockets.get(rp.socketId);
+            if (s) s.emit('chat_message', msg);
+        });
+        io.to(room.id + '_spectators').emit('chat_message', msg);
+        return msg;
+    }
+
     Object.assign(ctx, {
         rooms, genId, makeRoom, roomPayload, broadcastRoom, broadcastRoomDelayed,
         broadcastLobbyList, getLobbyList, getGameList, findRoomBySocket,
-        leaveRoom, leaveSpectate, disbandRoom, closeRoom, roomAlive,
+        leaveRoom, leaveSpectate, disbandRoom, closeRoom, roomAlive, emitChat,
     });
     return ctx;
 };

@@ -158,6 +158,11 @@ const CharactersMixin = {
     // pokračuje sama a volající nemá sahat na fázi. `false` = fronta nic nespustila.
     _processSpecialQueue() {
         this._pruneSuzyQueue();
+        // Divoký západ – Roubík: odložená pokuta za promluvení do chatu se vybírá na
+        // nejbližším klidném místě, a tohle je ono (_drainGag si klid ověřuje sám).
+        // Zásah může frontu rovnou zase naplnit (Bart Cassidy si za ztracený život lízne),
+        // takže se test na prázdnou frontu dělá až POD ním.
+        if (this.specialActionQueue.length === 0) this._drainGag();
         if (this.specialActionQueue.length === 0) return false;
 
         // Neber další akci z fronty, když právě běží líznutí (běžné, Dostavník/Wells Fargo
@@ -247,6 +252,10 @@ const CharactersMixin = {
         } else {
             this.phase = this.interruptedPhase || "PLAY";
             this.interruptedPhase = null;
+            // Divoký západ – Roubík: fáze je obnovená a nic neběží, takže je teprve TEĎ
+            // klid na odloženou pokutu (výš se _processSpecialQueue ptal ještě ve fázi
+            // právě dokončené schopnosti). Zásah může frontu naplnit znovu.
+            this.gagFlush();
         }
     },
 

@@ -228,13 +228,11 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         if (!room) return;
         const p = room.players.find(pl => pl.socketId === socket.id);
         const name = p?.name || 'Divák';
-        const msg = { name, text: String(text).slice(0, 300), ts: Date.now() };
-        ctx.glog.system(`[chat ${room.name}] ${name}: ${msg.text}`);
-        room.players.forEach(rp => {
-            const s = io.sockets.sockets.get(rp.socketId);
-            if (s) s.emit('chat_message', msg);
-        });
-        io.to(room.id + '_spectators').emit('chat_message', msg);
+        ctx.emitChat(room, name, text);
+        // Divoký západ – Roubík: kdo promluví, ztrácí 1 život. Zpráva projde normálně
+        // (karta mluvení zakazuje pod pokutou, ne úplně) a nic se nepotvrzuje. Divák
+        // není hráč, takže ho promluvení nestojí nic.
+        if (p) ctx.applyGagPenalty?.(room, p.playerIdx);
     });
 
     // ── DISCONNECT ───────────────────────────────────────────────────────────

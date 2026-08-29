@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1, 2, 2b, 3, 4, 5, 6, 7 a 8 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1, 2, 2b, 3, 4, 5, 6, 7, 8 a 9 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1442,6 +1442,34 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 > Klient se měnit nemusel vůbec – `deadRoleMap[null]` už dnes padá na `role_card_back`
 > a slot ze skupiny nemizí, takže se ani nehnul půdorys.
 >
+> **Fáze 9 rozhodla čtyři věci, které §4.9 nechává otevřené:**
+>
+> - **Klidné místo se pozná fází, ne délkou fronty.** §4.9 chtěla frontu vyprázdnit „na konci
+>   `_processSpecialQueue`, když se nic nerozeběhlo". Jenže tam se volá ještě ve fázi právě
+>   dokončené schopnosti (`interruptedPhase` se obnovuje až v `_resumeAfterSpecial`), takže by
+>   zásah dopadl doprostřed rozdělaného efektu. Rozhoduje proto `_gagCalm()`: fáze `PLAY`,
+>   prázdná fronta, žádné aktivní lízání ani sejmutí a žádný čekající automatický konec tahu.
+>   Vybírá se na TŘECH místech – v `_processSpecialQueue` (tam frontu dobere kód hned pod ním),
+>   v `_resumeAfterSpecial` po obnovení fáze a nejpozději v `nextTurn`.
+> - **Zásah může frontu zase naplnit.** Bart Cassidy si za ztracený život líže, smrt přidá
+>   Herba Huntera i odměnu za banditu. Volající zvenčí pravidel (server po zprávě do chatu,
+>   `_resumeAfterSpecial`) proto nesahá na `_drainGag` napřímo, ale na **`gagFlush()`**, které
+>   frontu rovnou rozeběhne. Bez toho by odložená akce zůstala viset a spustila se až o něco
+>   později v úplně jiné fázi.
+> - **`nextTurn` je jediné místo, kde se vybírá i mimo fázi PLAY** (`_gagAtTurnEnd`, `force`).
+>   Má to dvě pasti: pokuta může vyřadit hráče, jehož tah právě končí – `handlePlayerDeath` na
+>   to ve fázi PLAY nastaví `_autoEndTurnPending` a server by tah posunul PODRUHÉ, takže se
+>   příznak vrací na původní hodnotu; a když zásah naplnil frontu, musí se dobrat dřív než
+>   posun tahu (`_nextTurnAfterQueue`) – ovšem jen tehdy, když `_processSpecialQueue` opravdu
+>   něco rozeběhlo, jinak by hra na příznak čekala navždy (past z CLAUDE.md).
+> - **Hlášky botů stojí na diffu stavu, ne na háku v pravidlech.** §4.9 chtěla `botQuip` volat
+>   „nad událostmi, které server stejně už zná" – jenže žádný takový feed neexistuje
+>   (`gs._onEvent` patří logu). `core/botChat.js` proto události odvozuje ze dvou snímků stavu
+>   (`quipSnapshot` → `quipEvents`), takže se pravidel nedotkl ani řádek. Emituje se z háku
+>   `beforeBroadcast` (server/anim.js), **ne** ze `scheduleBotTick`: ten se debouncuje, takže
+>   by většina událostí propadla. Zpráva jde ven přes nový `ctx.emitChat` – bot reálný socket
+>   nemá, takže by jinak neměl kudy promluvit.
+>
 | # | Fáze | Obsah | Riziko |
 |---|---|---|---|
 | **0** ✅ | Kostra | data, `logic/wildWest.js`, spouštěč, třetí sloupec, assety, loader, intro, lobby | nízké |
@@ -1454,7 +1482,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **6** ✅ | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |
 | **7** ✅ | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |
 | **8** ✅ | Divoký západ | podmínka výhry, bot | střední |
-| **9** | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |
+| **9** ✅ | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |
 | **10** | `hasAbility` + Greygory Deck | refaktor ~45 míst, pak postava | **vysoké (šířka)** |
 | **11** | Lady Růže z Texasu | výměna sedadel, přemapování indexů, animace | **vysoké** |
 | **12** | Zuřivá Doroty | vypůjčený tah | **nejvyšší** |

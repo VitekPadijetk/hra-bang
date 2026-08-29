@@ -10,6 +10,7 @@
 
 const { pendingActor, decideBotAction } = require('../core/botPolicy.js');
 const { computeBeliefs } = require('../core/beliefs.js');
+const { botQuip, quipEvents, quipSnapshot } = require('../core/botChat.js');
 const registerGameHandlers = require('./handlers.game.js');
 const registerCharacterHandlers = require('./handlers.characters.js');
 const registerNextGameHandlers = require('./handlers.nextgame.js');
@@ -345,13 +346,44 @@ module.exports = function installBotService(ctx) {
         // _fire spustí handler → ten broadcastne → afterBroadcast → scheduleBotTick znovu.
     }
 
+    // ── Hlášky botů do chatu ────────────────────────────────────────────────────
+    // Stůl plný botů byl doteď němý, takže by ho Divoký západ – Roubík („kdo promluví,
+    // ztrácí 1 život") nikdy netrefil. Spouštěčem je HERNÍ UDÁLOST, ne časovač: události
+    // se odvozují diffem dvou snímků stavu (core/botChat.js), takže se pravidel nedotkl
+    // ani řádek. Volá se z háku `beforeBroadcast` (server/anim.js), tedy po každém
+    // ustálení stavu – `scheduleBotTick` se na to použít nedá, ten se debouncuje.
+    //
+    // Pokuta za promluvení jde stejnou cestou jako u člověka (gs.gagSpeak), tedy se
+    // ODLOŽÍ: jsme uprostřed cizího toku (těsně před odesláním stavu), takže se tady
+    // zásah vybírat nesmí. Vybere ho nejbližší klidné místo a odejde s jeho broadcastem.
+    function flushBotQuips(room) {
+        const gs = room && room.gameState;
+        if (!gs || !(gs.players || []).length || gs.winner) { if (room) room._quipSnap = null; return; }
+        if (!hasBots(room)) return;
+        const prev = room._quipSnap;
+        room._quipSnap = quipSnapshot(gs);
+        if (!prev) return;                       // první snímek – není proti čemu diffovat
+        const events = quipEvents(prev, gs);
+        if (!events.length) return;
+        room._quipTurn = room._quipTurn || {};
+        for (const ev of events) {
+            const seat = room.players.find(pl => pl.playerIdx === ev.playerIdx && (pl.isBot || pl.botControlled));
+            if (!seat) continue;                 // hláška patří člověku – ten si ji napíše sám
+            const line = botQuip(ev, gs, ev.playerIdx, Math.random, { lastQuipTurn: room._quipTurn[ev.playerIdx] });
+            if (!line) continue;
+            room._quipTurn[ev.playerIdx] = gs.turnId || 0;
+            ctx.emitChat(room, seat.name, line);
+            gs.gagSpeak(ev.playerIdx);           // Roubík: žádná výjimka pro boty
+        }
+    }
+
     // Napojení na hooky (rooms.js po broadcastu, intro.js po intro emitu).
     ctx.afterBroadcast = scheduleBotTick;
     ctx.afterIntroEmit = scheduleBotTick;
 
     Object.assign(ctx, {
         botSockets, createBot, removeBot, hasBots, botControl, botRelease,
-        scheduleBotTick, runBotTickOnce,
+        scheduleBotTick, runBotTickOnce, flushBotQuips,
     });
     return ctx;
 };
