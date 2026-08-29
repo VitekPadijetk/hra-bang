@@ -34,6 +34,10 @@ const WildWestMixin = {
         this._helenaAnim = null;
         this._roleShuffleAnim = null;
         this._ledgerResetPending = false;
+        this.pendingGreygory = null;
+        // Navazující hra přebírá hráče z předchozí – líznutá dvojice Greygoryho Decka
+        // patří jedné hře, v té další se líže z čerstvě zamíchaného balíčku postav.
+        (this.players || []).forEach(p => { p._greygoryChars = null; });
         const on = options.expansions && options.expansions.divoky_zapad;
         if (!on || !Array.isArray(this.wwsCardData)) return;
 
@@ -595,6 +599,93 @@ const WildWestMixin = {
         this.checkSuzyLafayette(t);
         this._processSpecialQueue();
         return { taken, given: give, givenSlot };
+    },
+
+    // ── Greygory Deck ─────────────────────────────────────────────────────────
+    // „Na začátku svého tahu si smí líznout 2 postavy náhodně. Má všechny jejich
+    // schopnosti." Dotaz „umí X?" proto nejde přes `effectiveCharacter`, ale přes
+    // `hasAbility`/`abilitiesOf` (core/distance.js) – tam je i celý výklad.
+    //
+    // Bere JEN postavy základní hry (ALL_CHARACTERS, 16 – poznámka v pravidlech
+    // i FAQ Q30) a jen ty, jejichž KARTA je fyzicky volná (R12): líže se ze
+    // skutečného balíčku postav, takže z těch 16 vypadne každá, kterou někdo hraje
+    // (`p.character`), má pod počítadlem životů (`p._secondChar`, Nová identita –
+    // rub karty postavy JE ta karta životů) nebo ji drží jako Greygory
+    // (`p._greygoryChars` – druhý Greygory u stolu, nebo Vera, která ho kopíruje).
+    //
+    // VLASTNÍ dvojice se do poolu vrací (FAQ Q01: zamíchat všechny a líznout dvě,
+    // klidně zas ty odložené), proto se odečítá `_greygoryChars` ostatních, ne svůj.
+    // Pool SMÍ vyjít menší než 2 – i prázdný. „Smůla" je legální stav, ne chyba:
+    // hráč pak tenhle tah prostě žádnou schopnost nemá a `abilitiesOf` vrátí [].
+    _greygoryPool(selfIdx) {
+        const used = new Set();
+        (this.players || []).forEach((p, i) => {
+            if (!p) return;
+            if (p.character) used.add(p.character);
+            if (p._secondChar) used.add(p._secondChar);
+            if (i !== selfIdx) (p._greygoryChars || []).forEach(c => used.add(c));
+        });
+        return ALL_CHARACTERS.filter(c => !used.has(c));
+    },
+
+    // Zamíchat volné postavy a líznout dvě. Jediná cesta, jak dvojice vzniká –
+    // volá ji rozdání na začátku hry, výměna na začátku tahu i Vera Custer, když si
+    // Greygoryho zvolí ke kopírování.
+    _greygoryDraw(playerIdx) {
+        const p = this.players[playerIdx];
+        if (!p) return [];
+        const pool = this._greygoryPool(playerIdx);
+        this.deck.shuffleArray(pool);
+        p._greygoryChars = pool.slice(0, 2);
+        this.logEvent('event', { card: 'Greygory Deck', who: p.name,
+                                 msg: `líže postavy: ${p._greygoryChars.join(', ') || '(nezbyla žádná volná)'}` });
+        return p._greygoryChars;
+    },
+
+    // První dvojici dostane hned na začátku hry („This ability also applies at the
+    // beginning of the game"). Volá se z obou míst, kudy se rozdávají startovní ruce
+    // (logic/setup.js), a to AŽ ZA `_dealSecondIdentities` – odložené identity musí
+    // z poolu ubrat dřív, než se z něj líže.
+    _greygoryDealAll() {
+        (this.players || []).forEach((p, i) => {
+            if (p && p.character === "Greygory Deck" && !p._greygoryChars) this._greygoryDraw(i);
+        });
+    },
+
+    // Krok krokovače startu tahu (`_runBeginTurn`, logic/highNoon.js), hned PŘED
+    // Miláčkem Valentýnem: nechat dvojici, nebo si líznout novou? Vyměnit jde jen
+    // OBĚ naráz; předchozí se zamíchají zpátky a můžou padnout znovu (FAQ Q01).
+    //
+    // Nabídka patří tomu, kdo Greygoryho DOOPRAVDY hraje. Vera Custer ji nedostává
+    // nikdy: kopie platí přesně jedno kolo, takže není co si nechávat – dvojici si
+    // líže rovnou při volbě kopie (veraCopyCharacter, logic/characters.js), která
+    // přijde až za tímhle krokem. Kocovina (High Noon) schopnost vypíná celou.
+    //
+    // Nezbyla-li ani jedna volná karta, nenabízí se vůbec: výměna „za nic" je past,
+    // ne rozhodnutí. Kolik jich je volných, proto putuje do stavu (`free`).
+    _greygoryOffer() {
+        const p = this.getCurrentPlayer();
+        if (!p || !isInPlay(p) || p._noAbility) return false;
+        if (p.character !== "Greygory Deck") return false;
+        const free = this._greygoryPool(this.currentPlayerIndex);
+        if (free.length === 0) return false;
+        this.pendingGreygory = {
+            playerIdx: this.currentPlayerIndex,
+            current: [...(p._greygoryChars || [])],
+            free: free.length
+        };
+        this.phase = "GREYGORY_OFFER";
+        return true;
+    },
+
+    resolveGreygory(playerIdx, swap) {
+        if (this.phase !== "GREYGORY_OFFER" || !this.pendingGreygory) return false;
+        if (this.pendingGreygory.playerIdx !== playerIdx) return false;
+        this.pendingGreygory = null;
+        if (swap) this._greygoryDraw(playerIdx);
+        this.phase = "PLAY";
+        this._resumeBeginTurn();
+        return true;
     },
 
     // ── Teren Kill ────────────────────────────────────────────────────────────────────

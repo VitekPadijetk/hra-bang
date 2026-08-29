@@ -541,6 +541,13 @@ const CharactersMixin = {
 
         player._copiedCharacter = charName;
         player._veraCopiedTurn = this.turnId;
+        // Divoký západ – Greygory Deck: kopíruje se schopnost, a ta zní „lízni si dvě
+        // postavy". Vera si je proto líže hned tady (R10) – nabídka „nechat / vyměnit"
+        // ze startu tahu se jí nikdy nedává, ta patří tomu, kdo Greygoryho doopravdy
+        // hraje. Krok startu tahu už je navíc dávno za námi (volba kopie padá až za
+        // kontrolami na Dynamit/Vězení). Rekurze nehrozí: dvojice se líže jen ze
+        // 16 postav základní hry (FAQ Q30) a žádná z nich schopnosti nerozdává.
+        if (charName === "Greygory Deck") this._greygoryDraw(playerIdx);
         this.pendingVeraCopy = null;
         // Zpátky do fáze lízání – tentokrát už s převzatou schopností (Kit Carlson,
         // Jesse Jones, Pixie Pete…); guard `_veraCopiedTurn === turnId` znovu neptá.

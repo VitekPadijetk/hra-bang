@@ -2779,6 +2779,8 @@ function renderUI() {
     // High Noon (přibalené) – Želízka: volba barvy; Nová identita: výměna postavy.
     if (state.phase === "HANDCUFFS_SUIT") renderHandcuffsOverlay();
     if (state.phase === "NEW_IDENTITY") renderNewIdentityOverlay();
+    // Divoký západ – Greygory Deck si na začátku tahu vybírá, jestli dvojici vymění.
+    if (state.phase === "GREYGORY_OFFER") renderGreygoryOverlay();
     // board.js právě zapsal přesné pozice rezervovaných slotů → zaměř na ně letící líznutí.
     retargetDrawAnims();
     // Nové sprity vznikly bez zvýraznění → hned nasaď hover na kartu pod kurzorem (bez čekání

@@ -1307,3 +1307,43 @@ test('20 her jen botů, ve kterých jsou VŠICHNI Teren Kill', () => {
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani se samými Tereny');
 });
+
+// ── Divoký západ: stůl samých Greygoryů Decků ──────────────────────────────
+// Nejtvrdší případ poolu postav (R12): osm hráčů × 2 líznuté karty = přesně 16 postav
+// základní hry, takže se pool vyprázdní a někdo skončí tah BEZ schopnosti. „Smůla" je
+// legální stav a nesmí zaseknout ani nabídku, ani fázi lízání – a s Novou identitou
+// (přibalené karty High Noonu) ubývají karty z téhož balíčku ještě rychleji.
+test('20 her jen botů, ve kterých jsou VŠICHNI Greygory Deck', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: k % 2 === 0,
+                                         fistful: k % 3 === 0, divoky_zapad: true } };
+            const room = { id: 'greyg' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => { p.charChoices = ['Greygory Deck', 'Greygory Deck']; });
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+            assert.ok(gs.players.every(pl => pl.character === 'Greygory Deck'),
+                `GD hra #${k}: všichni opravdu dostali Greygoryho`);
+            // Dvojice se rozdaly hned na začátku hry a nikdo nedrží tutéž kartu dvakrát.
+            const held = gs.players.flatMap(pl => pl._greygoryChars || []);
+            assert.equal(new Set(held).size, held.length, `GD hra #${k}: karty postav se nesmí zdvojit`);
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `GD hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `GD hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani se samými Greygory');
+});

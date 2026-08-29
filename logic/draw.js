@@ -29,6 +29,10 @@ const DrawMixin = {
         // vrátíme s `_veraCopiedTurn === turnId` a lízání se rozjede s převzatou schopností.
         if (player.character === "Vera Custer" && player._veraCopiedTurn !== this.turnId) {
             player._copiedCharacter = null;
+            // Divoký západ – Greygory Deck: s kopií vyprší i dvojice postav, kterou si
+            // Vera lízla, když ho kopírovala (platila přesně to jedno kolo). Skutečnému
+            // Greygorymu dvojice mezi tahy ZŮSTÁVÁ – tady se maže jen Veře.
+            player._greygoryChars = null;
             const choices = player._noAbility ? [] : this._veraCopyChoices();
             if (choices.length > 0) {
                 this.pendingVeraCopy = { playerIdx: this.currentPlayerIndex, choices };
@@ -213,8 +217,9 @@ const DrawMixin = {
                     picked: [],
                     pendingAdd: [],
                     // Nikdy si nesmí nechat víc, než kolik karet se povedlo odkrýt
-                    // (došlý balíček) – jinak by výběr nešel dokončit.
-                    needed: Math.min(ds.kitNeeded || 2, revealed.length),
+                    // (došlý balíček) – jinak by výběr nešel dokončit. A o kolik si už
+                    // vzal odjinud (Greygory: Kit + Jesse/Pedro), o tolik si nechá míň.
+                    needed: Math.min(Math.max(1, (ds.kitNeeded || 2) - ds.cardsDrawn), revealed.length),
                     extra: ds.kitExtra || 0,
                     // Rozdání řady (a případné míchání uprostřed) si řídí klient – viz _revealAnim.
                     anim: this._revealAnim(deckBefore, revealed.length),
@@ -252,7 +257,8 @@ const DrawMixin = {
                 return;
             }
 
-            if (hasAbility(player, "Black Jack") && ds.cardsDrawn === 1 && ds.isStartOfTurn && !ds.blackJackWaitingForThird) {
+            if (hasAbility(player, "Black Jack") && ds.cardsDrawn === 1 && ds.isStartOfTurn
+                && !ds.blackJackWaitingForThird && !ds.noBlackJack) {
                 ds.blackJackCard = card;
                 this.phase = "BLACK_JACK_CHECK";
                 return;
@@ -375,12 +381,20 @@ const DrawMixin = {
         // a zbylou kartu si po výběru lízne klasicky z balíčku (kitExtra).
         const total = this._drawCountFor(player);
         const keep = Math.min(total, KIT_REVEAL - 1);
+        // Divoký západ – Greygory Deck může mít Kita naráz s Jesse Jonesem nebo Pedrem
+        // Ramirezem; podle FAQ Q31 se ty schopnosti KOMBINUJÍ: první kartu si vezme
+        // z cizí ruky / z odhozu a teprve tu druhou z odkryté řady. Fáze pak potřebuje
+        // víc než jeden klik (`cardsNeeded` = celý počet) a v nabídce i ty zdroje; kolik
+        // si z řady nechá, se dopočítá až u odkrývání (`kitNeeded − cardsDrawn`).
+        // Bez těch zdrojů (obyčejný Kit Carlson) zůstává všechno na pixel jako dřív.
+        const kitOpts = this._getDrawOptions(player);
+        const kitAlt = kitOpts.some(o => o === 'opponent_hand' || o === 'discard' || o === 'board');
         this._setDrawPhase({
             active: true,
             playerIdx: this.currentPlayerIndex,
-            cardsNeeded: 1,
+            cardsNeeded: kitAlt ? total : 1,
             cardsDrawn: 0,
-            options: this._drawOptionsBase(player),
+            options: kitAlt ? kitOpts : this._drawOptionsBase(player),
             isKitCarlson: true,
             // I Kitovo odkrývání JE fáze lízání na začátku tahu – bez tohoto příznaku by
             // _finishDraw přeskočil volbu barvy pro Želízka (High Noon) a Kit by jako
@@ -423,6 +437,22 @@ const DrawMixin = {
             }
             const extra = kc.extra || 0;
             this.kitCarlsonState = null;
+            // Divoký západ – Greygory Deck: Kit Carlson + Black Jack (FAQ Q31, příklad 3).
+            // Druhá karta fáze lízání se ukazuje celému stolu i tehdy, když nepřišla
+            // z balíčku, ale z Kitovy odkryté řady – a při červené si za ni hráč lízne
+            // jednu navíc. Která z ponechaných je „ta druhá", se počítá od karet, které
+            // už si vzal odjinud (Jesse/Pedro), ne od pořadí klikání do řady.
+            const bjPos = 2 - (this.drawPhaseState.cardsDrawn || 0);
+            const bjCard = (hasAbility(player, "Black Jack") && this.drawPhaseState.isStartOfTurn
+                            && bjPos >= 1 && bjPos <= kc.pendingAdd.length)
+                ? kc.revealed[kc.pendingAdd[bjPos - 1]] : null;
+            if (bjCard) {
+                this.drawPhaseState.blackJackCard = bjCard;
+                this.drawPhaseState.blackJackFromRow = true;
+                this.drawPhaseState.kitExtra = extra;
+                this.phase = "BLACK_JACK_CHECK";
+                return;
+            }
             if (extra > 0) {
                 // Příjezd vlaku (High Noon): karta nad rámec schopnosti se líže úplně
                 // klasicky z balíčku, až po výběru (klik na balíček jako u kohokoli jiného).
@@ -434,7 +464,10 @@ const DrawMixin = {
                     options: ['deck'],
                     // Pořád je to lízání na začátku tahu (jen jeho ocásek) – Želízka se
                     // ptají až za ním, viz _finishDraw.
-                    isStartOfTurn: true
+                    isStartOfTurn: true,
+                    // …ale „druhá karta" fáze lízání je dávno pryč (byla v Kitově řadě),
+                    // takže se Black Jack (Greygory Deck) na kartách ocásku už neptá.
+                    noBlackJack: true
                 });
                 this.phase = "DRAW";
                 return;
@@ -453,6 +486,31 @@ const DrawMixin = {
         const suit = this._effSuit(card);
         const isRed = suit === Suits.HEARTS || suit === Suits.DIAMONDS;
         const player = this.players[ds.playerIdx];
+        // Karta z Kitovy odkryté řady (Greygory Deck: Kit + Black Jack) už v ruce JE
+        // a Právo západu si ji označilo přes _lawMarkFromRow – tady se jen ukázala.
+        // Zbývá dolíznout, co Kitovi zbývalo (Příjezd vlaku) plus bonus za červenou.
+        if (ds.blackJackFromRow) {
+            ds.blackJackCard = null;
+            ds.blackJackFromRow = false;
+            this.logEvent('event', { card: 'Black Jack', who: player.name,
+                                     msg: `druhá karta ${card.name} (${suit})${isRed ? ' → líže si navíc' : ''}` });
+            const rest = (ds.kitExtra || 0) + (isRed ? 1 : 0);
+            if (rest > 0) {
+                this._setDrawPhase({
+                    active: true,
+                    playerIdx: ds.playerIdx,
+                    cardsNeeded: rest,
+                    cardsDrawn: 0,
+                    options: ['deck'],
+                    isStartOfTurn: true,
+                    noBlackJack: true
+                });
+                this.phase = "DRAW";
+                return;
+            }
+            this._finishDraw();
+            return;
+        }
         player.hand.push(card);
         this.logEvent('draw', { who: player.name, source: 'deck (Black Jack)', cards: [card.name] });
         player.stats.cardsDrawn++;

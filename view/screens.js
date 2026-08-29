@@ -512,3 +512,70 @@ function confirmNewIdentity(take) {
     socket.emit('new_identity_choose', { take: !!take });
     renderUI();   // tlačítka i zvětšená karta zmizí; dojezd dohraje new_identity_result
 }
+
+// ── Divoký západ – Greygory Deck: výměna dvojice postav na začátku tahu ──────
+// Schopnost zní „na začátku svého tahu si SMÍ líznout 2 postavy náhodně", takže je to
+// rozhodnutí, ne automat. Vyměnit jde jen OBĚ naráz (FAQ Q01: předchozí se zamíchají
+// zpátky a můžou padnout znovu). Nabídka se dává jen tomu, kdo Greygoryho doopravdy
+// hraje – Vera Custer si dvojici líže rovnou při volbě kopie.
+// Kolik karet je ve skutečném balíčku postav volných, je v nabídce vidět: výměna může
+// vyjít i na jedinou kartu nebo na žádnou, a to je past, kterou hráč musí vidět dopředu.
+function renderGreygoryOverlay() {
+    const pg = state.pendingGreygory;
+    if (!pg || pg.playerIdx !== myIndex) return;
+
+    const charData = gameScene.cache.json.get('characters_data');
+    const texFor = (name) => {
+        const info = charData?.find(c => c.name === name);
+        return info && gameScene.textures.exists('char_' + info.id) ? 'char_' + info.id : 'placeholder';
+    };
+
+    const cur = pg.current || [];
+    if (cur.length === 0) {
+        const none = gameScene.add.text(960, 420, 'Zatím žádné postavy',
+            { fontFamily: THEME.fontUI, fontSize: '30px', color: THEME.color.textMuted,
+              backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 18, y: 10 } })
+            .setOrigin(0.5).setDepth(1000);
+        gameScene.cardsSprites.add(none);
+    } else {
+        // Jedna karta doprostřed, dvě vedle sebe – ať se střed nehne podle počtu.
+        const step = 320;
+        const x0 = 960 - (cur.length - 1) * step / 2;
+        cur.forEach((name, i) => {
+            const card = gameScene.add.image(x0 + i * step, 420, texFor(name)).setScale(0.62).setDepth(1000);
+            gameScene.cardsSprites.add(card);
+            const lbl = gameScene.add.text(x0 + i * step, 620, name,
+                { fontFamily: THEME.fontUI, fontSize: '22px', color: THEME.color.text,
+                  backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 10, y: 4 } })
+                .setOrigin(0.5).setDepth(1001);
+            gameScene.cardsSprites.add(lbl);
+        });
+    }
+
+    const free = pg.free || 0;
+    const q = gameScene.add.text(960, 730,
+        `Líznout si dvě nové postavy? (volných karet: ${free})`,
+        { fontFamily: THEME.fontUI, fontSize: '30px', color: THEME.color.text,
+          backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 18, y: 8 } })
+        .setOrigin(0.5).setDepth(1001);
+    gameScene.cardsSprites.add(q);
+
+    const { bg: yesBg } = themeButton(gameScene, 700, 850, 400, 64, '🔀 LÍZNOUT NOVÉ', {
+        fill: THEME.color.successDarkNum, fillHover: 0x3f7a3f, stroke: THEME.color.successNum,
+        fontSize: '26px', onClick: () => confirmGreygory(true),
+    });
+    yesBg.setDepth(1001);
+
+    const { bg: noBg } = themeButton(gameScene, 1220, 850, 360, 64, '✓ NECHAT SI', {
+        fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+        fontSize: '26px', onClick: () => confirmGreygory(false),
+    });
+    noBg.setDepth(1001);
+}
+
+function confirmGreygory(swap) {
+    if (App.blockInput) return;
+    App.blockInput = true;
+    socket.emit('greygory_choice', { swap: !!swap });
+    renderUI();
+}

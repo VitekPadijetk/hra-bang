@@ -28,7 +28,7 @@ module.exports = function installActionGuard(ctx) {
         'trigger_barrel_draw', 'draw_from_barrel', 'take_dynamite_hit',
         'respond_with_beer', 'beer_dynamite_save',
         'take_noon_hit', 'beer_noon_save',
-        'handcuffs_suit', 'new_identity_choose',
+        'handcuffs_suit', 'new_identity_choose', 'greygory_choice',
         'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
         'grinner_give',
         'sniper_choose', 'play_ricochet',

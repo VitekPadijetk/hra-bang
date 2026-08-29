@@ -41,6 +41,7 @@ const GROUPS = {
         'lucky_duke_pick', 'lucky_duke_choose', 'trigger_barrel_draw', 'draw_from_barrel',
         'sid_ketchum_discard_both', 'take_dynamite_hit', 'respond_with_beer', 'beer_dynamite_save',
         'take_noon_hit', 'beer_noon_save', 'handcuffs_suit', 'new_identity_choose',
+        'greygory_choice',
         'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
         'grinner_give',
         'sniper_choose', 'play_ricochet',
@@ -66,15 +67,15 @@ for (const [name, { reg, events }] of Object.entries(GROUPS)) {
     });
 }
 
-test('všechny moduly dohromady pokrývají 81 unikátních eventů', () => {
+test('všechny moduly dohromady pokrývají 82 unikátních eventů', () => {
     const all = [];
     for (const { reg } of Object.values(GROUPS)) {
         const socket = mkSocket();
         reg(socket, mkCtx(), () => {});
         all.push(...socket._events);
     }
-    assert.equal(all.length, 81);
-    assert.equal(new Set(all).size, 81, 'žádný event se nesmí registrovat dvakrát');
+    assert.equal(all.length, 82);
+    assert.equal(new Set(all).size, 82, 'žádný event se nesmí registrovat dvakrát');
 });
 
 // Druhá polovina invariantu „bot se nikdy nezasekne" (první je v test/botPolicy.test.js):

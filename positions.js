@@ -136,7 +136,9 @@ function getBoardCardPos(playerIdx, boardIdx) {
         const boardCardH = 500 * scaleMe;
         // Pás vyložených karet – MUSÍ zrcadlit drawMyArea v view/board.js. Ve stole je
         // vždycky i zbraň (bez skutečné leží na jejím místě Colt .45), proto 1 + board.
-        const myCount = Math.max(boardIdx + 1, 1 + (player.board?.length || 0));
+        // Divoký západ – Greygory Deck: jeho dvojice postav zabírá sloty na KONCI pásu,
+        // takže indexy skutečných karet nemění – jen roztahuje band (MUSÍ zrcadlit drawMyArea).
+        const myCount = Math.max(boardIdx + 1, 1 + (player.board?.length || 0) + (player._greygoryChars?.length || 0));
         const band = _boardBand(myCount, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
         const s = _boardSlot(boardIdx, band);
         const bx = roleX - (myCardW + L.boardGap) - s.col * band.step;
@@ -155,7 +157,10 @@ function getBoardCardPos(playerIdx, boardIdx) {
     // hře pro 3 (Město duchů) u každého od začátku hry. MUSÍ zrcadlit `_roleSlot`
     // v drawOpponents (view/board.js), jinak by animace mířily o kartu vedle.
     const hasRoleCard = !!state.mode3p || player.health <= 0;
-    const numBoardCards = Math.max(boardIdx, (hasRoleCard ? 1 : 0) + (player.weapon?.id !== -1 ? 1 : 0) + (player.board?.length || 0));
+    // Divoký západ – Greygory Deck: dvojice postav leží na KONCI pásu (viz drawOpponents),
+    // takže se do počtu slotů počítá, ale displayIdx skutečných karet neposouvá.
+    const numBoardCards = Math.max(boardIdx, (hasRoleCard ? 1 : 0) + (player.weapon?.id !== -1 ? 1 : 0)
+        + (player.board?.length || 0) + (player._greygoryChars?.length || 0));
     const numBlue = Math.min(numBoardCards, L.oppBoardPerRow);
     const displayIdx = hasRoleCard ? boardIdx + 1 : boardIdx;
     const count = Math.max(displayIdx + 1, numBoardCards);

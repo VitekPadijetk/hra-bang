@@ -1093,8 +1093,11 @@ Viz **§6 (refaktor `hasAbility`)** — bez něj se to udělat nedá.
   - Kit Carlson + Black Jack → odkryje 3, nechá si 2, druhou ponechanou ukáže; při červené
     lízne třetí (Q31 příklad 3),
   - Kit Carlson + Jesse Jones → nejdřív karta z cizí ruky, pak odkrytá řada na tu druhou.
-  - Když se dvě schopnosti **opravdu vylučují**, dostane hráč volbu (fáze
-    `GREYGORY_DRAW_PICK`) a **nelíže si novou postavu** (Q31).
+  - Když se dvě schopnosti **opravdu vylučují**, dostane hráč volbu a **nelíže si novou
+    postavu** (Q31). **Při implementaci se ukázalo, že takový pár mezi těmi 16 neexistuje**:
+    celou fázi lízání si přebírají jen Kit Carlson a Claus „The Saint", jenže Claus je
+    z Fistfulu, ne ze základní hry. Fáze `GREYGORY_DRAW_PICK` se proto nedělala – byl by
+    to kód, do kterého se nedá dostat.
 - **Vera Custer ho kopírovat SMÍ** (R10). Rekurze nehrozí — Greygory bere jen ze 16 postav
   základní hry a žádná z nich schopnosti nerozdává; Vera ani Greygory v tom poolu nejsou.
   Jedna věc se ale musí dořešit, protože se **časování neshoduje**:
@@ -1207,7 +1210,8 @@ Bez zrcadel se **hra jen botů zasekne** — server akci mlčky odmítne, bot ji
 stav se nezmění. Hlídají to tři strukturální testy, ale je levnější to napsat rovnou.
 
 **Nové větve `decideBotAction`** (jedna na každý nový `pendingActor.kind`):
-`GRINNER_GIVE`, `DOROTHY_NAME`, `DOROTHY_TARGET`, `GREYGORY_OFFER`, `GREYGORY_DRAW_PICK`.
+`GRINNER_GIVE`, `DOROTHY_NAME`, `DOROTHY_TARGET`, `GREYGORY_OFFER` (`GREYGORY_DRAW_PICK`
+nakonec ne – viz §5.8).
 `TEREN_KILL_CHECK` a Valentýnovo lízání větev **nepotřebují** — recyklují `CHECK_DRAW`
 a `DRAW`.
 
@@ -1483,7 +1487,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **7** ✅ | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |
 | **8** ✅ | Divoký západ | podmínka výhry, bot | střední |
 | **9** ✅ | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |
-| **10** | `hasAbility` + Greygory Deck | refaktor ~45 míst, pak postava | **vysoké (šířka)** |
+| **10** ✅ | `hasAbility` + Greygory Deck | refaktor ~85 míst, pak postava | **vysoké (šířka)** |
 | **11** | Lady Růže z Texasu | výměna sedadel, přemapování indexů, animace | **vysoké** |
 | **12** | Zuřivá Doroty | vypůjčený tah | **nejvyšší** |
 

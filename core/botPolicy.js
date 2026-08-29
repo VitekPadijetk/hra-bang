@@ -371,6 +371,10 @@ const CHAR_RANK = {
     'Big Spencer': 7, 'Flint Westwood': 7, 'Gary Looter': 7, 'Greygory Deck': 8,
     'John Pain': 8, 'Lee Van Kliff': 8, 'Teren Kill': 6, 'Youl Grinner': 7,
 };
+// Průměrný rank postavy základní hry (těch 16, ze kterých líže Greygory Deck).
+// Je to očekávaná hodnota náhodného líznutí, takže i práh, pod kterým se vyplatí měnit.
+const GREYGORY_AVG = 7;
+
 function pickCharacter(choices) {
     return [...choices].sort((a, b) => (CHAR_RANK[b] || 0) - (CHAR_RANK[a] || 0))[0];
 }
@@ -1247,6 +1251,18 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'NEW_IDENTITY': {
             const take = me.health < 2 || (me.health === 2 && CHAR_RANK[state.pendingNewIdentity?.character] > CHAR_RANK[me.character]);
             return { event: 'new_identity_choose', payload: { take: !!take } };
+        }
+
+        // Divoký západ – Greygory Deck: nechat si dvojici postav, nebo líznout novou?
+        // Nová je NÁHODNÁ, takže se výměna vyplatí jen tehdy, když je ta současná pod
+        // průměrem balíčku postav (GREYGORY_AVG) – nebo když v ní karta chybí úplně
+        // (na začátku hry nezbyla volná).
+        case 'GREYGORY_OFFER': {
+            const cur = state.pendingGreygory?.current || [];
+            const free = state.pendingGreygory?.free || 0;
+            const score = cur.reduce((a, c) => a + (CHAR_RANK[c] || 0), 0);
+            const swap = cur.length < Math.min(2, free) || score < GREYGORY_AVG * cur.length;
+            return { event: 'greygory_choice', payload: { swap: !!swap } };
         }
 
         case 'SELECTING_TARGET_CARD': {

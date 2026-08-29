@@ -196,6 +196,7 @@ const SetupMixin = {
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
+            this._greygoryDealAll();        // Divoký západ: Greygory má dvojici už na začátku hry
             this.currentPlayerIndex = firstIdx;
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;
@@ -340,6 +341,7 @@ const SetupMixin = {
                 for (let i = 0; i < startCards; i++) pl.hand.push(this.deck.draw());
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
+            this._greygoryDealAll();        // Divoký západ: Greygory má dvojici už na začátku hry
             this.currentPlayerIndex = this._firstPlayerIndex();
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;

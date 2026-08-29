@@ -607,9 +607,18 @@ function drawOpponents(ctx) {
         // je to týž slot, jaký dostane vyřazený hráč (MUSÍ zrcadlit getBoardCardPos
         // v positions.js, jinak by animace mířily o kartu vedle).
         const _roleSlot = !!state.mode3p || (isDead && !deathCardsStillShown(actualIdx));
-        const displayCards = _roleSlot
-            ? [{ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_card_back' }, ...allBoardCards]
-            : allBoardCards;
+        // Divoký západ – Greygory Deck: dvojice líznutých postav leží vedle jeho karty
+        // a vidí ji celý stůl (schopnost je veřejná). Zabírá slot v pásu vyložených karet,
+        // proto se přidává na KONEC – indexy skutečných karet se tím nehnou a animace
+        // (positions.js) míří pořád na totéž místo. Nese ji i Vera Custer, když Greygoryho
+        // kopíruje, takže se ptáme rovnou na pole hráče.
+        const _greyCards = (player._greygoryChars || []).map((n, k) => ({
+            _pseudo: true, _tex: getCharTex(n), _zoomKey: 'greygory:' + actualIdx + ':' + k
+        }));
+        const displayCards = (_roleSlot
+            ? [{ _isRole: true, _pseudo: true, _zoomKey: 'role:' + actualIdx,
+                 _tex: deadRoleMap[player.role] || 'role_card_back' }, ...allBoardCards]
+            : [...allBoardCards]).concat(_greyCards);
 
         const numBluePrimary = Math.min(displayCards.length, L.oppBoardPerRow);
         // Pás vyložených karet – MUSÍ zrcadlit getBoardCardPos v positions.js. Řady jsou
@@ -819,26 +828,26 @@ function drawOpponents(ctx) {
             // Karta právě ukradená Panikou/Cat Balou: po dobu letu ji nekresli (slot
             // ale zůstává obsazený – jiné karty se neposunou), objeví se zpět po doletu.
             // Stejnou cestou mizí i karty odlétající při smrti – jedna po druhé.
-            if (!card._isRole && App.stealHideIds.has(card.id)) return;
+            if (!card._pseudo && App.stealHideIds.has(card.id)) return;
             // Karta role letí zrovna doprostřed obrazovky (odhalení) – slot drž prázdný.
             if (card._isRole && _deathStage === 'settled') return;
             // Divoký západ – Hřbitov / Helena Zontero: karta role zrovna letí doprostřed
             // stolu na zamíchání (roles_reshuffle, net/handlers.js). Slot zůstává
             // rezervovaný, karta se v něm nekreslí – jinak by byla vidět dvakrát.
             if (card._isRole && App.roleShuffleHide.has(actualIdx)) return;
-            const tex = card._isRole ? card._roleTex : getTex(card.id);
+            const tex = card._pseudo ? card._tex : getTex(card.id);
             let bCard = gameScene.add.image(x, y, tex).setScale(scaleOpp).setAngle(angle);
 
-            bCard.setInteractive({ useHandCursor: (canTargetThisPlayer || isPatDraw || isRicochetTarget) && !card._isRole });
+            bCard.setInteractive({ useHandCursor: (canTargetThisPlayer || isPatDraw || isRicochetTarget) && !card._pseudo });
             // Zvětšit jde i karta role (vyřazený hráč / hra pro 3) – text na ní je vysázený
             // drobně a v herní velikosti se nedá přečíst. Klik na ni nikdy nejde (kurzor
             // zůstává šipkou), klíč zoomu je stejný jako u mojí role v drawMyArea.
-            const zoomKey = card._isRole ? ('role:' + actualIdx) : card.id;
+            const zoomKey = card._pseudo ? card._zoomKey : card.id;
             bCard._zoomKey = zoomKey;
             bCard.on('pointerover', () => startCardZoom(tex, zoomKey));
             bCard.on('pointerout', scheduleZoomFade);
 
-            if (canTargetThisPlayer && !card._isRole) {
+            if (canTargetThisPlayer && !card._pseudo) {
                 bCard.setTint(0xffff44);
                 bCard.on('pointerdown', () => {
                     const realBIdx = bIdx - (_roleSlot ? 1 : 0);
@@ -847,7 +856,7 @@ function drawOpponents(ctx) {
                     const boardIdx = isWeapon ? null : (hasWeapon ? realBIdx - 1 : realBIdx);
                     handlePanicCBClick(actualIdx, isWeapon ? 'weapon' : 'board', boardIdx);
                 });
-            } else if (isPatDraw && !card._isRole) {
+            } else if (isPatDraw && !card._pseudo) {
                 // Pat Brennan: klik na kartu ze stolu soupeře = vezmi si ji (konec lízání).
                 bCard.setTint(0xffff44);
                 bCard.on('pointerdown', () => {
@@ -859,7 +868,7 @@ function drawOpponents(ctx) {
                     App.blockInput = true;
                     renderUI();
                 });
-            } else if (isRicochetTarget && !card._isRole) {
+            } else if (isRicochetTarget && !card._pseudo) {
                 // Fistful – Odražená střela: klik na vyloženou kartu = vystřel na NI.
                 // Terč se od žluté krádeže odlišuje červenou (je to útok, ne braní karty).
                 bCard.setTint(RICOCHET_TINT);
@@ -875,7 +884,7 @@ function drawOpponents(ctx) {
             }
             gameScene.cardsSprites.add(bCard);
             // Reflow slide: modré/výzbroj soupeře se přeskládají plynule (klíč = id karty).
-            reflowCard('ob' + actualIdx + '_' + (card._isRole ? 'role' : card.id), bCard, x, y, tex, scaleOpp, angle);
+            reflowCard('ob' + actualIdx + '_' + (card._pseudo ? card._zoomKey : card.id), bCard, x, y, tex, scaleOpp, angle);
         };
 
         // scl = měřítko rubu; kompaktní řada (mobil) kreslí vějíř ruky menší než
@@ -1546,7 +1555,11 @@ function drawMyArea(ctx) {
         // Pás vyložených karet – MUSÍ zrcadlit getBoardCardPos v positions.js. Řady rostou
         // vzhůru, tedy k balíčkům uprostřed stolu, proto je jejich počet zastropovaný a
         // přeplněná řada se místo další řady jen zhustí.
-        const myBand = boardBand(myBoardCards.length, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
+        // Divoký západ – Greygory Deck: dvojice líznutých postav zabírá sloty v pásu,
+        // takže se musí započítat do bandu (jinak by řada dosáhla až na balíčky). Kreslí
+        // se až za skutečnými kartami, aby se jejich indexy nehnuly (viz positions.js).
+        const _myGrey = me?._greygoryChars || [];
+        const myBand = boardBand(myBoardCards.length + _myGrey.length, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
         const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action);
         // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
         // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
@@ -1643,6 +1656,24 @@ function drawMyArea(ctx) {
             bSprite._zoomKey = card.id;
             bSprite.on('pointerover', () => startCardZoom(tex, card.id));
             bSprite.on('pointerout', scheduleZoomFade);
+        });
+
+        // Divoký západ – Greygory Deck: moje líznutá dvojice. Cílit na ni nejde (není to
+        // karta ve hře, jen počítadlo schopností), zvětšit ano – text schopnosti je na ní
+        // vysázený drobně. Klíč zoomu i reflowu je vlastní, s ID karet se nepotká.
+        _myGrey.forEach((name, k) => {
+            const s = boardSlot(myBoardCards.length + k, myBand);
+            const gx = roleX - (myCardW + L.boardGap) - s.col * myBand.step;
+            const gy = myBaseY - s.row * (boardCardH + L.boardGap);
+            const gTex = getCharTex(name);
+            const gKey = 'greygory:me:' + k;
+            const gSprite = gameScene.add.image(gx, gy, gTex).setScale(scaleMe);
+            gameScene.cardsSprites.add(gSprite);
+            gSprite.setInteractive({ useHandCursor: false });
+            gSprite._zoomKey = gKey;
+            gSprite.on('pointerover', () => startCardZoom(gTex, gKey));
+            gSprite.on('pointerout', scheduleZoomFade);
+            reflowCard('mb_' + gKey, gSprite, gx, gy, gTex, scaleMe, 0);
         });
 
         // Fistful – Odražená střela: karta, o kterou právě jde. Ať hráč vidí, co brání
@@ -2621,9 +2652,15 @@ function drawSpectatorPlayer(ctx) {
         // Hra pro 3 (Město duchů): role jsou odkryté u všech, viz drawOpponents.
         const _roleSlot = !!state.mode3p || (isDead && !deathCardsStillShown(0));
         const allBoard = [];
-        if (_roleSlot) allBoard.push({ _isRole: true, _roleTex: deadRoleMap[player.role] || 'role_card_back' });
+        if (_roleSlot) allBoard.push({ _isRole: true, _pseudo: true, _zoomKey: 'role:0',
+                                       _tex: deadRoleMap[player.role] || 'role_card_back' });
         if (player.weapon && player.weapon.id !== -1) allBoard.push(player.weapon);
         if (player.board) allBoard.push(...player.board);
+        // Divoký západ – Greygory Deck: líznutá dvojice postav leží na konci pásu
+        // (stejně jako u soupeřů v drawOpponents) – schopnost je veřejná.
+        (player._greygoryChars || []).forEach((nm, k) => allBoard.push({
+            _pseudo: true, _tex: getCharTex(nm), _zoomKey: 'greygory:0:' + k
+        }));
 
         const firstRowN = Math.min(allBoard.length, 3);
         const groupW = (firstRowN + 1) * cW + firstRowN * g;
@@ -2653,17 +2690,17 @@ function drawSpectatorPlayer(ctx) {
                   backgroundColor: 'rgba(0,0,0,0.65)', padding: { x: 5, y: 3 } }).setOrigin(0.5, 1)
         );
 
-        const texOf = (c) => c._isRole ? c._roleTex : getTex(c.id);
+        const texOf = (c) => c._pseudo ? c._tex : getTex(c.id);
         // Skrytá při letu Paniky/Cat Balou i při odhazování karet po smrti; karta role
         // se nekreslí, dokud letí doprostřed obrazovky (fáze 'settled').
         const stealHidden = (c) => c._isRole
             ? (_deathStage === 'settled' || App.roleShuffleHide.has(0))
-            : App.stealHideIds.has(c.id);
-        const specBoardKey = (c) => 'ob0_' + (c._isRole ? 'role' : c.id);
+            : (!c._pseudo && App.stealHideIds.has(c.id));
+        const specBoardKey = (c) => 'ob0_' + (c._pseudo ? c._zoomKey : c.id);
         // Divák si karty jen prohlíží (nikam neklika), ale zvětšit si je musí umět stejně
         // jako hráč – včetně odhalené karty role (klíč jako v drawOpponents).
         const specZoom = (img, c) => {
-            const key = c._isRole ? 'role:0' : c.id;
+            const key = c._pseudo ? c._zoomKey : c.id;
             img.setInteractive({ useHandCursor: false });
             img._zoomKey = key;
             img.on('pointerover', () => startCardZoom(texOf(c), key));

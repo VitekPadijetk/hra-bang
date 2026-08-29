@@ -75,14 +75,9 @@ const WILD_WEST_CHARACTERS = [
     "John Pain", "Lee Van Kliff", "Teren Kill", "Youl Grinner"
 ];
 
-// …a podmnožina, která už MÁ schopnost, tedy ta, která smí do OSTRÉ hry. Seznam roste
-// s každou fází implementace (docs/wild-west-show-plan.md §10) a zmizí, až budou hotové
-// všechny – pak se `_characterPool` bude ptát rovnou na WILD_WEST_CHARACTERS.
-// Chybí: Greygory Deck (fáze 10).
-const WILD_WEST_READY = [
-    "Big Spencer", "Flint Westwood", "Gary Looter", "John Pain", "Lee Van Kliff",
-    "Teren Kill", "Youl Grinner"
-];
+// …a podmnožina, která už MÁ schopnost, tedy ta, která smí do OSTRÉ hry. Od fáze 10 to
+// je celý seznam – zůstává jako pojistka pro budoucí rozšíření, ne kvůli rozdílu.
+const WILD_WEST_READY = [...WILD_WEST_CHARACTERS];
 
 class Card {
     constructor(id, name, type, suit, value, props = {}) {

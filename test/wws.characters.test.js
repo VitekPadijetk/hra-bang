@@ -476,10 +476,8 @@ test('Flint Westwood: bot schopnost použije', () => {
 test('_characterPool: ostrá hra bere jen hotové postavy Divokého západu', () => {
     const g = mkGame([{}, {}]);
     const pool = g._characterPool({ expansions: { divoky_zapad: true } });
-    ['Big Spencer', 'Flint Westwood', 'Gary Looter', 'John Pain', 'Lee Van Kliff', 'Teren Kill', 'Youl Grinner']
-        .forEach(c => assert.ok(pool.includes(c), `${c} chybí v ostrém poolu`));
-    ['Greygory Deck']
-        .forEach(c => assert.ok(!pool.includes(c), `${c} ještě nemá schopnost, do ostré hry nepatří`));
+    // Od fáze 10 mají schopnost všechny – do ostré hry jdou tedy všechny.
+    WILD_WEST_CHARACTERS.forEach(c => assert.ok(pool.includes(c), `${c} chybí v ostrém poolu`));
     // Bez rozšíření se nepřidá nic.
     assert.equal(g._characterPool({}).some(c => WILD_WEST_CHARACTERS.includes(c)), false);
     // Debug hra nabízí všech osm (ať se dá vyzkoušet i dráha životů bez pravidel).

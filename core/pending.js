@@ -44,6 +44,8 @@ function pendingActor(state) {
         case 'GRINNER_GIVE':     return state.pendingGrinner?.queue?.length
             ? { idx: state.pendingGrinner.queue[0], kind: 'GRINNER_GIVE' } : null;
         case 'NEW_IDENTITY':     return state.pendingNewIdentity ? { idx: state.pendingNewIdentity.playerIdx, kind: 'NEW_IDENTITY' } : null;
+        // Divoký západ – Greygory Deck: nechat si dvojici postav, nebo líznout novou?
+        case 'GREYGORY_OFFER':   return state.pendingGreygory ? { idx: state.pendingGreygory.playerIdx, kind: 'GREYGORY_OFFER' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         case 'EL_GRINGO_STEAL':  return state.pendingElGringoSteal ? { idx: state.pendingElGringoSteal.playerIdx, kind: 'EL_GRINGO_STEAL' } : null;
@@ -83,6 +85,7 @@ const _WAIT_LABELS = {
     ROULETTE_DISCARD:      'Ruská ruleta – odhazuje Vedle!',
     GRINNER_GIVE:          'Youl Grinner – dává kartu',
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
+    GREYGORY_OFFER:        'Greygory Deck – vybírá si postavy',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     EL_GRINGO_STEAL:       'El Gringo – bere kartu',

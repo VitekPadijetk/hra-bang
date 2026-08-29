@@ -82,7 +82,7 @@ const HighNoonMixin = {
     // platnosti schopností (Kocovina) + okamžité líznutí Suzy, 4 = okamžitý efekt karty
     // High Noon, 5 = okamžitý efekt karty Fistful, 6 = Pravé poledne, 7 = zásahy od
     // Fistful of Cards, 8 = Nová identita, 9 = Pokrevní bratři (Fistful),
-    // 10 = Miláček Valentýn (Divoký západ).
+    // 10 = výměna postav Greygoryho Decka, 11 = Miláček Valentýn (oba Divoký západ).
     _beginTurn() {
         this._beginTurnStep = 0;
         // Želízka (High Noon) platí přesně jeden tah. Barvu je nutné zahodit hned na
@@ -147,12 +147,16 @@ const HighNoonMixin = {
         // Divoký západ – Hřbitov je krok 0b, hned ZA Mrtvým mužem: vyřazený hráč musí být
         // zpátky ve hře dřív, než na něj cokoli dopadne, a Mrtvý muž má přednost (vrací
         // se s 2 životy a 2 kartami, což je striktně lepší, a je jednorázový).
+        // Divoký západ – Greygory Deck si dvojici postav vyměňuje TĚSNĚ PŘED Valentýnem:
+        // je to „na začátku svého tahu", ale schopnosti, které si tím pořídí, mají platit
+        // na celý tah – tedy i na výměnu ruky Valentýnem a na kontroly Dynamit/Vězení
+        // (Lucky Duke!), které přijdou hned za krokovačem.
         const steps = [this._deadManReturn, this._boneOrchardReturn,
                        this._flipEvent, this._applyAbilitiesOnEnter,
                        this._applyEventOnEnter,
                        this._applyFfEventOnEnter, this._noonDamage, this._fistfulHits,
                        this._newIdentityOffer, this._startBloodBrothers,
-                       this._startValentine];
+                       this._greygoryOffer, this._startValentine];
         while (this._beginTurnStep < steps.length) {
             const step = steps[this._beginTurnStep++];
             if (step.call(this)) return true;

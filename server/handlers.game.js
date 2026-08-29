@@ -968,6 +968,17 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Divoký západ – Greygory Deck: na začátku tahu si nechá dvojici postav, nebo si
+    // lízne novou. Schopnost je veřejná, takže se nic neredaguje – stav dorazí sám.
+    on('greygory_choice', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingGreygory?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            if (!gs.resolveGreygory(idx, !!(d && d.swap))) return;
+            broadcastRoom(room);
+        });
+    });
+
     // Pivo zruší ztrátu života od Pravého poledne (obdoba beer_dynamite_save).
     on('beer_noon_save', (d) => {
         withRoom((room, p, gs) => {
