@@ -26,7 +26,23 @@ function evaluateWinner3p(players, winClaimIdx) {
 }
 
 // opts.mode3p / opts.winClaimIdx – viz evaluateWinner3p. Bez nich platí klasická pravidla.
+// opts.lastManStanding – Divoký západ (karta „Divoký západ"), viz níže.
 function evaluateWinner(players, opts = {}) {
+    // Divoký západ (Wild West Show), karta vespod balíčku: „Cílem každého hráče se stává:
+    // Zůstaň poslední ve hře!" Výhra je INDIVIDUÁLNÍ, takže se vypisuje JMÉNO hráče, ne
+    // role – a smrt šerifa hru nekončí. Role samy zůstávají v platnosti (šerif nesmí do
+    // vězení, odměna za banditu i pokuta za pomocníka platí dál, FAQ Q15) – to ale řeší
+    // pravidla jinde, sem patří jen podmínka konce.
+    //
+    // Musí to padnout PŘED větví pro 3 hráče: pod touhle kartou přestávají platit cíle
+    // v kruhu (TARGET_3P) i nárok získaný vyřazením vlastního cíle (`winClaimIdx`).
+    //
+    // Nula živých nastat nemůže – vyřazení jde vždy po jednom (`handlePlayerDeath`
+    // vyhodnotí výhru po každém), takže se předposlední smrtí vítěz najde.
+    if (opts.lastManStanding) {
+        const alive = players.filter(p => p.health > 0 || p._ghost);
+        return alive.length === 1 ? `${alive[0].name} vyhrál!` : null;
+    }
     if (opts.mode3p) return evaluateWinner3p(players, opts.winClaimIdx);
 
     // High Noon – Město duchů: duch (`_ghost`) je na svůj tah zpátky ve hře, takže se

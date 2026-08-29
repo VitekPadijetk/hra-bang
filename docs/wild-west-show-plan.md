@@ -1263,7 +1263,7 @@ Plus rozšíření stávajících:
 Každá fáze končí zeleným `npm test` a bootem serveru. Fáze 0 je hratelná — karty jsou
 ve hře a odkrývají se, jen ještě nic nedělají.
 
-> **Stav: fáze 0, 1, 2, 2b, 3, 4, 5, 6 a 7 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
+> **Stav: fáze 0, 1, 2, 2b, 3, 4, 5, 6, 7 a 8 hotové.** Data, mixin, spouštěč (Dostavník / Wells Fargo), redakce,
 > třetí sloupec, loader, intro (`wws_top` → `shuffle_wws` → `wws_bottom`) i zaškrtávátka
 > v lobby / hře botů / debugu; k tomu dráha životů nad 5 (fáze 1) a životy postav.
 > **Postavy 34–41 jsou v `characters.json`, jako `WILD_WEST_CHARACTERS` i s vlastními
@@ -1414,6 +1414,26 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 >   automaticky – FAQ Q09), takže celý efekt proběhne synchronně a viditelný je jen
 >   animacemi. `_wwsResumeDraw` proto nevznikl.
 >
+> **Fáze 8 rozhodla tři věci, které §4.10 nechává otevřené:**
+>
+> - **`lastManStanding` přebíjí i hru pro 3 hráče – včetně už ZÍSKANÉHO nároku.** Plán počítal
+>   jen s větví navíc v `evaluateWinner` před `if (opts.mode3p)`. Jenže `_winClaim3p` se
+>   nastavuje v `handlePlayerDeath` (logic/combat.js), a kdyby se ukládal dál, tvrdil by log
+>   „a vyhrává (vlastní cíl)" o hráči, který nevyhrál nic. Nárok se proto pod kartou
+>   ani nezískává. Odměna 3 karet za vyřazení zůstává.
+> - **Debug hra má vlastní větev.** `checkWinCondition` v ní výhru jen loguje (hra pokračuje),
+>   takže by se jinak i pod kartou hlásilo „Bandité by vyhráli" v okamžiku, kdy šerif
+>   umřel a hra běží dál. Pod kartou hlásí „<jméno> by vyhrál!" až u posledního živého.
+> - **Nulu živých není potřeba řešit.** Vyřazení jde vždy po jednom a `handlePlayerDeath`
+>   vyhodnotí výhru po každém z nich, takže se vítěz najde už předposlední smrtí –
+>   i u rozložených zásahů (dynamit, Pravé poledne, Fistful of Cards, Ruská ruleta).
+>   Vzorec `alive.length === 1` proto stačí.
+>
+> **Šerif smí umřít a hra běží dál** – High Noon si to zvládl sám: odkrývání událostí
+> se už dnes ptá `_eventFlipperIdx` (logic/highNoon.js), které při mrtvém prvním hráči
+> posune „šerifovu pozici" na dalšího živého. Bez toho by se s jeho smrtí zastavil celý
+> balíček High Noonu i Fistfulu.
+>
 > **Redakce dostala nové jediné pravidlo:** odkrytou roli drží **výhradně** `_roleRevealed`.
 > Dnešní `health <= 0` z ní muselo ustoupit – jinak by role přerozdaná mezi vyřazenými hráči
 > utekla klientovi hned prvním broadcastem. Stejné pravidlo platí pro `computeBeliefs`
@@ -1433,7 +1453,7 @@ ve hře a odkrývají se, jen ještě nic nedělají.
 | **5** ✅ | Teren Kill | pozastavení vyřazení, Pivo vs. sejmutí | střední |
 | **6** ✅ | Lee Van Kliff | paměť poslední hnědé karty, opakování efektu | střední |
 | **7** ✅ | Role | Hřbitov, Helena Zontero (redakce, ledger, výhra) | **vysoké** |
-| **8** | Divoký západ | podmínka výhry, bot | střední |
+| **8** ✅ | Divoký západ | podmínka výhry, bot | střední |
 | **9** | Roubík | chat, odložená fronta, **hlášky botů (`core/botChat.js`)** | nízké |
 | **10** | `hasAbility` + Greygory Deck | refaktor ~45 míst, pak postava | **vysoké (šířka)** |
 | **11** | Lady Růže z Texasu | výměna sedadel, přemapování indexů, animace | **vysoké** |

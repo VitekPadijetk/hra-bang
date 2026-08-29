@@ -143,7 +143,10 @@ const CombatMixin = {
         if (this.mode3p) {
             if (killerIdx !== null && killerIdx !== deadIdx) {
                 this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: killerIdx, cardsNeeded: 3 });
-                if (killer && TARGET_3P[killer.role] === deadPlayer.role) this._winClaim3p = killerIdx;
+                // Divoký západ (karta vespod): cíle v kruhu přestávají platit, vyhrává
+                // poslední živý – nárok se tedy nezískává (viz core/winCondition.js).
+                if (killer && TARGET_3P[killer.role] === deadPlayer.role
+                    && !this.hasEvent('DIVOKY_ZAPAD')) this._winClaim3p = killerIdx;
             }
         }
         else if (deadPlayer.role === "Outlaw" && killerIdx !== null && killerIdx !== deadIdx) {

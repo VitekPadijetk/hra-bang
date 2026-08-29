@@ -942,6 +942,53 @@ test('20 her jen botů jede i s balíčkem samých Hřbitovů a Helen Zontero', 
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Hřbitovem');
 });
 
+// Karta „Divoký západ“ (ta vespod balíčku) je pro bota nejrizikovější: přepisuje podmínku
+// výhry na „zůstaň poslední ve hře“, takže přestává platit dělení na strany. Bez větve
+// `lastManStanding` v roleHostility (core/beliefs.js) by strana šerifa v koncovce jen lízala
+// a odhazovala – spojenec podle role není nepřítel – a hra by nikdy nedoběhla.
+test('20 her jen botů jede i s balíčkem samých Divokých západů', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const wwsEv = (key) => {
+        const c = wwsCardData.find(x => x.key === key);
+        return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
+    };
+    let flipped = 0;
+    try {
+        for (let k = 0; k < 20; k++) {
+            const n = 3 + (k % 6);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            const opts = { expansions: { dodge_city: true, high_noon: k % 2 === 0,
+                                         fistful: k % 3 === 0, divoky_zapad: true } };
+            const room = { id: 'wws6_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Samé Divoké západy: první Dostavník kartu odkryje a už se nevymění.
+            gs.wwsDeck = new Array(13).fill(0).map(() => wwsEv('DIVOKY_ZAPAD'));
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `WWS6 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `WWS6 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+            if (gs.wwsPile.length) {
+                flipped++;
+                // Pod kartou vyhrává JEDEN hráč, a to jménem – ne strana.
+                const alive = gs.players.filter(p => p.health > 0 || p._ghost);
+                assert.equal(alive.length, 1, `WWS6 hra #${k}: zůstal jediný živý`);
+                assert.equal(gs.winner, `${alive[0].name} vyhrál!`, `WWS6 hra #${k}: výhra je jmenná`);
+            }
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.ok(flipped >= 10, `Divoký západ se opravdu odkrýval (jen ${flipped} z 20 her)`);
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Divokým západem');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

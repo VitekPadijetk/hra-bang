@@ -425,23 +425,31 @@ class GameState {
     }
 
     checkWinCondition() {
+        // Divoký západ (karta vespod balíčku Wild West Show): „Zůstaň poslední ve hře!"
+        // Výhra je individuální a smrt šerifa hru nekončí – viz core/winCondition.js.
+        const lastManStanding = this.hasEvent('DIVOKY_ZAPAD');
         if (this.isDebug) {
             const alive = this.players.filter(p => p.health > 0);
-            const sheriff = alive.find(p => p.role === "Sheriff");
-            const outlaws = alive.filter(p => p.role === "Outlaw");
-            const renegades = alive.filter(p => p.role === "Renegade");
             let result = null;
-            if (!sheriff) {
-                result = alive.length === 1 && alive[0].role === "Renegade"
-                    ? "Odpadlík by vyhrál!" : "Bandité by vyhráli!";
-            } else if (outlaws.length === 0 && renegades.length === 0) {
-                result = "Zákon by vyhrál!";
+            if (lastManStanding) {
+                if (alive.length === 1) result = `${alive[0].name} by vyhrál!`;
+            } else {
+                const sheriff = alive.find(p => p.role === "Sheriff");
+                const outlaws = alive.filter(p => p.role === "Outlaw");
+                const renegades = alive.filter(p => p.role === "Renegade");
+                if (!sheriff) {
+                    result = alive.length === 1 && alive[0].role === "Renegade"
+                        ? "Odpadlík by vyhrál!" : "Bandité by vyhráli!";
+                } else if (outlaws.length === 0 && renegades.length === 0) {
+                    result = "Zákon by vyhrál!";
+                }
             }
             if (result) this.logEvent('system', { msg: `DEBUG – ${result} (hra pokračuje)` });
             return;
         }
         // mode3p/_winClaim3p: hra pro 3 hráče (Město duchů) – viz core/winCondition.js.
-        const w = evaluateWinner(this.players, { mode3p: this.mode3p, winClaimIdx: this._winClaim3p });
+        const w = evaluateWinner(this.players, { mode3p: this.mode3p, winClaimIdx: this._winClaim3p,
+                                                 lastManStanding });
         if (w) {
             this.winner = w;
             this.logEvent('win', {

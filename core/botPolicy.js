@@ -183,6 +183,8 @@ function hostOpts(state, beliefs, myIndex) {
         renegadesAlive: estimateOtherRenegadesAlive(state, beliefs, myIndex) > 0.5,
         // Hra pro 3 (Město duchů): nepřátelskost je cyklická, ne po stranách.
         mode3p: !!state.mode3p,
+        // Divoký západ (karta vespod): vyhrává poslední živý, takže je nepřítelem každý.
+        lastManStanding: eventActive(state, 'DIVOKY_ZAPAD'),
     };
 }
 

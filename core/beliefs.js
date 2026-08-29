@@ -33,7 +33,13 @@ function roleHostility(myRole, targetRole, opts = {}) {
     // KAŽDÝ. Můj určený nepřítel má prioritu – jeho vyřazením hru rovnou vyhraju; třetí
     // hráč musí umřít taky (novým cílem je pak zůstat naživu jako poslední), ale výhru
     // sám nepřinese.
-    if (opts.mode3p) return TARGET_3P[myRole] === targetRole ? 3 : 1;
+    if (opts.mode3p && !opts.lastManStanding) return TARGET_3P[myRole] === targetRole ? 3 : 1;
+    // Divoký západ (karta vespod balíčku Wild West Show): „Zůstaň poslední ve hře!"
+    // Vyhrát může jen jeden, takže je nepřítelem KAŽDÝ – bez téhle větve by strana
+    // šerifa v koncovce jen lízala a odhazovala (spojenec podle role není nepřítel)
+    // a hra jen botů by nedoběhla. Stejná past, jakou už jednou vyřešilo
+    // nouzové cílení (DESPERATE_ENEMY_P, core/botPolicy.js).
+    if (opts.lastManStanding) return 1;
     if (myRole === 'Outlaw') {
         if (targetRole === 'Sheriff')  return 3;
         if (targetRole === 'Deputy')   return 2;
