@@ -257,8 +257,8 @@ const ResponseMixin = {
                 isValid = playsAsBang(this, player, card);
                 // High Noon – Kazatel: kartu Bang! nesmí hráč zahrát ani jako reakci
                 // v duelu, když je zrovna ON na tahu (FAQ H2). Duel pak automaticky
-                // prohrává, protože nemá čím odpovědět. Zákaz platí na KARTU Bang!,
-                // takže pod Zúčtováním (Divoký západ) odpoví jinou kartou.
+                // prohrává, protože nemá čím odpovědět. Pod Zúčtováním (Divoký západ) je
+                // kartou Bang! každá karta, takže se duel na svém tahu prohrává vždycky.
                 if (isValid && preacherBlocks(this, player, playerIdx, card)) isValid = false;
             }
 

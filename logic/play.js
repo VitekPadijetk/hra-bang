@@ -143,8 +143,9 @@ const PlayMixin = {
 
         // High Noon – Kazatel: ve svém tahu nesmí hráč zahrát kartu Bang! (ani Willy,
         // ani s Volcanicem, ani Calamity Janet s kartou Vedle! – FAQ H5). Karty
-        // s bang-efektem (Úder, Nůž…) to neomezuje, nejsou to karty Bang! – a stejně tak
-        // ne karta, která je Bang! jen pod Zúčtováním (Divoký západ), viz preacherBlocks.
+        // s bang-efektem (Úder, Nůž…) to neomezuje, nejsou to karty Bang!; pod Zúčtováním
+        // (Divoký západ) je naopak zakázaná i karta, která je Bang! jen „jako by"
+        // (kartou Bang! je tam každá) – rozhoduje o tom preacherBlocks.
         if (!isEffect && preacherBlocks(this, attacker, attackerIdx, card)) return;
 
         if (!isEffect && !isWilly && !hasVolcanic && attacker.bangsPlayedThisTurn >= this._bangLimit()) {

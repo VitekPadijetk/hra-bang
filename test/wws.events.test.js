@@ -175,18 +175,38 @@ test('Zúčtování × Želízka: barva karty omezuje pořád', () => {
     assert.equal(g.phase, 'RESPOND');
 });
 
-test('Zúčtování × Kazatel: zákaz míří na KARTU Bang!, ne na roli', () => {
-    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+// Bug 36: pod Zúčtováním je kartou Bang! KAŽDÁ karta, takže Kazatel zakazuje výstřel
+// úplně – vlastní akce karet (vypít Pivo) tím ale dotčené nejsou.
+test('Zúčtování × Kazatel: nejde vystřelit vůbec ničím', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'ZUCTOVANI');
     g.activeEvent = hn('KAZATEL');
     const b = bang(g, 0);
     const p = beer(g, 0);
     assert.equal(preacherBlocks(g, g.players[0], 0, g.players[0].hand[b]), true);
-    assert.equal(preacherBlocks(g, g.players[0], 0, g.players[0].hand[p]), false);
+    assert.equal(preacherBlocks(g, g.players[0], 0, g.players[0].hand[p]), true);
     assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[b]), false);
+    assert.equal(showdownBangOk(g, g.players[0], 0, g.players[0].hand[p]), false,
+        'tlačítko „zahrát jako Bang!" se nenabídne');
     g.playBang(0, 1, b);
     assert.equal(g.phase, 'PLAY', 'karta Bang! neprošla');
     g.playBang(0, 1, p);
-    assert.equal(g.phase, 'RESPOND', 'Pivo jako Bang! projde');
+    assert.equal(g.phase, 'PLAY', 'ani Pivo jako Bang! neprojde');
+    // Vlastní akce karty zůstává: zraněný hráč se Pivem napije.
+    assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[1]), true);
+    g.playCard(1);
+    assert.equal(g.players[0].health, 4, 'Pivo se vypilo normálně');
+});
+
+test('Zúčtování × Kazatel: duel na svém tahu se prohrává (není čím odpovědět)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    g.activeEvent = hn('KAZATEL');
+    beer(g, 0);
+    g.phase = 'RESPOND';
+    g.pendingResponse = { active: true, originatorIdx: 1, targetIdx: 0,
+        requiredCard: CardType.BANG, sourceCard: CardType.DUEL, responded: [] };
+    assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[0]), false);
+    g.handleResponse(0, 0);
+    assert.equal(g.players[0].hand.length, 1, 'karta z ruky neodešla');
 });
 
 test('Kazatel bez Zúčtování drží Calamity Janet i její Vedle! (FAQ H5)', () => {

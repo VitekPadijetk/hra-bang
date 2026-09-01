@@ -108,14 +108,20 @@ function playsAsMissed(state, me, card) {
 
 // High Noon – Kazatel: ve svém tahu nesmí hráč zahrát KARTU Bang! – ani jako reakci
 // v duelu (FAQ H2). Zákaz míří na KARTU, ne na roli, ve které se hraje: Calamity Janet
-// pod něj spadá i se svým Vedle! (FAQ H5, karta se jí na Bang! doslova mění), zatímco
-// pod Zúčtováním (Divoký západ) je jiná karta zahraná „jako by to byl Bang!" pořád tou
-// svou kartou, takže projde. Bez `card` odpovídá na obecné „platí teď Kazatel?".
+// pod něj spadá i se svým Vedle! (FAQ H5, karta se jí na Bang! doslova mění) – a pod
+// Zúčtováním (Divoký západ) i libovolná karta, protože tou se jako Bang! zahrát dá taky.
+// Vlastní akce karet tím dotčené nejsou: preacherBlocks se ptá jen tam, kde se STŘÍLÍ
+// (větev pro Bang! v nativePlayInTurn, showdownBangOk, Odstřelovač, Odražená střela
+// a obrana v duelu), takže Pivo se pod Kazatelem vypít pořád dá.
+// Bez `card` odpovídá na obecné „platí teď Kazatel?".
 function preacherBlocks(state, me, myIndex, card) {
     if (!bangBlockedFor(state, myIndex)) return false;
     if (!card) return true;
-    return card.type === "Bang!" ||
-        (hasAbility(me, "Calamity Janet") && card.type === "Vedle!");
+    if (card.type === "Bang!") return true;
+    if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return true;
+    // Zúčtování (Divoký západ): kartou Bang! je KAŽDÁ karta, kterou se hráč rozhodne
+    // jako Bang! zahrát, takže Kazatel pod ním výstřel zakazuje úplně (bug 36).
+    return eventActive(state, 'ZUCTOVANI');
 }
 
 // Divoký západ – Zúčtování: smí hráč TOUHLE kartou právě teď vystřelit, i když to karta
@@ -130,6 +136,7 @@ function showdownBangOk(state, me, myIndex, card) {
     if (card.type === "Bang!") return false;                                  // řeší větev pro pravý Bang!
     if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return false;
     if (card.bangEffect && !card.green) return false;                         // Úder a spol. míří samy
+    if (preacherBlocks(state, me, myIndex, card)) return false;               // Kazatel (High Noon)
     return bangLimitFree(state, me) || ricochetAvailable(state, me, myIndex) ||
            sniperOffer(state, me, myIndex, card);
 }
