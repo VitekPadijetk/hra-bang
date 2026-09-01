@@ -5,7 +5,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
 
 - Čísla jsou TRVALÁ. Nikdy se nepřečíslovávají a hotová čísla se neuvolňují —
   odkazuju se na ně v commitech i v zadání session.
-- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 24
+- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 65
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -39,15 +39,50 @@ H — bez herní logiky          10, 17                index.html, assets/, char
   Vizuální bugy jsou schválně pohromadě (A, B, D): render nejde ověřit
   automaticky, takže jedna kontrola v prohlížeči pokryje celý batch.
 
+DRUHÁ VLNA (bugy 23–64) — pořadí je doporučené, jde od nejlevnějšího
+
+I — Zúčtování a Právo západu   26, 30, 32, 34, 36, 55
+      core/playability.js, core/selection.js, view/board.js (slot tlačítek), logic/fistful.js
+J — letící karty a otáčení     28, 29, 37, 45, 49, 59
+      net/handlers.js, server/anim.js
+K — cinematiky Divokého záp.   54, 60, 61
+      core/wwsAnim.js, net/handlers.js, server/anim.js, server/rooms.js (redakce rolí)
+L — Greygory Deck              40, 41
+      view/board.js, positions.js, core/layout.js, net/handlers.js, core/wwsAnim.js, logic/wildWest.js
+M — deska: zvýraznění a míry   31, 42, 43, 44, 50, 52, 56, 57
+      view/board.js, core/layout.js, positions.js (+ logic/highNoon.js u 44)
+N — okna → klikání na desce    27, 35, 63
+      view/screens.js, view/board.js, game.js, logic/wildWest.js, logic/draw.js
+O — Divoký západ: pravidla     38, 47, 48, 51, 58, 64
+      logic/wildWest.js, core/playability.js, logic/play.js, server/handlers.lobby.js
+P — pravidla ostatní           23, 25, 33, 39, 62
+      logic/dodgeCity.js, core/distance.js, logic/highNoon.js, core/pending.js,
+      logic/entities.js, logic/fistful.js, server/lifecycle.js
+Q — boti a server              24, 46, 53
+      core/botPolicy.js, server/bots.js, server/intro.js, server/handlers.lobby.js, chat.js
+
+  Proč právě takhle (šetření tokenů):
+  - Tři velké soubory se čtou jen v pár batchích: core/playability.js celý v I,
+    net/handlers.js v J/K/L, view/board.js v L/M/N. V ostatních batchích se do
+    nich už nesahá — a i tam se do nich chodí GREPEM, ne čtením celého souboru.
+  - P a Q se nedotknou žádného velkého souboru → nejlevnější, dobré na začátek.
+  - I je předpoklad pro N (bug 30/34 zavádí povinné tlačítko „zahrát jako Bang!",
+    o které se opírá 27/35 při klikání na desce) → dělej I před N.
+  - J před K a L: 54/60/61 i 40 jsou nové cinematiky nad stejnými helpery, které
+    J narovná (otáčení podle strany, rub vs. líc).
+  - M je záměrně velký (8 drobností v jednom souboru) — jedna kontrola
+    v prohlížeči pokryje všech osm. Kdyby session narůstala, uřízni na konci
+    42 + 56 (obě jsou o kartě životů) do vlastního doběhu.
+
 
 OTEVŘENÉ
 --------
 
 - 23 zkontroluj jestli funguje derringer správně s léčkou
 - 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě)
-- 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif. Taky když jsem tento poslední hráč, tak se mi zeleně ukáží karty až po HN/FF do té doby pořád šedé
+- 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif. Taky když jsem tento poslední hráč, tak se mi zeleně ukáží karty až po HN/FF do té doby pořád šedé. Taky byl problém, že madam zuzana posledního hráče se vyhodnotila až po jejich odhalení
 - 26 když zahraju jinou kartu u práva západu než je ta kterou musím (př. byla wells fargo, zahráli jsme bang) tak to nějak divně blikalo, vracelo se a podobně
-- 27 veře custer se na obrazovku nevejde 7 postav vedle sebe, pokud se hraje v 8, chtělo by to více smrsknout. Oddělej ty texty co tam jsou s názvy postav a taky hvězdička šerifa a karty HN/FF překrývají tyto karty postav, měla by být pod nimi
+- 27 veře custer se na obrazovku nevejde 7 postav vedle sebe, pokud se hraje v 8, uděláme to tak, že se jí zvýrazní postavy normálně ve hře a ona si vybere, ne žádné special okno (prostě zvýraznění třeba jak když na někoho střílím)
 - 28 john pain ta karta by z toho jak je velká odhalená měla letět hned k johnu painovi, ne že na balíček a až pak k němu (obdobná animace jako black jack de facto to je)
 - 29 když se karty odhozené dají vulture samovi, jdou vidět jako odhalené, ne jako rubové, někde se ztatilo otočení. Insta se otočí jak skončí odhalení role
 - 30 u zúčtování a karet které se dají hrát jako bang tak dej prosím u všech povinně to tlačítko použít jako bang (i u vedle a úhybu). U karet bang jako vedle to není třeba
@@ -56,7 +91,35 @@ OTEVŘENÉ
 - 33 pokud duch ukončí hru během města duchů, nejedná se o živou postavu a nemá tak nárok na zachování postavy v další hře
 - 34 byl problém když bylo zúčtování, já jsem měl barel, měl jsem druhý barel v ruce a kliknul na sebe, tak jsem na sebe vystřelil, mělo by to být až s tím zmáčknutím tlačítka (provázáno s bugem 30)
 - 35 u miláčka valentýna bych na všechny ty karty měl kliknout já, ne automatika
-
+- 36 když je zúčtování a kazatel, tak by to jít hrát nemělo
+- 37 když letí karta 2 karta k black jackovi, neotočí se po cestě
+- 38 madam zuzana - taky se počítá vyložení modré/zelené karty jako zahrání karty - naopak použití zelené karty ze stolu se nepočítá jako zahrání (už zahrána byla) - zahrání karty je de facto použití z ruky
+- 39 když se snímá karta a je poslední z balíčku a pak se míchá, tak v odhozu zůstane karta co tam byla (a na ni se dá ta ze snímání), a jsou tam tak dvě, měla by tam být jen ta ze snímání a ta stará se měla též zamíchat (chvíli tak v balíčku nebude nic)
+- 40 u gregory decka bych si představoval nějakou animaci, že přiletí zase zhora balíček (čítající jen postavy, co si gregory může vzít), (pokud už měl) tak se tam přidají jeho postavy (posun + přetočení) a balíček se zamíchá, mu se dají ty dvě nové postavy a balíček hned zase odletí. Pak jak se ukazují jestli chce nechat tak taky ať z těch míst se zvětší a pak případně zmenší zpět
+- 41 postavy u gregory decka nebudeme dávat na místo vybavení, dáme je vedle sebe cca tam jak je tlačítko pro nějakou special akci - to bude mít holt posunuté víc doprava, až za těmi postavami, pro ostatní budou ty postavy (ty karty mohou být lehce menší) jakoby "nad" tedy směrem ke středu od postavy gregory decka vedle sebe. Budou zvětšitelné a budou se posouvat s postavou
+- 42 big spencer, ano zasahuje do balíčku, vyřešíme to tak (zatím řešíme jen můj pohled), že celý blok BS + 2 karty životů bude menší (zarovnaný dole), tak aby se tam vešel a když bude spencer přicházet o životy, bude se ten blok zase plynule zvětšovat, až se tam vejde, naopak když získá, tak se zase zmenší.
+- 43 když je hokynářství a balíčky ze posunou nahoru, minimálně divoký západ se posune víc než ostatní balíčky, zařiď ať se posunou stejně
+- 44 u daltonů mi svítil stetson jako že jde odhodit, lze ale jen modrou, nevím jestli to tak je i u dalších zelených karet, každopádně se pak vrátila a já musel odhodit zbraň
+- 45 v debugu mi po kliknutí na kartě u daltonů odletěla vizuálně i karta od dalšího hráče než ode mě
+- 46 v debugu se nerozlišuje, kdo píše do chatu
+- 47 když ztracím život kvůli roubíku, ať to přeruší ostatní akce (pokud teda někdo zrovna nemá ztratit život, tím pádem hned po tom, mezitím se tomu hráči zablokuje chat, aby nemohl napsat 9 zpáv a instakillnout se), budu muset kliknout na životy abych to ubral (pivo, pokud to jde, použít mohu) 
+- 48 když hráč zemře kvůli roubíku, role se odhalí nějak divně až pozdě, viz bug 47
+- 49 když se dává karta johnu painovi, neotočí se podle strany na níž je
+- 50 když se vera custer postava + životy posouvá (že si vykládá karty) tak to tam divně bliká když tam jde vidět její vybraná postava
+- 51 dejme teda efekt divokého západu ať se spusí až PO líznutí 2/3 karet z Dost/WF
+- 52 při 8 hráčích, hráči nahoře - ten co je vlevo a vpravo by měli být více k hráči nahoře uprostřed, zasahují do hráče vlevo/vpravo nahoře pokud mají vyloženo 4 a více karet (posun stačí tak o 1/2 šířky karty)
+- 53 když se rozdávají role, tak počkej ne jen na všechny hráče jak kliknou OK, ale i na to až se role rozdá i všem botům (takhle může začít míchání postav když se ještě rozdávají role)
+- 54 u zuřivé Dorothy to otočení karet pokud nemá udělejme plynulé přetočení tam i pak zpátky (jako u sacagaway)
+- 55 když je zúčtování teoreticky bych neměl mít limit co se týče karet bang mám-li volcanic (zkoušeno ještě během přestřelky a dovolilo mi to jen 2))
+- 56 když posatva co má 6 a více životů klesne na 5 životů, druhá karta životů plynule zmizí, naopak když by se měl vyléčit z 5 na 6, tak se zase plynule objeví (akorát to zbytečně zabírá místo)
+- 57 pedro ramierz pokud si vezmu první kartu z balíčku a ne z odhozu, tak by v moment kliknutí na balíček mělo zmizet zvýraznění a klikatelnost odhozu, teď na něj jde kliknout a jsou tam pak vizuálně chyby
+- 58 u lady růže i zuřivé doroty dáme limit 1x za tah pro každého
+- 59 animace gary looterovi je taková nečistá, divně to tam funguje
+- 60 když se rozdají role kvůli hřbitovu, chvilku tam jde vidět ta odhalená role (asi ta stará), až pak se objeví rubová karta
+- 61 helena zontero ta animace by chtěla zlepšít - všechny karty rolí se naskládají do balíčku doprostřed ten se zamíchá a pak se vše rozdá jako na začátku hry a všichni to potvrdí (během té doby u hráčů není vidět role)
+- 62 když je ruská ruleta, požehnání a všichni mají barel - její efekt zruš poté, co všichni ten barel použijí (ale jen když je požehnání - jelo by to do nekonečna)
+- 63 hvězdička šerifa a karta zuřivá doroty, a názvy hráčů by neměla překrývat karty u výběru zuřivé doroty
+- 64 u zuřivé doroty nemůžu poručit hráčům zahrát bang kteří už v tom kole hráli (hra si asi myslí že 1bang/tah), ale ten limit už neplatí, takže by se měli ukazovat všichni
 
 HOTOVÉ
 ------
