@@ -10,7 +10,7 @@ const path = require('path');
 const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 const { cardPlayability, nativePlayInTurn, showdownBangOk, playsAsBang, playsAsMissed,
         preacherBlocks, sniperOffer, rouletteDiscardable,
-        lawForcedCard, lawLocksOther } = require('../core/playability.js');
+        lawForcedCard, lawLocksOther, bangLimitFree } = require('../core/playability.js');
 const { getActionForCard } = require('../core/cardRules.js');
 const { decideCardClick } = require('../core/selection.js');
 const { decideBotAction } = require('../core/botPolicy.js');
@@ -571,4 +571,57 @@ test('Zúčtování × Právo západu: vynucená karta jde jako Bang! zahrát v�
     g.playBang(0, 1, m);
     assert.equal(g.phase, 'RESPOND');
     assert.equal(me.hand.length, 0);
+});
+
+// ── Zúčtování × Volcanic (bug 55) ───────────────────────────────────────────
+// Volcanic dovolí zahrát libovolný počet karet Bang!. Pod Zúčtováním je kartou Bang!
+// každá karta, takže s Volcanicem nesmí limit platit ani na ně – a to ani při Přestřelce
+// (High Noon), která limit jinak zvedá na 2.
+test('Zúčtování × Volcanic: limit neplatí ani na karty zahrané jako Bang!', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    g.activeEvent = hn('PRESTRELKA');                    // jinak by platil limit 2
+    g.players[0].weapon = mkCard(CardType.WEAPON, { name: 'Volcanic', props: { range: 1, unlimited: true } });
+    for (let k = 0; k < 4; k++) beer(g, 0);
+    const me = g.players[0];
+    for (let k = 0; k < 4; k++) {
+        g.phase = 'PLAY';
+        assert.equal(bangLimitFree(g, me), true, `limit volný před ${k + 1}. výstřelem`);
+        assert.equal(showdownBangOk(g, me, 0, me.hand[0]), true, `${k + 1}. Pivo smí jít jako Bang!`);
+        g.playBang(0, 1, 0);
+        g.pendingResponse = null; g.pendingBarrelCheck = null;
+    }
+    assert.equal(me.hand.length, 0, 'všechny čtyři karty odešly');
+    assert.equal(me.bangsPlayedThisTurn, 4);
+});
+
+test('Zúčtování bez Volcanicu: Přestřelka drží limit 2', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    g.activeEvent = hn('PRESTRELKA');
+    for (let k = 0; k < 3; k++) beer(g, 0);
+    const me = g.players[0];
+    for (let k = 0; k < 3; k++) {
+        g.phase = 'PLAY';
+        g.playBang(0, 1, 0);
+        g.pendingResponse = null; g.pendingBarrelCheck = null;
+    }
+    assert.equal(me.bangsPlayedThisTurn, 2, 'třetí už neprošel');
+    assert.equal(me.hand.length, 1);
+});
+
+// Laso (A Fistful of Cards) vypíná karty vyložené před hráči, tedy i zbraň – Volcanic
+// s ním neplatí a limit se vrací. Všechna tři rozšíření běží současně, takže se ta
+// trojice (Zúčtování + Přestřelka + Laso) potkat může.
+test('Zúčtování × Volcanic × Laso: se zamčenou zbraní limit zase platí', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    g.activeEvent = hn('PRESTRELKA');
+    g.activeFistful = ff('LASO');
+    g.players[0].weapon = mkCard(CardType.WEAPON, { name: 'Volcanic', props: { range: 1, unlimited: true } });
+    for (let k = 0; k < 3; k++) beer(g, 0);
+    const me = g.players[0];
+    for (let k = 0; k < 3; k++) {
+        g.phase = 'PLAY';
+        g.playBang(0, 1, 0);
+        g.pendingResponse = null; g.pendingBarrelCheck = null;
+    }
+    assert.equal(me.bangsPlayedThisTurn, 2, 'Laso zbraň vypnulo → platí Přestřelka');
 });
