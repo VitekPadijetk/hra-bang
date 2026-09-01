@@ -347,3 +347,39 @@ test('debug hra počítá kola událostí od prvního tahu (High Noon/Fistful)',
     assert.equal(gs.eventDeck.length, start - 1);
     assert.ok(gs.activeFistful, 'a karta Fistfulu taky');
 });
+
+// Bug 26: pravidla odmítnutou akci mlčky ignorují (karta zůstane v ruce), animace se ale
+// emitovala BEZ ohledu na výsledek – karta odletěla do odhozu a s příštím stavem se
+// vrátila do ruky. Vypadalo to jako bliknutí („zahrál jsem jinou kartu než tu vynucenou
+// Právem západu a ona se vrátila"). Teď se animace emituje až podle výsledku.
+test('odmítnutá karta se neanimuje (Želízka: špatná barva → žádný let)', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    const anims = [];
+    s.emit = (ev, data) => { if (ev === 'card_animation') anims.push(data); };
+    s.fire('debug_start', { playerCount: 3, roles: [] });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+    gs.activeEvent = highNoonCardData.find(c => c.key === 'ZELIZKA');
+
+    gs.phase = 'PLAY';
+    gs.currentPlayerIndex = 0;
+    gs.players[0]._handcuffsSuit = '♥️';
+    gs.players[0].hand = [{ id: 900, name: 'Bang!', type: 'Bang!', suit: '♠️', value: '5' },
+                          { id: 901, name: 'Panika!', type: 'Panika!', suit: '♠️', value: '5' }];
+    gs.players[0].weapon = { id: -1, name: 'Colt .45', props: { range: 1 } };
+
+    s.fire('play_bang', { attackerIdx: 0, targetIdx: 1, cardIdx: 0 });
+    assert.equal(gs.players[0].hand[0].id, 900, 'pravidla kartu odmítla – zůstala v ruce');
+    assert.deepEqual(anims, [], 'a nic neletělo');
+
+    s.fire('play_special', { attackerIdx: 0, targetIdx: 1, cardIdx: 1 });
+    assert.equal(gs.players[0].hand.length, 2, 'Panika! taky neprošla');
+    assert.deepEqual(anims, [], 'ani tady nic neletělo');
+
+    // Kontrola z druhé strany: karta správné barvy projde a animace se pošle.
+    gs.players[0].hand[0] = { id: 902, name: 'Bang!', type: 'Bang!', suit: '♥️', value: '5' };
+    s.fire('play_bang', { attackerIdx: 0, targetIdx: 1, cardIdx: 0 });
+    assert.ok(anims.some(a => a.type === 'hand_to_discard' && a.cardId === 902),
+        'povolená karta se animuje jako dřív');
+});

@@ -4,6 +4,17 @@
 const { niResultMs } = require('../core/highNoonAnim.js');
 const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 
+// Odešla karta z ruky, tedy PROŠLA pravidly? Pravidla (logic/*) odmítnutou akci mlčky
+// ignorují – karta prostě zůstane v ruce. Animace se proto emitují AŽ podle výsledku:
+// dřív odletěly bez ohledu na to, jestli se akce povedla, takže se karta u odmítnutého
+// tahu (Právo západu, Želízka, Soudce, Kazatel…) mihla do odhozu a s příštím stavem se
+// vrátila zpátky do ruky (bug 26). Hledá se podle ID, ne podle délky ruky – schopnosti
+// (Suzy Lafayette) můžou ve stejném okamžiku kartu přidat.
+function cardLeftHand(player, card) {
+    if (!card) return false;
+    return !(player?.hand || []).some(c => c && c.id === card.id);
+}
+
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     const { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, handleAutoEndTurn,
             handleReshuffleAndBroadcast, broadcastRoom, broadcastRoomDelayed } = ctx;
@@ -189,8 +200,15 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         withRoom((room, p, gs) => {
             const attacker = gs.players[d.attackerIdx];
             const card = attacker?.hand[d.cardIdx];
-            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
+            // Animace se emituje AŽ podle výsledku: pravidla můžou kartu mlčky odmítnout
+            // (Právo západu, Želízka, Kazatel, vyčerpaný limit Bang!) a dřív odletěla do
+            // odhozu tak jako tak – s dalším stavem se pak vrátila do ruky, což vypadalo
+            // jako bliknutí (bug 26). Pořadí vůči klientovi se nemění: emit je pořád před
+            // broadcastem, takže animace dorazí dřív než stav.
             gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx);
+            if (cardLeftHand(attacker, card)) {
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
+            }
             if (d.targetIdx !== d.attackerIdx) ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
             broadcastRoomDelayed(room);
         });
@@ -202,16 +220,21 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const tar = d.targetIdx !== null ? gs.players[d.targetIdx] : null;
             const card = atk?.hand[d.cardIdx];
             const isPanicCB = card?.type === 'Panika!' || card?.type === 'Cat Balou';
+            // Slot Vězení se počítá PŘED zahráním (po něm už karta na stole leží).
+            const jailBoardIdx = 1 + (tar?.board?.length || 0);
+            gs.playSpecialCard(d.attackerIdx, d.targetIdx, d.cardIdx);
+            // Odmítla-li pravidla kartu (Právo západu, Želízka, Soudce…), zůstala v ruce
+            // a nesmí se animovat nic – dřív odletěla dřív, než se o ní rozhodlo, a
+            // s dalším stavem se vrátila (bug 26).
+            if (!cardLeftHand(atk, card)) { broadcastRoomDelayed(room); return; }
             if (isPanicCB) {
                 room._pendingPanicCard = { type: card.type === 'Panika!' ? 'panic_sequence' : 'catbalou_sequence',
                     attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id };
             } else if (card?.type === 'Vězení') {
-                const jailBoardIdx = 1 + (tar?.board?.length || 0);
                 emitAnim(room, { type: 'jail_sequence', attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id, boardIdx: jailBoardIdx });
             } else {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
             }
-            gs.playSpecialCard(d.attackerIdx, d.targetIdx, d.cardIdx);
             // Cílené hostilní karty (Vězení/Panika/Cat Balou/Duel) → ledger chování (dedukce rolí).
             if (d.targetIdx != null && ['Vězení', 'Panika!', 'Cat Balou', 'Duel'].includes(card?.type)) {
                 ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
