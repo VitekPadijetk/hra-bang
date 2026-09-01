@@ -137,8 +137,13 @@ function showdownBangOk(state, me, myIndex, card) {
     if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return false;
     if (card.bangEffect && !card.green) return false;                         // Úder a spol. míří samy
     if (preacherBlocks(state, me, myIndex, card)) return false;               // Kazatel (High Noon)
-    return bangLimitFree(state, me) || ricochetAvailable(state, me, myIndex) ||
-           sniperOffer(state, me, myIndex, card);
+    // Fistful – Právo západu: obyčejný výstřel čerpá limit karet Bang!, takže jím jde
+    // vynucenou kartu „vypnout" (s Přestřelkou dvěma cizími kartami zahranými jako Bang!
+    // a povinnost je pryč). Karta sama o sobě kartou Bang! není, takže to _lawCountsBang
+    // nepozná – musí se to říct výslovně (asBang).
+    if (bangLimitFree(state, me) &&
+        !lawLocksOther(state, me, myIndex, card, { asBang: true })) return true;
+    return ricochetAvailable(state, me, myIndex) || sniperOffer(state, me, myIndex, card);
 }
 
 // Smí se karta zahrát ve své VLASTNÍ roli (Bang! střílí, Pivo léčí, modrá jde na stůl)?
@@ -359,6 +364,9 @@ function _lawDrawGain(card) {
 
 // Počítá se zahrání téhle karty do limitu „1× Bang! za tah"? (Karty s bang-EFEKTEM
 // – Úder, Springfield, zelené – se do něj nepočítají, viz playBang isEffect.)
+// POZOR: pod Zúčtováním (Divoký západ) se to z karty samotné poznat NEDÁ – kartou Bang!
+// je tam každá, ale jen když se tak zahraje. Tenhle dotaz proto odpovídá na „počítá se
+// SAMA od sebe" a volající, který kartu posílá jako Bang!, to řekne přes `opts.asBang`.
 function _lawCountsBang(me, card) {
     return !!card && !card.bangEffect &&
         (card.type === "Bang!" || (hasAbility(me, "Calamity Janet") && card.type === "Vedle!"));
@@ -392,7 +400,8 @@ function _lawAfterAction(state, me, myIndex, forcedCard, card, opts) {
     const draws = (opts.draws || 0) + _lawDrawGain(card);
     for (let k = 0; k < draws; k++) simMe.hand.push({ id: null, name: "", type: "" });
     // 3) Limit karet Bang! (Odstřelovač ani Odražená střela ho nečerpají → noBangLimit).
-    if (!opts.noBangLimit && _lawCountsBang(me, card))
+    //    `opts.asBang` = karta letí jako Bang!, i když jí sama o sobě není (Zúčtování).
+    if (!opts.noBangLimit && (opts.asBang || _lawCountsBang(me, card)))
         simMe.bangsPlayedThisTurn = (simMe.bangsPlayedThisTurn || 0) + 1;
     // 4) Doléčené životy – kvůli nim „nejde zahrát" vynucené Pivo/Salon/Whisky/Tequila.
     const heal = (p, n) => { if (isInPlay(p)) p.health = Math.max(0, Math.min(p.maxHealth, (p.health || 0) + n)); };
@@ -418,7 +427,7 @@ function _lawAfterAction(state, me, myIndex, forcedCard, card, opts) {
 // Vynucenou kartu samotnou zaplatit ani odhodit nejde vůbec (lawProtectedCard), takže
 // „zahrát Springfield a zaplatit jím povinnost" nehrozí a zbytek tahu zůstává volný.
 // `card` = karta hraná Z RUKY; null = schopnost postavy / aktivace zelené karty ze stolu.
-// `opts` = co akce udělá navíc: { discards, draws, heal, noBangLimit }.
+// `opts` = co akce udělá navíc: { discards, draws, heal, noBangLimit, asBang }.
 // Zrcadlo serverového _lawLocked.
 function lawLocksOther(state, me, myIndex, card, opts = {}) {
     if (!me || me._lawCardId == null) return false;

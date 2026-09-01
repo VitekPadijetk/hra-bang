@@ -9,7 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const { mkGame, mkCard, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 const { cardPlayability, nativePlayInTurn, showdownBangOk, playsAsBang, playsAsMissed,
-        preacherBlocks, sniperOffer, rouletteDiscardable } = require('../core/playability.js');
+        preacherBlocks, sniperOffer, rouletteDiscardable,
+        lawForcedCard, lawLocksOther } = require('../core/playability.js');
 const { getActionForCard } = require('../core/cardRules.js');
 const { decideCardClick } = require('../core/selection.js');
 const { decideBotAction } = require('../core/botPolicy.js');
@@ -494,4 +495,50 @@ test('Miláček Valentýn × Opuštěný důl: odhoz i lízání jdou mimo důl'
     for (let k = 0; k < 3; k++) g.drawCard('deck');
     assert.equal(g.deck._drawPile.length, deckBefore - 3, 'náhrady se braly z balíčku');
     assert.equal(g.players[0].hand.length, 3);
+});
+
+// ── Zúčtování × Právo západu (Fistful) ──────────────────────────────────────
+// Bug 32: výstřel pod Zúčtováním čerpá limit karet Bang! stejně jako pravý Bang!, takže
+// jím jde vynucenou kartu „vypnout". Karta sama kartou Bang! není, takže to z ní poznat
+// nejde – volající to musí říct výslovně (asBang).
+test('Zúčtování × Právo západu: cizí kartou jako Bang! nejde vyplýtvat limit', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    g.activeFistful = ff('PRAVO_ZAPADU');
+    g.activeEvent = hn('PRESTRELKA');          // limit 2 → obejít by šlo dvěma kartami
+    const b = bang(g, 0);
+    beer(g, 0);
+    beer(g, 0);
+    const me = g.players[0];
+    me._lawCardId = me.hand[b].id;
+    assert.equal(lawForcedCard(g, me, 0).card.name, 'Bang!');
+
+    // První Pivo jako Bang! projde – po něm zbývá limit i na vynucený Bang!.
+    assert.equal(showdownBangOk(g, me, 0, me.hand[1]), true);
+    g.playBang(0, 1, 1);
+    g.pendingResponse = null; g.pendingBarrelCheck = null; g.phase = 'PLAY';
+    assert.equal(me.bangsPlayedThisTurn, 1);
+
+    // Druhé už ne: vyčerpalo by limit a vynucený Bang! by přestal jít zahrát.
+    const p2 = me.hand.findIndex(c => c.name === 'Pivo');
+    assert.equal(showdownBangOk(g, me, 0, me.hand[p2]), false, 'tlačítko se nenabídne');
+    assert.equal(lawLocksOther(g, me, 0, me.hand[p2], { asBang: true }), true);
+    g.playBang(0, 1, p2);
+    assert.equal(me.bangsPlayedThisTurn, 1, 'server výstřel odmítl');
+    assert.equal(me.hand.length, 2, 'karta zůstala v ruce');
+    assert.equal(lawForcedCard(g, me, 0).card.name, 'Bang!', 'povinnost drží dál');
+});
+
+test('Zúčtování × Právo západu: vynucená karta jde jako Bang! zahrát vždycky', () => {
+    // Vynucené Vedle! nemá ve vlastním tahu vlastní akci – jediné využití je výstřel,
+    // a ten se sám sobě zamknout nesmí.
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    g.activeFistful = ff('PRAVO_ZAPADU');
+    const m = miss(g, 0);
+    const me = g.players[0];
+    me._lawCardId = me.hand[m].id;
+    assert.equal(lawForcedCard(g, me, 0).card.type, CardType.MISSED);
+    assert.equal(cardPlayability(g, me, 0, me.hand[m]), true);
+    g.playBang(0, 1, m);
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(me.hand.length, 0);
 });

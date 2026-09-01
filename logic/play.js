@@ -127,7 +127,10 @@ const PlayMixin = {
         if (!isInPlay(target)) return;
         if (this._suitBlocked(attackerIdx, card)) return;   // High Noon – Želízka
         // Fistful – Právo západu: vynucená karta musí ven jako první (viz _lawLocked).
-        if (this._lawLocked(attackerIdx, card)) return;
+        // `asBang` = tenhle výstřel čerpá limit karet Bang!, i když karta sama kartou
+        // Bang! není (Zúčtování z Divokého západu) – jinak by šlo povinnost obejít tím,
+        // že hráč limit vyplýtvá jinou kartou zahranou „jako Bang!".
+        if (this._lawLocked(attackerIdx, card, { asBang: !card.bangEffect })) return;
         // Co se vůbec smí zahrát jako karta Bang! (Calamity Janet, Zúčtování z Divokého
         // západu) drží playsAsBang – tímtéž predikátem se ptá klient i bot. Karty
         // s bang-EFEKTEM (Úder, Springfield, Derringer, zelené) kartami Bang! nejsou,
