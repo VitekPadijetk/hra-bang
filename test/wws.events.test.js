@@ -54,16 +54,46 @@ test('Zúčtování: Vedle! jde ve vlastním tahu zahrát jako Bang!', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
     const i = miss(g, 0);
     assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[i]), true);
-    // Vlastní akci Vedle! ve svém tahu nemá → míří se rovnou, bez přepínače.
+    // Vlastní akci Vedle! ve svém tahu nemá – ani tak ale nemíří sama od sebe (bug 30):
+    // vybere se BEZ akce a na výstřel se přepne tlačítkem, jako každá jiná karta.
     assert.equal(nativePlayInTurn(g, g.players[0], 0, g.players[0].hand[i]), false);
+    assert.equal(showdownBangOk(g, g.players[0], 0, g.players[0].hand[i]), true);
+    const intent = decideCardClick({
+        state: g, me: g.players[0], myIndex: 0, selectedState: { cardIndex: null },
+        card: g.players[0].hand[i], index: i, blockInput: false, isMySidActive: false, playable: true,
+    });
+    assert.deepEqual(intent, { type: 'SELECT', index: i, action: null });
+    g.playBang(0, 1, i);
+    g.handleResponse(1, null);
+    assert.equal(g.players[1].health, 3);
+});
+
+// Bug 34: druhý Barel v ruce (stejné jméno na stole → vlastní akci nemá) se pod
+// Zúčtováním vybíral rovnou s akcí SHOOT, takže klik na vlastní postavu z něj udělal
+// výstřel do sebe. Teď se vybere bez akce a čeká na tlačítko.
+test('Zúčtování: druhý Barel se vybere bez akce, nestřílí sám od sebe', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    const i = give(g, 0, CardType.BARREL, { name: 'Barel' });
+    const card = g.players[0].hand[i];
+    assert.equal(nativePlayInTurn(g, g.players[0], 0, card), false, 'druhý Barel se vyložit nedá');
+    assert.equal(cardPlayability(g, g.players[0], 0, card), true, 'ale jako Bang! hratelný je');
+    const intent = decideCardClick({
+        state: g, me: g.players[0], myIndex: 0, selectedState: { cardIndex: null },
+        card, index: i, blockInput: false, isMySidActive: false, playable: true,
+    });
+    assert.deepEqual(intent, { type: 'SELECT', index: i, action: null });
+});
+
+// Mimo Zúčtování se výběr karty nemění o nic – akce je pořád ta vlastní.
+test('Bez Zúčtování se karta vybírá se svou vlastní akcí', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    const i = bang(g, 0);
     const intent = decideCardClick({
         state: g, me: g.players[0], myIndex: 0, selectedState: { cardIndex: null },
         card: g.players[0].hand[i], index: i, blockInput: false, isMySidActive: false, playable: true,
     });
     assert.deepEqual(intent, { type: 'SELECT', index: i, action: 'SHOOT' });
-    g.playBang(0, 1, i);
-    g.handleResponse(1, null);
-    assert.equal(g.players[1].health, 3);
 });
 
 test('Zúčtování: karta si svoji vlastní akci ponechává (Pivo se pořád smí vypít)', () => {

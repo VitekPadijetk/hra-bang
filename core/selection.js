@@ -45,9 +45,13 @@ if (typeof require === 'function') {
     if (typeof beerBlockedFor === 'undefined') {
         globalThis.beerBlockedFor = require('./highNoon.js').beerBlockedFor;
     }
-    // Divoký západ – Zúčtování: karta, jejíž vlastní akce teď nejde, míří rovnou.
-    if (typeof turnActionForCard === 'undefined') {
-        globalThis.turnActionForCard = require('./playability.js').turnActionForCard;
+    // Divoký západ – Zúčtování: co karta smí ve své VLASTNÍ roli (kartě, která nesmí
+    // nic, zbývá jen výstřel – a ten se armuje tlačítkem, ne klikem na kartu).
+    if (typeof nativePlayInTurn === 'undefined') {
+        globalThis.nativePlayInTurn = require('./playability.js').nativePlayInTurn;
+    }
+    if (typeof eventActive === 'undefined') {
+        globalThis.eventActive = require('./highNoon.js').eventActive;
     }
     // Divoký západ – Lee Van Kliff: čím se smí zaplatit opakování efektu.
     if (typeof lvkPayOk === 'undefined') {
@@ -155,11 +159,15 @@ function decideCardClick(ctx) {
     }
 
     // Divoký západ – Zúčtování: hratelná může být i karta, jejíž VLASTNÍ akce zrovna
-    // nedává smysl (Vedle!/Úhyb ve svém tahu, druhá zelená téhož jména). Tehdy zbývá
-    // jediné využití – výstřel – a míří se rovnou, bez přepínače (turnActionForCard).
-    // Karty, které svou akci mají, si ji ponechají a na Bang! se přepnou tlačítkem
-    // (viz view/board.js).
-    return { type: 'SELECT', index, action: turnActionForCard(state, me, myIndex, card) };
+    // nedává smysl (Vedle!/Úhyb ve svém tahu, druhý Barel téhož jména). Zamířit se s ní
+    // ale smí AŽ po zmáčknutí tlačítka „ZAHRÁT JAKO BANG!" (view/board.js) – dřív mířila
+    // rovnou a klik na vlastní postavu z ní udělal výstřel do sebe (bug 30/34).
+    // Vybere se proto BEZ akce: nic není klikatelné a čeká se na přepínač. Mimo Zúčtování
+    // se nemění nic – akce je pořád ta vlastní (getActionForCard).
+    if (eventActive(state, 'ZUCTOVANI') && !nativePlayInTurn(state, me, myIndex, card)) {
+        return { type: 'SELECT', index, action: null };
+    }
+    return { type: 'SELECT', index, action: getActionForCard(card, abilitiesOf(me)) };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

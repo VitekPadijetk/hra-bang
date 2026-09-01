@@ -1324,17 +1324,19 @@ function drawMyArea(ctx) {
     // naráz (cíl se pak ubrání JEN dvěma Vedle!). Tlačítko obsadí slot schopností, takže
     // se v tu chvíli Sid/Chuck/José/Doc/Will nekreslí – hráč zrovna míří.
     const _selHandCard = selectedState.cardIndex != null ? me.hand[selectedState.cardIndex] : null;
-    const _sniperCan = selectedState.action === 'SHOOT' && !!_selHandCard &&
+    // (Pod Zúčtováním se `action` na SHOOT přepíná tlačítkem – dokud je nabité, drží se
+    //  slot přepínači, ať jde výstřel zase odznačit. Odstřelovač se nabízí z karty Bang!
+    //  přímo, takže o možnost nikdo nepřijde.)
+    const _sniperCan = selectedState.action === 'SHOOT' && !!_selHandCard && !selectedState.showdown &&
         sniperOffer(state, me, myIndex, _selHandCard);
     // Divoký západ – Zúčtování: každá karta smí jít jako Bang!, ale svou vlastní akci
     // si přitom ponechává (obě věty na kartě jsou povolující, R1). Které z toho hráč
     // chce, se z kliknutí poznat nedá – u Vězení/Paniky/Duelu je cílem taky soupeř –
-    // takže se to přepíná tlačítkem. Karta, která svou akci teď zahrát nemůže (Vedle!
-    // ve vlastním tahu, druhá zelená téhož jména), míří rovnou a tlačítko nepotřebuje
-    // (viz decideCardClick v core/selection.js).
+    // takže se to přepíná tlačítkem, a to POVINNĚ u všech karet (bug 30). I karta bez
+    // vlastní akce (Vedle!, Úhyb, druhý Barel) se proto jen vybere a čeká na tlačítko:
+    // dřív mířila rovnou a klik na vlastní postavu z ní udělal výstřel do sebe (bug 34).
     const _showdownCan = !!_selHandCard && !_sniperCan &&
-        showdownBangOk(state, me, myIndex, _selHandCard) &&
-        nativePlayInTurn(state, me, myIndex, _selHandCard);
+        showdownBangOk(state, me, myIndex, _selHandCard);
     // Fistful – Odražená střela: v obraně nejde o život, ale o konkrétní vyloženou kartu.
     const _ricoDefend = (state.phase === "RESPOND" && state.pendingResponse?.active &&
         state.pendingResponse.targetIdx === myIndex) ? (state.pendingResponse.ricochet || null) : null;
@@ -2573,7 +2575,10 @@ function drawMyArea(ctx) {
                     if (App.blockInput) return;
                     if (_sdArmed) {
                         delete selectedState.showdown;
-                        selectedState.action = getActionForCard(_selHandCard, abilitiesOf(me));
+                        // Karta bez vlastní akce se vrací do „jen vybraná" (action null),
+                        // ne do akce, kterou zahrát nesmí – viz decideCardClick.
+                        selectedState.action = nativePlayInTurn(state, me, myIndex, _selHandCard)
+                            ? getActionForCard(_selHandCard, abilitiesOf(me)) : null;
                         selectedState.reach = bangEffectReach(_selHandCard);
                     } else {
                         selectedState.showdown = true;
