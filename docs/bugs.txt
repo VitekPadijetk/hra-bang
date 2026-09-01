@@ -5,7 +5,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
 
 - Čísla jsou TRVALÁ. Nikdy se nepřečíslovávají a hotová čísla se neuvolňují —
   odkazuju se na ně v commitech i v zadání session.
-- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 65
+- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 67
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -39,9 +39,9 @@ H — bez herní logiky          10, 17                index.html, assets/, char
   Vizuální bugy jsou schválně pohromadě (A, B, D): render nejde ověřit
   automaticky, takže jedna kontrola v prohlížeči pokryje celý batch.
 
-DRUHÁ VLNA (bugy 23–64) — pořadí je doporučené, jde od nejlevnějšího
+DRUHÁ VLNA (bugy 23–66) — pořadí je doporučené, jde od nejlevnějšího
 
-I — Zúčtování a Právo západu   26, 30, 32, 34, 36, 55
+I — Zúčtování a Právo západu   26, 30, 32, 34, 36, 55, 66
       core/playability.js, core/selection.js, view/board.js (slot tlačítek), logic/fistful.js
 J — letící karty a otáčení     28, 29, 37, 45, 49, 59
       net/handlers.js, server/anim.js
@@ -49,8 +49,9 @@ K — cinematiky Divokého záp.   54, 60, 61
       core/wwsAnim.js, net/handlers.js, server/anim.js, server/rooms.js (redakce rolí)
 L — Greygory Deck              40, 41
       view/board.js, positions.js, core/layout.js, net/handlers.js, core/wwsAnim.js, logic/wildWest.js
-M — deska: zvýraznění a míry   31, 42, 43, 44, 50, 52, 56, 57
-      view/board.js, core/layout.js, positions.js (+ logic/highNoon.js u 44)
+M — deska: zvýraznění a míry   31, 42, 43, 44, 50, 52, 56, 57, 65
+      view/board.js, core/layout.js, positions.js (+ logic/highNoon.js u 44,
+      view/intro.js u 65)
 N — okna → klikání na desce    27, 35, 63
       view/screens.js, view/board.js, game.js, logic/wildWest.js, logic/draw.js
 O — Divoký západ: pravidla     38, 47, 48, 51, 58, 64
@@ -70,9 +71,10 @@ Q — boti a server              24, 46, 53
     o které se opírá 27/35 při klikání na desce) → dělej I před N.
   - J před K a L: 54/60/61 i 40 jsou nové cinematiky nad stejnými helpery, které
     J narovná (otáčení podle strany, rub vs. líc).
-  - M je záměrně velký (8 drobností v jednom souboru) — jedna kontrola
-    v prohlížeči pokryje všech osm. Kdyby session narůstala, uřízni na konci
-    42 + 56 (obě jsou o kartě životů) do vlastního doběhu.
+  - M je záměrně velký (9 drobností v jednom souboru) — jedna kontrola
+    v prohlížeči pokryje všechny. Kdyby session narůstala, uřízni na konci
+    42 + 56 + 65 (všechny tři jsou o druhé kartě životů) do vlastního doběhu;
+    65 je stejný mechanismus jako 56, jen v intru navazující hry.
 
 
 OTEVŘENÉ
@@ -120,6 +122,8 @@ OTEVŘENÉ
 - 62 když je ruská ruleta, požehnání a všichni mají barel - její efekt zruš poté, co všichni ten barel použijí (ale jen když je požehnání - jelo by to do nekonečna)
 - 63 hvězdička šerifa a karta zuřivá doroty, a názvy hráčů by neměla překrývat karty u výběru zuřivé doroty
 - 64 u zuřivé doroty nemůžu poručit hráčům zahrát bang kteří už v tom kole hráli (hra si asi myslí že 1bang/tah), ale ten limit už neplatí, takže by se měli ukazovat všichni
+- 65 gary looter když si nechá svou postavu na navazující hru, v té animaci, kdy mu přibude život na šerifa se neobjeví ta druhá karta životů (objeví se až se startem hry)
+- 66 právo západu se vztahuje jen na můj tah, teď se tam ještě něco objevuje po skončení mého tahu
 
 HOTOVÉ
 ------
