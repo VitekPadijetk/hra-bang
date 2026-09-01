@@ -293,6 +293,12 @@ function cardPlayability(state, me, myIndex, card) {
 // end_turn donekonečna a hra by se zasekla.
 function lawForcedCard(state, me, myIndex) {
     if (!me || me._lawCardId == null || !eventActive(state, 'PRAVO_ZAPADU')) return null;
+    // Povinnost platí JEN ve vlastním tahu. `_lawCardId` se nuluje až na začátku dalšího
+    // tahu hráče (_beginTurn), takže mezitím zůstává nastavené – a bez téhle závory by ho
+    // ožila každá obrana v cizím tahu, ve které karta projde cardPlayability: v duelu je
+    // vynucený Bang! platnou odpovědí, takže by se hráči uprostřed cizího tahu rozsvítil
+    // zlatý rámeček i „MUSÍŠ ZAHRÁT" a zamkla tlačítka schopností.
+    if (!state || state.currentPlayerIndex !== myIndex) return null;
     const idx = (me.hand || []).findIndex(c => c && !c._placeholder && c.id === me._lawCardId);
     if (idx === -1) return null;
     const card = me.hand[idx];

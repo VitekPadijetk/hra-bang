@@ -639,3 +639,22 @@ test('Právo západu: zelená karta, která by vynucenou vypnula, se aktivovat n
     assert.equal(g.players[0].health, 3, 'aktivace neprošla');
     assert.equal(g.players[0].board.length, 1, 'zelená karta leží dál');
 });
+
+// Bug 66: povinnost patří VLASTNÍMU tahu. `_lawCardId` se nuluje až na začátku dalšího
+// tahu hráče, takže mezi tím zůstává nastavené – a v duelu je vynucený Bang! platnou
+// odpovědí, čímž by se hráči uprostřed CIZÍHO tahu rozsvítil zlatý rámeček i „MUSÍŠ
+// ZAHRÁT" a zamkla tlačítka schopností.
+test('Právo západu: v cizím tahu nic nevynucuje (ani v duelu)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, { role: 'Outlaw' }, {}], 'PRAVO_ZAPADU');
+    const forced = mkForced(g, CardType.BANG);
+    assert.ok(forced, 've vlastním tahu drží');
+
+    // Tah přejde na souseda; hráč 0 se brání v duelu (Bang! je platná odpověď).
+    g.currentPlayerIndex = 1;
+    g.phase = 'RESPOND';
+    g.pendingResponse = { active: true, originatorIdx: 1, targetIdx: 0,
+        requiredCard: CardType.BANG, sourceCard: CardType.DUEL, responded: [] };
+    assert.equal(lawForcedCard(g, g.players[0], 0), null, 'v cizím tahu už nic nevynucuje');
+    assert.equal(g._lawForced(0), null);
+    assert.equal(cardPlayability(g, g.players[0], 0, forced.card), true, 'bránit se jí přesto smí');
+});
