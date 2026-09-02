@@ -2392,16 +2392,24 @@ function _playCardAnim(data) {
             // (Samotná Ragtime i „další" karta letí do odhozu přes hand_to_discard.)
             // Odpovídá druhé části paniky (afterReach) – bez první nohy (nic k cíli neletí).
             const isBoard = data.area !== 'hand';
+            // Z MOJÍ ruky se ptej na ID, ne na slot: kartu, kterou jsem si vybral sám
+            // (Divoký západ – Gary Looter bere můj odhoz nad limit, Youl Grinner dostává
+            // vybranou kartu), z ruky odebral už klik (optimisticRemoveCard). Slot ve
+            // vějíři tím přestal platit – let by vyšel z cizí pozice a `_removeStolenFromHand`
+            // by mi z ruky sebral SOUSEDNÍ kartu, dokud nedorazí stav.
+            const byId = !isBoard && data.stolenCardId != null &&
+                         myIndex !== null && data.targetIdx === myIndex;
             // Z ruky: přesný slot vějíře (stolenIndex), ne obecná kotva ruky.
-            const handSrc = isBoard ? null : _stolenHandSlot(data.targetIdx, data.stolenIndex);
+            const handSrc = (isBoard || byId) ? null : _stolenHandSlot(data.targetIdx, data.stolenIndex);
             const from = isBoard
                 ? getBoardPos(data.targetIdx, data.boardIdx ?? 1)
-                : handSrc.pos;
+                : (byId ? getMyPlayedCardPos(data.targetIdx, data.stolenCardId) : handSrc.pos);
             const tgtAngle = sideAngle(data.targetIdx);
             const atkAngle = sideAngle(data.attackerIdx);
             const revealStolen = () => { if (data.stolenCardId) { App.stealHideIds.delete(data.stolenCardId); renderUI(); } };
             // Kartu z výzbroje/stolu skryj (letí), z ruky uber cíli tu SPRÁVNOU (stolenIndex).
             if (isBoard && data.stolenCardId) _hideStolenBoardCard(data);
+            else if (byId) _liftCardFromHand(data.targetIdx, data.stolenCardId);
             else _removeStolenFromHand(data.targetIdx, handSrc.slot);
             if (!animateDrawToMyHand(data.attackerIdx, data.stolenCardId, from.x, from.y,
                     { duration: 360, faceUp: isBoard, onComplete: revealStolen, startAngle: tgtAngle,
@@ -2416,12 +2424,22 @@ function _playCardAnim(data) {
                         { flip: hideIntoHand(data.attackerIdx), reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
                           startScale: sideScale(data.targetIdx), endScale: sideScale(data.attackerIdx, 'hand'),
                           duration: 360, onComplete: revealStolen });
+                } else if (data.stolenCardId != null && hideIntoHand(data.attackerIdx)) {
+                    // Líc karty znám (byla moje / ruce jsou odkryté), ale mizí do SKRYTÉ
+                    // ruky → za letu se překlopí líc→rub. Tohle je cesta Garyho Lootera
+                    // z pohledu odhazujícího: bez překlopení karta dolétla lícem a v ruce
+                    // Garyho pak ležel rub (a měnila i velikost, ne jen pozici).
+                    animateCardFlip(from.x, from.y, toAtk.x, toAtk.y, 'card_back', getCardTex(data.stolenCardId),
+                        { flip: true, reverse: true, startAngle: tgtAngle, endAngle: atkAngle,
+                          startScale: sideScale(data.targetIdx, 'hand'), endScale: sideScale(data.attackerIdx, 'hand'),
+                          duration: 360, onComplete: revealStolen });
                 } else {
                     // Skrytá karta z ruky do ruky: jen rub. exactAngle – mezi hráči naproti
                     // (180°) by se rotace jinak zrušila a karta by letěla „placatě".
                     const stolenTex = data.stolenCardId ? getCardTex(data.stolenCardId) : 'card_back';
                     animateCard(from.x, from.y, toAtk.x, toAtk.y, stolenTex, 360, revealStolen,
-                        { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true, scale: sideScale(data.attackerIdx, 'hand') });
+                        { startAngle: tgtAngle, endAngle: atkAngle, exactAngle: true,
+                          startScale: sideScale(data.targetIdx, 'hand'), endScale: sideScale(data.attackerIdx, 'hand') });
                 }
             }
             break;
