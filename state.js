@@ -93,6 +93,10 @@ const App = {
     // null = deska se ještě nekreslila (Colt se pak neobjevuje fade-inem, viz board.js)
     coltVisible: null,
     coltFadeStart: 0,
+    // Druhá karta dráhy životů (postavy nad 5 životů): kolik karet bylo naposledy vidět
+    // a odkdy se to mění – karta se plynule objeví při 6 životech a zmizí při 5
+    // (view/board.js drawExtraLivesCards). Klíč = 'mylives' / 'olives<idx>_'.
+    livesFade: {},
     // Rozsvícení postavy hráče na tahu se plynule nafaduje; drží se čas změny tahu.
     lastCurrentIdx: null,
     turnTintStart: 0,

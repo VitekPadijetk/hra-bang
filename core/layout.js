@@ -335,6 +335,16 @@ function livesSlot(track, health) {
     return Math.max(0, Math.min(track.slots, Number(health) || 0));
 }
 
+// Kolik karet dráhy je vidět TEĎ. Druhá se vykládá, až je na ní kam jet – tedy od
+// 6 životů výš; při přesných 5 leží portrét přesně na jejím místě, takže ji stejně
+// zakrývá, a pod 5 by jen zabírala místo (bug 56). Kapacita dráhy (`track.cards`,
+// počítaná z maxHealth) zůstává stropem: Big Spencer zraněný na 3 životy má jednu
+// kartu, ale portrét pořád jede po stejném vzorci.
+function livesCardsShown(track, health) {
+    const h = Math.max(0, Number(health) || 0);
+    return Math.max(1, Math.min(track.cards, Math.ceil(h / LIVES_PER_CARD)));
+}
+
 // Krajní soupeři se „přilepí" na okraj jeviště: kotvy se vodorovně roztáhnou tak, aby
 // levá/pravá zůstaly stejně daleko od OKRAJE (oppEdgeMargin) jako dnes od kraje plátna
 // a prostřední se mezi ně rovnoměrně rozestoupily. Střed (960) zůstává středem.
@@ -605,7 +615,7 @@ if (typeof module !== 'undefined' && module.exports) {
         boardBand, boardSlot,
         GREY_SCALE, GREY_GAP, greyDetached, greyScale, greyStep, greyAbilShift,
         greyMySlot, greyOppSlot,
-        LIVES_PER_CARD, livesTrack, livesSlot,
+        LIVES_PER_CARD, livesTrack, livesSlot, livesCardsShown,
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
         compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
         oppScale, handCardScale,

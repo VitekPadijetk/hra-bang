@@ -443,6 +443,8 @@ function resetBoardSlides() {
     }
     App.cardSlides = {};
     App.cardHome = {};
+    // Druhá karta životů se nesmí nafadovat z minulé hry (viz drawExtraLivesCards).
+    App.livesFade = {};
     // Deska začíná „od nuly": Colt .45 ani zvýraznění hráče na tahu nesmí naskočit
     // fade-inem/rozsvícením – z intra už oboje na svém místě je.
     App.coltVisible = null;
@@ -476,12 +478,46 @@ function reflowStatic(key, sprite, tex, scale, angle, sliding, depth = 0) {
 // Leží v OSE POHYBU portrétu o 5 nábojů dál, takže dvojice tvoří jednu souvislou dráhu
 // o 10 slotech (livesTrack v core/layout.js) a portrét po ní jede beze změny vzorce.
 // Kreslí se hned za nultou kartou a PŘED portrétem, aby ji portrét překryl.
-function drawExtraLivesCards(track, x, y, dirX, dirY, scale, angle, key) {
+//
+// Vykládá se ale až podle SOUČASNÝCH životů (livesCardsShown): pod 6 životy nemá po čem
+// jezdit a jen by zabírala místo, takže při poklesu na 5 plynule zmizí a při vyléčení
+// na 6 se zase objeví (bug 56). Přechod musí přežít překreslení – renderUI sprity vytváří
+// znovu, takže si App.livesFade pamatuje počet karet i okamžik změny a alfa se dopočítá
+// z času (stejný idiom jako fade Coltu .45).
+const LIVES_FADE_MS = 300;
+function livesFadePlan(key, shown) {
+    const plain = { draw: shown, fadeFrom: shown, alpha: 1, left: 0, grow: true };
+    if (!key) return plain;
+    const rec = App.livesFade[key] || (App.livesFade[key] = { shown, t0: 0 });
+    if (rec.shown !== shown) { rec.from = rec.shown; rec.shown = shown; rec.t0 = Date.now(); }
+    if (!rec.t0) return plain;
+    const el = Date.now() - rec.t0;
+    if (el >= LIVES_FADE_MS) { rec.t0 = 0; return plain; }
+    const grow = shown > rec.from;
+    return {
+        draw: Math.max(shown, rec.from),        // mizející karta se ještě kreslí
+        fadeFrom: Math.min(shown, rec.from),    // od tohoto indexu se fáduje
+        alpha: grow ? el / LIVES_FADE_MS : 1 - el / LIVES_FADE_MS,
+        left: LIVES_FADE_MS - el,
+        grow,
+    };
+}
+function drawExtraLivesCards(track, x, y, dirX, dirY, scale, angle, key, health, fadeKey) {
+    const shown = livesCardsShown(track, health == null ? track.slots : health);
+    const plan = livesFadePlan(fadeKey || key, shown);
     const out = [];
-    for (let i = 1; i < track.cards; i++) {
+    for (let i = 1; i < plan.draw; i++) {
         const sp = gameScene.add.image(x + dirX * i * track.cardOff, y + dirY * i * track.cardOff, 'lives')
             .setScale(scale).setAngle(angle);
         gameScene.cardsSprites.add(sp);
+        if (i >= plan.fadeFrom) {
+            sp.setAlpha(plan.alpha);
+            gameScene.tweens.add({
+                targets: sp, alpha: plan.grow ? 1 : 0, duration: plan.left, ease: 'Power2',
+                // Po dojetí mizení překresli – teprve tehdy karta z desky opravdu zmizí.
+                onComplete: () => { if (!plan.grow && typeof renderUI === 'function') renderUI(); },
+            });
+        }
         if (key) reflowStatic(key + i, sp, 'lives', scale, angle, false);
         out.push(sp);
     }
@@ -1032,7 +1068,7 @@ function drawOpponents(ctx) {
 
             let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
             gameScene.cardsSprites.add(livesOpp);
-            drawExtraLivesCards(livesT, livesCX, livesCY, 1, 0, scaleOpp, angle, 'olives' + actualIdx + '_');
+            drawExtraLivesCards(livesT, livesCX, livesCY, 1, 0, scaleOpp, angle, 'olives' + actualIdx + '_', player.health);
 
             let charOpp = gameScene.add.image(livesCX + bulletH * healthSlot, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
@@ -1106,7 +1142,7 @@ function drawOpponents(ctx) {
 
             let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
             gameScene.cardsSprites.add(livesOpp);
-            drawExtraLivesCards(livesT, livesCX, livesCY, 0, 1, scaleOpp, angle, 'olives' + actualIdx + '_');
+            drawExtraLivesCards(livesT, livesCX, livesCY, 0, 1, scaleOpp, angle, 'olives' + actualIdx + '_', player.health);
 
             let charOpp = gameScene.add.image(livesCX, livesCY + bulletH * healthSlot, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
@@ -1179,7 +1215,7 @@ function drawOpponents(ctx) {
 
             let livesOpp = gameScene.add.image(livesCX, livesCY, 'lives').setScale(scaleOpp).setAngle(angle);
             gameScene.cardsSprites.add(livesOpp);
-            drawExtraLivesCards(livesT, livesCX, livesCY, -1, 0, scaleOpp, angle, 'olives' + actualIdx + '_');
+            drawExtraLivesCards(livesT, livesCX, livesCY, -1, 0, scaleOpp, angle, 'olives' + actualIdx + '_', player.health);
 
             let charOpp = gameScene.add.image(livesCX - bulletH * healthSlot, livesCY, getCharTex(player.character))
                 .setScale(scaleOpp).setAngle(angle);
@@ -1490,7 +1526,7 @@ function drawMyArea(ctx) {
         }
         gameScene.cardsSprites.add(livesImg);
         // Druhá karta dráhy (nad 5 životů) dostane totéž obarvení i klik jako nultá.
-        const _myLivesAll = [livesImg, ...drawExtraLivesCards(myLivesT, livesX, myBaseY, 0, -1, scaleMe, 0, null)];
+        const _myLivesAll = [livesImg, ...drawExtraLivesCards(myLivesT, livesX, myBaseY, 0, -1, scaleMe, 0, null, me.health, 'mylives')];
         for (const sp of _myLivesAll) {
             if (_myLivesTint !== null) sp.setTint(_myLivesTint);
             if (_myLivesClick) { sp.setInteractive({ useHandCursor: true }); sp.on('pointerdown', _myLivesClick); }
@@ -2867,7 +2903,7 @@ function drawSpectatorPlayer(ctx) {
         const livesImg2 = gameScene.add.image(livesX_adj, livesCY, 'lives').setScale(sOpp);
         if (isCurrent) livesImg2.setTint(0x44ff44);
         gameScene.cardsSprites.add(livesImg2);
-        for (const sp of drawExtraLivesCards(specT, livesX_adj, livesCY, 0, -1, sOpp, 0, null)) {
+        for (const sp of drawExtraLivesCards(specT, livesX_adj, livesCY, 0, -1, sOpp, 0, null, player.health, 'speclives')) {
             if (isCurrent) sp.setTint(0x44ff44);
         }
         const charY2 = livesCY - bH * livesSlot(specT, player.health);
