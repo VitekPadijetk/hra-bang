@@ -66,9 +66,13 @@ O — Divoký západ: pravidla     38, 47, 48, 51, 58, 64   HOTOVO
       logic/dodgeCity.js, server/anim.js, server/bots.js, chat.js – 47/48 je
       přestavba pokuty Roubíku na klikaný zásah, takže sahá i na rodinu
       „resume" příznaků)
-P — pravidla ostatní           23, 25, 33, 39, 62
-      logic/dodgeCity.js, core/distance.js, logic/highNoon.js, core/pending.js,
-      logic/entities.js, logic/fistful.js, server/lifecycle.js
+P — pravidla ostatní           23, 25, 33, 39, 62   HOTOVO
+      logic/entities.js (Deck), logic/fistful.js, server/lifecycle.js,
+      net/handlers.js (+ logic/checks.js, logic/play.js, logic/characters.js,
+      logic/wildWest.js u 39 – sejmutí se sjednotilo na draw({ toDiscard })).
+      logic/dodgeCity.js, core/distance.js, core/pending.js ani logic/highNoon.js
+      nakonec nepotřebovaly nic: 23 byla planá (doplněny testy) a u 25 se mýlil
+      jen klient, server měl pořadí správně.
 Q — boti a server              24, 46, 53
       core/botPolicy.js, server/bots.js, server/intro.js, server/handlers.lobby.js, chat.js
 
