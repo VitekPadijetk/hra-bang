@@ -584,6 +584,10 @@ function renderDorothyOverlay() {
     cancel.setDepth(1006);
 }
 
+// Kam a jak velké se zvětšené karty nabídky posadí (a odkud se pak smrští zpátky).
+const GREY_OFFER_Y = 420;
+const GREY_OFFER_SCALE = 0.62;
+
 function renderGreygoryOverlay() {
     const pg = state.pendingGreygory;
     if (!pg || pg.playerIdx !== myIndex) return;
@@ -595,25 +599,41 @@ function renderGreygoryOverlay() {
     };
 
     const cur = pg.current || [];
+    // Karty u portrétu jsou malé a text schopnosti se z nich nepřečte, takže se na dobu
+    // rozhodování zvětší – vyrostou ze svých míst a po volbě se tam zase smrští
+    // (bug 40). Originály se po tu dobu nekreslí, jinak by ležely dvakrát; přepíná to
+    // `App.greyOffer.active`, které nastavuje renderUI ještě PŘED deskou (game.js).
     if (cur.length === 0) {
         const none = gameScene.add.text(960, 420, 'Zatím žádné postavy',
             { fontFamily: THEME.fontUI, fontSize: '30px', color: THEME.color.textMuted,
               backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 18, y: 10 } })
             .setOrigin(0.5).setDepth(1000);
         gameScene.cardsSprites.add(none);
-    } else {
+    } else if (!App.greyOffer.decided) {
         // Jedna karta doprostřed, dvě vedle sebe – ať se střed nehne podle počtu.
         const step = 320;
         const x0 = 960 - (cur.length - 1) * step / 2;
         cur.forEach((name, i) => {
-            const card = gameScene.add.image(x0 + i * step, 420, texFor(name)).setScale(0.62).setDepth(1000);
+            const bx = x0 + i * step;
+            const card = gameScene.add.image(bx, GREY_OFFER_Y, texFor(name))
+                .setScale(GREY_OFFER_SCALE).setDepth(1000);
             gameScene.cardsSprites.add(card);
-            const lbl = gameScene.add.text(x0 + i * step, 620, name,
+            // Růst se hraje jednou – další renderUI (jiná zpráva, tik) kreslí karty
+            // rovnou velké, jinak by se animace pořád restartovala.
+            if (!App.greyOffer.grown) {
+                const from = getGreygoryCardPos(myIndex, i);
+                card.setPosition(from.x, from.y).setScale(from.scale || GREY_OFFER_SCALE);
+                gameScene.tweens.add({ targets: card, x: bx, y: GREY_OFFER_Y,
+                                       scaleX: GREY_OFFER_SCALE, scaleY: GREY_OFFER_SCALE,
+                                       duration: GREYGORY_OFFER_ZOOM.growMs, ease: 'Back.easeOut' });
+            }
+            const lbl = gameScene.add.text(bx, 620, name,
                 { fontFamily: THEME.fontUI, fontSize: '22px', color: THEME.color.text,
                   backgroundColor: 'rgba(0,0,0,0.72)', padding: { x: 10, y: 4 } })
                 .setOrigin(0.5).setDepth(1001);
             gameScene.cardsSprites.add(lbl);
         });
+        App.greyOffer.grown = true;
     }
 
     const free = pg.free || 0;
@@ -637,9 +657,41 @@ function renderGreygoryOverlay() {
     noBg.setDepth(1001);
 }
 
+// Zvětšené karty se po volbě smrští zpátky na svá místa u portrétu. Sprity jsou
+// záměrně MIMO `gameScene.cardsSprites` (ta se při každém renderUI ruší) – doletí tedy
+// i přes překreslení desky. Originály se odkryjí až na jejich dosednutí.
+function _greygoryShrinkBack(names) {
+    if (!gameScene || myIndex === null) return;
+    const charData = gameScene.cache.json.get('characters_data');
+    const D = GREYGORY_OFFER_ZOOM;
+    const step = 320;
+    const x0 = 960 - (names.length - 1) * step / 2;
+    let left = names.length;
+    names.forEach((name, i) => {
+        const info = charData && charData.find(c => c.name === name);
+        const tex = (info && gameScene.textures.exists('char_' + info.id)) ? 'char_' + info.id : 'placeholder';
+        const to = getGreygoryCardPos(myIndex, i);
+        const spr = gameScene.add.image(x0 + i * step, GREY_OFFER_Y, tex)
+            .setScale(GREY_OFFER_SCALE).setDepth(1000);
+        gameScene.tweens.add({
+            targets: spr, x: to.x, y: to.y, scaleX: to.scale, scaleY: to.scale,
+            duration: D.shrinkMs, ease: 'Cubic.easeIn',
+            onComplete: () => {
+                if (spr.active) spr.destroy();
+                if (--left > 0) return;
+                App.greyOffer.active = false;
+                renderUI();
+            }
+        });
+    });
+}
+
 function confirmGreygory(swap) {
     if (App.blockInput) return;
     App.blockInput = true;
+    // Zvětšené karty se přestanou kreslit z nabídky a doletí zpátky vlastními sprity.
+    App.greyOffer.decided = true;
+    _greygoryShrinkBack(state.pendingGreygory?.current || []);
     socket.emit('greygory_choice', { swap: !!swap });
     renderUI();
 }

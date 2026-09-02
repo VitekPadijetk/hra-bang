@@ -63,6 +63,7 @@ const WildWestMixin = {
         this._roleShuffleAnim = null;
         this._ledgerResetPending = false;
         this.pendingGreygory = null;
+        this._greygoryAnim = null;
         // Navazující hra přebírá hráče z předchozí – líznutá dvojice Greygoryho Decka
         // patří jedné hře, v té další se líže z čerstvě zamíchaného balíčku postav.
         (this.players || []).forEach(p => { p._greygoryChars = null; });
@@ -772,12 +773,25 @@ const WildWestMixin = {
     // Zamíchat volné postavy a líznout dvě. Jediná cesta, jak dvojice vzniká –
     // volá ji rozdání na začátku hry, výměna na začátku tahu i Vera Custer, když si
     // Greygoryho zvolí ke kopírování.
-    _greygoryDraw(playerIdx) {
+    // `opts.silent` = bez cinematiky. Platí na začátku hry: karty postav tam rozdává
+    // intro a balíček by přiletěl doprostřed rozdávání.
+    _greygoryDraw(playerIdx, opts) {
         const p = this.players[playerIdx];
         if (!p) return [];
         const pool = this._greygoryPool(playerIdx);
+        const old = [...(p._greygoryChars || [])];
         this.deck.shuffleArray(pool);
         p._greygoryChars = pool.slice(0, 2);
+        // Cinematika líznutí: shora přiletí balíček volných karet postav, stávající
+        // dvojice se do něj vrátí, zamíchá se a vypadne z něj nová (core/wwsAnim.js).
+        // Pravidla o socketu nevědí – payload si vyzvedne hák před broadcastem
+        // (flushGreygory, server/anim.js) a tam se i vynuluje, takže ve stavu nezůstane.
+        // `poolSize` je velikost balíčku PO návratu staré dvojice: ta je ve `_greygoryPool`
+        // vlastního hráče započítaná (vrací se do něj, FAQ Q01).
+        if (!(opts && opts.silent)) {
+            this._greygoryAnim = { playerIdx, poolSize: pool.length, old,
+                                   next: [...p._greygoryChars] };
+        }
         this.logEvent('event', { card: 'Greygory Deck', who: p.name,
                                  msg: `líže postavy: ${p._greygoryChars.join(', ') || '(nezbyla žádná volná)'}` });
         return p._greygoryChars;
@@ -789,7 +803,7 @@ const WildWestMixin = {
     // z poolu ubrat dřív, než se z něj líže.
     _greygoryDealAll() {
         (this.players || []).forEach((p, i) => {
-            if (p && p.character === "Greygory Deck" && !p._greygoryChars) this._greygoryDraw(i);
+            if (p && p.character === "Greygory Deck" && !p._greygoryChars) this._greygoryDraw(i, { silent: true });
         });
     },
 

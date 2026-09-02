@@ -215,13 +215,15 @@ function getBoardCardPos(playerIdx, boardIdx) {
 // tlačítka schopnosti, které jim uhne doprava). MUSÍ zrcadlit view/board.js.
 // V kompaktním profilu (mobil) a v diváckém pohledu na spodního hráče na tu geometrii
 // místo není – tam dvojice zůstává na konci pásu a pozice se dopočítá přes getBoardCardPos.
-function getGreygoryCardPos(playerIdx, k) {
+// `countOverride` = kolik karet dvojice BUDE. Potřebuje ho cinematika líznutí (nová
+// dvojice letí na místo, kde ve stavu ještě není – stav dorazí až za animací).
+function getGreygoryCardPos(playerIdx, k, countOverride) {
     if (!state) return { x: 960, y: 540 };
     const player = state.players[playerIdx];
     if (!player) return { x: 960, y: 540 };
     const L = _L();
     const view = myIndex === null ? 0 : myIndex;
-    const count = Math.max(1, (player._greygoryChars || []).length);
+    const count = Math.max(1, countOverride || (player._greygoryChars || []).length);
     const isSpectatedBottom = myIndex === null && playerIdx === view;
 
     if (!_greyDetached(L) || isSpectatedBottom) {

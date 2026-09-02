@@ -149,6 +149,59 @@ function rolePeekMs() {
     return D.flyMs + D.flipMs + D.holdMs + D.backMs + D.outMs + D.bufMs;
 }
 
+// ── Greygory Deck: líznutí nové dvojice postav ──────────────────────────────
+// „Na začátku svého tahu si smí líznout 2 postavy náhodně." Líže se ze SKUTEČNÉHO
+// balíčku postav – z těch, jejichž karta je zrovna volná (R12) – a cinematika ukazuje
+// přesně to: shora přiletí balíček volných karet, stávající dvojice se do něj vrátí
+// (cestou se přetočí na rub; rubem karty postavy JE karta životů), balíček se zamíchá
+// stejným riffle jako každý jiný (core/shuffleAnim.js), vypadne z něj nová dvojice
+// a balíček zase odletí nahoru. Bez ní by se dvě karty u portrétu jen tiše vyměnily.
+//
+// Míchá se malá hromádka (nejvýš 16 karet základní hry), takže se riffle zkracuje –
+// stejným způsobem jako u přerozdání rolí.
+const GREYGORY_DEAL = {
+    inMs:       460,   // balíček shora doprostřed stolu
+    gatherMs:   360,   // stávající dvojice do balíčku (cestou překlopení lícem → rub)
+    holdMs:     180,   // hromádka chvíli leží, než se do ní sáhne
+    dealMs:     440,   // nová dvojice z balíčku na místo u portrétu (cestou se odkryje)
+    outMs:      420,   // balíček odletí zpátky nahoru
+    tailMs:     180,   // doznění, ať stav nedorazí přesně na hranu dosednutí
+    // Zkrácený riffle: hromádka je malá (nejvýš 16 karet), ale cinematika se nesmí
+    // vléct – jede se svižněji než u herního balíčku i u rolí.
+    riffleMs:   600, perCardMax: 70,
+    preMs:       80, cutMs: 300, gapMs: 120, shuffleTailMs: 120,
+};
+
+// Parametry riffle míchání pro balíček postav – předávají se do core/shuffleAnim.js.
+function greygoryShuffleOpts() {
+    const D = GREYGORY_DEAL;
+    return { riffleMs: D.riffleMs, perCardMax: D.perCardMax,
+             preMs: D.preMs, cutMs: D.cutMs, gapMs: D.gapMs, tailMs: D.shuffleTailMs };
+}
+
+// `poolSize` = kolik karet postav je volných (tolik jich balíček má), `oldCount` = kolik
+// karet se do něj vrací (0 na začátku hry a u Very Custer, jinak 2).
+function greygoryDealMs(poolSize, oldCount, shuffleDurationFn) {
+    const D = GREYGORY_DEAL;
+    const n = Math.max(1, Number(poolSize) || 0);
+    const dur = typeof shuffleDurationFn === 'function'
+        ? shuffleDurationFn
+        : (typeof shuffleDurationMs === 'function' ? shuffleDurationMs
+           : (typeof require === 'function' ? require('./shuffleAnim.js').shuffleDurationMs : null));
+    const shuffleMs = (n >= 2 && dur) ? dur(n, greygoryShuffleOpts()) : D.holdMs;
+    return D.inMs + (oldCount ? D.gatherMs : 0) + D.holdMs + shuffleMs
+         + D.dealMs + D.outMs + D.tailMs;
+}
+
+// ── Greygory Deck: nabídka „nechat, nebo líznout novou?" ─────────────────────
+// Dvojice u portrétu je malá a text schopnosti se z ní nedá přečíst, takže se na dobu
+// rozhodování zvětší – vyroste ze svých míst doprostřed a po volbě se tam zase vrátí.
+// Není to fáze animace (nabídka žádnou frontu nedrží), jen doba růstu a smrštění.
+const GREYGORY_OFFER_ZOOM = {
+    growMs:   300,
+    shrinkMs: 260,
+};
+
 // ── Lady Růže z Texasu: výměna sedadel ───────────────────────────────────────
 // „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici."
 // Sedadlo je v tomhle kódu index, takže se výměnou přeskládá půlka stolu naráz – bez
@@ -187,5 +240,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        HELENA_ANIM, helenaRevealMs,
                        ROLE_SHUFFLE, roleShuffleOpts, roleShuffleMs,
                        ROLE_PEEK, rolePeekMs,
-                       SEAT_SWAP, seatSwapMs };
+                       SEAT_SWAP, seatSwapMs,
+                       GREYGORY_DEAL, greygoryShuffleOpts, greygoryDealMs,
+                       GREYGORY_OFFER_ZOOM };
 }

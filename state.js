@@ -137,6 +137,16 @@ const App = {
     // (půdorys se nemění), ale karta se v něm nekreslí – přesně jako ve fázi 'settled'
     // cinematiky vyřazení. Klíč = reálný index hráče.
     roleShuffleHide: new Set(),
+    // Divoký západ – Greygory Deck (core/wwsAnim.js): seaty, jejichž dvojice líznutých
+    // postav zrovna letí do balíčku a zpátky. Po dobu cinematiky se u portrétu nekreslí
+    // (kreslí ji animace), jinak by ležela dvakrát – ve stavu je pořád ta stará.
+    greygoryHide: new Set(),
+    // Nabídka „nechat dvojici, nebo líznout novou?" (renderGreygoryOverlay): zvětšené
+    // karty vyrostou ze svých míst u portrétu a po volbě se tam zase smrští.
+    //   active  – nabídka je na obrazovce → originály u portrétu se nekreslí
+    //   grown   – růst už proběhl (další renderUI kreslí karty rovnou velké)
+    //   decided – hráč klikl, běží smrštění zpátky
+    greyOffer: { active: false, grown: false, decided: false },
     // ID karet právě odlétajících z RUKY vlastníka (hraná/odhazovaná karta, panika/CB).
     // Server ji může dočasně vrátit do ruky a znovu rozeslat (aby zůstala vidět, než ji
     // zvedne animace) → room_update by ji jinak vrátil zpět doprostřed letu a přepočítal

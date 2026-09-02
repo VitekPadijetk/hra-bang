@@ -195,6 +195,37 @@ test('resolveGreygory: výměna lízne novou dvojici', () => {
     assert.equal(g.pendingGreygory, null);
 });
 
+// ── Cinematika líznutí nové dvojice (bug 40) ─────────────────────────
+test('_greygoryDraw: výměna nechá payload cinematiky, start hry ne', () => {
+    const g = greyGame([{ character: 'Greygory Deck', role: 'Sheriff' }, { character: 'Bart Cassidy' }]);
+    g.players[0]._greygoryChars = ['Kit Carlson', 'Lucky Duke'];
+    g._beginTurn();
+    g.resolveGreygory(0, true);
+    const a = g._greygoryAnim;
+    assert.ok(a, 'výměna cinematiku plánuje');
+    assert.equal(a.playerIdx, 0);
+    assert.deepEqual(a.old, ['Kit Carlson', 'Lucky Duke']);
+    assert.deepEqual(a.next, g.players[0]._greygoryChars);
+    // Balíček je velký tak, jak je: vlastní dvojice se do něj vrací (FAQ Q01),
+    // takže je v `poolSize` započítaná a nová dvojice z něj musí jít vybrat.
+    assert.ok(a.poolSize >= a.next.length);
+    assert.ok(a.poolSize >= a.old.length);
+
+    // Rozdání na začátku hry se nehraje – karty postav tam rozdává intro.
+    const g2 = greyGame([{ character: 'Greygory Deck', role: 'Sheriff' }, { character: 'Bart Cassidy' }]);
+    g2.players[0]._greygoryChars = null;
+    g2._greygoryDealAll();
+    assert.ok(!g2._greygoryAnim);
+});
+
+test('resolveGreygory: „nechat si" žádnou cinematiku nespustí', () => {
+    const g = greyGame([{ character: 'Greygory Deck', role: 'Sheriff' }, { character: 'Bart Cassidy' }]);
+    g.players[0]._greygoryChars = ['Kit Carlson', 'Lucky Duke'];
+    g._beginTurn();
+    g.resolveGreygory(0, false);
+    assert.ok(!g._greygoryAnim);
+});
+
 test('resolveGreygory: cizí hráč rozhodnutí neposune', () => {
     const g = greyGame([{ character: 'Greygory Deck', role: 'Sheriff' }, { character: 'Bart Cassidy' }]);
     g.players[0]._greygoryChars = ['Kit Carlson', 'Lucky Duke'];

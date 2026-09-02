@@ -1711,6 +1711,150 @@ function playRolesReshuffle(data) {
     gameScene.time.delayedCall(dealStart + D.dealMs + D.tailMs + ROLE_CLEANUP_CAP_MS, cleanup);
 }
 
+// ── Divoký západ – Greygory Deck: líznutí nové dvojice postav ───────────
+// „Na začátku svého tahu si smí líznout 2 postavy náhodně." Líže se ze skutečného
+// balíčku postav (jen ty, jejichž karta je zrovna volná), takže cinematika ukazuje
+// přesně to, co se děje u stolu:
+//   1. shora přiletí balíček volných karet postav a složí se doprostřed stolu,
+//   2. stávající dvojice se do něj vrátí – cestou se přetočí na rub (rub karty
+//      postavy JE karta životů, viz intro),
+//   3. balíček se zamíchá stávajícím riffle (core/shuffleAnim.js, jen svižnějším),
+//   4. z vrchu vypadne nová dvojice a cestou na místo u portrétu se odkryje,
+//   5. zbytek balíčku odletí zase nahoru.
+// Časování drží core/wwsAnim.js, aby o stejnou dobu podržel boty i server.
+const GREY_PILE_PX = 3;                       // překryv vrstev balíčku postav
+const GREY_PILE_SCALE = 0.30;                 // stejné měřítko jako hromádky v intru
+function GREY_CX() { return (stageLeft() + stageRight()) / 2; }
+function GREY_CY() { return 470; }
+// Kdyby stav nedorazil (odchod ze hry), sprity by tu jinak zůstaly ležet.
+const GREY_CLEANUP_CAP_MS = 12000;
+
+function playGreygoryDeal(data) {
+    if (!gameScene || !state) return;
+    const pid = data.playerIdx;
+    if (!state.players || !state.players[pid]) return;
+    const D = GREYGORY_DEAL;
+    const opts = greygoryShuffleOpts();
+    const old = data.old || [];
+    const next = data.next || [];
+    const n = shuffleLayers(Math.max(1, data.poolSize || next.length || 1), opts);
+    const cx = GREY_CX(), cy = GREY_CY();
+    const topY = cy - (n - 1) * GREY_PILE_PX / 2;
+    const layerY = (k) => topY + k * GREY_PILE_PX;
+
+    // Po dobu letu se dvojice u portrétu nekreslí – ve stavu je pořád ta stará (nový
+    // dorazí až za celou cinematikou), takže by ležela dvakrát.
+    App.greygoryHide.add(pid);
+    renderUI();
+
+    // 1) balíček volných karet přiletí shora. Kolik jich přiletí: všechny až na tu
+    //    dvojici, která se do něj teprve vrátí (v poolu je už započítaná).
+    const fromY = stageTop() - 400;
+    const sprites = new Array(n);
+    const incoming = Math.max(0, n - old.length);
+    for (let k = 0; k < incoming; k++) {
+        const layer = old.length + k;
+        const spr = gameScene.add.image(cx, fromY, 'lives')
+            .setScale(GREY_PILE_SCALE).setDepth(830 + (n - 1 - layer));
+        gameScene.tweens.add({ targets: spr, y: layerY(layer), duration: D.inMs,
+                               delay: k * 6, ease: 'Cubic.easeOut' });
+        sprites[layer] = spr;
+    }
+
+    // 2) stávající dvojice se vrátí do balíčku a cestou se přetočí na rub.
+    old.forEach((name, k) => {
+        const from = getGreygoryCardPos(pid, k, old.length);
+        const spr = gameScene.add.image(from.x, from.y, _niCharTex(name))
+            .setScale(from.scale || GREY_PILE_SCALE).setAngle(from.angle || 0)
+            .setDepth(830 + (n - 1 - k));
+        sprites[k] = spr;
+        gameScene.time.delayedCall(D.inMs, () => {
+            if (!spr.active) return;
+            gameScene.tweens.add({ targets: spr, x: cx, y: layerY(k), scaleY: GREY_PILE_SCALE,
+                                   duration: D.gatherMs, ease: 'Cubic.easeInOut' });
+            if (from.angle) {
+                gameScene.tweens.add({ targets: spr, angle: nearestAngle360(from.angle, 0),
+                                       duration: D.gatherMs, ease: 'Cubic.easeInOut' });
+            }
+            _roleFlipTo(spr, 'lives', D.gatherMs, 0, GREY_PILE_SCALE);
+        });
+    });
+
+    // 3) riffle nad hromádkou – týž vzorec jako každé jiné míchání, jen svižnější.
+    const shuffleStart = D.inMs + (old.length ? D.gatherMs : 0) + D.holdMs;
+    const perCard = shufflePerCard(n, opts);
+    const half = shuffleCutHalf(n, opts);
+    const order = shuffleRiffleOrder(n, opts);
+    const cutX = 325 * GREY_PILE_SCALE * 0.6;
+    if (n >= 2) {
+        gameScene.time.delayedCall(shuffleStart + opts.preMs, () => {
+            sprites.forEach((spr, i) => {
+                if (!spr || !spr.active) return;
+                gameScene.tweens.add({ targets: spr, x: cx + (i < half ? cutX : -cutX),
+                                       duration: opts.cutMs, ease: 'Cubic.easeInOut' });
+            });
+        });
+        const riffleStart = shuffleStart + opts.preMs + opts.cutMs + opts.gapMs;
+        order.forEach((i, j) => {
+            const spr = sprites[i];
+            const slot = n - 1 - j;               // 0 = vrch hotové hromádky
+            gameScene.time.delayedCall(riffleStart + j * perCard, () => {
+                if (!spr || !spr.active) return;
+                spr.setDepth(830 + n + j);
+                gameScene.tweens.add({ targets: spr, x: cx, y: layerY(slot),
+                                       duration: SHUFFLE_ANIM.cardMs, ease: 'Cubic.easeIn',
+                                       onComplete: () => { if (spr.active) spr.setDepth(830 + j); } });
+            });
+        });
+    }
+
+    // 4) z vrchu zamíchané hromádky vypadne nová dvojice a cestou se odkryje. Pořadí
+    //    po zamíchání je shora dolů `order` pozpátku – vrchní dvě karty jsou tedy ty
+    //    nové (hromádka je promíchaná, takže je jedno, které sprity to jsou).
+    const dealStart = shuffleStart + (n >= 2 ? shuffleDurationMs(n, opts) : D.holdMs);
+    const afterShuffle = order.slice().reverse();
+    const dealt = [];
+    next.forEach((name, k) => {
+        const spr = sprites[afterShuffle[k] != null ? afterShuffle[k] : k];
+        if (!spr) return;
+        dealt.push(spr);
+        const to = getGreygoryCardPos(pid, k, next.length);
+        gameScene.time.delayedCall(dealStart, () => {
+            if (!spr.active) return;
+            spr.setDepth(870 + k);
+            gameScene.tweens.add({ targets: spr, x: to.x, y: to.y, scaleY: to.scale,
+                                   duration: D.dealMs, ease: 'Cubic.easeInOut' });
+            if (to.angle) {
+                gameScene.tweens.add({ targets: spr, angle: nearestAngle360(0, to.angle),
+                                       duration: D.dealMs, ease: 'Cubic.easeInOut' });
+            }
+            _roleFlipTo(spr, _niCharTex(name), D.dealMs, 0, to.scale);
+        });
+    });
+
+    // 5) zbytek balíčku odletí zase nahoru.
+    gameScene.time.delayedCall(dealStart + D.dealMs, () => {
+        sprites.forEach(spr => {
+            if (!spr || !spr.active || dealt.includes(spr)) return;
+            gameScene.tweens.add({ targets: spr, y: fromY, duration: D.outMs, ease: 'Cubic.easeIn',
+                                   onComplete: () => { if (spr.active) spr.destroy(); } });
+        });
+    });
+
+    // 6) úklid AŽ NA DOSEDNUTÍ NOVÉHO STAVU (ne na konec animace): pod sprity leží
+    //    pořád ta STARÁ dvojice, takže by na pár snímků problikla zpátky.
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        sprites.forEach(spr => { if (spr && spr.active) spr.destroy(); });
+        App.greygoryHide.delete(pid);
+        renderUI();
+    };
+    onNextState(cleanup);
+    gameScene.time.delayedCall(dealStart + D.dealMs + D.outMs + D.tailMs + GREY_CLEANUP_CAP_MS, cleanup);
+}
+
 // „Každý hráč se podívá na svou novou roli." Event chodí všem se STEJNÝM `playerIdxs`
 // (aby fronta držela stav stejně dlouho u všech), ale `role` v něm má jen ten, komu
 // nahlédnutí patří – ostatním přijde null a nepřehrají nic. Roli nese payload, ne stav:
@@ -2545,6 +2689,10 @@ function _playCardAnim(data) {
         case 'role_peek':
             playRolePeek(data);
             break;
+        // Divoky zapad - Greygory Deck: lizeni nove dvojice postav.
+        case 'greygory_deal':
+            playGreygoryDeal(data);
+            break;
         case 'player_death_discard':
         case 'vulture_sam_steal':
             playDeathSequence(data);
@@ -2950,6 +3098,8 @@ function _animDurationMs(data) {
     if (data.type === 'helena_reveal') return helenaRevealMs();
     if (data.type === 'roles_reshuffle') return roleShuffleMs((data.playerIdxs || []).length);
     if (data.type === 'role_peek') return rolePeekMs();
+    // Divoký západ – Greygory Deck: balíček postav přiletí, zamíchá se a rozdá dvojici.
+    if (data.type === 'greygory_deal') return greygoryDealMs(data.poolSize, (data.old || []).length);
     // Divoký západ – Lady Růže z Texasu: výměna sedadel přeskládá půlku stolu naráz,
     // takže stav smí dorazit, teprve až oba portréty doletí na místo toho druhého.
     if (data.type === 'wws_seat_swap') return seatSwapMs();
@@ -2996,7 +3146,7 @@ socket.on('card_animation', (data) => {
                       data.type === 'high_noon_reveal' || data.type === 'new_identity_result' ||
                       data.type === 'ranch_discard' || data.type === 'saca_flip' ||
                       data.type === 'roles_reshuffle' || data.type === 'role_peek' ||
-                      data.type === 'wws_seat_swap';
+                      data.type === 'wws_seat_swap' || data.type === 'greygory_deal';
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 

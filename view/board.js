@@ -1247,6 +1247,11 @@ function drawOpponents(ctx) {
 // V kompaktním profilu (mobil) na tuhle geometrii místo není – tam zůstává dvojice
 // na konci pásu a nakreslí ji rovnou drawOpponents/drawMyArea (viz greyDetached).
 function drawGreygoryPair(playerIdx, player, getCharTex) {
+    // Dvojice zrovna letí do balíčku a zpátky (cinematika líznutí, net/handlers.js),
+    // nebo je zvětšená v nabídce „nechat, nebo líznout novou?" (view/screens.js) –
+    // v obou případech ji kreslí ten, kdo ji drží, a tady by ležela podruhé.
+    if (App.greygoryHide.has(playerIdx)) return;
+    if (App.greyOffer.active && playerIdx === myIndex) return;
     const names = (player && player._greygoryChars) || [];
     names.forEach((name, k) => {
         const pos = getGreygoryCardPos(playerIdx, k);

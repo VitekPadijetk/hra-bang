@@ -2861,6 +2861,16 @@ function renderUI() {
     // z dávných míst (vypadá to jako posun, po kterém se reálně nic nezmění).
     if (!_boardWasShown) resetBoardSlides();
     App.boardShown = true;
+    // Divoký západ – Greygory Deck: dokud je na obrazovce nabídka „nechat, nebo líznout
+    // novou?", jsou karty dvojice zvětšené uprostřed – u portrétu se proto nekreslí
+    // (drawGreygoryPair, view/board.js). Nastavit se to musí PŘED deskou, jinak by
+    // originál jeden snímek ležel pod zvětšenou kopií.
+    if (state.phase !== "GREYGORY_OFFER") {
+        if (App.greyOffer.grown || App.greyOffer.decided || App.greyOffer.active)
+            App.greyOffer = { active: false, grown: false, decided: false };
+    } else {
+        App.greyOffer.active = state.pendingGreygory?.playerIdx === myIndex && !App.greyOffer.decided;
+    }
     renderGameBoard();
     // Dodge City – Vera Custer volí kopírovanou postavu (overlay přes desku).
     if (state.phase === "VERA_COPY") renderVeraCopyOverlay();

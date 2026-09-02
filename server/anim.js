@@ -5,7 +5,7 @@ const { deathSequenceMs, penaltyDiscardMs, deathFallMs, deathRevealMs } = requir
 const { hnRevealMs } = require('../core/highNoonAnim.js');
 const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs,
-        seatSwapMs } = require('../core/wwsAnim.js');
+        seatSwapMs, greygoryDealMs } = require('../core/wwsAnim.js');
 const { eventActive } = require('../core/highNoon.js');
 const { hasAbility, isInPlay } = require('../core/distance.js');
 
@@ -507,6 +507,22 @@ module.exports = function installAnimService(ctx) {
         if (holdMs) room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0, Date.now() + holdMs);
     }
 
+    // ── Divoký západ – Greygory Deck: líznutí nové dvojice postav ───────────
+    // Shora přiletí balíček volných karet postav, stávající dvojice se do něj vrátí,
+    // zamíchá se a vypadne z něj nová. Payload zapisují pravidla (`_greygoryDraw`,
+    // logic/wildWest.js), tady se vyzvedne, pošle a o dobu cinematiky se podrží boti –
+    // klient totiž drží stav ve frontě a hra by se pod ní posunula dál.
+    function flushGreygory(room) {
+        const gs = room.gameState;
+        const ga = gs && gs._greygoryAnim;
+        if (!ga) return;
+        gs._greygoryAnim = null;
+        emitAnim(room, { type: 'greygory_deal', playerIdx: ga.playerIdx,
+                         poolSize: ga.poolSize, old: ga.old, next: ga.next });
+        room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0,
+                                       Date.now() + greygoryDealMs(ga.poolSize, ga.old.length));
+    }
+
     // ── Město duchů: duch odchází ze hry a odkládá, co mu zbylo na stole ─────
     // Vizuálně TOTÉŽ jako šerifova ztráta karet za pomocníka (karty po jedné do odhozu,
     // bez poklesu životů a bez odhalení role) – duch svou roli odhalil už při vyřazení.
@@ -636,6 +652,7 @@ module.exports = function installAnimService(ctx) {
         flushHighNoonReveal(room);
         flushSacaFlip(room);
         flushWwsRoles(room);
+        flushGreygory(room);
         flushJohnPain(room);
         flushValentine(room);
     }
