@@ -1411,8 +1411,14 @@ function startBlackJackReveal(ds) {
             } else {
                 // Ostatní: karta (rub) se v jeho ruce objeví TAKÉ přesně při dosednutí spritu,
                 // ať mezi koncem letu a (opožděným) room_update není prázdné místo (probliknutí).
+                // Do skryté ruky ale patří placeholder BEZ ID (to pošle i redakce) – se
+                // skutečnou kartou ji deska nakreslí lícem, takže by se karta hned po
+                // dosednutí odkryla a překlopení za letu vypadalo, že se nekonalo.
                 const h = state?.players?.[playerIdx]?.hand;
-                if (h && !h.some(c => c.id === card.id)) { h.push(card); renderUI(); }
+                if (h && !h.some(c => c.id === card.id)) {
+                    h.push(hideIntoHand(playerIdx) ? { id: null, _placeholder: true } : card);
+                    renderUI();
+                }
             } } });
     if (isOwner) {
         gameScene.tweens.add({ targets: sprite, scaleX: endScale, delay: flyDelay, duration: 420, ease: 'Cubic.easeIn' });
@@ -1421,10 +1427,17 @@ function startBlackJackReveal(ds) {
         // orientace (bok = ±90°, protější = 180°), jako běžné líznutí do ruky.
         const seatAngle = _kitSpecAngleFor(playerIdx);
         if (seatAngle) gameScene.tweens.add({ targets: sprite, angle: seatAngle, delay: flyDelay, duration: 420, ease: 'Cubic.easeIn' });
-        // ...a překlopí se zpět na rub (míří do skryté ruky).
-        gameScene.tweens.add({ targets: sprite, scaleX: 0, delay: flyDelay, duration: 210, ease: 'Sine.easeIn',
-            onComplete: () => { if (!sprite.active) return; sprite.setTexture('card_back');
-                gameScene.tweens.add({ targets: sprite, scaleX: endScale, duration: 210, ease: 'Sine.easeOut' }); } });
+        // ...a překlopí se zpět na rub – ale JEN když do skryté ruky opravdu míří.
+        // Pod Sacagaway, v debug hře i u diváka hry jen botů leží ruce odkryté, takže by
+        // karta dosedla jako rub do vějíře kresleného lícem a hned se překlopila zpátky
+        // (hideIntoHand je jediný zdroj pravdy, viz net/handlers.js).
+        if (hideIntoHand(playerIdx)) {
+            gameScene.tweens.add({ targets: sprite, scaleX: 0, delay: flyDelay, duration: 210, ease: 'Sine.easeIn',
+                onComplete: () => { if (!sprite.active) return; sprite.setTexture('card_back');
+                    gameScene.tweens.add({ targets: sprite, scaleX: endScale, duration: 210, ease: 'Sine.easeOut' }); } });
+        } else {
+            gameScene.tweens.add({ targets: sprite, scaleX: endScale, delay: flyDelay, duration: 420, ease: 'Cubic.easeIn' });
+        }
     }
 }
 
