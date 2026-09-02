@@ -180,6 +180,11 @@ module.exports = function installBotService(ctx) {
             // Ranč se dá vždycky přeskočit prázdným seznamem.
             case 'PEYOTE': return { event: 'peyote_guess', payload: { red: true } };
             case 'RANCH': return { event: 'ranch_exchange', payload: { cardIds: [] } };
+            // Divoký západ – Miláček Valentýn: odhoz celé ruky, začne se první kartou.
+            case 'VALENTINE_DISCARD': {
+                const c = gs.players[idx]?.hand?.[0];
+                return c ? { event: 'valentine_discard', payload: { cardId: c.id } } : null;
+            }
             // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
             case 'GRINNER_GIVE': {
                 const c = gs.players[idx]?.hand?.[0];

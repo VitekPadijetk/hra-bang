@@ -1298,6 +1298,13 @@ function decideBotAction(state, myIndex, beliefs) {
             return null;
         }
 
+        // Divoký západ – Miláček Valentýn: odhazuje se celá ruka, takže je jedno, čím
+        // se začne – ale hrát se to musí kartu po kartě (klikací fáze, bug 35).
+        case 'VALENTINE_DISCARD': {
+            const c = me.hand[0];
+            return c ? { event: 'valentine_discard', payload: { cardId: c.id } } : null;
+        }
+
         // Divoký západ – Youl Grinner: dát kartu je povinné, jen se vybírá, co bolí
         // nejmíň (keepScore, stejně jako u Ruské rulety). Prázdnou ruku sem server
         // neposílá (kolečko takové hráče přeskakuje).

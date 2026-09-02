@@ -64,6 +64,7 @@ const WildWestMixin = {
         this._ledgerResetPending = false;
         this.pendingGreygory = null;
         this._greygoryAnim = null;
+        this.pendingValentine = null;   // Miláček Valentýn: klikané odhazování ruky
         // Navazující hra přebírá hráče z předchozí – líznutá dvojice Greygoryho Decka
         // patří jedné hře, v té další se líže z čerstvě zamíchaného balíčku postav.
         (this.players || []).forEach(p => { p._greygoryChars = null; });
@@ -263,6 +264,12 @@ const WildWestMixin = {
     // pořád ještě PŘED kontrolami na Dynamit/Vězení: hráč má do sejmutí jít s novou rukou
     // (mohl si vyměnit Pivo, kterým se před dynamitem zachrání).
     //
+    // ODHOZ SE TAKY KLIKÁ – karta po kartě, jako u Ruské rulety (bug 35). Automatika
+    // odhodila celou ruku naráz a hráč jen koukal, co mu odletělo; teď má vlastní fázi
+    // (`VALENTINE_DISCARD` + `pendingValentine`), ze které se hra hne, až je ruka prázdná.
+    // Kolik karet se dolízne, se proto pamatuje předem (`count`) – v okamžiku přechodu
+    // do fáze lízání už je ruka nutně prázdná.
+    //
     // Náhradní karty si líže RUČNĚ klikáním na balíček – nastaví se klasická fáze lízání,
     // takže se domíchání balíčku odbaví úplně stejnou cestou jako u kteréhokoli jiného
     // lízání. `isStartOfTurn: false` je nutné hned dvakrát:
@@ -280,24 +287,41 @@ const WildWestMixin = {
         const p = this.players[idx];
         if (!p || !isInPlay(p) || !p.hand.length) return false;
         const n = p.hand.length;
-        const discarded = p.hand.splice(0, n);
-        // Karty odlétají do odhozu PO JEDNÉ zleva doprava (jako u Ranče) – emit řeší hák
-        // před broadcastem (flushValentine, server/anim.js), protože sem se hra dostane
-        // z pěti různých cest, ale všechny končí broadcastem.
-        this._valentineAnim = { playerIdx: idx, cardIds: discarded.map(c => c.id) };
-        discarded.forEach(c => this.deck.discard(c));
         this.logEvent('event', { card: 'Miláček Valentýn', who: p.name, msg: `vyměňuje ${n} karet` });
+        this.pendingValentine = { playerIdx: idx, count: n };
+        this.phase = "VALENTINE_DISCARD";
+        return true;
+    },
+
+    // Jeden klik = jedna odhozená karta. Odhoz je povinný a bez volby („všechny"), takže
+    // se nic nepotvrzuje – klikatelná je celá ruka a fáze skončí sama s poslední kartou.
+    // Suzy Lafayette se prázdnou rukou neprobudí: posuzuje se až po dokončení efektu
+    // („nejdřív doběhne efekt zahrané karty"), a ten končí až dolízáním náhrad.
+    valentineDiscard(playerIdx, cardId) {
+        if (this.phase !== "VALENTINE_DISCARD" || !this.pendingValentine) return null;
+        if (this.pendingValentine.playerIdx !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        if (!p) return null;
+        const i = p.hand.findIndex(c => c && c.id === cardId);
+        if (i === -1) return null;
+        const card = p.hand.splice(i, 1)[0];
+        this.deck.discard(card);
+        if (p.hand.length) return { card, done: false };
+
+        // Ruka je prázdná → náhrady si líže klasickou fází lízání (viz komentář výš).
+        const need = this.pendingValentine.count;
+        this.pendingValentine = null;
         this._setDrawPhase({
             active: true,
-            playerIdx: idx,
-            cardsNeeded: n,
+            playerIdx,
+            cardsNeeded: need,
             cardsDrawn: 0,
             options: ['deck'],
             isStartOfTurn: false,
             isValentine: true,
         });
         this.phase = "DRAW";
-        return true;
+        return { card, done: true };
     },
 
     // ── Madam Zuzana ──────────────────────────────────────────────────────────

@@ -40,6 +40,9 @@ function pendingActor(state) {
         case 'BLOOD_BROTHERS':   return state.pendingBlood ? { idx: state.pendingBlood.playerIdx, kind: 'BLOOD_BROTHERS' } : null;
         // Fistful – Ruská ruleta: kolečko „odhoď kartu Vedle!" (mimo tah i mimo obranu).
         case 'ROULETTE_DISCARD': return state.pendingRoulette ? { idx: state.pendingRoulette.playerIdx, kind: 'ROULETTE_DISCARD' } : null;
+        // Divoký západ – Miláček Valentýn: hráč na tahu odhazuje ruku po jedné kartě.
+        case 'VALENTINE_DISCARD': return state.pendingValentine
+            ? { idx: state.pendingValentine.playerIdx, kind: 'VALENTINE_DISCARD' } : null;
         // Divoký západ – Youl Grinner: kdo má víc karet než on, dá mu jednu (před lízáním).
         case 'GRINNER_GIVE':     return state.pendingGrinner?.queue?.length
             ? { idx: state.pendingGrinner.queue[0], kind: 'GRINNER_GIVE' } : null;
@@ -88,6 +91,7 @@ const _WAIT_LABELS = {
     BLOOD_BROTHERS:        'Pokrevní bratři – rozdává život',
     ROULETTE_DISCARD:      'Ruská ruleta – odhazuje Vedle!',
     GRINNER_GIVE:          'Youl Grinner – dává kartu',
+    VALENTINE_DISCARD:     'Miláček Valentýn – odhazuje ruku',
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     GREYGORY_OFFER:        'Greygory Deck – vybírá si postavy',
     DOROTHY_TARGET:        'Zuřivá Doroty – vybírá cíl poručené karty',

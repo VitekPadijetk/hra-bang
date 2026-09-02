@@ -942,6 +942,20 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Divoký západ – Miláček Valentýn: hráč na tahu odhazuje ruku po jedné kartě
+    // (klikáním, ne automatikou). Fáze skončí sama s poslední kartou a přejde do
+    // lízání náhrad – klient i bot jedou stejnou cestou jako u Ruské rulety.
+    on('valentine_discard', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingValentine?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const res = gs.valentineDiscard(idx, d && d.cardId);
+            if (!res) { broadcastRoom(room); return; }
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            broadcastRoom(room);
+        });
+    });
+
     // Divoký západ – Youl Grinner: hráč, který má víc karet než on, mu jednu dává
     // (před jeho fází lízání). Kartu si vybírá sám, takže se pod Sacagaway nehraje
     // gesto se zamícháním ruky (`chosen`) – líc vidí dárce i Youl, ostatním letí rub.

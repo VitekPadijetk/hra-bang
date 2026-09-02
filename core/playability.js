@@ -255,6 +255,12 @@ function cardPlayability(state, me, myIndex, card) {
     if (state.phase === "GRINNER_GIVE") {
         return state.pendingGrinner?.queue?.[0] === myIndex ? true : null;
     }
+    // Divoký západ – Miláček Valentýn: odhazuje se CELÁ ruka, takže je klikatelná každá
+    // karta a odhoz je povinný (žádné „přeskočit"). Zase mimo tah v běžném smyslu –
+    // je to krok startu tahu, ne fáze 1 – proto stejně brzy jako obojí výš.
+    if (state.phase === "VALENTINE_DISCARD") {
+        return state.pendingValentine?.playerIdx === myIndex ? true : null;
+    }
     const isMyResponseTurn = isResponseTurn(state, myIndex);
     const isMyPlayTurn = isPlayTurn(state, myIndex);
     // High Noon – Želízka: ve svém tahu jen karty zvolené barvy (i jako reakce).

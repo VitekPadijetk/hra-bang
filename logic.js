@@ -220,6 +220,7 @@ class GameState {
         this.pendingRoulette = null;    // Ruská ruleta: kolečko odhazování karet Vedle!
         this._advanceRouletteAfterQueue = false;   // …a jeho posun až po frontě odložených akcí
         this._lastBrown = null;        // Divoký západ – Lee Van Kliff: poslední hnědá karta tahu
+        this.pendingValentine = null;  // Divoký západ – Miláček Valentýn: klikaný odhoz ruky
         // Divoký západ – Lady Růže z Texasu: strop „x použití ZA SEBOU" (x = počet žijících,
         // FAQ Q08). `_roseUsedThisTurn` drží, jestli se v probíhajícím tahu měnilo místo –
         // podle toho se série na začátku dalšího tahu buď drží, nebo nuluje.

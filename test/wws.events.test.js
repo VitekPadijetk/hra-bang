@@ -439,18 +439,34 @@ function stockDeck(g, n = 12) {
     for (let k = 0; k < n; k++) topDeck(g, Suits.CLUBS, '5');
 }
 
+// Odhoz ruky se KLIKÁ, kartu po kartě (bug 35) – pořadí je hráčova věc, takže se
+// v testech bere pořád ta první.
+function valentineDiscardAll(g, idx = 0) {
+    let guard = 20;
+    while (g.phase === 'VALENTINE_DISCARD' && guard-- > 0) {
+        g.valentineDiscard(idx, g.players[idx].hand[0].id);
+    }
+}
+
 test('Miláček Valentýn: odhodí celou ruku a lízne si stejný počet', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MILACEK_VALENTYN');
     for (let k = 0; k < 4; k++) bang(g, 0);
     stockDeck(g);
     g._beginTurn();
+    assert.equal(g.phase, 'VALENTINE_DISCARD', 'odhoz se kliká, ne automaticky');
+    assert.equal(g.pendingValentine.playerIdx, 0);
+    assert.equal(g.pendingValentine.count, 4);
+    g.valentineDiscard(0, g.players[0].hand[0].id);
+    assert.equal(g.phase, 'VALENTINE_DISCARD', 'po první kartě se čeká na další');
+    assert.equal(g.players[0].hand.length, 3);
+    valentineDiscardAll(g);
     assert.equal(g.phase, 'DRAW');
     assert.equal(g.drawPhaseState.isValentine, true);
     assert.equal(g.drawPhaseState.isStartOfTurn, false, 'není to fáze 1');
     assert.equal(g.drawPhaseState.cardsNeeded, 4);
     assert.equal(g.players[0].hand.length, 0, 'ruka odešla do odhozu');
     assert.equal(g.deck.discardPile.length, 4);
-    assert.equal(g._valentineAnim.cardIds.length, 4, 'animace odhozu je nachystaná');
+    assert.equal(g.pendingValentine, null);
     for (let k = 0; k < 4; k++) g.drawCard('deck');
     assert.equal(g.players[0].hand.length, 4);
     // …a teprve teď běžná fáze lízání
@@ -478,7 +494,9 @@ test('Miláček Valentýn: výměna je PŘED kontrolou Dynamitu', () => {
     board(g, 0, CardType.DYNAMITE, { name: 'Dynamit' });
     stockDeck(g);
     g._beginTurn();
-    assert.equal(g.phase, 'DRAW', 'nejdřív výměna, sejmutí až za ní');
+    assert.equal(g.phase, 'VALENTINE_DISCARD', 'nejdřív výměna, sejmutí až za ní');
+    valentineDiscardAll(g);
+    assert.equal(g.phase, 'DRAW');
     assert.equal(g.players[0].board.some(c => c.type === CardType.DYNAMITE), true);
     g.drawCard('deck');
     assert.equal(g.phase, 'CHECK_DRAW', 'teprve teď sejmutí na Dynamit');
@@ -491,6 +509,7 @@ test('Miláček Valentýn × Želízka: barva se volí až po SKUTEČNÉM lízá
     bang(g, 0);
     stockDeck(g);
     g._beginTurn();
+    valentineDiscardAll(g);
     g.drawCard('deck');                       // dolízl náhradu za Valentýna
     assert.equal(g.phase, 'DRAW', 'Želízka se u Valentýnovy fáze neptají');
     assert.equal(g.drawPhaseState.isStartOfTurn, true);
@@ -504,6 +523,7 @@ test('Miláček Valentýn × Ranč: Ranč se ptá jednou, až za běžným líz�
     bang(g, 0);
     stockDeck(g);
     g._beginTurn();
+    valentineDiscardAll(g);
     g.drawCard('deck');
     assert.equal(g.phase, 'DRAW');
     assert.equal(g.drawPhaseState.isStartOfTurn, true);
@@ -519,6 +539,7 @@ test('Miláček Valentýn × Opuštěný důl: odhoz i lízání jdou mimo důl'
     stockDeck(g);
     const deckBefore = g.deck._drawPile.length;
     g._beginTurn();
+    valentineDiscardAll(g);
     assert.equal(g.deck.discardPile.length, 3, 'ruka šla do normálního odhozu');
     assert.equal(g.deck._drawPile.length, deckBefore, 'a ne navrch dobíracího balíčku');
     assert.equal(g._mineTurn, false, 'důl se rozhoduje až ve fázi 1');

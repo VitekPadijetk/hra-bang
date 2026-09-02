@@ -18,6 +18,7 @@
 //   { type: 'RANCH_TOGGLE', index, cardId }           – Ranč (Fistful): označit/odznačit k výměně
 //   { type: 'ROULETTE_DISCARD', index, cardId }       – Ruská ruleta (Fistful): odhoď kartu Vedle!
 //   { type: 'GRINNER_GIVE', index, cardId }           – Youl Grinner (Divoký západ): dej mu kartu
+//   { type: 'VALENTINE_DISCARD', index, cardId }      – Miláček Valentýn (Divoký západ): odhoď kartu z ruky
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
@@ -88,6 +89,12 @@ function decideCardClick(ctx) {
     // takže klik na kteroukoli kartu v ruce ji rovnou pošle (žádné označování).
     if (state.phase === "GRINNER_GIVE" && state.pendingGrinner?.queue?.[0] === myIndex) {
         return { type: 'GRINNER_GIVE', index, cardId: card.id };
+    }
+
+    // Divoký západ – Miláček Valentýn: odhazuje se celá ruka, kartu po kartě. Pořadí si
+    // volí hráč (a je jedno), takže klik rovnou odhazuje – stejně jako u Grinnera.
+    if (state.phase === "VALENTINE_DISCARD" && state.pendingValentine?.playerIdx === myIndex) {
+        return { type: 'VALENTINE_DISCARD', index, cardId: card.id };
     }
 
     // Divoký západ – Lee Van Kliff: nabitá schopnost čeká na kartu BANG!, kterou se

@@ -2197,9 +2197,14 @@ function drawMyArea(ctx) {
                 const _isGrinnerPick = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "GRINNER_GIVE" && state.pendingGrinner?.queue?.[0] === myIndex;
                 if (_isGrinnerPick) cSprite.setTint(0xffff44);
+                // Divoký západ – Miláček Valentýn: odhazuje se CELÁ ruka, takže svítí
+                // taky celá – jen se kliká kartu po kartě (bug 35).
+                const _isValentinePick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "VALENTINE_DISCARD" && state.pendingValentine?.playerIdx === myIndex;
+                if (_isValentinePick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
-                                       _isGrinnerPick || _isLawForced;
+                                       _isGrinnerPick || _isValentinePick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2563,7 +2568,7 @@ function drawMyArea(ctx) {
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
-                 'GRINNER_GIVE'].includes(state.phase)
+                 'GRINNER_GIVE', 'VALENTINE_DISCARD'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -3150,6 +3155,29 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_gName} – Youl Grinner (dává kartu)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Divoký západ – Miláček Valentýn: banner „odhoď celou ruku" ────────────────
+    if (state.phase === "VALENTINE_DISCARD" && state.pendingValentine) {
+        const _vMine = state.pendingValentine.playerIdx === myIndex;
+        const _vName = state.players[state.pendingValentine.playerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _vMine ? 0xff5555 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_vMine) {
+            let l1 = gameScene.add.text(960, 66, '💘 Miláček Valentýn – odhoď celou ruku',
+                { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112,
+                `Klikej na karty jednu po druhé – stejný počet si pak dobereš z balíčku (${state.pendingValentine.count})`,
+                { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_vName} – Miláček Valentýn (odhazuje ruku)`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }
