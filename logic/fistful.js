@@ -514,7 +514,7 @@ const FistfulMixin = {
             if (p && p.health > 0 && !p._ghost) order.push(idx);
         }
         if (!order.length) return false;
-        this.pendingRoulette = { playerIdx: null, order, pos: -1 };
+        this.pendingRoulette = { playerIdx: null, order, pos: -1, freePass: 0 };
         this.logEvent('event', { card: 'Ruská ruleta', order: order.map(i => this.players[i].name) });
         return this._advanceRoulette();
     },
@@ -596,6 +596,13 @@ const FistfulMixin = {
         if (!this.pendingRoulette || this.pendingRoulette.playerIdx !== idx) return;
         if (passed) {
             this.logEvent('event', { card: 'Ruská ruleta', who: p?.name, msg: 'uhnul sejmutím' });
+            this.pendingRoulette.freePass++;
+            if (this._rouletteDeadlock()) {
+                this.pendingRoulette = null;
+                this.logEvent('event', { card: 'Ruská ruleta', msg: 'pod Požehnáním uhnuli sejmutím všichni → efekt končí' });
+                this._resumeBeginTurn();
+                return;
+            }
             this._continueRoulette();
             return;
         }
@@ -610,6 +617,19 @@ const FistfulMixin = {
             return;
         }
         this._rouletteTurn(idx, true);
+    },
+
+    // High Noon – Požehnání dělá ze VŠECH karet srdcové, takže každé sejmutí na Barel
+    // (i Jourdonnaisovo) projde. Mají-li Barel všichni v kolečku, neselže nikdy nikdo
+    // a kolečko by se točilo donekonečna – proto pod Požehnáním končí efekt Ruské
+    // rulety bez zásahu ve chvíli, kdy zadarmo projde celé kolo. Počítadlo `freePass`
+    // shazuje každý odhoz karty (kdo odhazuje, tomu karty dojdou a kolečko doběhne samo),
+    // takže se mimo tenhle patový případ neuplatní.
+    _rouletteDeadlock() {
+        const pr = this.pendingRoulette;
+        if (!pr || !this.hasEvent('POZEHNANI')) return false;
+        const live = pr.order.filter(i => this.players[i] && this.players[i].health > 0).length;
+        return live > 0 && pr.freePass >= live;
     },
 
     // Kolečko pokračuje dalším hráčem. Když už není kdo (všichni účastníci mezitím
@@ -646,6 +666,7 @@ const FistfulMixin = {
 
         src.splice(i, 1);
         this.deck.discard(card);
+        this.pendingRoulette.freePass = 0;   // odhoz kolečko posouvá k závěru (viz _rouletteDeadlock)
         this.logEvent('event', { card: 'Ruská ruleta', who: p.name, msg: `odhazuje ${card.name}` });
         this.checkSuzyLafayette(p);
         if (!fromBoard) this._mollyPlayedOutOfTurn(playerIdx, false);

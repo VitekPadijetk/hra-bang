@@ -384,6 +384,58 @@ test('Ruská ruleta: neúspěšný Barel bez karty Vedle! = 2 zásahy', () => {
         { playerIdx: 0, hitsLeft: 2, source: 'ROULETTE', resume: 'BEGIN_TURN' });
 });
 
+// Bug 62: Požehnání (High Noon) dělá ze všech karet srdcová, takže KAŽDÉ sejmutí na
+// Barel projde. Mají-li Barel všichni, neselže nikdy nikdo a kolečko by se točilo
+// donekonečna – pod Požehnáním proto efekt skončí, jakmile zadarmo projde celé kolo.
+test('Ruská ruleta + Požehnání: barel u všech kolečko ukončí bez zásahu', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    g.activeEvent = hn('POZEHNANI');
+    g.players.forEach((p, i) => { board(g, i, CardType.BARREL, { name: 'Barel' }); missIdx(g, i); });
+    topDeck(g, Suits.SPADES);   // Požehnání barvu stejně přebije na ♥
+    enterFf(g, 'RUSKA_RULETA');
+
+    for (let k = 0; k < 3; k++) {
+        assert.equal(g.phase, 'BARREL_DRAW', 'sejmutí hráče ' + k);
+        g.triggerBarrelDraw();
+        g.resolveCheck();
+    }
+    assert.equal(g.pendingRoulette, null, 'kolečko se po celém kole zadarmo zavřelo');
+    assert.notEqual(g.phase, 'BARREL_DRAW');
+    assert.notEqual(g.phase, 'ROULETTE_DISCARD');
+    const hp = g.players.map(p => p.health);
+    assert.deepEqual(hp, [hp[0], hp[0], hp[0]], 'nikdo nepřišel o život');
+    assert.ok(g.players.every(p => p.hand.length === 1), 'nikdo nic neodhodil');
+});
+
+test('Ruská ruleta + Požehnání: odhoz počítadlo shodí, kolečko doběhne normálně', () => {
+    // P0 má Barel (projde zadarmo), P1 ne a odhazuje – jakmile mu Vedle! dojde, schytá 2.
+    const g = mkEv([{ role: 'Sheriff' }, {}], null);
+    g.activeEvent = hn('POZEHNANI');
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    missIdx(g, 1);
+    topDeck(g, Suits.SPADES);
+    enterFf(g, 'RUSKA_RULETA');
+
+    g.triggerBarrelDraw(); g.resolveCheck();          // P0 zadarmo
+    assert.equal(g.pendingRoulette.playerIdx, 1);
+    g.rouletteDiscard(1, { cardId: g.players[1].hand[0].id });
+    assert.equal(g.pendingRoulette.freePass, 0, 'odhoz počítadlo vynuloval');
+
+    g.triggerBarrelDraw(); g.resolveCheck();          // P0 zase zadarmo
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE', 'P1 už nemá čím');
+    assert.equal(g.pendingDynamiteDamage.playerIdx, 1);
+});
+
+test('Ruská ruleta bez Požehnání: barel u všech kolečko neukončí', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], null);
+    g.players.forEach((p, i) => { board(g, i, CardType.BARREL, { name: 'Barel' }); missIdx(g, i); });
+    topDeck(g, Suits.HEARTS); topDeck(g, Suits.HEARTS); topDeck(g, Suits.HEARTS);
+    enterFf(g, 'RUSKA_RULETA');
+    for (let k = 0; k < 3; k++) { g.triggerBarrelDraw(); g.resolveCheck(); }
+    assert.ok(g.pendingRoulette, 'kolečko běží dál – náhoda se dřív nebo později otočí');
+    assert.equal(g.phase, 'BARREL_DRAW');
+});
+
 test('Ruská ruleta: Jourdonnais snímá i bez Barelu', () => {
     const g = mkEv([{ role: 'Sheriff', character: 'Jourdonnais' }, {}, {}], null);
     missIdx(g, 1); missIdx(g, 2);
