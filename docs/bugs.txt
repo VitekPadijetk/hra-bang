@@ -47,7 +47,7 @@ J — letící karty a otáčení     28, 29, 37, 45, 49, 59   HOTOVO
       net/handlers.js, server/anim.js
 K — cinematiky Divokého záp.   54, 60, 61   HOTOVO
       core/wwsAnim.js, net/handlers.js, server/anim.js, server/rooms.js (redakce rolí)
-L — Greygory Deck              40, 41
+L — Greygory Deck              40, 41   HOTOVO
       view/board.js, positions.js, core/layout.js, net/handlers.js, core/wwsAnim.js, logic/wildWest.js
 M — deska: zvýraznění a míry   31, 42, 43, 44, 50, 52, 56, 57, 65
       view/board.js, core/layout.js, positions.js (+ logic/highNoon.js u 44,
@@ -89,8 +89,6 @@ OTEVŘENÉ
 - 35 u miláčka valentýna bych na všechny ty karty měl kliknout já, ne automatika
 - 38 madam zuzana - taky se počítá vyložení modré/zelené karty jako zahrání karty - naopak použití zelené karty ze stolu se nepočítá jako zahrání (už zahrána byla) - zahrání karty je de facto použití z ruky
 - 39 když se snímá karta a je poslední z balíčku a pak se míchá, tak v odhozu zůstane karta co tam byla (a na ni se dá ta ze snímání), a jsou tam tak dvě, měla by tam být jen ta ze snímání a ta stará se měla též zamíchat (chvíli tak v balíčku nebude nic)
-- 40 u gregory decka bych si představoval nějakou animaci, že přiletí zase zhora balíček (čítající jen postavy, co si gregory může vzít), (pokud už měl) tak se tam přidají jeho postavy (posun + přetočení) a balíček se zamíchá, mu se dají ty dvě nové postavy a balíček hned zase odletí. Pak jak se ukazují jestli chce nechat tak taky ať z těch míst se zvětší a pak případně zmenší zpět
-- 41 postavy u gregory decka nebudeme dávat na místo vybavení, dáme je vedle sebe cca tam jak je tlačítko pro nějakou special akci - to bude mít holt posunuté víc doprava, až za těmi postavami, pro ostatní budou ty postavy (ty karty mohou být lehce menší) jakoby "nad" tedy směrem ke středu od postavy gregory decka vedle sebe. Budou zvětšitelné a budou se posouvat s postavou
 - 42 big spencer, ano zasahuje do balíčku, vyřešíme to tak (zatím řešíme jen můj pohled), že celý blok BS + 2 karty životů bude menší (zarovnaný dole), tak aby se tam vešel a když bude spencer přicházet o životy, bude se ten blok zase plynule zvětšovat, až se tam vejde, naopak když získá, tak se zase zmenší.
 - 43 když je hokynářství a balíčky ze posunou nahoru, minimálně divoký západ se posune víc než ostatní balíčky, zařiď ať se posunou stejně
 - 44 u daltonů mi svítil stetson jako že jde odhodit, lze ale jen modrou, nevím jestli to tak je i u dalších zelených karet, každopádně se pak vrátila a já musel odhodit zbraň
@@ -113,6 +111,9 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 41 postavy u gregory decka nebudeme dávat na místo vybavení, dáme je vedle sebe cca tam jak je tlačítko pro nějakou special akci - to bude mít holt posunuté víc doprava, až za těmi postavami, pro ostatní budou ty postavy (ty karty mohou být lehce menší) jakoby "nad" tedy směrem ke středu od postavy gregory decka vedle sebe. Budou zvětšitelné a budou se posouvat s postavou → oprava: df1aa20 (není to karta ve hře, ale počítadlo schopností – leží vedle portrétu směrem ke středu stolu a jede s ním po nábojích; u mé zóny si bere slot tlačítka schopnosti, které jí uhne doprava. Kompaktní profil (mobil) na tu geometrii místo nemá, tam zůstává na konci pásu)
+- 40 u gregory decka bych si představoval nějakou animaci, že přiletí zase zhora balíček (čítající jen postavy, co si gregory může vzít), (pokud už měl) tak se tam přidají jeho postavy (posun + přetočení) a balíček se zamíchá, mu se dají ty dvě nové postavy a balíček hned zase odletí. Pak jak se ukazují jestli chce nechat tak taky ať z těch míst se zvětší a pak případně zmenší zpět → oprava: 4c80b0e (balíček volných karet postav přiletí shora, stávající dvojice se do něj vrátí a přetočí na rub, zamíchá se stávajícím riffle a vypadne z něj nová dvojice; na začátku hry se nehraje, tam karty rozdává intro. Karty nabídky navíc vyrostou ze svých míst a po volbě se tam smrští)
 
 - 54 u zuřivé Dorothy to otočení karet pokud nemá udělejme plynulé přetočení tam i pak zpátky (jako u sacagaway) → oprava: b48ba36 (je to táž situace jako příchod/odchod Sacagaway, jen na jediném vějíři – použije se beze změny její vlna přetáčení; výdrž se počítá až od dotočení)
 - 60 když se rozdají role kvůli hřbitovu, chvilku tam jde vidět ta odhalená role (asi ta stará), až pak se objeví rubová karta → oprava: 02058d7 (sprity se uklízely pevným časovačem do stejného okamžiku, ve kterém teprve dosedal nový stav – teď se úklid věší přímo na jeho commit, onNextState)
