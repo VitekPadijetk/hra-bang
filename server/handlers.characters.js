@@ -2,7 +2,8 @@
 // (Bart Cassidy, El Gringo, Suzy) a vyhodnocení checků/Black Jacku + get_taken_names.
 // registerCharacterHandlers(socket, ctx, withRoom) – těla byte-identická.
 const { lawRevealMs } = require('../core/fistfulAnim.js');
-const { dorothyRevealMs } = require('../core/wwsAnim.js');
+const { dorothyRevealMs, sacaFlipMs } = require('../core/wwsAnim.js');
+const { eventActive } = require('../core/highNoon.js');
 module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
     const { rooms, emitAnim, emitAnimPrivate, emitDeathAnim, handleAutoEndTurn,
             handleReshuffleAndBroadcast, broadcastRoom, broadcastRoomDelayed } = ctx;
@@ -276,14 +277,35 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             if (res.revealed) {
                 // „Musí ukázat ruku." Redakce ji na tu chvíli pustí (server/rooms.js);
                 // zhasnout ji musíme my, jinak by zůstala odkrytá napořád.
+                //
+                // Ruka se nesmí přepnout z rubů na líce (a zpátky) v jednom snímku – je to
+                // táž situace jako příchod a odchod Sacagaway, jen na jediném vějíři, takže se
+                // použije BEZE ZMĚNY její vlna přetáčení (`saca_flip`, viz playSacaFlip
+                // v net/handlers.js). Pod skutečnou Sacagaway se nic přetáčet nemusí – ruce
+                // už odkryté jsou – a animace se tedy vůbec neposílá.
+                const hand = commanded.hand || [];
+                const flipMs = eventActive(gs, 'SACAGAWAY') ? 0 : sacaFlipMs([hand.length]);
+                if (flipMs) {
+                    emitAnim(room, { type: 'saca_flip', open: true,
+                                     hands: [{ playerIdx: commandedIdx, cardIds: hand.map(c => c.id) }] });
+                }
                 const ms = dorothyRevealMs();
-                room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0, Date.now() + ms);
+                // Boti drží po celou dobu: přetočení nahoru + výdrž + přetočení zpátky.
+                room._wwsBlockUntil = Math.max(room._wwsBlockUntil || 0,
+                                               Date.now() + 2 * flipMs + ms);
                 broadcastRoom(room);
+                // Výdrž se počítá až OD dotočení vlny – jinak by ruka byla doopravdy vidět
+                // o délku přetočení kratší (stav drží fronta animací za ní).
                 setTimeout(() => {
                     if (gs._dorothyReveal?.playerIdx !== commandedIdx) return;
+                    if (flipMs) {
+                        emitAnim(room, { type: 'saca_flip', open: false,
+                                         hands: [{ playerIdx: commandedIdx,
+                                                   count: (gs.players[commandedIdx]?.hand || []).length }] });
+                    }
                     gs._dorothyReveal = null;
                     broadcastRoom(room);
-                }, ms);
+                }, flipMs + ms);
                 return;
             }
             if (res.needTarget) { broadcastRoom(room); return; }
