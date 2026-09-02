@@ -221,13 +221,11 @@ class GameState {
         this._advanceRouletteAfterQueue = false;   // …a jeho posun až po frontě odložených akcí
         this._lastBrown = null;        // Divoký západ – Lee Van Kliff: poslední hnědá karta tahu
         this.pendingValentine = null;  // Divoký západ – Miláček Valentýn: klikaný odhoz ruky
-        // Divoký západ – Lady Růže z Texasu: strop „x použití ZA SEBOU" (x = počet žijících,
-        // FAQ Q08). `_roseUsedThisTurn` drží, jestli se v probíhajícím tahu měnilo místo –
-        // podle toho se série na začátku dalšího tahu buď drží, nebo nuluje.
-        this._roseStreak = 0;
+        // Divoký západ – Lady Růže z Texasu: vyměnit místo smí hráč jednou za svůj tah
+        // (`_roseUsedThisTurn`, nuluje ho začátek každého tahu).
         this._roseUsedThisTurn = false;
         // Divoký západ – Zuřivá Doroty: vypůjčené sedadlo (`_dorothyOwnerIdx` = kdo je na
-        // tahu doopravdy), strop poručení za tah (`_dorothyUsed`, R4/FAQ Q08), už použité
+        // tahu doopravdy), strop poručení za tah (`_dorothyUsed`, jedno za tah), už použité
         // dvojice (druh karty, poručený) a dočasně odkrytá ruka toho, kdo kartu neměl.
         // Viz logic/wildWest.js.
         this.pendingDorothy = null;
@@ -395,7 +393,8 @@ class GameState {
         // a pro počítadlo zahraných karet, které patří vždy jednomu tahu jednoho hráče.
         this._zuzanaDone = false;
         // Divoký západ – Zuřivá Doroty: strop poručení i zakázané dvojice patří jednomu
-        // tahu jednoho hráče (na rozdíl od Lady Růže, kde je strop na použití ZA SEBOU).
+        // tahu jednoho hráče. Lady Růže z Texasu má strop stejný (jedno použití za tah),
+        // jen se nuluje v _beginTurn – Vendetin tah navíc jím prochází taky.
         this._dorothyUsed = 0;
         this._dorothyDone = [];
         this.pendingDorothy = null;

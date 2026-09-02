@@ -911,7 +911,7 @@ test('20 her jen botů jede i s balíčkem samých Lady Růží (a nepřesedáva
         const c = wwsCardData.find(x => x.key === key);
         return { id: c.id, key: c.key, name: c.name, art: c.art, text: c.text || null };
     };
-    let flipped = 0, maxStreak = 0;
+    let flipped = 0;
     try {
         for (let k = 0; k < 20; k++) {
             const n = 3 + (k % 6);
@@ -940,7 +940,6 @@ test('20 her jen botů jede i s balíčkem samých Lady Růží (a nepřesedáva
                          `WWS7 hra #${k}: výměna sedadel nikoho neztratila ani nezdvojila`);
             room.players.forEach((rp, i) => assert.equal(gs.players[i].name, rp.name,
                          `WWS7 hra #${k}: sedadlo #${i} sedí v room.players i v gs.players`));
-            maxStreak = Math.max(maxStreak, gs._roseStreak || 0);
             if (gs.wwsPile.length) flipped++;
         }
     } finally { ctx.glog.system = origSystem; }

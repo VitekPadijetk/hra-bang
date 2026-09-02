@@ -180,38 +180,24 @@ test('přeskočený hráč nesnímá na Dynamit ani Vězení', () => {
     assert.equal(skipped.board.length, 1);            // Vězení leží dál
 });
 
-// ── Strop „x použití za sebou" (FAQ Q08) ─────────────────────────────────────
+// ── Strop: jedna výměna za tah (bug 58) ──────────────────────────────────────
 
-test('strop = počet žijících hráčů a platí NA SEBOU JDOUCÍ použití', () => {
+test('vyměnit místo jde jednou za tah', () => {
     const g = mkRose(4, 0);
-    for (let k = 0; k < 4; k++) {
-        assert.notEqual(roseSwapOffer(g, g.currentPlayerIndex), null, `použití ${k + 1}`);
-        assert.notEqual(g.useLadyRose(g.currentPlayerIndex), null);
-    }
-    assert.equal(g._roseStreak, 4);
-    assert.equal(roseSwapOffer(g, g.currentPlayerIndex), null);
+    assert.notEqual(roseSwapOffer(g, 0), null);
+    assert.notEqual(g.useLadyRose(0), null);
+    assert.equal(g._roseUsedThisTurn, true);
+    assert.equal(roseSwapOffer(g, g.currentPlayerIndex), null, 'podruhé už ne');
     assert.equal(g.useLadyRose(g.currentPlayerIndex), null);
 });
 
-test('strop klesá s ubývajícími hráči (počítají se ŽIJÍCÍ)', () => {
-    const g = mkRose(5, 0);
-    g.players[4].health = 0;
-    g.players[3].health = 0;
-    g._roseStreak = 3;
-    assert.equal(roseSwapOffer(g, 0), null);           // žijí 3, strop je vyčerpaný
-    g._roseStreak = 2;
-    assert.notEqual(roseSwapOffer(g, 0), null);
-});
-
-test('tah, ve kterém místo nikdo neměnil, sérii vynuluje', () => {
+test('další tah strop uvolní', () => {
     const g = mkRose(4, 0);
     g.useLadyRose(0);
-    assert.equal(g._roseStreak, 1);
     g.nextTurn();                                       // sedadlo 0 se přeskakuje
-    assert.equal(g._roseStreak, 1);                     // v končícím tahu se měnilo
     assert.equal(g._roseUsedThisTurn, false);
-    g.nextTurn();                                       // tah bez výměny doběhl
-    assert.equal(g._roseStreak, 0);
+    g.phase = 'PLAY';                                   // fázi 1 tady neřešíme
+    assert.notEqual(roseSwapOffer(g, g.currentPlayerIndex), null);
 });
 
 // ── Přemapování indexů ───────────────────────────────────────────────────────

@@ -101,11 +101,9 @@ const HighNoonMixin = {
         // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty patří jednomu tahu.
         // Sedí tady, protože tímhle krokovačem jde i Vendetin tah navíc (Fistful).
         this._lastBrown = null;
-        // Divoký západ – Lady Růže z Texasu: strop je „x použití ZA SEBOU" (FAQ Q08).
-        // „Za sebou" = bez tahu, ve kterém místo neměnil nikdo, takže se série nuluje
-        // na začátku tahu, který následuje po takovém tahu. Sedí tady ze stejného důvodu
-        // jako `_lastBrown`: tudy jde i Vendetin tah navíc, a ten je taky tah.
-        if (!this._roseUsedThisTurn) this._roseStreak = 0;
+        // Divoký západ – Lady Růže z Texasu: vyměnit místo jde jednou za tah. Sedí tady
+        // ze stejného důvodu jako `_lastBrown`: tudy jde i Vendetin tah navíc, a ten je
+        // taky tah.
         this._roseUsedThisTurn = false;
         return this._runBeginTurn();
     },

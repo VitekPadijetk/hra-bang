@@ -676,10 +676,10 @@ function lvkTargetOk(state, me, myIndex, targetIdx) {
 // „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici a ten tak
 // přeskočí svůj nejbližší tah."
 //
-// Počet použití karta neomezuje. Strop je podle FAQ Q08 „x použití ZA SEBOU", kde
-// x = počet ŽIJÍCÍCH hráčů (`state._roseStreak`, nuluje ho začátek tahu, ve kterém
-// místo nikdo neměnil). Je to jediná pojistka proti smyčce, ve které jeden hráč nikdy
-// nepřijde na tah, takže ji musí znát server, klient i bot – tedy tenhle helper.
+// Počet použití karta sama neomezuje, hra ale ano: JEDNOU ZA TAH (`state._roseUsedThisTurn`,
+// nuluje ho začátek každého tahu). Je to jediná pojistka proti smyčce, ve které jeden
+// hráč nikdy nepřijde na tah – přesednout tam a zpátky by šlo donekonečna – takže ji
+// musí znát server, klient i bot, tedy tenhle helper.
 
 // Kdo sedí „po pravici"? = předchozí hráč PO SMĚRU hodinových ručiček, tedy
 // (i − 1 + n) % n, a to BEZ ohledu na Zlatou horečku (High Noon). Je to efekt karty,
@@ -704,8 +704,7 @@ function roseSwapOffer(state, myIndex) {
     if (!isPlayTurn(state, myIndex)) return null;
     const j = roseRightNeighbor(state, myIndex);
     if (j == null) return null;
-    const alive = ((state && state.players) || []).filter(p => p && p.health > 0).length;
-    if ((state._roseStreak || 0) >= alive) return null;
+    if (state._roseUsedThisTurn) return null;
     // A Fistful of Cards – Právo západu: vynucená karta zamyká jen akce, po kterých už
     // by nešla zahrát (viz lawLocksOther). Výměna míst sice kartami nehýbe, ale MĚNÍ
     // VZDÁLENOSTI – přesednutím by se hráč mohl vyvléknout z dostřelu vynuceného Bang!
@@ -742,12 +741,11 @@ function dorothyCommandable(card) {
     return !!card && !card._placeholder && !card.discardExtra;
 }
 
-// Kolik poručení ještě zbývá. Strop = počet ŽIJÍCÍCH hráčů (R4, pravidlo palce z FAQ Q08).
+// Kolik poručení ještě zbývá. Strop je JEDNO ZA TAH – stejně jako u Lady Růže z Texasu.
 // Není to kosmetika: neúspěšné poručení (cíl kartu nemá → jen ukáže ruku) stav nezmění,
 // takže bez stropu by ho bot posílal donekonečna.
 function dorothyBudget(state) {
-    const alive = ((state && state.players) || []).filter(p => p && p.health > 0).length;
-    return alive - ((state && state._dorothyUsed) || 0);
+    return 1 - ((state && state._dorothyUsed) || 0);
 }
 
 // Tutéž dvojici (druh karty, poručený) nelze v jednom tahu poručit dvakrát – podruhé

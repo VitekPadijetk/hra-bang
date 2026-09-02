@@ -216,15 +216,14 @@ test('odkrytá ruka se posílá klientovi jen tomu jednomu hráči (redakce)', (
     assert.equal(seen.players[1].role, null, 'role se neodkrývá ani tady');
 });
 
-// ── Strop poručení (R4 / FAQ Q08) ────────────────────────────────────────────
+// ── Strop poručení: jedno za tah (bug 58) ────────────────────────────────────
 
-test('poručit jde nejvýš tolikrát, kolik je žijících hráčů', () => {
+test('poručit jde jednou za tah', () => {
     const g = mkDorothy(4, 0);
-    for (let i = 0; i < 4; i++) {
-        assert.ok(dorothyReady(g, 0), `poručení #${i + 1} ještě jde`);
-        g._dorothyUsed = i + 1;
-    }
-    assert.equal(dorothyReady(g, 0), false, 'pátým už ne (žijí čtyři)');
+    assert.ok(dorothyReady(g, 0));
+    g.dorothyCommand(0, 'Bang!', 1);
+    assert.equal(dorothyReady(g, 0), false, 'druhé poručení už ne');
+    assert.equal(g.dorothyCommand(0, 'Bang!', 2), null);
 });
 
 test('neúspěšné poručení strop taky spotřebuje (jinak by ho bot posílal donekonečna)', () => {
@@ -237,6 +236,9 @@ test('tutéž dvojici (karta, hráč) nelze v jednom tahu poručit dvakrát', ()
     const g = mkDorothy(4, 0);
     g.dorothyCommand(0, 'Bang!', 1);
     assert.equal(dorothyPlayerOk(g, 0, kind(g, 'Bang!'), 1), false);
+    // Strop „jedno poručení za tah" (bug 58) je stejně přísnější, takže se druhé
+    // poručení nedostane ani k jinému hráči – zákaz dvojice zůstává jako pojistka.
+    g._dorothyUsed = 0;
     assert.equal(dorothyPlayerOk(g, 0, kind(g, 'Bang!'), 2), true, 'jinému hráči ano');
     assert.equal(g.dorothyCommand(0, 'Bang!', 1), null);
 });

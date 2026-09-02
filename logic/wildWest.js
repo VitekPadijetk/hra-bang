@@ -383,9 +383,8 @@ const WildWestMixin = {
         if (j == null) return null;
         const me = this.players[playerIdx];
         const other = this.players[j];
-        // Strop „x použití za sebou" (FAQ Q08). Sérii nuluje začátek tahu, ve kterém se
-        // předtím neměnilo (`_beginTurn`, logic/highNoon.js).
-        this._roseStreak = (this._roseStreak || 0) + 1;
+        // Strop je jedna výměna za tah – nuluje ho začátek každého tahu
+        // (`_beginTurn`, logic/highNoon.js).
         this._roseUsedThisTurn = true;
         // „…a ten tak přeskočí svůj nejbližší tah." Příznak cestuje s hráčem (prohazují
         // se prvky pole players), takže je jedno, na kterém sedadle skončí.

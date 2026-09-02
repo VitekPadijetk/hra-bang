@@ -902,16 +902,13 @@ function decidePlay(state, myIndex, beliefs) {
     // za to přeskočí svůj nejbližší tah. Přeskočený tah je čistý zisk – ale jen když je
     // soused nepřítel; spojenci by bot tímhle sebral tah zadarmo.
     //
-    // Bot se navíc vymění NEJVÝŠ JEDNOU ZA SVŮJ TAH. Pravidlo mu povoluje víc (strop je
-    // x použití za sebou, FAQ Q08), ale je to pravidlo pro hráče, ne rozumná politika:
-    // bez vlastní brzdy by bot vyčerpal celý strop v jednom tahu a hra jen botů by se
-    // zvrhla v přesedávání. Pozná se to bez nového pole: ve VLASTNÍM tahu smí měnit místo
-    // jen hráč na tahu, takže `_roseUsedThisTurn` znamená "už jsem se stěhoval".
+    // Nejvýš jedna výměna za tah je rovnou PRAVIDLO (`_roseUsedThisTurn`, viz
+    // roseSwapOffer) – bot žádnou vlastní brzdu navíc nepotřebuje.
     //
     // Skóre je nízké – přesednutí je pořád jen příprava, ne akce,
     // a nesmí přebít výstřel ani líznutí karet navíc.
     const _roseIdx = roseSwapOffer(state, myIndex);
-    if (_roseIdx != null && !state._roseUsedThisTurn) {
+    if (_roseIdx != null) {
         const _roseEp = enemyProbability(me.role, beliefs[_roseIdx], hostOpts(state, beliefs, myIndex));
         if (_roseEp >= 0.5) consider(14, { event: 'lady_rose', payload: {} });
     }
