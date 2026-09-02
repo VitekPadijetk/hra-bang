@@ -398,8 +398,8 @@ const CharactersMixin = {
 
     startLuckyDukeCheck(checkContext) {
         const hadEnough = this.deck._drawPile.length >= 2;
-        const c1 = this.deck.draw();
-        const c2 = this.deck.draw();
+        const c1 = this.deck.draw({ toDiscard: true });
+        const c2 = this.deck.draw({ toDiscard: true });
         if (!c1 || !c2) return;
         if (this.deck._reshuffleOccurred && !hadEnough) {
             this.deck._reshuffleWasProactive = false;

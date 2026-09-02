@@ -52,7 +52,7 @@ const ChecksMixin = {
                 this.startLuckyDukeCheck({ reason: pcd.reason, playerIdx: pcd.playerIdx, boardIdx: null, checksLeft: 1, active: false });
                 return;
             }
-            const checkCard = this.deck.draw();
+            const checkCard = this.deck.draw({ toDiscard: true });
             this.deck.discard(checkCard);
             // Divoký západ – John Pain: komu karta připadne, se ohlásí rovnou do checku,
             // ať z odkrytí letí přímo k němu (viz _johnPainQueueCard).
@@ -74,7 +74,7 @@ const ChecksMixin = {
                 this.startLuckyDukeCheck({ reason: "DYNAMITE", playerIdx: pcd.playerIdx, boardIdx: pcd.dynamiteIdx, checksLeft: 1, active: false });
                 return;
             }
-            const checkCard = this.deck.draw();
+            const checkCard = this.deck.draw({ toDiscard: true });
             this.deck.discard(checkCard);
             const takerIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
             this.phase = "CHECKING";
@@ -94,7 +94,7 @@ const ChecksMixin = {
                 this.startLuckyDukeCheck({ reason: "JAIL", playerIdx: pcd.playerIdx, boardIdx: pcd.jailIdx, checksLeft: 1, active: false });
                 return;
             }
-            const checkCard = this.deck.draw();
+            const checkCard = this.deck.draw({ toDiscard: true });
             this.deck.discard(checkCard);
             const takerIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
             this.phase = "CHECKING";

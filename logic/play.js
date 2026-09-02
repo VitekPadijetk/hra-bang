@@ -387,7 +387,7 @@ const PlayMixin = {
             return;
         }
 
-        const checkCard = this.deck.draw();
+        const checkCard = this.deck.draw({ toDiscard: true });
         this.deck.discard(checkCard);
         // Divoký západ – John Pain: ohlášený taker letí do cinematiky sejmutí (viz
         // _johnPainQueueCard) – odkrytá karta pak jde rovnou k němu, ne přes odhoz.

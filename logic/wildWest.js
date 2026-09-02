@@ -234,7 +234,7 @@ const WildWestMixin = {
     // „Aktivní role" = hráči ve hře (`isInPlay`, tedy i duch) kromě šerifa. Maximum
     // životů se proto nemění: +1 má jen šerif a ten si roli drží.
     _helenaZontero() {
-        const card = this.deck.draw();
+        const card = this.deck.draw({ toDiscard: true });
         if (!card) return false;
         const suit = this._effSuit(card);
         const red = suit === Suits.HEARTS || suit === Suits.DIAMONDS;

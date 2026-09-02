@@ -221,9 +221,12 @@ class Deck {
         return array;
     };
 
-    _reshuffle() {
+    // `keepTop` = nech vrchní kartu odhozu ležet (ať odhoz nezůstane prázdný). Sejmutí
+    // (viz draw s `toDiscard`) si ji nechat nepotřebuje – sejmutá karta ji vzápětí
+    // nahradí, takže se do balíčku zamíchá celý odhoz.
+    _reshuffle(keepTop = true) {
         if (this.discardPile.length === 0) return false;
-        const top = this.discardPile.length > 1 ? this.discardPile.pop() : null;
+        const top = (keepTop && this.discardPile.length > 1) ? this.discardPile.pop() : null;
         this.cards = this.discardPile.splice(0);
         if (top) this.discardPile.push(top);
         this.shuffleArray(this.cards);
@@ -235,9 +238,15 @@ class Deck {
         return this.cards.length > 0;
     }
 
-    draw() {
+    // `opts.toDiscard` = SEJMUTÍ (Dynamit, Vězení, Barel, Vendeta, Lucky Duke, Teren Kill,
+    // Helena Zontero): líznutá karta se hned vrací do odhozu. Míchání si proto nemusí
+    // nechávat vrchní kartu odhozu „aby nezůstal prázdný" – sejmutá karta ji vzápětí
+    // nahradí. Bez toho zůstaly po sejmutí poslední karty z balíčku v odhozu DVĚ karty:
+    // stará vrchní (nezamíchaná) a na ní sejmutá.
+    draw(opts = {}) {
+        const keepTop = !opts.toDiscard;
         if (this.cards.length === 0) {
-            if (!this._reshuffle()) {
+            if (!this._reshuffle(keepTop)) {
                 if (this._log) this._log('deck_empty', {});
                 return null;
             }
@@ -245,8 +254,8 @@ class Deck {
         }
         const card = this.cards.pop() || null;
         // Proaktivní zamíchání – pokud po líznutí deck = 0 karet, okamžitě se zamíchá pro příště
-        if (card && this.cards.length === 0 && this.discardPile.length > 1) {
-            this._reshuffle();
+        if (card && this.cards.length === 0 && this.discardPile.length > (keepTop ? 1 : 0)) {
+            this._reshuffle(keepTop);
             this._reshuffleWasProactive = true; // přepíše false z _reshuffle()
         }
         return card;
