@@ -1669,9 +1669,12 @@ function drawMyArea(ctx) {
             state.pendingSelection?.isDaltons && state.pendingSelection?.targetIdx === myIndex;
         // Divoký západ – Lee Van Kliff opakující Ragtime na VLASTNÍ stůl: výběr karty
         // řídí server (attacker === target === já), z vlastní ruky se nebere.
+        // Daltonové mají výběr postavený úplně stejně (attacker === target === já,
+        // ignoreDistance), jen se u nich smí sáhnout POUZE na modrou – jinak by zelenou
+        // kartu rozsvítila a poslala tahle větev a server ji vrátil (bug 44).
         const isSelfStealMine = !App.blockInput && state.phase === 'SELECTING_TARGET_CARD' &&
             state.pendingSelection?.ignoreDistance && state.pendingSelection?.attackerIdx === myIndex &&
-            state.pendingSelection?.targetIdx === myIndex;
+            state.pendingSelection?.targetIdx === myIndex && !state.pendingSelection?.isDaltons;
         // Probíhá výběr karty na mém stole (Panika/Cat Balou/Krytý vůz/Kankán/Ragtime)?
         // Pak se zelená karta položená tento tah nešediví – je legitimní cíl a musí
         // vypadat normálně (a u Paniky/CB být vidět žluté zvýraznění).
