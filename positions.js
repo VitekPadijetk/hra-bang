@@ -46,10 +46,13 @@ const OPPONENT_ANCHORS = {
     5: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},{x:960,y:150,side:'top'},{x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
     6: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},{x:715,y:150,side:'top'},{x:1205,y:150,side:'top'},{x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
     // Hra pro 8 (Město duchů): 2 vlevo, 3 nahoře, 2 vpravo. Boky mají y jako u 6 soupeřů,
-    // nahoře se rozteč zmenší na 430 – proto se při 7 soupeřích zmenší i karty
-    // (oppScaleByCount v core/layout.js), aby na sebe skupiny nedosáhly.
+    // nahoře se rozteč zmenší na 390 – proto se při 7 soupeřích zmenší i karty
+    // (oppScaleByCount v core/layout.js), aby na sebe skupiny nedosáhly. Krajní dvojice
+    // nahoře je navíc přisunutá o půl karty (~40 px) ke střednímu hráči: se čtyřmi a víc
+    // vyloženými kartami se skupina roztáhne doprostřed stolu a zasahovala do soupeřů
+    // na bocích (bug 52). Mezi horními skupinami na to místo je, u boků nebylo.
     7: [{x:180,y:665,side:'left'},{x:180,y:240,side:'left'},
-        {x:530,y:150,side:'top'},{x:960,y:150,side:'top'},{x:1390,y:150,side:'top'},
+        {x:570,y:150,side:'top'},{x:960,y:150,side:'top'},{x:1350,y:150,side:'top'},
         {x:1740,y:187,side:'right'},{x:1740,y:612,side:'right'}],
 };
 // Kotvy roztažené na skutečnou šířku jeviště: krajní soupeři zůstávají stejně daleko
