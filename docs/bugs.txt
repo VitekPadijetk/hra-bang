@@ -53,8 +53,13 @@ M — deska: zvýraznění a míry   31, 42, 43, 44, 50, 52, 56, 57, 65   HOTOVO
       view/board.js, core/layout.js, positions.js (+ game.js u 43, view/intro.js
       u 42 a 65). Bug 44 nakonec logic/highNoon.js nepotřeboval – server rozhodoval
       správně, mýlil se klient.
-N — okna → klikání na desce    27, 35, 63
-      view/screens.js, view/board.js, game.js, logic/wildWest.js, logic/draw.js
+N — okna → klikání na desce    27, 35, 63   HOTOVO
+      view/screens.js, view/board.js, game.js, logic/wildWest.js (+ logic.js,
+      core/pending.js, core/playability.js, core/selection.js, core/botPolicy.js,
+      server/handlers.game.js, server/guard.js, server/anim.js, server/bots.js
+      u 35 – klikaný odhoz je nová fáze, takže potřebuje i zrcadla pro bota
+      a guard). logic/draw.js nakonec nepotřeboval nic: fáze lízání náhrad
+      zůstala stejná, jen se do ní vchází až s prázdnou rukou.
 O — Divoký západ: pravidla     38, 47, 48, 51, 58, 64
       logic/wildWest.js, core/playability.js, logic/play.js, server/handlers.lobby.js
 P — pravidla ostatní           23, 25, 33, 39, 62
@@ -84,9 +89,7 @@ OTEVŘENÉ
 - 23 zkontroluj jestli funguje derringer správně s léčkou
 - 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě)
 - 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif. Taky když jsem tento poslední hráč, tak se mi zeleně ukáží karty až po HN/FF do té doby pořád šedé. Taky byl problém, že madam zuzana posledního hráče se vyhodnotila až po jejich odhalení
-- 27 veře custer se na obrazovku nevejde 7 postav vedle sebe, pokud se hraje v 8, uděláme to tak, že se jí zvýrazní postavy normálně ve hře a ona si vybere, ne žádné special okno (prostě zvýraznění třeba jak když na někoho střílím)
 - 33 pokud duch ukončí hru během města duchů, nejedná se o živou postavu a nemá tak nárok na zachování postavy v další hře
-- 35 u miláčka valentýna bych na všechny ty karty měl kliknout já, ne automatika
 - 38 madam zuzana - taky se počítá vyložení modré/zelené karty jako zahrání karty - naopak použití zelené karty ze stolu se nepočítá jako zahrání (už zahrána byla) - zahrání karty je de facto použití z ruky
 - 39 když se snímá karta a je poslední z balíčku a pak se míchá, tak v odhozu zůstane karta co tam byla (a na ni se dá ta ze snímání), a jsou tam tak dvě, měla by tam být jen ta ze snímání a ta stará se měla též zamíchat (chvíli tak v balíčku nebude nic)
 - 46 v debugu se nerozlišuje, kdo píše do chatu
@@ -96,7 +99,6 @@ OTEVŘENÉ
 - 53 když se rozdávají role, tak počkej ne jen na všechny hráče jak kliknou OK, ale i na to až se role rozdá i všem botům (takhle může začít míchání postav když se ještě rozdávají role)
 - 58 u lady růže i zuřivé doroty dáme limit 1x za tah pro každého
 - 62 když je ruská ruleta, požehnání a všichni mají barel - její efekt zruš poté, co všichni ten barel použijí (ale jen když je požehnání - jelo by to do nekonečna)
-- 63 hvězdička šerifa a karta zuřivá doroty, a názvy hráčů by neměla překrývat karty u výběru zuřivé doroty
 - 64 u zuřivé doroty nemůžu poručit hráčům zahrát bang kteří už v tom kole hráli (hra si asi myslí že 1bang/tah), ale ten limit už neplatí, takže by se měli ukazovat všichni
 
 HOTOVÉ
@@ -157,3 +159,7 @@ HOTOVÉ
 - 36 když je zúčtování a kazatel, tak by to jít hrát nemělo → oprava: 0b02627 (preacherBlocks hlásí pod Zúčtováním zákaz pro každou kartu a showdownBangOk se ho nově ptá; vlastní akce karet zůstávají)
 - 55 když je zúčtování teoreticky bych neměl mít limit co se týče karet bang mám-li volcanic (zkoušeno ještě během přestřelky a dovolilo mi to jen 2)) → OVĚŘENO, chyba nebyla: 46dea4e (Volcanic limit ruší i pod Zúčtováním a Přestřelkou – doplněny testy. Zpátky ho vrátí jedině Laso, které zbraň na stole vypíná)
 - 66 právo západu se vztahuje jen na můj tah, teď se tam ještě něco objevuje po skončení mého tahu → oprava: e3d48ae (lawForcedCard se neptal, čí je tah – v duelu v cizím tahu je vynucený Bang! platná odpověď, takže povinnost „ožila")
+
+- 27 veře custer se na obrazovku nevejde 7 postav vedle sebe, pokud se hraje v 8, uděláme to tak, že se jí zvýrazní postavy normálně ve hře a ona si vybere, ne žádné special okno (prostě zvýraznění třeba jak když na někoho střílím) → oprava: 1df7acd (volba se kliká rovnou na desce stejnou řečí jako cíl výstřelu – platné postavy zeleně, ostatní červeně, k tomu banner nahoře; ostatní ani divák vidět nesmí, koho si Vera vybrala, takže renderVeraCopyOverlay zanikl)
+- 35 u miláčka valentýna bych na všechny ty karty měl kliknout já, ne automatika → oprava: d691d2f (odhoz dostal vlastní klikací fázi VALENTINE_DISCARD + pendingValentine, stejnou řečí jako Ruská ruleta / Youl Grinner: svítí celá ruka, klik odhodí jednu kartu a s prázdnou rukou fáze sama přejde do lízání náhrad. Kolik jich je, se pamatuje z okamžiku, kdy událost hráče zastihla)
+- 63 hvězdička šerifa a karta zuřivá doroty, a názvy hráčů by neměla překrývat karty u výběru zuřivé doroty → oprava: 1c48b88 (deska kreslí hvězdičku šerifa, jména i karty s vlastní hloubkou 46–205, kdežto okno leželo v hloubce 0 – dostalo vlastní DOROTHY_DEPTH a obsah nad ním)
