@@ -530,19 +530,30 @@ function confirmNewIdentity(take) {
 // Není to fáze – dokud se jméno neodešle, žije volba jen v `selectedState.dorothy`
 // (stejně jako nabité schopnosti Doca nebo Flinta). Nabídku (co jde poručit a komu)
 // spočítal `dorothyOffer` už při nabití – tentýž predikát, kterým se ptá server.
+// Hloubka okna: musí být nad VŠÍM, co kreslí deska (banner nahoře je 205, debug
+// tlačítka 1000) – jinak přes ztmavení prosvítá hvězdička šerifa, jména hráčů
+// a karty na stole (bug 63).
+const DOROTHY_DEPTH = 1000;
+
 function renderDorothyOverlay() {
     const sel = selectedState.dorothy;
     const offer = sel && sel.offer;
     if (!offer || !offer.length) return;
 
+    // Deska kreslí hvězdičku šerifa (STAR_DEPTH), jména hráčů (50/51) i karty (58+)
+    // s vlastní hloubkou, takže by se ztmavením v hloubce 0 prosvítily do mřížky
+    // (bug 63). Celé okno proto sedí NAD nimi – backdrop 1000, obsah výš.
     const backdrop = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.82)
-        .setInteractive();   // spolkne kliknutí mimo karty
+        .setInteractive().setDepth(DOROTHY_DEPTH);   // spolkne kliknutí mimo karty
     gameScene.cardsSprites.add(backdrop);
 
-    themeTitle(gameScene, 960, stageTop() + 90, '🎭 Zuřivá Doroty – jmenuj kartu', { fontSize: '40px' });
+    const title = themeTitle(gameScene, 960, stageTop() + 90, '🎭 Zuřivá Doroty – jmenuj kartu', { fontSize: '40px' });
+    title.bg.setDepth(DOROTHY_DEPTH + 2);
+    title.txt.setDepth(DOROTHY_DEPTH + 3);
     const hint = gameScene.add.text(960, stageTop() + 145,
         'Vybranou kartu pak musí zahrát hráč, na kterého klikneš – pokud ji má. Jestli ne, ukáže ruku.',
-        { fontFamily: THEME.fontUI, fontSize: '22px', color: THEME.color.textMuted }).setOrigin(0.5);
+        { fontFamily: THEME.fontUI, fontSize: '22px', color: THEME.color.textMuted })
+        .setOrigin(0.5).setDepth(DOROTHY_DEPTH + 3);
     gameScene.cardsSprites.add(hint);
 
     // Mřížka se škáluje podle počtu druhů (se zapnutým Dodge City jich je kolem 30) –
@@ -564,10 +575,10 @@ function renderDorothyOverlay() {
         const texKey = gameScene.textures.exists('card_' + entry.card.id)
             ? 'card_' + entry.card.id : 'placeholder';
         const img = gameScene.add.image(cx, cy, texKey).setScale(scale)
-            .setInteractive({ useHandCursor: true });
+            .setInteractive({ useHandCursor: true }).setDepth(DOROTHY_DEPTH + 1);
         gameScene.cardsSprites.add(img);
-        img.on('pointerover', () => img.setScale(scale * 1.18).setDepth(1005));
-        img.on('pointerout', () => img.setScale(scale).setDepth(0));
+        img.on('pointerover', () => img.setScale(scale * 1.18).setDepth(DOROTHY_DEPTH + 5));
+        img.on('pointerout', () => img.setScale(scale).setDepth(DOROTHY_DEPTH + 1));
         img.on('pointerdown', () => {
             if (App.blockInput) return;
             // Jméno je vybrané – teď se kliká na postavu poručeného (viz drawOpponents).
@@ -581,7 +592,7 @@ function renderDorothyOverlay() {
         fontSize: '20px',
         onClick: () => { selectedState = { cardIndex: null, action: null }; renderUI(); },
     });
-    cancel.setDepth(1006);
+    cancel.setDepth(DOROTHY_DEPTH + 6);
 }
 
 // Kam a jak velké se zvětšené karty nabídky posadí (a odkud se pak smrští zpátky).
