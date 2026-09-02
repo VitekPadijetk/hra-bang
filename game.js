@@ -1328,6 +1328,56 @@ function startCheckReveal(check) {
             gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 225, ease: 'Sine.easeOut',
                 onComplete: () => { pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, check.card); } }); } });
     }
+    // Divoký západ – John Pain: sejmutou kartu si bere, takže z odkrytí neletí do odhozu
+    // a hned zase ven (dva lety místo jednoho, bug 28), ale rovnou do jeho ruky – přesně
+    // jako druhá karta Black Jacka. Komu připadne, říká server v `johnPainIdx`
+    // (predikce týmž dotazem, kterým se karta pak opravdu přesune – viz logic/wildWest.js).
+    const _jp = (typeof check.johnPainIdx === 'number' && check.johnPainIdx >= 0
+                 && state?.players?.[check.johnPainIdx]) ? check.johnPainIdx : null;
+    if (_jp !== null) {
+        const jpMine = _jp === myIndex && myIndex !== null;
+        const jpHand = state.players[_jp].hand || [];
+        const jpTo = getHandSlotPos(_jp, jpHand.length, jpHand.length + 1);
+        const jpScale = jpMine ? 0.4 : 0.3;
+        if (jpMine) App.pendingDrawIds.add(check.card.id);   // skryj v ruce do doletu (staging)
+        const jpDelay = 450 + 3000;
+        gameScene.tweens.add({ targets: sprite, x: jpTo.x, y: jpTo.y, scaleY: jpScale,
+            delay: jpDelay, duration: 400, ease: 'Cubic.easeIn',
+            // Marka leží na PEVNÉ pozici uprostřed (nedrží se karty) – zhasni ji se startem letu.
+            onStart: () => stopPulse(),
+            onComplete: () => holdThenFinish(sprite,
+                () => (state?.players?.[_jp]?.hand || []).some(c => c.id === check.card.id),
+                () => {
+                    stopPulse();
+                    if (jpMine) App.pendingDrawIds.delete(check.card.id);
+                    if (sprite.active) sprite.destroy();
+                    renderUI();
+                }) });
+        // Z odhozu karta odejde teprve až doběhne efekt, kvůli kterému se snímalo
+        // (u barelu klidně po celé obraně) – do té doby ji v hromádce neukazuj, vizuálně
+        // už leží v jeho ruce. Pojistka pro případ, že se predikce rozejde se skutečností
+        // (John Pain mezitím zemře / doplní ruku na 6): po chvíli se skrývání pustí.
+        App.discardFlyHideIds.add(check.card.id);
+        let jpWait = 0;
+        const jpPoll = () => {
+            if (!gameScene) return;
+            const inPile = (state?.deck?.discardPile || []).some(c => c.id === check.card.id);
+            if (!inPile || (jpWait += 120) > 6000) { App.discardFlyHideIds.delete(check.card.id); renderUI(); return; }
+            gameScene.time.delayedCall(120, jpPoll);
+        };
+        gameScene.time.delayedCall(jpDelay + 400, jpPoll);
+        const jpAngle = _kitSpecAngleFor(_jp);
+        if (jpAngle) gameScene.tweens.add({ targets: sprite, angle: jpAngle, delay: jpDelay, duration: 400, ease: 'Cubic.easeIn' });
+        if (hideIntoHand(_jp)) {
+            // ...míří do skryté ruky → za letu se překlopí zpátky na rub.
+            gameScene.tweens.add({ targets: sprite, scaleX: 0, delay: jpDelay, duration: 200, ease: 'Sine.easeIn',
+                onComplete: () => { if (!sprite.active) return; sprite.setTexture('card_back');
+                    gameScene.tweens.add({ targets: sprite, scaleX: jpScale, duration: 200, ease: 'Sine.easeOut' }); } });
+        } else {
+            gameScene.tweens.add({ targets: sprite, scaleX: jpScale, delay: jpDelay, duration: 400, ease: 'Cubic.easeIn' });
+        }
+        return;
+    }
     // 2) po 3 s drhu se zmenší a odletí do odhozu. Sprite po dosednutí podrž na místě,
     // dokud kontrolní karta na vrcholu odhozu není VIDITELNÁ (fáze už není CHECKING, kde ji
     // board.js schovává) – jinak po zániku spritu problikne předchozí vrchní karta odhozu.

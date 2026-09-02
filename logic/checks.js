@@ -54,14 +54,17 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
-            this._johnPainQueueCard(checkCard, pcd.playerIdx);   // Divoký západ – John Pain
+            // Divoký západ – John Pain: komu karta připadne, se ohlásí rovnou do checku,
+            // ať z odkrytí letí přímo k němu (viz _johnPainQueueCard).
+            const jpIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
                 reason: pcd.reason,
                 playerIdx: pcd.playerIdx,
                 card: checkCard,
-                boardIdx: null
+                boardIdx: null,
+                johnPainIdx: jpIdx
             };
             return;
         }
@@ -73,14 +76,15 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
-            this._johnPainQueueCard(checkCard, pcd.playerIdx);   // Divoký západ – John Pain
+            const jpIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
                 reason: "DYNAMITE",
                 playerIdx: pcd.playerIdx,
                 card: checkCard,
-                boardIdx: pcd.dynamiteIdx
+                boardIdx: pcd.dynamiteIdx,
+                johnPainIdx: jpIdx
             };
             return;
         }
@@ -92,14 +96,15 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
-            this._johnPainQueueCard(checkCard, pcd.playerIdx);   // Divoký západ – John Pain
+            const jpIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
                 reason: "JAIL",
                 playerIdx: pcd.playerIdx,
                 card: checkCard,
-                boardIdx: pcd.jailIdx
+                boardIdx: pcd.jailIdx,
+                johnPainIdx: jpIdx
             };
             return;
         }

@@ -546,11 +546,21 @@ const WildWestMixin = {
     // Sciarra Q22), Vendeta a barel v Ruské ruletě – tedy všechna, která procházejí
     // check machinerií. NE Peyote (to je fáze lízání, ne sejmutí) a NE Helena Zontero
     // (FAQ Q09 – karta se otáčí automaticky, ne hráčem).
-    _johnPainQueueCard(card, drawerIdx) {
-        if (!card) return;
-        if (!(this.players || []).some(p => p && isInPlay(p) && hasAbility(p, "John Pain"))) return;
+    //
+    // `opts.reveal` = kartu ukazuje klientská cinematika sejmutí (startCheckReveal). Ta
+    // potřebuje UŽ TEĎ vědět, komu karta připadne, aby z odkrytí letěla rovnou k němu
+    // místo oklikou přes odhoz (bug 28). Predikce se dělá TÍMŽ dotazem jako skutečný
+    // přesun (_johnPainTakerFor), jen o kus dřív – mezi sejmutím a doběhnutím efektu se
+    // taker může změnit (John Pain zemře, nebo si doplní ruku na 6). Fronta si proto
+    // ohlášeného pamatuje: sedí-li, animaci už přehrál klient a server ji neposílá;
+    // rozejde-li se, pošle se dodatečně z odhozu (viz _drainJohnPain).
+    _johnPainQueueCard(card, drawerIdx, opts = {}) {
+        if (!card) return null;
+        if (!(this.players || []).some(p => p && isInPlay(p) && hasAbility(p, "John Pain"))) return null;
         if (!this._johnPainQueue) this._johnPainQueue = [];
-        this._johnPainQueue.push({ cardId: card.id, drawerIdx });
+        const announced = opts.reveal ? this.players.indexOf(this._johnPainTakerFor(drawerIdx)) : -1;
+        this._johnPainQueue.push({ cardId: card.id, drawerIdx, announced });
+        return announced >= 0 ? announced : null;
     },
 
     // Komu karta připadne. „Kdokoli" zahrnuje i jeho samotného, takže se hledá od
@@ -588,8 +598,12 @@ const WildWestMixin = {
             if (!card) return;
             taker.hand.push(card);
             const takerIdx = this.players.indexOf(taker);
-            if (!this._johnPainAnim) this._johnPainAnim = [];
-            this._johnPainAnim.push({ toPlayerIdx: takerIdx, cardId: card.id });
+            // Ohlášeného takera (viz _johnPainQueueCard) už klient odanimoval jako součást
+            // odkrytí sejmuté karty – druhý let z odhozu by kartu poslal podruhé.
+            if (e.announced !== takerIdx) {
+                if (!this._johnPainAnim) this._johnPainAnim = [];
+                this._johnPainAnim.push({ toPlayerIdx: takerIdx, cardId: card.id });
+            }
             this.logEvent('special', { who: taker.name, card: 'John Pain', taken: card.name });
         });
     },
