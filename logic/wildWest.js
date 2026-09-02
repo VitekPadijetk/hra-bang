@@ -1299,9 +1299,12 @@ const WildWestMixin = {
         // Omezení vázaná na VLASTNÍ tah, která poručenému zbyla z toho minulého (nulují se
         // až na začátku jeho dalšího tahu). Kdyby zůstala, server by poručenou kartu tiše
         // odmítl – přesně ta třída chyby, kterou hlídá invariant „bot se nikdy nezasekne".
+        // Patří sem i vyčerpaný limit 1× Bang!/tah: v cizím tahu neplatí, takže poručit
+        // Bang! jde i tomu, kdo svůj vlastní v tomhle kole už vystřílel (bug 64).
         // Zrcadlí to `dorothyAsIf` (core/playability.js), kterým se ptá klient i bot.
         commanded._handcuffsSuit = null;
         commanded._lawCardId = null;
+        commanded.bangsPlayedThisTurn = 0;
 
         // Sedadlo se půjčuje jen na SYNCHRONNÍ zahrání karty – to je jediné místo, kde
         // pravidla čtou `currentPlayerIndex` (vzdálenosti, limit Bang!, Kazatel, Želízka,

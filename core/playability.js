@@ -769,14 +769,16 @@ function dorothyReady(state, myIndex) {
 }
 
 // Stav „jako by byl poručený na tahu" (FAQ Q05: vzdálenosti i schopnosti se počítají
-// podle NĚJ). Dvě omezení vázaná na VLASTNÍ tah se přitom musí sundat – Želízka
-// (High Noon) i Právo západu (Fistful) drží hráč jen ve svém tahu a stejně se mu nulují
-// na jeho začátku, takže by tu jinak strašila jeho minulá volba.
+// podle NĚJ). Omezení vázaná na VLASTNÍ tah se přitom musí sundat – Želízka (High Noon),
+// Právo západu (Fistful) i vyčerpaný limit 1× Bang! drží hráč jen ve svém tahu a stejně
+// se mu nulují na jeho začátku, takže by tu jinak strašila jeho minulá volba. Bez toho
+// se nedal poručit Bang! nikomu, kdo v tomhle kole už svůj vlastní vystřílel.
 function dorothyAsIf(state, commandedIdx) {
     const players = (state.players || []).slice();
     const p = players[commandedIdx];
-    if (p && (p._handcuffsSuit || p._lawCardId != null)) {
-        players[commandedIdx] = Object.assign({}, p, { _handcuffsSuit: null, _lawCardId: null });
+    if (p) {
+        players[commandedIdx] = Object.assign({}, p,
+            { _handcuffsSuit: null, _lawCardId: null, bangsPlayedThisTurn: 0 });
     }
     return Object.assign({}, state, { players, currentPlayerIndex: commandedIdx, phase: 'PLAY' });
 }

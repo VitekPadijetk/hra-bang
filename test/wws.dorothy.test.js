@@ -299,6 +299,29 @@ test('Želízka poručeného nesvazují (jeho barva patřila jeho tahu)', () => 
     assert.equal(bIdx, 0);
 });
 
+// ── Limit 1× Bang!/tah (bug 64) ──────────────────────────────────────────────
+// Limit patří VLASTNÍMU tahu a nuluje se hráči až na jeho začátku, takže by po něm
+// zbývala jednička u každého, kdo v tomhle kole už střílel – a poručit Bang! by
+// šlo jen tomu, kdo ještě na tahu nebyl.
+test('poručit Bang! jde i tomu, kdo svůj vlastní v kole už vystřílel', () => {
+    const g = mkDorothy(4, 0);
+    g.players[1].bangsPlayedThisTurn = 1;          // zbytek z jeho tahu
+    give(g, 1, CardType.BANG);
+    assert.equal(dorothyPlayerOk(g, 0, kind(g, 'Bang!'), 1), true, 'nabídne se');
+    g.dorothyCommand(0, 'Bang!', 1);
+    g.dorothyChooseTarget(0, 2);
+    assert.equal(g.phase, 'RESPOND', 'a doopravdy vystřelí');
+    assert.equal(g.players[1].hand.length, 0);
+});
+
+test('nabídka ukazuje všechny hráče bez ohledu na jejich vystřílený limit', () => {
+    const g = mkDorothy(4, 0);
+    g.players.forEach(p => { p.bangsPlayedThisTurn = 1; });
+    const offer = dorothyOffer(g, 0, g._dorothyKinds());
+    const bangOffer = offer.find(o => o.card.name === 'Bang!');
+    assert.deepEqual(bangOffer.players, [1, 2, 3]);
+});
+
 // ── Vyřazení uprostřed poručené karty ────────────────────────────────────────
 
 test('smrt PORUČENÉHO neukončí cizí tah', () => {
