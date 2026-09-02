@@ -696,8 +696,13 @@ function MY_ROLE_X()      { const L = currentLayout(); return L.livesX + L.roleO
 function MY_ROLE_Y()      { return currentLayout().myBaseY; }                            // 970
 function MY_ROLE_SCALE()  { return currentLayout().scaleMe; }                            // 0.36
 function MY_LIVES_X()     { return currentLayout().livesX; }                             // 1050
-function MY_LIVES_Y()     { return currentLayout().myBaseY; }                            // 970
-function MY_LIVES_SCALE() { return currentLayout().scaleMe; }                            // 0.36
+// Celý MŮJ blok životů (karty + portrét) se nad 7 životů zmenší, aby nedosáhl na
+// balíčky – zarovnaný dolů (myLivesGeom, core/layout.js, bug 42). Geometrie proto
+// závisí na ZOBRAZENÝCH životech; bez nich (většina volajících) platí dnešní stav,
+// protože do 7 životů vrací myLivesGeom měřítko profilu beze změny.
+function _myLivesG(health)  { const h = health || 4; return myLivesGeom(currentLayout(), h, h); }
+function MY_LIVES_Y(health)     { return _myLivesG(health).baseY; }                      // 970
+function MY_LIVES_SCALE(health) { return _myLivesG(health).scale; }                      // 0.36
 // charY = MY_LIVES_Y() - bulletH * health, bulletH = 500*0.36*0.93/5 = 33.48
 
 // Druhá karta MOJÍ dráhy životů (postavy nad 5 životů – Divoký západ) leží o 5 nábojů
@@ -705,13 +710,13 @@ function MY_LIVES_SCALE() { return currentLayout().scaleMe; }                   
 // maxHealth (livesCardsShown, bug 56) – v intru navazující hry navíc maxHealth ve stavu
 // ještě nemusí být dopočítané, přeživší ho dostane až s potvrzením postavy (bug 65).
 function MY_LIVES2_Y(health) {
-    const t = livesTrack(health, MY_LIVES_SCALE());
-    return t.cards > 1 ? MY_LIVES_Y() - t.cardOff : null;
+    const g = _myLivesG(health);
+    return g.track.cards > 1 ? g.baseY - g.track.cardOff : null;
 }
 
 function _myCharY(health) {
-    const bulletH = (500 * MY_LIVES_SCALE() * 0.93) / 5;
-    return MY_LIVES_Y() - bulletH * (health || 4);
+    const g = _myLivesG(health);
+    return g.baseY - g.track.step * (health || 4);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -770,15 +775,15 @@ function _introPlaceSurvivors() {
         if (!p || !sv.char) return;
         const charTex = _introCharTex(sv.char);
         if (sv.idx === myIdx) {
-            s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(),
-                scale: MY_LIVES_SCALE(), depth: 21, key: 'lives:' + sv.idx,
-                rl: { kind: 'myLives' } });
+            s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(sv.health),
+                scale: MY_LIVES_SCALE(sv.health), depth: 21, key: 'lives:' + sv.idx,
+                rl: { kind: 'myLives', hp: sv.health } });
             const my2Y = MY_LIVES2_Y(sv.health);
             if (my2Y != null) s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: my2Y,
-                scale: MY_LIVES_SCALE(), depth: 21, key: 'lives2:' + sv.idx,
+                scale: MY_LIVES_SCALE(sv.health), depth: 21, key: 'lives2:' + sv.idx,
                 rl: { kind: 'myLives2', hp: sv.health } });
             s.placedCards.push({ tex: charTex, x: MY_LIVES_X(), y: _myCharY(sv.health),
-                scale: MY_LIVES_SCALE(), depth: 23, key: 'char:' + sv.idx,
+                scale: MY_LIVES_SCALE(sv.health), depth: 23, key: 'char:' + sv.idx,
                 rl: { kind: 'myChar', hp: sv.health } });
             s.placedCards.push({ text: p.name, x: MY_ROLE_X(), y: MY_ROLE_Y() + currentLayout().myNameOffY,
                 depth: 50, key: 'name:' + sv.idx, rl: { kind: 'myName' },
@@ -813,6 +818,15 @@ function _introSyncLives2(idx, health) {
     if (!s || !gameScene) return;
     const isMe = idx === _introMyIdx();
     const sl = isMe ? null : _introOppSlots(idx, health);
+    // Můj blok se navíc nad 7 životů zmenšuje (bug 42), takže se musí přepočítat i nultá
+    // karta a měřítko portrétu – ty se rozložily ještě podle životů před změnou.
+    if (isMe) {
+        const l0 = _introFindPlaced('lives:' + idx);
+        if (l0) { l0.y = MY_LIVES_Y(health); l0.scale = MY_LIVES_SCALE(health);
+                  if (l0.rl) l0.rl.hp = health; }
+        const ch = _introFindPlaced('char:' + idx);
+        if (ch) { ch.scale = MY_LIVES_SCALE(health); if (ch.rl) ch.rl.hp = health; }
+    }
     const y2 = isMe ? MY_LIVES2_Y(health) : (sl.lives2X != null ? sl.lives2Y : null);
     const existing = _introFindPlaced('lives2:' + idx);
     if (y2 == null) { if (existing) _introFadeAwayPlaced('lives2:' + idx); return; }
@@ -823,7 +837,7 @@ function _introSyncLives2(idx, health) {
         return;
     }
     s.placedCards.push(isMe
-        ? { tex: 'lives', x: MY_LIVES_X(), y: y2, scale: MY_LIVES_SCALE(), depth: 21,
+        ? { tex: 'lives', x: MY_LIVES_X(), y: y2, scale: MY_LIVES_SCALE(health), depth: 21,
             key: 'lives2:' + idx, rl: { kind: 'myLives2', hp: health } }
         : { tex: 'lives', x: sl.lives2X, y: sl.lives2Y, scale: sl.scale, angle: sl.angle,
             depth: 21, key: 'lives2:' + idx, rl: { kind: 'oppLives2', idx, hp: health } });
@@ -842,7 +856,7 @@ function _startKeepReveal() {
     if (entry) entry.hidden = true;
     renderUI();
     const sp = gameScene.add.image(MY_LIVES_X(), fromY, _introCharTex(sv.char))
-        .setScale(MY_LIVES_SCALE()).setDepth(1000);
+        .setScale(MY_LIVES_SCALE(sv.health)).setDepth(1000);
     if (gameScene.introSprites) gameScene.introSprites.add(sp);
     gameScene.tweens.add({
         targets: sp, x: 960, y: 420, scaleX: 0.80, scaleY: 0.80,
@@ -900,7 +914,8 @@ function _confirmKeepChoice(keep) {
         const toY = _myCharY(baseHealthForCharacter(sv.char));
         gameScene.tweens.add({
             targets: sp, x: MY_LIVES_X(), y: toY,
-            scaleX: MY_LIVES_SCALE(), scaleY: MY_LIVES_SCALE(),
+            scaleX: MY_LIVES_SCALE(baseHealthForCharacter(sv.char)),
+            scaleY: MY_LIVES_SCALE(baseHealthForCharacter(sv.char)),
             duration: 620, ease: 'Power2.easeIn',
             onComplete: () => {
                 if (sp?.active) sp.destroy();
@@ -1009,7 +1024,7 @@ function _introSheriffReveal(idx) {
     const sl = isMe ? null : _introOppSlots(idx, health);
     const toX = isMe ? MY_LIVES_X() : sl.charX;
     const toY = isMe ? _myCharY(health) : sl.charY;
-    const scale = isMe ? MY_LIVES_SCALE() : sl.scale;
+    const scale = isMe ? MY_LIVES_SCALE(health) : sl.scale;
     const angle = isMe ? 0 : sl.angle;
 
     entry.hidden = true;
@@ -1099,16 +1114,16 @@ function _introRelayoutPlaced() {
                 pc.x = MY_ROLE_X(); pc.y = MY_ROLE_Y(); pc.scale = MY_ROLE_SCALE();
                 break;
             case 'myLives':
-                pc.x = MY_LIVES_X(); pc.y = MY_LIVES_Y(); pc.scale = MY_LIVES_SCALE();
+                pc.x = MY_LIVES_X(); pc.y = MY_LIVES_Y(r.hp ?? 4); pc.scale = MY_LIVES_SCALE(r.hp ?? 4);
                 break;
             case 'myLives2': {
                 const y2 = MY_LIVES2_Y(r.hp ?? 4);
-                pc.x = MY_LIVES_X(); pc.scale = MY_LIVES_SCALE();
+                pc.x = MY_LIVES_X(); pc.scale = MY_LIVES_SCALE(r.hp ?? 4);
                 if (y2 != null) pc.y = y2;
                 break;
             }
             case 'myChar':
-                pc.x = MY_LIVES_X(); pc.y = _myCharY(r.hp ?? 4); pc.scale = MY_LIVES_SCALE();
+                pc.x = MY_LIVES_X(); pc.y = _myCharY(r.hp ?? 4); pc.scale = MY_LIVES_SCALE(r.hp ?? 4);
                 break;
             case 'myName':
                 pc.x = MY_ROLE_X(); pc.y = MY_ROLE_Y() + currentLayout().myNameOffY;
@@ -1422,16 +1437,16 @@ function _confirmCharSelect(charName) {
                 onComplete: () => {
                     gameScene.tweens.add({
                         targets: rejected,
-                        x: MY_LIVES_X(), y: MY_LIVES_Y(),
-                        scaleX: MY_LIVES_SCALE(), scaleY: MY_LIVES_SCALE(),
+                        x: MY_LIVES_X(), y: MY_LIVES_Y(health),
+                        scaleX: MY_LIVES_SCALE(health), scaleY: MY_LIVES_SCALE(health),
                         duration: 450, ease: 'Power2.easeIn',
                         onComplete: () => {
                             if (rejected?.active) rejected.destroy();
                             if (_introState) {
                                 _introState.placedCards.push(
-                                    { tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(),
-                                      scale: MY_LIVES_SCALE(), depth: 21,
-                                      key: 'lives:me', rl: { kind: 'myLives' } }
+                                    { tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(health),
+                                      scale: MY_LIVES_SCALE(health), depth: 21,
+                                      key: 'lives:me', rl: { kind: 'myLives', hp: health } }
                                 );
                                 // Postava nad 5 životů (Big Spencer, Gary Looter): druhá
                                 // karta dráhy nemá v intru vlastní zdroj (obě rozdané
@@ -1439,7 +1454,7 @@ function _confirmCharSelect(charName) {
                                 const y2 = MY_LIVES2_Y(health);
                                 if (y2 != null) _introState.placedCards.push(
                                     { tex: 'lives', x: MY_LIVES_X(), y: y2,
-                                      scale: MY_LIVES_SCALE(), depth: 21,
+                                      scale: MY_LIVES_SCALE(health), depth: 21,
                                       key: 'lives2:me', rl: { kind: 'myLives2', hp: health } }
                                 );
                             }
@@ -1459,14 +1474,14 @@ function _confirmCharSelect(charName) {
     gameScene.tweens.add({
         targets: chosen,
         x: MY_LIVES_X(), y: charY,
-        scaleX: MY_LIVES_SCALE(), scaleY: MY_LIVES_SCALE(),
+        scaleX: MY_LIVES_SCALE(health), scaleY: MY_LIVES_SCALE(health),
         delay: 450, duration: 480, ease: 'Power2.easeIn',
         onComplete: () => {
             if (chosen?.active) chosen.destroy();
             if (_introState) {
                 _introState.placedCards.push(
                     { tex: chosenTex, x: MY_LIVES_X(), y: charY,
-                      scale: MY_LIVES_SCALE(), depth: 23,
+                      scale: MY_LIVES_SCALE(health), depth: 23,
                       key: 'char:me', rl: { kind: 'myChar', hp: health } }
                 );
                 _introState.charAnimDone = true;
