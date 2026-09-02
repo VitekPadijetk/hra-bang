@@ -90,6 +90,9 @@ const LAYOUT_DESKTOP = {
     // handStartX/handEndX/boardMaxPerRow/btnEndX jsou hodnoty pro jeviště 16:9; na širším
     // je přepočítá resolveLayout podle *Margin (odsazení od okraje jeviště).
     livesX: 1050, myBaseY: 970, roleOffX: -200,
+    // Kam nejvýš smí sahat MŮJ blok životů (karty + portrét). Nad ním leží odhazovací
+    // balíček (spodek 615), takže se blok postav nad 7 životů zmenší – viz livesFitScale.
+    livesTopY: 625,
     myNameOffY: 145, myStatusOffY: 178, myHintOffY: 185,
     handStartX: 1210, handStartMargin: null,
     handEndX: 1860, handEndMargin: 60, handMaxSpacing: 117,
@@ -148,6 +151,8 @@ const LAYOUT_MOBILE = {
     // které se klika. Karta životů je vpravo (x 1500), aby portrét při 5 životech
     // (sahá 195 px vzhůru) minul jak balíčky uprostřed, tak pásmo soupeřů nahoře.
     livesX: 1500, myBaseY: 750, roleOffX: -160,
+    // Nad mojí zónou končí kompaktní řada soupeřů (440), takže blok životů má strop níž.
+    livesTopY: 455,
     myNameOffY: -135, myStatusOffY: -102, myHintOffY: -170,
     // Odsazení = půlka karty (325×0.46/2 = 74,75) s rezervou, ať krajní karta v ruce
     // nevyčuhuje z jeviště – handStartX/handEndX jsou STŘEDY krajních slotů.
@@ -333,6 +338,37 @@ function livesTrack(maxHealth, scale, maxCards) {
 // (číslo pak drží pravdu za něj) – jinak by v kompaktním sloupci vyjel k sousedovi.
 function livesSlot(track, health) {
     return Math.max(0, Math.min(track.slots, Number(health) || 0));
+}
+
+// ── Můj blok životů se musí vejít nad sebe (Divoký západ – Big Spencer) ──────
+// Blok „karty životů + portrét" roste s každým životem o jeden náboj a u postav nad
+// 7 životů (Big Spencer 9, jako šerif 10) by dosáhl až na odhazovací balíček nad ním.
+// Celý blok se proto zmenší – zarovnaný DOLŮ, tedy spodní hrana nulté karty zůstává na
+// svém místě – a jak Spencer o životy přichází, zase se plynule vrací do plné velikosti
+// (bug 42). Do 7 životů vrací 1, takže je to pro každou jinou postavu no-op.
+// Týká se to schválně jen MOJÍ zóny: u soupeřů blok roste do volného prostoru.
+function livesFitScale(L, health) {
+    const top = (L || LAYOUT_DESKTOP).livesTopY;
+    if (!top) return 1;
+    const scale = L.scaleMe;
+    const step = CARD_ART_H * scale * 0.93 / LIVES_PER_CARD;
+    const blockH = CARD_ART_H * scale + Math.max(0, Number(health) || 0) * step;
+    const avail = L.myBaseY + CARD_ART_H * scale / 2 - top;
+    return Math.max(0.2, Math.min(1, avail / blockH));
+}
+
+// Geometrie MOJÍ dráhy životů po případném zmenšení: měřítko, střed nulté karty
+// (zarovnáno dolů, takže spodní hrana zůstává na myBaseY + půl karty) a dráha
+// přepočítaná na to měřítko. `fitOverride` slouží k dopočtu PŘEDCHOZÍ geometrie,
+// ze které blok doklouzá do nové (view/board.js).
+function myLivesGeom(L, health, maxHealth, fitOverride) {
+    const fit = fitOverride != null ? fitOverride : livesFitScale(L, health);
+    const scale = L.scaleMe * fit;
+    return {
+        fit, scale,
+        baseY: L.myBaseY + CARD_ART_H * (L.scaleMe - scale) / 2,
+        track: livesTrack(maxHealth, scale),
+    };
 }
 
 // Kolik karet dráhy je vidět TEĎ. Druhá se vykládá, až je na ní kam jet – tedy od
@@ -615,7 +651,7 @@ if (typeof module !== 'undefined' && module.exports) {
         boardBand, boardSlot,
         GREY_SCALE, GREY_GAP, greyDetached, greyScale, greyStep, greyAbilShift,
         greyMySlot, greyOppSlot,
-        LIVES_PER_CARD, livesTrack, livesSlot, livesCardsShown,
+        LIVES_PER_CARD, livesTrack, livesSlot, livesCardsShown, livesFitScale, myLivesGeom,
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
         compactBoardStep, compactBoardPos, compactHandPos, compactNameY,
         oppScale, handCardScale,

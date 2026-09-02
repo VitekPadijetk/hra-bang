@@ -443,8 +443,10 @@ function resetBoardSlides() {
     }
     App.cardSlides = {};
     App.cardHome = {};
-    // Druhá karta životů se nesmí nafadovat z minulé hry (viz drawExtraLivesCards).
+    // Druhá karta životů se nesmí nafadovat z minulé hry (viz drawExtraLivesCards)
+    // a blok se nesmí přeškálovat z velikosti, kterou měl v předchozí hře (bug 42).
     App.livesFade = {};
+    App.myLivesFit = null;
     // Deska začíná „od nuly": Colt .45 ani zvýraznění hráče na tahu nesmí naskočit
     // fade-inem/rozsvícením – z intra už oboje na svém místě je.
     App.coltVisible = null;
@@ -1468,9 +1470,14 @@ function drawMyArea(ctx) {
 
         // Dráha životů (core/layout.js): nad 5 životů leží druhá karta o 5 nábojů výš
         // a portrét po dvojici jede jako po jedné desetislotové dráze.
-        const myLivesT = livesTrack(me.maxHealth, scaleMe);
+        // Nad 7 životů (Big Spencer) by se blok nevešel pod balíčky, takže se CELÝ
+        // zmenší – zarovnaný dolů (myLivesGeom). Do 7 životů vrací dnešní geometrii.
+        const myLivesG = myLivesGeom(L, me.health, me.maxHealth);
+        const myLivesT = myLivesG.track;
+        const myLivesScale = myLivesG.scale;
+        const myLivesY = myLivesG.baseY;
         const myHealthSlot = livesSlot(myLivesT, me.health);
-        let livesImg = gameScene.add.image(livesX, myBaseY, 'lives').setScale(scaleMe);
+        let livesImg = gameScene.add.image(livesX, myLivesY, 'lives').setScale(myLivesScale);
         // High Noon (přibalené) – Nová identita: odložená druhá postava JE tahle karta
         // (rub karty postavy = počítadlo životů), žádná další se nepřidává. Během
         // cinematiky výměny (App.niHideSecond) letí doprostřed → na svém místě není.
@@ -1526,10 +1533,29 @@ function drawMyArea(ctx) {
         }
         gameScene.cardsSprites.add(livesImg);
         // Druhá karta dráhy (nad 5 životů) dostane totéž obarvení i klik jako nultá.
-        const _myLivesAll = [livesImg, ...drawExtraLivesCards(myLivesT, livesX, myBaseY, 0, -1, scaleMe, 0, null, me.health, 'mylives')];
+        const _myLivesAll = [livesImg, ...drawExtraLivesCards(myLivesT, livesX, myLivesY, 0, -1, myLivesScale, 0, null, me.health, 'mylives')];
         for (const sp of _myLivesAll) {
             if (_myLivesTint !== null) sp.setTint(_myLivesTint);
             if (_myLivesClick) { sp.setInteractive({ useHandCursor: true }); sp.on('pointerdown', _myLivesClick); }
+        }
+        // Změna velikosti bloku (bug 42) musí být plynulá: karty se vytvoří na NOVÉ
+        // geometrii a doklouzají do ní ze staré. Poslední použitý fit se drží v App
+        // (ne na spritu) ze stejného důvodu jako u ostatních slide/fade idiomů –
+        // renderUI karty vytváří znovu. Portrét po tu dobu jede vlastní animací posunu
+        // po nábojích (runHealthSlide), takže se sem neplete.
+        const _fitPrev = App.myLivesFit;
+        App.myLivesFit = myLivesG.fit;
+        if (_fitPrev != null && Math.abs(_fitPrev - myLivesG.fit) > 0.0001) {
+            const gPrev = myLivesGeom(L, me.health, me.maxHealth, _fitPrev);
+            _myLivesAll.forEach((sp, i) => {
+                const toY = sp.y;
+                sp.y = gPrev.baseY - i * gPrev.track.cardOff;
+                sp.setScale(gPrev.scale);
+                gameScene.tweens.add({
+                    targets: sp, y: toY, scaleX: myLivesScale, scaleY: myLivesScale,
+                    duration: 280, ease: 'Cubic.easeOut',
+                });
+            });
         }
 
         // Pravé poledne – výzva ke ztrátě života
@@ -1553,12 +1579,12 @@ function drawMyArea(ctx) {
 
         const bulletH = myLivesT.step;
 
-        let charImg = gameScene.add.image(livesX, myBaseY - (bulletH * myHealthSlot), getCharTex(me.character)).setScale(scaleMe);
+        let charImg = gameScene.add.image(livesX, myLivesY - (bulletH * myHealthSlot), getCharTex(me.character)).setScale(myLivesScale);
         // Nová identita (High Noon, přibalené): stará postava se během cinematiky výměny
         // překlápí na rub a sjíždí na slot odložené karty → na svém místě zatím není.
         if (App.niHideChar) charImg.setVisible(false);
         gameScene.cardsSprites.add(charImg);
-        if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, scaleMe, getCharTex(me.character), null, myLivesT.slots)) charImg.setVisible(false);
+        if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, myLivesScale, getCharTex(me.character), null, myLivesT.slots)) charImg.setVisible(false);
         // Střílím zrovna na někoho? Červeně se útočník rozsvítí OSTATNÍM u stolu
         // (cíl musí vidět, kdo na něj míří) – sobě ne: já vím, že střílím já, a
         // vlastní portrét načervenalý jako terč jen mate (bug 5).

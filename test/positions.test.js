@@ -682,6 +682,32 @@ test('obě karty dráhy životů soupeře zůstanou mimo balíčky', () => {
     }
 });
 
+// ── Divoký západ – Big Spencer: můj blok životů se vejde pod balíčky (bug 42) ─
+test('můj blok životů se zmenší, aby nedosáhl na balíčky', () => {
+    const { livesTrack, livesFitScale, myLivesGeom, livesCardsShown,
+            CARD_ART_H: CARD_H } = require('../core/layout.js');
+    ['desktop', 'mobile'].forEach(name => {
+        const L = LAYOUT_PROFILES[name];
+        for (let hp = 1; hp <= 10; hp++) {
+            const g = myLivesGeom(L, hp, Math.max(hp, 4));
+            const top = g.baseY - hp * g.track.step - CARD_H * g.scale / 2;
+            assert.ok(top >= L.livesTopY - 0.01, `${name}, ${hp} životů: blok leze nad strop`);
+            // Zarovnání DOLŮ: spodní hrana nulté karty zůstává na svém místě.
+            assert.ok(Math.abs((g.baseY + CARD_H * g.scale / 2)
+                - (L.myBaseY + CARD_H * L.scaleMe / 2)) < 0.01, `${name}, ${hp} životů: spodní hrana`);
+        }
+        // Do 6 životů (tedy pro všechny postavy kromě Big Spencera) je to no-op.
+        for (let hp = 0; hp <= 6; hp++) assert.equal(livesFitScale(L, hp), 1, `${name}, ${hp} životů`);
+    });
+    // Druhá karta se vykládá až od 6 životů (bug 56); kapacita dráhy je strop.
+    const t = livesTrack(10, LAYOUT_PROFILES.desktop.scaleMe);
+    assert.equal(livesCardsShown(t, 5), 1);
+    assert.equal(livesCardsShown(t, 6), 2);
+    assert.equal(livesCardsShown(t, 10), 2);
+    assert.equal(livesCardsShown(livesTrack(4, 0.36), 4), 1, 'jednokartová dráha zůstane jedna');
+    assert.equal(livesCardsShown(livesTrack(9, 0.27, 1), 9), 1, 'kompaktní sloupec dráhu nedělí');
+});
+
 // ── Divoký západ – Greygory Deck: dvojice mimo pás vyložených karet (bug 41) ─
 test('dvojice Greygoryho nezabírá slot v pásu a leží vedle portrétu', () => {
     const grey = { hand: [], board: [], weapon: { id: -1 }, health: 4, maxHealth: 4,

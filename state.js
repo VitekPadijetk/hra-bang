@@ -97,6 +97,9 @@ const App = {
     // a odkdy se to mění – karta se plynule objeví při 6 životech a zmizí při 5
     // (view/board.js drawExtraLivesCards). Klíč = 'mylives' / 'olives<idx>_'.
     livesFade: {},
+    // Poslední použité zmenšení MÉHO bloku životů (Big Spencer se nad 7 životů nevejde
+    // pod balíčky). null = deska se ještě nekreslila → blok naskočí bez animace.
+    myLivesFit: null,
     // Rozsvícení postavy hráče na tahu se plynule nafaduje; drží se čas změny tahu.
     lastCurrentIdx: null,
     turnTintStart: 0,
