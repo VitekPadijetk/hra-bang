@@ -56,7 +56,7 @@ const ChecksMixin = {
             this.deck.discard(checkCard);
             // Divoký západ – John Pain: komu karta připadne, se ohlásí rovnou do checku,
             // ať z odkrytí letí přímo k němu (viz _johnPainQueueCard).
-            const jpIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });
+            const takerIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
@@ -64,7 +64,7 @@ const ChecksMixin = {
                 playerIdx: pcd.playerIdx,
                 card: checkCard,
                 boardIdx: null,
-                johnPainIdx: jpIdx
+                johnPainIdx: takerIdx
             };
             return;
         }
@@ -76,7 +76,7 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
-            const jpIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
+            const takerIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
@@ -84,7 +84,7 @@ const ChecksMixin = {
                 playerIdx: pcd.playerIdx,
                 card: checkCard,
                 boardIdx: pcd.dynamiteIdx,
-                johnPainIdx: jpIdx
+                johnPainIdx: takerIdx
             };
             return;
         }
@@ -96,7 +96,7 @@ const ChecksMixin = {
             }
             const checkCard = this.deck.draw();
             this.deck.discard(checkCard);
-            const jpIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
+            const takerIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
             this.phase = "CHECKING";
             this.currentCheck = {
                 active: true,
@@ -104,7 +104,7 @@ const ChecksMixin = {
                 playerIdx: pcd.playerIdx,
                 card: checkCard,
                 boardIdx: pcd.jailIdx,
-                johnPainIdx: jpIdx
+                johnPainIdx: takerIdx
             };
             return;
         }

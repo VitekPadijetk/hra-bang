@@ -384,9 +384,9 @@ const PlayMixin = {
         this.deck.discard(checkCard);
         // Divoký západ – John Pain: ohlášený taker letí do cinematiky sejmutí (viz
         // _johnPainQueueCard) – odkrytá karta pak jde rovnou k němu, ne přes odhoz.
-        const jpIdx = this._johnPainQueueCard(checkCard, targetIdx, { reveal: true });
+        const takerIdx = this._johnPainQueueCard(checkCard, targetIdx, { reveal: true });
         this.phase = "CHECKING";
-        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette, johnPainIdx: jpIdx };
+        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette, johnPainIdx: takerIdx };
     },
 
     resolveCardSelection(attackerIdx, targetCardArea, targetCardIdx) {

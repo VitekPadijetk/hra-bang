@@ -28,7 +28,7 @@ const SEAT_KEYS = new Set([
     'fromIdx', 'toIdx', 'fromPlayerIdx', 'toPlayerIdx',
     'deadIdx', 'killerIdx', 'drawerIdx', 'grinnerIdx', 'takerIdx', 'discarderIdx',
     'sourceIdx', 'ownerIdx', 'winClaimIdx', 'brawlAttackerIdx', 'commandedIdx',
-    '_dorothyOwnerIdx',
+    '_dorothyOwnerIdx', 'johnPainIdx', 'announcedIdx',
     '_firstDeadIdx', '_deadPlayerIdx', '_deathAnimPlayerIdx', '_mollyDeferredIdx',
     '_terenDyingIdx', '_pendingDeathReveal', '_winClaim3p',
 ]);
@@ -558,9 +558,9 @@ const WildWestMixin = {
         if (!card) return null;
         if (!(this.players || []).some(p => p && isInPlay(p) && hasAbility(p, "John Pain"))) return null;
         if (!this._johnPainQueue) this._johnPainQueue = [];
-        const announced = opts.reveal ? this.players.indexOf(this._johnPainTakerFor(drawerIdx)) : -1;
-        this._johnPainQueue.push({ cardId: card.id, drawerIdx, announced });
-        return announced >= 0 ? announced : null;
+        const announcedIdx = opts.reveal ? this.players.indexOf(this._johnPainTakerFor(drawerIdx)) : -1;
+        this._johnPainQueue.push({ cardId: card.id, drawerIdx, announcedIdx });
+        return announcedIdx >= 0 ? announcedIdx : null;
     },
 
     // Komu karta připadne. „Kdokoli" zahrnuje i jeho samotného, takže se hledá od
@@ -600,7 +600,7 @@ const WildWestMixin = {
             const takerIdx = this.players.indexOf(taker);
             // Ohlášeného takera (viz _johnPainQueueCard) už klient odanimoval jako součást
             // odkrytí sejmuté karty – druhý let z odhozu by kartu poslal podruhé.
-            if (e.announced !== takerIdx) {
+            if (e.announcedIdx !== takerIdx) {
                 if (!this._johnPainAnim) this._johnPainAnim = [];
                 this._johnPainAnim.push({ toPlayerIdx: takerIdx, cardId: card.id });
             }
