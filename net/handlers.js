@@ -794,19 +794,22 @@ function _deathFlyToVulture(it, o, n) {
         ? () => (state?.players?.[vid]?.hand || []).some(c => c.id === it.id)
         : () => (state?.players?.[vid]?.hand?.length || 0) >= baseLen + n + 1;
     const geo = { startAngle: ang, endAngle, startScale, endScale, duration: 420, holdUntil: hold, holdTries };
-    // Sacagaway (Divoký západ): ruka mrtvého i Samova jsou odkryté, takže karta letí
-    // lícem celou cestu – ani se neodhaluje, ani neschovává.
-    if (handsOpen()) {
+    // O překlopení rozhoduje JEN to, co vidím na obou koncích letu: karty ze stolu a
+    // výzbroje jsou veřejné vždycky, ruka mrtvého i Samova podle redakce (Sacagaway,
+    // debug hra, divák hry jen botů → odkryté). Bez toho karta dolétla jako rub do ruky,
+    // kterou deska kreslí lícem, a s příchodem stavu se „insta" překlopila.
+    const srcFace = it.kind !== 'hand' || isMine || handFaceUp(pid);
+    const dstFace = handFaceUp(vid);
+    if (srcFace && dstFace) {
         animateCard(it.from.x, it.from.y, to.x, to.y, fc, 420, done, { ...geo, exactAngle: true });
-    } else if (it.kind === 'hand') {
-        if (isVulture)      animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, onComplete: done });
-        else if (isMine)    animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true, onComplete: done });
+    } else if (!srcFace && dstFace) {
+        animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, onComplete: done });
+    } else if (srcFace && !dstFace) {
+        animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true, onComplete: done });
+    } else {
         // Cizí rub → cizí rub: jen doletí a dotočí se do Samovy orientace (exactAngle,
         // ať se u protějšího hráče opravdu otočí a nesrovná se na 0°).
-        else                animateCard(it.from.x, it.from.y, to.x, to.y, 'card_back', 420, done, { ...geo, exactAngle: true });
-    } else {
-        if (isVulture)      animateCard(it.from.x, it.from.y, to.x, to.y, fc, 420, done, { ...geo, exactAngle: true });
-        else                animateCardFlip(it.from.x, it.from.y, to.x, to.y, 'card_back', fc, { ...geo, flip: true, reverse: true, onComplete: done });
+        animateCard(it.from.x, it.from.y, to.x, to.y, 'card_back', 420, done, { ...geo, exactAngle: true });
     }
 }
 
@@ -830,6 +833,11 @@ function _vultureStageIncoming(pid, flyCtx, seq) {
     // viditelně přeházely.
     const rev = (k) => seq.filter(it => it.kind === k).reverse();
     const inOrder = [...rev('hand'), ...rev('blue'), ...seq.filter(it => it.kind === 'weapon')];
+    // Do CIZÍ (skryté) ruky se stage-uje placeholder bez ID – přesně to, co pošle redakce
+    // (HIDDEN_CARD v server/rooms.js). Se skutečnou kartou by ji deska nakreslila lícem
+    // (drawHandCard kreslí líc podle ID), takže by Samovi karty po dosednutí ležely
+    // odkryté a s příchodem stavu na konci cinematiky by se „insta" překlopily na rub.
+    const faceUp = handFaceUp(vid);
     flyCtx.slotOf = {};
     let staged = 0;
     inOrder.forEach(it => {
@@ -837,7 +845,7 @@ function _vultureStageIncoming(pid, flyCtx, seq) {
         flyCtx.slotOf[it.id] = staged;
         if (flyCtx.isVulture) App.pendingDrawIds.add(it.id);
         if (!hand || hand.some(c => c.id === it.id)) return;
-        hand.push(cardOf(it.id));
+        hand.push(faceUp ? cardOf(it.id) : { id: null, _placeholder: true });
         staged++;
     });
     if (!flyCtx.isVulture && staged) {
@@ -1354,10 +1362,21 @@ function _hideStolenBoardCard(data) {
 // důvodem k překlopení byla skrytá ruka; překlopení z jiného důvodu (karta z rubem
 // otočené hromádky, zamíchaná ruka oběti – viz gesto níž) zůstává.
 function handsOpen() { return eventActive(state, 'SACAGAWAY'); }
+// Uvidím karty v ruce hráče `idx` LÍCEM? Neptej se jen na Sacagaway – ruce chodí odkryté
+// i v debug hře (jeden socket ovládá všechna místa) a divákovi hry jen botů (redakce je
+// v obou případech vypnutá, viz redactState v server/rooms.js). Rozhodují proto DATA:
+// deska kreslí kartu lícem právě tehdy, když má ve stavu ID (drawHandCard ve view/board.js).
+// Prázdná ruka nic neprozradí → fallback na zapnuté výjimky.
+function handFaceUp(idx) {
+    if (myIndex !== null && idx === myIndex) return true;
+    if (handsOpen() || state?.isDebug) return true;
+    const hand = state?.players?.[idx]?.hand;
+    return !!(hand && hand.some(c => c && c.id != null));
+}
 // Musí se karta odlétající z ruky hráče `idx` ostatním teprve odhalit (rub→líc)?
-function revealFromHand(idx) { return idx !== myIndex && !handsOpen(); }
+function revealFromHand(idx) { return !handFaceUp(idx); }
 // A naopak: musí se veřejná karta mizící do ruky hráče `idx` schovat (líc→rub)?
-function hideIntoHand(idx) { return idx !== myIndex && !handsOpen(); }
+function hideIntoHand(idx) { return !handFaceUp(idx); }
 
 // Přetočení karty NA MÍSTĚ (scaleY přes nulu, tedy po ose karty – u soupeře na boku
 // se sklopí správným směrem i pod úhlem 90°). Sprite po dotočení ZŮSTÁVÁ ležet: gesto
