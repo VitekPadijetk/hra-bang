@@ -1,7 +1,7 @@
 const { test, before, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getDeadRoleCardPos, getOpponentAnchors,
+    getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
 const {
     computeStage, resolveLayout, LAYOUT_PROFILES, oppScale, eventPileSlots, eventPileLift,
@@ -680,4 +680,33 @@ test('obě karty dráhy životů soupeře zůstanou mimo balíčky', () => {
             }
         }
     }
+});
+
+// ── Divoký západ – Greygory Deck: dvojice mimo pás vyložených karet (bug 41) ─
+test('dvojice Greygoryho nezabírá slot v pásu a leží vedle portrétu', () => {
+    const grey = { hand: [], board: [], weapon: { id: -1 }, health: 4, maxHealth: 4,
+                   _greygoryChars: ['Slab the Killer', 'Suzy Lafayette'] };
+    const plain = { hand: [], board: [], weapon: { id: -1 }, health: 4, maxHealth: 4 };
+    setWorld([{ ...plain }, { ...grey }, { ...plain }, { ...plain }], 0);
+    // Skutečné karty na stole se dvojicí neposunou – pás ji nezná.
+    const withGrey = getBoardCardPos(1, 0);
+    setWorld([{ ...plain }, { ...plain }, { ...plain }, { ...plain }], 0);
+    assert.deepEqual(withGrey, getBoardCardPos(1, 0));
+
+    setWorld([{ ...plain }, { ...grey }, { ...plain }, { ...plain }], 0);
+    const a = getGreygoryCardPos(1, 0), b = getGreygoryCardPos(1, 1);
+    assert.ok(a.scale > 0 && a.scale < 0.3);
+    assert.notDeepEqual({ x: a.x, y: a.y }, { x: b.x, y: b.y });
+    // Soupeř vlevo (4 hráči, diff 1): dvojice leží napravo od kotvy, tedy ke středu.
+    assert.ok(a.x > getOpponentAnchors(4)[0].x);
+});
+
+test('moje dvojice sedí ve slotu tlačítka schopnosti', () => {
+    const L = LAYOUT_PROFILES.desktop;
+    const me = { hand: [], board: [], weapon: { id: -1 }, health: 4, maxHealth: 4,
+                 _greygoryChars: ['Slab the Killer', 'Suzy Lafayette'] };
+    setWorld([me, { hand: [], board: [], weapon: { id: -1 }, health: 4, maxHealth: 4 }], 0);
+    const a = getGreygoryCardPos(0, 0);
+    assert.equal(a.y, L.btnAbilY);
+    assert.equal(a.angle, 0);
 });

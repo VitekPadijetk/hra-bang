@@ -11,6 +11,7 @@ const {
     oppScale, handCardScale, myHandRow, myHandSlotX,
     boardBand, boardSlot,
     LIVES_PER_CARD, livesTrack, livesSlot,
+    greyDetached, greyScale, greyStep, greyAbilShift, greyMySlot, greyOppSlot,
 } = require('../core/layout.js');
 
 before(() => { console.log = () => {}; });
@@ -779,5 +780,56 @@ describe('moje dráha životů – druhá karta nedosáhne na balíčky', () => 
         const t = livesTrack(10, L.scaleMe);
         const top = L.myBaseY - t.cardOff - halfH(L.scaleMe);
         assert.ok(top >= L.pileY + halfH(L.scaleDeck) + 1e-9, 'druhá karta na balíčcích');
+    });
+});
+
+// ── Divoký západ – Greygory Deck: dvojice líznutých postav (bug 41) ──────────
+describe('Greygory Deck – dvojice vedle portrétu', () => {
+    const D = getLayout('desktop');
+
+    test('v okruhu leží mimo pás, v kompaktním profilu v něm zůstává', () => {
+        assert.strictEqual(greyDetached(D), true);
+        assert.strictEqual(greyDetached(getLayout('mobile')), false);
+        // Kompaktní profil si slot tlačítka neposouvá – dvojice tam žádný nezabírá.
+        assert.strictEqual(greyAbilShift(getLayout('mobile'), 2), 0);
+    });
+
+    test('karty dvojice jsou menší než karty ve hře a nepřekrývají se', () => {
+        const s = greyScale(D.scaleMe);
+        assert.ok(s < D.scaleMe);
+        assert.ok(greyStep(D.scaleMe) > CARD_ART_W * s);
+    });
+
+    test('tlačítko schopnosti uhne přesně o šířku dvojice a zůstane na jevišti', () => {
+        assert.strictEqual(greyAbilShift(D, 0), 0);
+        assert.strictEqual(greyAbilShift(D, 2), 2 * greyStep(D.scaleMe));
+        const a = greyMySlot(D, 0, 2), b = greyMySlot(D, 1, 2);
+        // Dvojice sedí zleva do původního slotu, tlačítko začíná až za ní.
+        const btnLeft = D.btnAbilX + greyAbilShift(D, 2) - 180;
+        assert.ok(b.x + CARD_ART_W * b.scale / 2 <= btnLeft);
+        assert.ok(a.x < b.x);
+        assert.ok(D.btnAbilX + greyAbilShift(D, 2) + 180 <= STAGE_BASE_W);
+        // Nesmí zajet na moje vyložené karty ani do ruky (obojí leží níž).
+        assert.ok(a.y + CARD_ART_H * a.scale / 2 < D.myBaseY - CARD_ART_H * D.scaleMe / 2);
+    });
+
+    test('u soupeře leží směrem ke středu stolu a jde s portrétem', () => {
+        const sc = D.scaleOpp;
+        const inward = { left: 1, right: -1, top: 1 };
+        for (const side of ['left', 'right', 'top']) {
+            const near = greyOppSlot(side, 500, 500, sc, 0, 2);
+            const far  = greyOppSlot(side, 500, 500, sc, 1, 2);
+            const axis = side === 'top' ? 'y' : 'x';
+            const delta = (near[axis] - 500) * inward[side];
+            // Od portrétu směrem ke středu, a přesně o půlku obou karet + mezera.
+            assert.ok(delta > 0, side);
+            assert.ok(delta >= CARD_ART_H * (sc + near.scale) / 2, side);
+            // Karty stojí vedle sebe v druhé ose a jsou vystředěné na portrét.
+            const cross = side === 'top' ? 'x' : 'y';
+            assert.notStrictEqual(near[cross], far[cross]);
+            assert.strictEqual((near[cross] + far[cross]) / 2, 500);
+            // Otočené stejně jako ostatní karty toho místa.
+            assert.strictEqual(near.angle, { left: 90, right: -90, top: 180 }[side]);
+        }
     });
 });

@@ -625,7 +625,10 @@ function drawOpponents(ctx) {
         // proto se přidává na KONEC – indexy skutečných karet se tím nehnou a animace
         // (positions.js) míří pořád na totéž místo. Nese ji i Vera Custer, když Greygoryho
         // kopíruje, takže se ptáme rovnou na pole hráče.
-        const _greyCards = (player._greygoryChars || []).map((n, k) => ({
+        // V okruhu (desktop) leží dvojice vedle portrétu, ne v pásu – kreslí ji
+        // drawGreygoryPair na konci téhle větve. Slot v pásu si bere jen kompaktní
+        // profil (mobil), kde na geometrii vedle portrétu není místo.
+        const _greyCards = greyDetached(L) ? [] : (player._greygoryChars || []).map((n, k) => ({
             _pseudo: true, _tex: getCharTex(n), _zoomKey: 'greygory:' + actualIdx + ':' + k
         }));
         const displayCards = (_roleSlot
@@ -1228,7 +1231,36 @@ function drawOpponents(ctx) {
                 }
             }
         }
+
+        // Dvojice Greygoryho Decka leží vedle portrétu (viz drawGreygoryPair) – až tady,
+        // protože musí ležet NAD kartami skupiny a portrét už stojí na svém místě.
+        if (greyDetached(L)) drawGreygoryPair(actualIdx, player, getCharTex);
     }
+}
+
+// ── Divoký západ – Greygory Deck: dvojice líznutých postav ───────────────────
+// Není to karta ve hře (ukrást, odhodit ani zničit ji nejde) – je to počítadlo
+// schopností, které si hráč právě půjčil, takže do pásu vyloženého vybavení nepatří.
+// Leží vedle portrétu směrem ke středu stolu a jede s ním po nábojích; zvětšit si ji
+// jde jako každou kartu (text schopnosti je na ní vysázený drobně). Geometrii vlastní
+// positions.js (getGreygoryCardPos), aby na totéž místo mířily i animace.
+// V kompaktním profilu (mobil) na tuhle geometrii místo není – tam zůstává dvojice
+// na konci pásu a nakreslí ji rovnou drawOpponents/drawMyArea (viz greyDetached).
+function drawGreygoryPair(playerIdx, player, getCharTex) {
+    const names = (player && player._greygoryChars) || [];
+    names.forEach((name, k) => {
+        const pos = getGreygoryCardPos(playerIdx, k);
+        const tex = getCharTex(name);
+        const key = 'greygory:' + playerIdx + ':' + k;
+        const spr = gameScene.add.image(pos.x, pos.y, tex)
+            .setScale(pos.scale).setAngle(pos.angle || 0);
+        gameScene.cardsSprites.add(spr);
+        spr.setInteractive({ useHandCursor: false });
+        spr._zoomKey = key;
+        spr.on('pointerover', () => startCardZoom(tex, key));
+        spr.on('pointerout', scheduleZoomFade);
+        reflowCard('grey' + playerIdx + '_' + k, spr, pos.x, pos.y, tex, pos.scale, pos.angle || 0);
+    });
 }
 
 // ── Kompaktní sloupec soupeře (mobilní profil) ───────────────────────────────
@@ -1606,10 +1638,15 @@ function drawMyArea(ctx) {
         // Pás vyložených karet – MUSÍ zrcadlit getBoardCardPos v positions.js. Řady rostou
         // vzhůru, tedy k balíčkům uprostřed stolu, proto je jejich počet zastropovaný a
         // přeplněná řada se místo další řady jen zhustí.
-        // Divoký západ – Greygory Deck: dvojice líznutých postav zabírá sloty v pásu,
-        // takže se musí započítat do bandu (jinak by řada dosáhla až na balíčky). Kreslí
-        // se až za skutečnými kartami, aby se jejich indexy nehnuly (viz positions.js).
-        const _myGrey = me?._greygoryChars || [];
+        // Divoký západ – Greygory Deck: v kompaktním profilu dvojice líznutých postav
+        // zabírá sloty v pásu, takže se musí započítat do bandu (jinak by řada dosáhla až
+        // na balíčky). Kreslí se až za skutečnými kartami, aby se jejich indexy nehnuly.
+        // V okruhu (desktop) leží dvojice u slotu tlačítka schopnosti, ne v pásu – slot
+        // si bere jen kompaktní profil (mobil). Viz greyDetached (core/layout.js).
+        const _myGreyAll = me?._greygoryChars || [];
+        const _myGrey = greyDetached(L) ? [] : _myGreyAll;
+        // Slot tlačítka schopnosti uhne doprava, až za dvojici postav (bug 41).
+        const _abilX = L.btnAbilX + greyAbilShift(L, _myGreyAll.length);
         const myBand = boardBand(myBoardCards.length + _myGrey.length, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
         const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action);
         // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
@@ -1712,6 +1749,7 @@ function drawMyArea(ctx) {
         // Divoký západ – Greygory Deck: moje líznutá dvojice. Cílit na ni nejde (není to
         // karta ve hře, jen počítadlo schopností), zvětšit ano – text schopnosti je na ní
         // vysázený drobně. Klíč zoomu i reflowu je vlastní, s ID karet se nepotká.
+        if (greyDetached(L)) drawGreygoryPair(myIndex, me, getCharTex);
         _myGrey.forEach((name, k) => {
             const s = boardSlot(myBoardCards.length + k, myBand);
             const gx = roleX - (myCardW + L.boardGap) - s.col * myBand.step;
@@ -2322,7 +2360,7 @@ function drawMyArea(ctx) {
             });
         }
 
-        // Slot tlačítka schopnosti (L.btnAbilX/Y) je JEDEN a všechna tlačítka postav
+        // Slot tlačítka schopnosti (_abilX/L.btnAbilY) je JEDEN a všechna tlačítka postav
         // se do něj kreslí přes sebe. Divoký západ – Lady Růže z Texasu do něj přidala
         // první nabídku, která NENÍ schopností postavy: je to událost, takže se může
         // potkat s kteroukoli postavou a platí desítky tahů. Zabrat slot natrvalo nesmí,
@@ -2417,7 +2455,7 @@ function drawMyArea(ctx) {
             _abilSlotUsed = true;
             const sidPending = !!selectedState.sidKetchum;
             const btnLabel = sidPending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → ❤️';
-            themeButton(gameScene, L.btnAbilX, L.btnAbilY, 320, L.btnH, btnLabel, {
+            themeButton(gameScene, _abilX, L.btnAbilY, 320, L.btnH, btnLabel, {
                 ...themeToggleStyle(sidPending), fontSize: '23px',
                 onClick: () => {
                     if (sidPending) {
@@ -2445,7 +2483,7 @@ function drawMyArea(ctx) {
             if (_sidLastLifeCtx) {
                 const _sidSavePending = !!selectedState.sidKetchum;
                 const _sidSaveLabel = _sidSavePending ? 'SID: zrušit ↩' : 'SID: 2 KARTY → PŘEŽÍT';
-                themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH, _sidSaveLabel, {
+                themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH, _sidSaveLabel, {
                     ...themeToggleStyle(_sidSavePending), fontSize: '23px',
                     onClick: () => {
                         if (_sidSavePending) {
@@ -2506,7 +2544,7 @@ function drawMyArea(ctx) {
                 if (App.blockInput) { bg.setAlpha(0.45); bg.disableInteractive(); }
             };
             _peyoteBtn(L.btnEndX, L.btnEndY, '♥ ♦ ČERVENÁ', true, THEME.color.dangerNum);
-            _peyoteBtn(L.btnAbilX, L.btnAbilY, '♠ ♣ ČERNÁ', false, THEME.color.borderNum);
+            _peyoteBtn(_abilX, L.btnAbilY, '♠ ♣ ČERNÁ', false, THEME.color.borderNum);
         }
 
         // ── A Fistful of Cards – Ranč: výměna karet z ruky po fázi lízání ───────
@@ -2527,7 +2565,7 @@ function drawMyArea(ctx) {
                 onClick: () => { if (_ranchIds.length) _ranchSend(_ranchIds); },
             });
             if (App.blockInput || !_ranchIds.length) { _ranchBtn.setAlpha(0.45); _ranchBtn.disableInteractive(); }
-            const { bg: _skipBtn } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 260, L.btnH, 'PŘESKOČIT ↷', {
+            const { bg: _skipBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 260, L.btnH, 'PŘESKOČIT ↷', {
                 fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
                 fontSize: '22px', onClick: () => _ranchSend([]),
             });
@@ -2557,7 +2595,7 @@ function drawMyArea(ctx) {
         // DISCARD_ANOTHER (stejná cesta jako „odhoď další kartu" z Dodge City).
         if (_sniperCan) {
             const _snArmed = !!selectedState.sniper;
-            const { bg: _snBtn } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH,
+            const { bg: _snBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH,
                 _snArmed ? 'ODSTŘELOVAČ: zrušit ↩' : '🎯 ODSTŘELOVAČ: 2× BANG!', {
                 ...themeToggleStyle(_snArmed), fontSize: '20px',
                 onClick: () => {
@@ -2574,7 +2612,7 @@ function drawMyArea(ctx) {
         // dál míří úplně stejně jako kartou Bang! (zvýrazněné postavy v dostřelu).
         if (_showdownCan) {
             const _sdArmed = !!selectedState.showdown;
-            const { bg: _sdBtn } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH,
+            const { bg: _sdBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH,
                 _sdArmed ? 'ZÚČTOVÁNÍ: zrušit ↩' : '💥 ZAHRÁT JAKO BANG!', {
                 ...themeToggleStyle(_sdArmed), fontSize: '20px',
                 onClick: () => {
@@ -2609,7 +2647,7 @@ function drawMyArea(ctx) {
             if (myPlayTurn && hasAbility(me, "Chuck Wengam") && me.health > 1) {
                 _abilSlotUsed = true;
                 const armed = !!selectedState.chuck;
-                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, armed ? 'CHUCK: zrušit ↩' : 'CHUCK: −1 ❤ → 2 🂠', {
+                themeButton(gameScene, _abilX, BTN_Y, 320, 58, armed ? 'CHUCK: zrušit ↩' : 'CHUCK: −1 ❤ → 2 🂠', {
                     ...themeToggleStyle(armed), fontSize: '21px',
                     onClick: () => { selectedState = armed ? { cardIndex: null, action: null } : { cardIndex: null, action: null, chuck: true }; renderUI(); },
                 });
@@ -2619,7 +2657,7 @@ function drawMyArea(ctx) {
                 (me._joseUses || 0) < 2 && (selectedState.jose || me.hand.some(isBlueCard)) && !App.blockInput && !_sniperCan && !_showdownCan) {
                 _abilSlotUsed = true;
                 const active = !!selectedState.jose;
-                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
+                themeButton(gameScene, _abilX, BTN_Y, 320, 58, active ? 'JOSÉ: zrušit ↩' : 'JOSÉ: modrá → 2 🂠', {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, jose: true }; renderUI(); },
                 });
@@ -2629,7 +2667,7 @@ function drawMyArea(ctx) {
                 !me._docUsed && (selectedState.doc || me.hand.length >= 2) && !App.blockInput && !_sniperCan && !_showdownCan) {
                 _abilSlotUsed = true;
                 const active = !!selectedState.doc;
-                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
+                themeButton(gameScene, _abilX, BTN_Y, 320, 58, active ? 'DOC: zrušit ↩' : 'DOC: 2 karty → BANG', {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, doc: { staged: [] } }; renderUI(); },
                 });
@@ -2645,7 +2683,7 @@ function drawMyArea(ctx) {
                 const label = active
                     ? (selectedState.flint.targetIdx == null ? 'FLINT: zrušit ↩' : 'FLINT: vyber kartu ↩')
                     : '🤝 FLINT: vyměnit';
-                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, label, {
+                themeButton(gameScene, _abilX, BTN_Y, 320, 58, label, {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, flint: { targetIdx: null } }; renderUI(); },
                 });
@@ -2662,7 +2700,7 @@ function drawMyArea(ctx) {
                     const label = active
                         ? (selectedState.lvk.cardId == null ? 'LEE: zrušit ↩' : 'LEE: vyber cíl ↩')
                         : '🔁 OPAKOVAT: ' + _lvk.name;
-                    themeButton(gameScene, L.btnAbilX, BTN_Y, 360, 58, label, {
+                    themeButton(gameScene, _abilX, BTN_Y, 360, 58, label, {
                         ...themeToggleStyle(active), fontSize: '18px',
                         onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, lvk: { cardId: null } }; renderUI(); },
                     });
@@ -2674,7 +2712,7 @@ function drawMyArea(ctx) {
                 me._willUsedTurn !== state.turnId && (selectedState.will || me.hand.length > 0)) {
                 _abilSlotUsed = true;
                 const active = !!selectedState.will;
-                themeButton(gameScene, L.btnAbilX, BTN_Y, 320, 58, active ? 'WILL: zrušit ↩' : 'WILL: karta → 🏪', {
+                themeButton(gameScene, _abilX, BTN_Y, 320, 58, active ? 'WILL: zrušit ↩' : 'WILL: karta → 🏪', {
                     ...themeToggleStyle(active), fontSize: '21px',
                     onClick: () => { selectedState = active ? { cardIndex: null, action: null } : { cardIndex: null, action: null, will: true }; renderUI(); },
                 });
@@ -2687,7 +2725,7 @@ function drawMyArea(ctx) {
                 const _roseIdx = roseSwapOffer(state, myIndex);
                 if (_roseIdx != null) {
                     const _roseName = state.players[_roseIdx]?.name || '';
-                    themeButton(gameScene, L.btnAbilX, BTN_Y, 360, 58, '🔄 VYMĚNIT MÍSTO: ' + _roseName, {
+                    themeButton(gameScene, _abilX, BTN_Y, 360, 58, '🔄 VYMĚNIT MÍSTO: ' + _roseName, {
                         fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum,
                         stroke: THEME.color.goldNum,
                         fontSize: '18px',
@@ -2712,7 +2750,7 @@ function drawMyArea(ctx) {
                 if (_dorOffer) {
                     _abilSlotUsed = true;
                     const _dorArmed = !!selectedState.dorothy;
-                    themeButton(gameScene, L.btnAbilX, BTN_Y, 360, 58,
+                    themeButton(gameScene, _abilX, BTN_Y, 360, 58,
                         _dorArmed ? 'DOROTY: zrušit ↩' : '🎭 DOROTY: porouč kartu', {
                         ...themeToggleStyle(_dorArmed), fontSize: '19px',
                         onClick: () => {
@@ -2729,7 +2767,7 @@ function drawMyArea(ctx) {
         // než se vybere cíl. Samo poručení je už započítané do stropu za tah, takže se
         // tím nedá nic vyzískat (a hra se nemá jak zacyklit).
         if (state.phase === 'DOROTHY_TARGET' && state.pendingDorothy?.playerIdx === myIndex) {
-            const { bg: _dorCancel } = themeButton(gameScene, L.btnAbilX, L.btnAbilY, 340, L.btnH,
+            const { bg: _dorCancel } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH,
                 'DOROTY: zrušit poručení ↩', {
                 fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
                 fontSize: '19px',

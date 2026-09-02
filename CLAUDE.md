@@ -385,9 +385,13 @@ Co už platí (fáze 0):
   ponechanou** kartu a při červené lízne navíc. **Absolutní konflikt v tom poolu
   nastat nemůže** – Kit vs. Claus by ho udělal, jenže Claus the Saint je z Fistfulu,
   ne ze základní hry, takže se Greygorymu do dvojice nikdy nedostane.
-- Dvojice je **veřejná**: leží jako dvě malé karty na KONCI pásu vyložených karet
-  (`view/board.js`, zrcadlo v `positions.js`) – přidávají se na konec schválně, aby
-  se indexy skutečných karet nehnuly a animace mířily pořád na totéž místo.
+- Dvojice je **veřejná**: leží jako dvě menší karty **vedle portrétu, směrem ke středu
+  stolu** (a jede s ním po nábojích) – u mě si bere slot tlačítka schopnosti, které jí
+  uhne doprava (`greyAbilShift`). Nejsou to karty ve hře, takže do pásu vyloženého
+  vybavení nepatří; geometrii vlastní `core/layout.js` (`greyMySlot`/`greyOppSlot`)
+  a zacílení animací `positions.js` (`getGreygoryCardPos`). Jedinou výjimkou je
+  **kompaktní profil (mobil)**, kde na tuhle geometrii není místo – tam dvojice zůstává
+  na KONCI pásu vyložených karet, aby se indexy skutečných karet nehnuly (`greyDetached`).
 - **Lady Růže z Texasu** (fáze 11) je hotová: „Během svého tahu si může každý hráč
   vyměnit místo s hráčem po své pravici a ten tak přeskočí svůj nejbližší tah."
   Je to **jediná karta, která mění sedadla** – a sedadlo je v tomhle projektu INDEX do

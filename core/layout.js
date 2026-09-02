@@ -243,6 +243,65 @@ function boardSlot(idx, band) {
     return { row: Math.min(band.rows - 1, Math.floor(idx / p)), col: idx % p };
 }
 
+// ── Divoký západ – Greygory Deck: dvojice líznutých postav ───────────────────
+// Nejsou to karty ve hře (nedají se ukrást, odhodit ani zničit) – je to počítadlo
+// schopností, které si hráč právě půjčil. V pásu vyloženého vybavení proto nemají co
+// dělat: leží VEDLE PORTRÉTU směrem ke středu stolu a posouvají se s ním, jak jede
+// po nábojích. U mě je „směr ke středu" slot tlačítka schopnosti – dvojice si ho vezme
+// zleva a tlačítko uhne doprava, až za ni (greyAbilShift).
+//
+// Kompaktní profil (mobil) tuhle geometrii nemá kam dát: sloupec soupeře je široký
+// přesně jednu kartu a moje zóna je nalepená na balíčky, takže tam dvojice zůstává
+// v pásu jako dosud (greyDetached vrací false).
+const GREY_SCALE = 0.75;      // podíl z měřítka karet daného místa (karty jsou o kus menší)
+const GREY_GAP = 8;           // mezera mezi kartami dvojice i mezi dvojicí a portrétem
+const GREY_BTN_HALF = 180;    // půlka nejširšího tlačítka slotu schopnosti (360 px)
+
+// Má se dvojice kreslit vedle portrétu (true), nebo zůstat v pásu vyložených karet?
+function greyDetached(L) {
+    return (L || LAYOUT_DESKTOP).oppMode !== 'compact';
+}
+
+// Měřítko dvojice na místě, kde se karty kreslí v `baseScale`.
+function greyScale(baseScale) {
+    return baseScale * GREY_SCALE;
+}
+
+// Rozteč karet dvojice (podél řady).
+function greyStep(baseScale) {
+    return CARD_ART_W * greyScale(baseScale) + GREY_GAP;
+}
+
+// O kolik uhne slot tlačítka schopnosti v mojí zóně, aby dvojice měla kam.
+function greyAbilShift(L, count) {
+    const P = L || LAYOUT_DESKTOP;
+    if (!count || !greyDetached(P)) return 0;
+    return count * greyStep(P.scaleMe);
+}
+
+// Slot k-té karty dvojice v MOJÍ zóně: zleva do slotu tlačítka schopnosti, které o tutéž
+// šířku uhnulo doprava. `count` = kolik karet dvojice má (1–2).
+function greyMySlot(L, k, count) {
+    const P = L || LAYOUT_DESKTOP;
+    const s = greyScale(P.scaleMe);
+    const left = P.btnAbilX - GREY_BTN_HALF;
+    return { x: left + CARD_ART_W * s / 2 + k * greyStep(P.scaleMe), y: P.btnAbilY,
+             scale: s, angle: 0 };
+}
+
+// Slot k-té karty dvojice u SOUPEŘE: vedle portrétu směrem ke středu stolu, vystředěný
+// na jeho osu a otočený stejně jako jeho ostatní karty. `charX/charY` je pozice PORTRÉTU
+// (ten jede po nábojích), takže se dvojice posouvá s ním.
+function greyOppSlot(side, charX, charY, baseScale, k, count) {
+    const s = greyScale(baseScale);
+    const n = Math.max(1, count);
+    const off = CARD_ART_H * (baseScale + s) / 2 + GREY_GAP;
+    const along = (k - (n - 1) / 2) * greyStep(baseScale);
+    if (side === 'left')  return { x: charX + off, y: charY + along, scale: s, angle: 90 };
+    if (side === 'right') return { x: charX - off, y: charY - along, scale: s, angle: -90 };
+    return { x: charX - along, y: charY + off, scale: s, angle: 180 };
+}
+
 // ── Dráha životů ─────────────────────────────────────────────────────────────
 // Karta životů (`lives.webp`) má 5 nábojů a portrét po ní jede o `step` na jeden život.
 // Divoký západ přinesl postavy nad 5 životů (Big Spencer 9, jako šerif 10; Gary Looter
@@ -544,6 +603,8 @@ if (typeof module !== 'undefined' && module.exports) {
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile, shouldAskLayout,
         resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
         boardBand, boardSlot,
+        GREY_SCALE, GREY_GAP, greyDetached, greyScale, greyStep, greyAbilShift,
+        greyMySlot, greyOppSlot,
         LIVES_PER_CARD, livesTrack, livesSlot,
         COMPACT, compactMetrics, compactAnchors, compactColLeft, compactColCenter,
         compactBoardStep, compactBoardPos, compactHandPos, compactNameY,

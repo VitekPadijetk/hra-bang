@@ -17,6 +17,21 @@ function _boardSlot(i, band)    { return (_layoutMod ? _layoutMod.boardSlot : bo
 // Měřítko karet soupeře. U okruhu závisí na POČTU soupeřů (oppScaleByCount), u kompaktní
 // řady se dopočítává ze šířky sloupce – ptát se proto přes tohle, ne na L.scaleOpp.
 function _oppScale(L, n)        { return (_layoutMod ? _layoutMod.oppScale : oppScale)(L, n); }
+// Dráha životů (portrét jede po nábojích) – potřebuje ji zacílení dvojice Greygoryho Decka,
+// která se kreslí VEDLE PORTRÉTU, ne do pásu vyložených karet.
+function _livesTrack(mh, sc, mc)  { return (_layoutMod ? _layoutMod.livesTrack : livesTrack)(mh, sc, mc); }
+function _livesSlot(t, h)         { return (_layoutMod ? _layoutMod.livesSlot : livesSlot)(t, h); }
+// Divoký západ – Greygory Deck: kde leží jeho dvojice líznutých postav (core/layout.js).
+function _greyDetached(L)         { return (_layoutMod ? _layoutMod.greyDetached : greyDetached)(L); }
+function _greyMySlot(L, k, n)     { return (_layoutMod ? _layoutMod.greyMySlot : greyMySlot)(L, k, n); }
+function _greyOppSlot(sd, x, y, sc, k, n) { return (_layoutMod ? _layoutMod.greyOppSlot : greyOppSlot)(sd, x, y, sc, k, n); }
+// Kolik slotů v pásu vyložených karet dvojice zabírá. V okruhu (desktop) žádný – leží
+// vedle portrétu; v kompaktním profilu (mobil) na tu geometrii není místo, takže tam
+// zůstává na konci pásu jako dřív. MUSÍ zrcadlit view/board.js.
+function _greyBandCount(player, L) {
+    const n = player && player._greygoryChars ? player._greygoryChars.length : 0;
+    return _greyDetached(L) ? 0 : n;
+}
 
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
 // (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
@@ -136,9 +151,10 @@ function getBoardCardPos(playerIdx, boardIdx) {
         const boardCardH = 500 * scaleMe;
         // Pás vyložených karet – MUSÍ zrcadlit drawMyArea v view/board.js. Ve stole je
         // vždycky i zbraň (bez skutečné leží na jejím místě Colt .45), proto 1 + board.
-        // Divoký západ – Greygory Deck: jeho dvojice postav zabírá sloty na KONCI pásu,
-        // takže indexy skutečných karet nemění – jen roztahuje band (MUSÍ zrcadlit drawMyArea).
-        const myCount = Math.max(boardIdx + 1, 1 + (player.board?.length || 0) + (player._greygoryChars?.length || 0));
+        // Divoký západ – Greygory Deck: dvojice postav leží vedle portrétu, ne v pásu
+        // (viz getGreygoryCardPos). Slot si bere jen v kompaktním profilu, a to na KONCI
+        // pásu, takže indexy skutečných karet nemění – jen roztahuje band.
+        const myCount = Math.max(boardIdx + 1, 1 + (player.board?.length || 0) + _greyBandCount(player, L));
         const band = _boardBand(myCount, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
         const s = _boardSlot(boardIdx, band);
         const bx = roleX - (myCardW + L.boardGap) - s.col * band.step;
@@ -157,10 +173,11 @@ function getBoardCardPos(playerIdx, boardIdx) {
     // hře pro 3 (Město duchů) u každého od začátku hry. MUSÍ zrcadlit `_roleSlot`
     // v drawOpponents (view/board.js), jinak by animace mířily o kartu vedle.
     const hasRoleCard = !!state.mode3p || player.health <= 0;
-    // Divoký západ – Greygory Deck: dvojice postav leží na KONCI pásu (viz drawOpponents),
-    // takže se do počtu slotů počítá, ale displayIdx skutečných karet neposouvá.
+    // Divoký západ – Greygory Deck: dvojice postav leží vedle portrétu (getGreygoryCardPos);
+    // slot v pásu si bere jen v kompaktním profilu, a to na KONCI – do počtu slotů se pak
+    // počítá, ale displayIdx skutečných karet neposouvá.
     const numBoardCards = Math.max(boardIdx, (hasRoleCard ? 1 : 0) + (player.weapon?.id !== -1 ? 1 : 0)
-        + (player.board?.length || 0) + (player._greygoryChars?.length || 0));
+        + (player.board?.length || 0) + _greyBandCount(player, L));
     const numBlue = Math.min(numBoardCards, L.oppBoardPerRow);
     const displayIdx = hasRoleCard ? boardIdx + 1 : boardIdx;
     const count = Math.max(displayIdx + 1, numBoardCards);
@@ -192,6 +209,54 @@ function getBoardCardPos(playerIdx, boardIdx) {
     return getPlayerHandPos(playerIdx);
 }
 
+// ── Divoký západ – Greygory Deck: kde leží jeho dvojice líznutých postav ─────
+// Nejsou to karty ve hře, takže do pásu vyloženého vybavení nepatří – leží VEDLE
+// PORTRÉTU směrem ke středu stolu a jedou s ním po nábojích (u mě si berou slot
+// tlačítka schopnosti, které jim uhne doprava). MUSÍ zrcadlit view/board.js.
+// V kompaktním profilu (mobil) a v diváckém pohledu na spodního hráče na tu geometrii
+// místo není – tam dvojice zůstává na konci pásu a pozice se dopočítá přes getBoardCardPos.
+function getGreygoryCardPos(playerIdx, k) {
+    if (!state) return { x: 960, y: 540 };
+    const player = state.players[playerIdx];
+    if (!player) return { x: 960, y: 540 };
+    const L = _L();
+    const view = myIndex === null ? 0 : myIndex;
+    const count = Math.max(1, (player._greygoryChars || []).length);
+    const isSpectatedBottom = myIndex === null && playerIdx === view;
+
+    if (!_greyDetached(L) || isSpectatedBottom) {
+        // Pás: dvojice sedí za skutečnými kartami (viz drawOpponents / drawMyArea).
+        const before = playerIdx === view
+            ? 1 + (player.board?.length || 0)
+            : ((player.weapon && player.weapon.id !== -1) ? 1 : 0) + (player.board?.length || 0);
+        const p = getBoardCardPos(playerIdx, before + k);
+        return { ...p, scale: null, angle: null };
+    }
+    if (playerIdx === view) return _greyMySlot(L, k, count);
+
+    const total = state.players.length;
+    const scaleOpp = _oppScale(L, total - 1);
+    const anchor = getOpponentAnchors(total)[(playerIdx - view + total) % total - 1];
+    if (!anchor) return { x: 960, y: 540 };
+    const c = _oppPortraitPos(player, anchor, L, scaleOpp);
+    return _greyOppSlot(anchor.side, c.x, c.y, scaleOpp, k, count);
+}
+
+// Kde stojí PORTRÉT soupeře (jede po kartě životů). MUSÍ zrcadlit drawOpponents.
+function _oppPortraitPos(player, anchor, L, scaleOpp) {
+    const cardW = 325 * scaleOpp, cardH = 500 * scaleOpp, gap = L.oppGap;
+    const hasRoleCard = !!state.mode3p || player.health <= 0;
+    const shown = (hasRoleCard ? 1 : 0) + ((player.weapon && player.weapon.id !== -1) ? 1 : 0)
+        + (player.board?.length || 0) + _greyBandCount(player, L);
+    const numBlue = Math.min(shown, L.oppBoardPerRow);
+    const group = (1 + numBlue) * cardW + numBlue * gap;
+    const track = _livesTrack(player.maxHealth, scaleOpp, anchor.side === 'compact' ? 1 : 2);
+    const off = track.step * _livesSlot(track, player.health);
+    if (anchor.side === 'left')  return { x: anchor.x + off, y: anchor.y + group / 2 - cardH / 2 };
+    if (anchor.side === 'right') return { x: anchor.x - off, y: anchor.y - group / 2 + cardH / 2 };
+    return { x: anchor.x - group / 2 + cardW / 2, y: anchor.y + off };   // 'top'
+}
+
 // Kam u vyřazeného hráče dosedne jeho odhalená karta role: je to display-slot 0
 // jeho skupiny (viz displayCards v drawOpponents), tj. o jednu pozici PŘED prvním
 // „logickým" boardIdx – proto boardIdx = −1 (getBoardCardPos mrtvému připočítává +1).
@@ -214,5 +279,5 @@ function getStoreSlotPos(i, count, lift) {
 
 // Izomorfní: v prohlížeči globály, v Node/testech require('./positions.js').
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getDeadRoleCardPos, getStoreSlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
+    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getDeadRoleCardPos, getStoreSlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
 }
