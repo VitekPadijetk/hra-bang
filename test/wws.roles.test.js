@@ -165,6 +165,7 @@ test('Hřbitov: ledger chování se po přerozdání zahazuje', () => {
     assert.equal(g._ledgerResetPending, true);
     assert.ok(g._roleShuffleAnim, 'cinematika přerozdání se ohlásí');
     assert.deepEqual(g._roleShuffleAnim.visible, [1, 3], 'na stole leží karty rolí vyřazených');
+    assert.deepEqual(g._roleShuffleAnim.all, [1, 3], 'u Hřbitova jsou obě množiny totožné');
     assert.deepEqual(g._roleShuffleAnim.peek, [1, 3], 'novou roli si prohlédne každý, kdo ji dostal');
 });
 
@@ -230,6 +231,9 @@ test('Helena Zontero: ♥ přerozdá role (šerif si tu svou drží)', () => {
     assert.ok(g._helenaAnim && g._helenaAnim.red === true, 'sejmutí se ukáže');
     assert.deepEqual(g._roleShuffleAnim.peek, [1, 2, 3, 4]);
     assert.deepEqual(g._roleShuffleAnim.visible, [], 'role živých hráčů na stole neleží');
+    // Veřejná půlka cinematiky se přesto hraje za všechny čtyři – karty jim přiletí
+    // zpoza okraje jeviště, zamíchají se doprostřed a rozdají zase k nim (bug 61).
+    assert.deepEqual(g._roleShuffleAnim.all, [1, 2, 3, 4], 'míchá se všem, i když na stole nic neleží');
     assert.equal(g._ledgerResetPending, true);
 });
 

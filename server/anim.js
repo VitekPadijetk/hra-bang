@@ -426,6 +426,42 @@ module.exports = function installAnimService(ctx) {
         io.to(room.id + '_spectators').emit('card_animation', { ...base, role: null });
     }
 
+    // ── Potvrzení nové role („všichni to potvrdí") ───────────────────────────
+    // Přerozdané role se rozdávají jako na začátku hry, a stejně jako tam se ROZDÁNÍ
+    // POTVRZUJE: každý hráč si svou novou roli prohlédne a klikne OK. Dokud se nesejdou
+    // všechna potvrzení, hra se nehne – boti čekají (gate ve scheduleBotTick, server/bots.js)
+    // a lidem leží karta přes celou desku (playRolePeek v net/handlers.js).
+    //
+    // Vzor je `room._introRoleConfirmed` z intra, včetně toho, že boti potvrzují sami
+    // (runBotTickOnce). Navíc je tu tvrdá pojistka časem: odpojený hráč s kartou na
+    // obrazovce by jinak zasekl hru napořád.
+    const ROLE_PEEK_CAP_MS = 30000;
+
+    function startRolePeekConfirm(room, peek) {
+        const seats = new Set((peek || []).filter(
+            i => (room.players || []).some(rp => rp.playerIdx === i)));
+        if (!seats.size) return;
+        room._rolePeekConfirm = seats;
+        if (room._rolePeekCap) clearTimeout(room._rolePeekCap);
+        room._rolePeekCap = setTimeout(() => {
+            room._rolePeekCap = null;
+            if (!roomAlive(room) || !room._rolePeekConfirm) return;
+            room._rolePeekConfirm = null;
+            ctx.scheduleBotTick?.(room);
+        }, rolePeekMs() + ROLE_PEEK_CAP_MS);
+    }
+
+    // Jeden hráč (nebo bot) potvrdil svou novou roli. Poslední potvrzení hru rozjede.
+    function confirmRolePeek(room, playerIdx) {
+        const wait = room && room._rolePeekConfirm;
+        if (!wait || !wait.has(playerIdx)) return;
+        wait.delete(playerIdx);
+        if (wait.size) return;
+        room._rolePeekConfirm = null;
+        if (room._rolePeekCap) { clearTimeout(room._rolePeekCap); room._rolePeekCap = null; }
+        ctx.scheduleBotTick?.(room);
+    }
+
     function flushWwsRoles(room) {
         const gs = room.gameState;
         if (!gs) return;
@@ -443,15 +479,27 @@ module.exports = function installAnimService(ctx) {
         const rs = gs._roleShuffleAnim;
         if (rs) {
             gs._roleShuffleAnim = null;
+            // Veřejná půlka se hraje za VŠECHNY seaty, jejichž role se míchá – ne jen za
+            // ty, jejichž karta role leží na stole. Helena Zontero v běžné hře nemá na
+            // stole ani jednu, takže se dřív neukázalo vůbec nic a role se prostě tiše
+            // prohodily (bug 61). `visible` říká klientovi jen to, které karty odněkud
+            // startují a někam dosednou; ostatní přiletí zpoza okraje jeviště a zase tam
+            // odletí.
+            const all = rs.all || rs.visible || [];
             const visible = rs.visible || [];
-            if (visible.length) {
-                emitAnim(room, { type: 'roles_reshuffle', playerIdxs: visible });
-                holdMs += roleShuffleMs(visible.length);
+            if (all.length) {
+                emitAnim(room, { type: 'roles_reshuffle', playerIdxs: all, visible });
+                holdMs += roleShuffleMs(all.length);
             }
             const peek = rs.peek || [];
             if (peek.length) {
                 emitRolePeek(room, peek);
                 holdMs += rolePeekMs();
+                // „Každý hráč se podívá na svou novou roli." Rozdání se – jako na začátku
+                // hry – POTVRZUJE: dokud všichni neklikli OK, hra se nehne (boti čekají,
+                // viz scheduleBotTick v server/bots.js). Pojistka časem je nutná, jinak by
+                // hru zasekl jediný hráč, který se odpojil s kartou na obrazovce.
+                startRolePeekConfirm(room, peek);
             }
         }
         // Boti po tu dobu nehrají – klient drží stav ve frontě a hra by se pod
@@ -595,7 +643,7 @@ module.exports = function installAnimService(ctx) {
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
                          handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
                          applyGagPenalty,
-                         revealCinematicMs,
+                         revealCinematicMs, confirmRolePeek,
                          beforeBroadcast });
     return ctx;
 };

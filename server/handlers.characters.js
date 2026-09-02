@@ -260,6 +260,14 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         ctx.recordBehavior?.(room, { actorIdx: ownerIdx, targetIdx, kind: 'hostile' });
     };
 
+    // Divoký západ – Hřbitov / Helena Zontero: „každý hráč se podívá na svou novou roli."
+    // Rozdání se potvrzuje stejně jako na začátku hry (intro_role_ok) – dokud potvrzení
+    // nedojdou všechna, hra se nehne. Schválně MIMO guard (`socket.on`, ne `on`): potvrzuje
+    // ho každý hráč u stolu, ne ten, na koho se zrovna čeká, takže by ho guard zahodil.
+    socket.on('role_peek_ok', () => {
+        withRoom((room, p) => ctx.confirmRolePeek?.(room, p.playerIdx));
+    });
+
     on('dorothy_command', (d) => {
         withRoom((room, p, gs) => {
             const ownerIdx = gs.currentPlayerIndex;

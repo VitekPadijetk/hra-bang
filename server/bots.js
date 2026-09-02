@@ -210,6 +210,15 @@ module.exports = function installBotService(ctx) {
         // Výběr postav během intra ale běží normálně (řídí ho také policy).
         if (room._introPlaying && realTurn && !introConfirmPending) return;
 
+        // Divoký západ – Hřbitov / Helena Zontero: role se přerozdaly a každý hráč si tu
+        // svou potvrzuje (`room._rolePeekConfirm`, viz startRolePeekConfirm v server/anim.js).
+        // Dokud potvrzení nedojdou všechna, hra se nehne – přesně jako rozdávání rolí
+        // v intru. Výjimka je stejná: potvrzení BOTA přes tenhle gate projít musí,
+        // jinak by ho nikdo nikdy neodeslal a hra by čekala sama na sebe.
+        const peekConfirmPending = !!room._rolePeekConfirm &&
+            room.players.some(p => (p.isBot || p.botControlled) && room._rolePeekConfirm.has(p.playerIdx));
+        if (room._rolePeekConfirm && realTurn && !peekConfirmPending) return;
+
         let delay = botThinkTime();
         // Domíchání balíčku: dokud běží klientská míchací cinematika (_reshuffleBlockUntil
         // nastaví handleReshuffleAndBroadcast), bot čeká – i u proaktivního zamíchání, kde
@@ -284,6 +293,9 @@ module.exports = function installBotService(ctx) {
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();
+        // Totéž pro potvrzení PŘEROZDANÉ role (Hřbitov / Helena Zontero) – jen se počká
+        // na dojezd veřejné půlky cinematiky, kterou drží `_wwsBlockUntil`.
+        if (peekConfirmPending) delay = Math.max(botThinkTime(), wwsWait);
 
         room._botTick = setTimeout(() => {
             room._botTick = null;
@@ -319,6 +331,19 @@ module.exports = function installBotService(ctx) {
             room.players.forEach(rp => {
                 if (rp.isBot && room._introRoleConfirmed && !room._introRoleConfirmed.has(rp.playerIdx)) {
                     botSockets.get(rp.socketId)?._fire('intro_role_ok');
+                    acted = true;
+                }
+            });
+            if (acted) return;
+        }
+
+        // Divoký západ – přerozdané role: bot si tu svou potvrdí sám (viz gate výše).
+        if (room._rolePeekConfirm) {
+            let acted = false;
+            room.players.forEach(rp => {
+                if ((rp.isBot || rp.botControlled) && room._rolePeekConfirm &&
+                    room._rolePeekConfirm.has(rp.playerIdx)) {
+                    botSockets.get(rp.socketId)?._fire('role_peek_ok');
                     acted = true;
                 }
             });

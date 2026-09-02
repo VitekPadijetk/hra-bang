@@ -162,6 +162,12 @@ const WildWestMixin = {
         this._ledgerResetPending = true;
         this._roleShuffleAnim = {
             card: opts.card || null,
+            // Všechny seaty, jejichž role se míchá – v tomhle pořadí se pak rozdávají
+            // zpátky. Veřejná půlka cinematiky se hraje za VŠECHNY (i za ty, jejichž
+            // karta role na stole neleží): karty jim přiletí zpoza okraje jeviště,
+            // zamíchají se doprostřed a rozdají zase k nim (bug 61). Bez toho se
+            // Helena Zontero v běžné hře neprojevila vizuálně vůbec.
+            all: list.slice(),
             visible: (opts.visible || []).filter(i => list.includes(i)),
             // Ve hře pro 3 (Město duchů) leží role lícem nahoru – přerozdají se veřejně
             // a soukromé nahlédnutí nemá smysl.

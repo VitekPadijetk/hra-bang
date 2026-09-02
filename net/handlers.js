@@ -1558,10 +1558,32 @@ const ROLE_PILE_SCALE = 0.34;
 // pojistka musí být delší než soukromá půlka – jinak by se spustila dřív než commit
 // a stará odkrytá role by problikla přesně tak, jak se to opravuje.
 const ROLE_CLEANUP_CAP_MS = 12000;
+// Nouzové potvrzení nové role za hráče, který od stolu odešel. Musí být kratší než
+// serverová pojistka (ROLE_PEEK_CAP_MS v server/anim.js), ať hru rozjede klik
+// (nebo tenhle časovač) a ne až server sám za sebe.
+const ROLE_PEEK_AUTO_MS = 25000;
 
 // Kde karta role u daného hráče leží (slot 0 jeho skupiny) a pod jakým úhlem/měřítkem.
 function _roleSlotView(pid) {
     return { pos: getDeadRoleCardPos(pid), angle: _renderSideAngle(pid), scale: _renderSideScale(pid) };
+}
+
+// Odkud karta role hráče `pid` startuje a kam se po zamíchání vrátí – Z POHLEDU TOHOHLE
+// klienta. Tři případy, a jenom ten první a druhý mají na desce co skrývat:
+//   • moje vlastní karta role  – leží v mé zóně (drawMyArea), vidím ji vždycky,
+//   • karta role na stole      – vyřazený hráč pod Hřbitovem, ve hře pro 3 každý,
+//   • nikde                    – živý soupeř v běžné hře: jeho roli nevidí nikdo, takže
+//     karta přiletí zpoza okraje jeviště u jeho místa (týž bod, ze kterého přilétá
+//     odhalení role při vyřazení) a stejnou cestou zase odletí.
+function _roleCardHome(pid, tableSet) {
+    if (myIndex !== null && pid === myIndex) {
+        const L = currentLayout();
+        return { onTable: true, pos: { x: L.livesX + L.roleOffX, y: L.myBaseY },
+                 angle: 0, scale: L.scaleMe };
+    }
+    if (tableSet.has(pid)) return { onTable: true, ..._roleSlotView(pid) };
+    return { onTable: false, pos: _deathRoleStartPos(pid),
+             angle: _renderSideAngle(pid), scale: _deathRoleEndScale(pid) };
 }
 
 // Překlopení spritu na místě (líc→rub nebo naopak) uvnitř probíhajícího letu.
@@ -1584,25 +1606,35 @@ function playRolesReshuffle(data) {
     const n = idxs.length;
     const cx = ROLE_CX(), cy = ROLE_CY();
     const topY = cy - (n - 1) * ROLE_PILE_PX / 2;
+    // Které karty na desce doopravdy LEŽÍ (a musí se tedy po dobu letu přestat kreslit).
+    // Zbytek jsou role živých soupeřů v běžné hře – ty nikde vidět nejsou a přiletí
+    // zpoza okraje jeviště, takže není co skrývat.
+    const tableSet = new Set(data.visible || idxs);
+    const homes = idxs.map(pid => _roleCardHome(pid, tableSet));
     // Po dobu letu se karta ve slotu na stole NEkreslí (slot ale zůstává rezervovaný,
-    // takže se půdorys skupiny nemění) – viz drawOpponents ve view/board.js.
-    App.roleShuffleHide = new Set(idxs);
+    // takže se půdorys skupiny nemění) – viz drawOpponents / drawMyArea ve view/board.js.
+    App.roleShuffleHide = new Set(idxs.filter((pid, k) => homes[k].onTable));
     renderUI();
 
-    // 1) sesbírání: každá karta letí ze svého slotu na svou vrstvu hromádky a cestou se
-    //    přetočí lícem dolů (stav je pořád ten starý, takže líc = STARÁ role).
+    // 1) sesbírání: každá karta letí ze svého místa na svou vrstvu hromádky. Ta, kterou
+    //    tenhle klient vidí, startuje LÍCEM a cestou se přetočí na rub (stav je pořád ten
+    //    starý, takže líc = STARÁ role); ta, kterou nevidí, přilétá rovnou rubem.
     const sprites = idxs.map((pid, k) => {
-        const v = _roleSlotView(pid);
-        const faceTex = RoleImages[state.players[pid].role] || 'role_card_back';
-        const spr = gameScene.add.image(v.pos.x, v.pos.y, faceTex)
+        const v = homes[k];
+        const faceTex = v.onTable ? (RoleImages[state.players[pid].role] || null) : null;
+        const spr = gameScene.add.image(v.pos.x, v.pos.y, faceTex || 'role_card_back')
             .setScale(v.scale).setAngle(v.angle).setDepth(830 + (n - 1 - k));
-        gameScene.tweens.add({ targets: spr, x: cx, y: topY + k * ROLE_PILE_PX,
-                               scaleY: ROLE_PILE_SCALE, duration: D.gatherMs, ease: 'Cubic.easeInOut' });
+        const gather = { targets: spr, x: cx, y: topY + k * ROLE_PILE_PX,
+                         scaleY: ROLE_PILE_SCALE, duration: D.gatherMs, ease: 'Cubic.easeInOut' };
+        // scaleX si u překlápěné karty řídí _roleFlipTo (jde přes nulu); u nepřeklápěné
+        // se musí zmenšit spolu se scaleY, jinak by se hromádka nesložila.
+        if (!faceTex) gather.scaleX = ROLE_PILE_SCALE;
+        gameScene.tweens.add(gather);
         if (v.angle !== 0) {
             gameScene.tweens.add({ targets: spr, angle: nearestAngle360(v.angle, 0),
                                    duration: D.gatherMs, ease: 'Cubic.easeInOut' });
         }
-        _roleFlipTo(spr, 'role_card_back', D.gatherMs, 0, ROLE_PILE_SCALE);
+        if (faceTex) _roleFlipTo(spr, 'role_card_back', D.gatherMs, 0, ROLE_PILE_SCALE);
         return spr;
     });
 
@@ -1644,13 +1676,15 @@ function playRolesReshuffle(data) {
     const newOrder = order.slice().reverse();     // shora dolů po zamíchání
     newOrder.forEach((sprIdx, m) => {
         const spr = sprites[sprIdx];
-        const pid = idxs[m];
-        const v = _roleSlotView(pid);
+        const v = homes[m];
         gameScene.time.delayedCall(dealStart, () => {
             if (!spr.active) return;
             gameScene.tweens.add({ targets: spr, x: v.pos.x, y: v.pos.y,
                                    scaleX: v.scale, scaleY: v.scale,
-                                   duration: D.dealMs, ease: 'Cubic.easeInOut' });
+                                   duration: D.dealMs, ease: 'Cubic.easeInOut',
+                                   // Karta, která na desce neleží, odlétá za okraj jeviště –
+                                   // tam se rovnou zahodí (na desce ji nic nevystřídá).
+                                   onComplete: () => { if (!v.onTable && spr.active) spr.destroy(); } });
             if (v.angle !== 0) {
                 gameScene.tweens.add({ targets: spr, angle: nearestAngle360(0, v.angle),
                                        duration: D.dealMs, ease: 'Cubic.easeInOut' });
@@ -1690,20 +1724,51 @@ function playRolePeek(data) {
     const cx = ROLE_CX(), cy = ROLE_CY();
     const BIG = 0.80;
     const faceTex = RoleImages[data.role] || 'role_card_back';
+    // Clona přes celé jeviště: karta se čte přes celou desku a klik pod ni nesmí projít
+    // (rozdané role se POTVRZUJÍ, do té doby se nehraje). Zároveň je to jediné, co pod
+    // kartou drží pozornost – hra se pod ní nehne, dokud nepotvrdí všichni.
+    const cover = stageCoverSize();
+    const veil = gameScene.add.rectangle(960, 540, cover.w, cover.h, 0x000000, 0.55)
+        .setDepth(898).setInteractive();
     const spr = gameScene.add.image(from.x, from.y, 'role_card_back')
         .setScale(ROLE_PILE_SCALE).setDepth(900);
     gameScene.tweens.add({ targets: spr, x: cx, y: cy, scaleX: BIG, scaleY: BIG,
                            duration: D.flyMs, ease: 'Power2' });
     gameScene.time.delayedCall(D.flyMs, () => { if (spr.active) _roleFlipTo(spr, faceTex, D.flipMs, 0, BIG); });
-    gameScene.time.delayedCall(D.flyMs + D.flipMs + D.holdMs,
-                               () => { if (spr.active) _roleFlipTo(spr, 'role_card_back', D.backMs, 0, BIG); });
-    gameScene.time.delayedCall(D.flyMs + D.flipMs + D.holdMs + D.backMs, () => {
-        if (!spr.active) return;
-        gameScene.tweens.add({ targets: spr, x: from.x, y: from.y,
-                               scaleX: ROLE_PILE_SCALE, scaleY: ROLE_PILE_SCALE,
-                               duration: D.outMs, ease: 'Power2',
-                               onComplete: () => { if (spr.active) spr.destroy(); } });
+
+    // „Každý hráč se podívá na svou novou roli." Potvrzuje se stejně jako rozdání rolí
+    // na začátku hry (intro_role_ok, view/intro.js) – tlačítkem OK, ne časovačem: do té
+    // doby hra stojí (server drží boty, viz startRolePeekConfirm v server/anim.js).
+    // Pojistka časem je nutná: hráč může odejít od stolu, a hra by na něj čekala navždy.
+    let done = false;
+    let okBtn = null;
+    const confirm = () => {
+        if (done) return;
+        done = true;
+        if (okBtn && okBtn.active) okBtn.destroy();
+        socket.emit('role_peek_ok');
+        if (!spr.active) { if (veil.active) veil.destroy(); return; }
+        _roleFlipTo(spr, 'role_card_back', D.backMs, 0, BIG);
+        gameScene.time.delayedCall(D.backMs, () => {
+            if (veil.active) veil.destroy();
+            if (!spr.active) return;
+            gameScene.tweens.add({ targets: spr, x: from.x, y: from.y,
+                                   scaleX: ROLE_PILE_SCALE, scaleY: ROLE_PILE_SCALE,
+                                   duration: D.outMs, ease: 'Power2',
+                                   onComplete: () => { if (spr.active) spr.destroy(); } });
+        });
+    };
+    gameScene.time.delayedCall(D.flyMs + D.flipMs, () => {
+        if (done || !spr.active) return;
+        okBtn = gameScene.add.text(cx, cy + 300, 'OK',
+            { fontFamily: THEME.fontUI, fontSize: '32px', fontStyle: 'bold', color: '#ffffff',
+              backgroundColor: '#2f5f2f', padding: { x: 34, y: 14 } })
+            .setOrigin(0.5).setDepth(901).setInteractive({ useHandCursor: true });
+        okBtn.on('pointerover', () => okBtn.setBackgroundColor('#3f7f3f'));
+        okBtn.on('pointerout',  () => okBtn.setBackgroundColor('#2f5f2f'));
+        okBtn.on('pointerup', confirm);
     });
+    gameScene.time.delayedCall(D.flyMs + D.flipMs + ROLE_PEEK_AUTO_MS, confirm);
 }
 
 // ── Divoký západ – Lady Růže z Texasu: výměna sedadel ────────────────────────

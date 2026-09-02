@@ -1347,15 +1347,21 @@ function drawMyArea(ctx) {
 
         const roleMap = { 'Sheriff': '000', 'Outlaw': '001', 'Renegade': '002', 'Deputy': '003' };
         const roleTex = 'role_' + (roleMap[me.role] || '001');
-        let roleImg = gameScene.add.image(roleX, myBaseY, roleTex).setScale(scaleMe);
-        gameScene.cardsSprites.add(roleImg);
-        // Zvětšení karty (hover / long press) jako u postavy a karet na stole – text role
-        // je na kartě vysázený drobně a v herní velikosti se nedá přečíst. Kurzor zůstává
-        // šipkou (na vlastní kartu role se nikdy neklika), klíč zoomu přežije překreslení.
-        roleImg.setInteractive({ useHandCursor: false });
-        roleImg._zoomKey = 'role:' + myIndex;
-        roleImg.on('pointerover', () => startCardZoom(roleTex, 'role:' + myIndex));
-        roleImg.on('pointerout', scheduleZoomFade);
+        // Divoký západ – Hřbitov / Helena Zontero: moje karta role zrovna letí doprostřed
+        // stolu na zamíchání (roles_reshuffle, net/handlers.js) a pak leží rubem nahoru,
+        // dokud si novou roli neprohlédnu. Po tu dobu se tady nekreslí – jinak by byla
+        // vidět dvakrát, a to ještě se STAROU rolí (stav dorazí až za celou cinematikou).
+        if (!App.roleShuffleHide.has(myIndex)) {
+            let roleImg = gameScene.add.image(roleX, myBaseY, roleTex).setScale(scaleMe);
+            gameScene.cardsSprites.add(roleImg);
+            // Zvětšení karty (hover / long press) jako u postavy a karet na stole – text role
+            // je na kartě vysázený drobně a v herní velikosti se nedá přečíst. Kurzor zůstává
+            // šipkou (na vlastní kartu role se nikdy neklika), klíč zoomu přežije překreslení.
+            roleImg.setInteractive({ useHandCursor: false });
+            roleImg._zoomKey = 'role:' + myIndex;
+            roleImg.on('pointerover', () => startCardZoom(roleTex, 'role:' + myIndex));
+            roleImg.on('pointerout', scheduleZoomFade);
+        }
 
         {
             const isCurrentMe = state.currentPlayerIndex === myIndex;

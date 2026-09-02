@@ -1175,6 +1175,40 @@ test('scheduleBotTick: během intra herní akce počká, výběr postav běží'
     clearTimeout(room._botTick); room._botTick = null;
 });
 
+// ── Divoký západ – přerozdané role: hra čeká, až každý svou novou roli potvrdí ─
+// Vzor je intro gate výš. Bot potvrzuje sám (jinak by hra čekala sama na sebe),
+// člověk klikem na OK (role_peek_ok, server/handlers.characters.js).
+test('scheduleBotTick: potvrzení přerozdané role drží hru, bot ho vyřídí sám', () => {
+    const ctx = buildCtx();
+    ctx.botThinkTime = 5;
+    const gs = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { phase: 'PLAY', current: 0 });
+    const room = { id: 'rp1', players: [], gameState: gs, maxPlayers: 4 };
+    ctx.rooms.set('rp1', room);
+    ctx.createBot(room, gs.players[0].name);
+    ctx.createBot(room, gs.players[1].name);
+
+    // (1) Bez čekajícího potvrzení se hraje normálně.
+    ctx.scheduleBotTick(room);
+    assert.ok(room._botTick, 'bez potvrzování hra běží');
+    clearTimeout(room._botTick); room._botTick = null;
+
+    // (2) Čeká se na potvrzení SEATU BEZ BOTA → herní akce se neplánuje vůbec.
+    room._rolePeekConfirm = new Set([5]);
+    ctx.scheduleBotTick(room);
+    assert.ok(!room._botTick, 'dokud nepotvrdí lidé, bot nehraje');
+
+    // (3) Čeká-li se na bota, tick projde – runBotTickOnce ho vyřídí dřív než tah.
+    room._rolePeekConfirm = new Set([0, 1]);
+    ctx.scheduleBotTick(room);
+    assert.ok(room._botTick, 'potvrzení bota projde i přes gate');
+    clearTimeout(room._botTick); room._botTick = null;
+
+    // (4) A doopravdy ho odešle – po ticku je čekání prázdné a hra se rozjede.
+    ctx.runBotTickOnce(room);
+    assert.equal(room._rolePeekConfirm, null, 'boti potvrdili, gate padl');
+    clearTimeout(room._botTick); room._botTick = null;
+});
+
 // ── Startup settle: delší pauza jen u PRVNÍ herní akce po startu ───────────────
 test('scheduleBotTick: startup settle se spotřebuje až u první herní akce', () => {
     const ctx = buildCtx();
