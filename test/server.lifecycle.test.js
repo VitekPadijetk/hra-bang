@@ -140,6 +140,32 @@ test('startGame v singleChar módu rozdá postavy a přeskočí intro', () => {
     assert.equal(room.phase, 'playing'); // všichni vybráni → hra běží, ne char_select
 });
 
+// Bug 33: High Noon – Město duchů. Duch je „ve hře" jen po dobu svého tahu, pořád je
+// to ale vyřazený hráč. Skončí-li hra zrovna v jeho tahu (a on si přitom stihl naléčit
+// životy), přeživší to z něj nedělá – postavu do navazující hry si nenechává.
+test('startNextGame: duch (Město duchů) není přeživší, postavu si nenechá', () => {
+    const { ctx } = mkLifecycleCtx();
+    const room = {
+        id: 'g1', maxPlayers: 4,
+        options: { botGame: true },   // intro se přeskakuje (jen broadcast a konec)
+        players: [{ name: 'A', wasOriginalSurvivor: true }, { name: 'B', wasOriginalSurvivor: true },
+                  { name: 'C', wasOriginalSurvivor: true }, { name: 'D', wasOriginalSurvivor: true }],
+        gameState: { players: [
+            { name: 'A', character: 'Bart Cassidy', health: 2, _ghost: true },   // duch, naléčený
+            { name: 'B', character: 'Willy the Kid', health: 3 },
+            { name: 'C', character: 'Suzy Lafayette', health: 0 },
+            { name: 'D', character: 'Slab the Killer', health: 0, _ghost: true },  // duch bez léčení
+        ] },
+    };
+    ctx.startNextGame(room);
+    const np = room.gameState.players;
+    assert.equal(np[0]._survivorChar, undefined, 'duch s naléčenými životy přeživší není');
+    assert.equal(np[1]._survivorChar, 'Willy the Kid', 'živý hráč postavu drží');
+    assert.equal(np[2]._survivorChar, undefined);
+    assert.equal(np[3]._survivorChar, undefined);
+    assert.equal(np.filter(p => p._awaitingKeepChoice).length, 1, 'na volbu čeká jen skutečně živý');
+});
+
 // ── Rozšíření High Noon: odkrytí karty události ──────────────────────────────
 test('beforeBroadcast pošle high_noon_reveal a podrží boty na dobu cinematiky', () => {
     const { io, addSocket, emits } = mkIo();

@@ -133,7 +133,11 @@ module.exports = function installLifecycle(ctx) {
         room.players.forEach((rp, i) => {
             if (!rp.wasOriginalSurvivor) return;
             const gsPlayer = gs.players.find(p => p.name === rp.name);
-            if (gsPlayer && gsPlayer.health > 0) {
+            // High Noon – Město duchů: duch je „ve hře" (isInPlay) jen po dobu svého tahu,
+            // pořád je to ale VYŘAZENÝ hráč. Skončí-li hra zrovna v jeho tahu, přeživší
+            // není a postavu si do navazující hry nenechává – i kdyby si během tahu
+            // naléčil životy (Pivo, Čutora), takže samo `health > 0` nestačí.
+            if (gsPlayer && gsPlayer.health > 0 && !gsPlayer._ghost) {
                 prevSurvivorChars[i] = gsPlayer.character;
                 prevSurvivorHealth[i] = gsPlayer.health;
             }
