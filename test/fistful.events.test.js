@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { mkGame, mkCard, give, board, CardType, Suits } = require('./_helpers.js');
-const { computeDistance, computeCanHit } = require('../core/distance.js');
+const { computeDistance, computeCanHit, bangEffectReach } = require('../core/distance.js');
 const { cardPlayability } = require('../core/playability.js');
 const { boardDeadFor, judgeBlocksFor } = require('../core/highNoon.js');
 const { decideBotAction } = require('../core/botPolicy.js');
@@ -63,6 +63,45 @@ test('Léčka: Bang! s Coltem dostřelí přes celý stůl', () => {
     g.playBang(0, 3, i);
     assert.equal(g.phase, 'RESPOND');
     assert.equal(g.pendingResponse.targetIdx, 3);
+});
+
+// Bug 23: Derringer (zelená, pevný dostřel 1) pod Léčkou. Pevný dostřel karty se
+// s Léčkou nijak nekříží – vzdálenost na kohokoli je 1, takže dostřelí přes celý stůl.
+// Modifikátory (Mustang, Paul Regret) se ale počítají od jedničky dál a Derringer
+// s nimi zase nedosáhne. Stejným dotazem (bangEffectReach + computeCanHit) se ptá
+// klient i bot, server u zelených karet měří přímo computeDistance.
+test('Léčka: Derringer (dostřel 1) dostřelí přes celý stůl', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}, {}, {}, {}], 'LECKA');
+    const c = putGreen(g, 0, CardType.DERRINGER, { bangEffect: true, range: 1, draw: 1 });
+    assert.equal(bangEffectReach(c), 1);
+    assert.equal(computeCanHit(g, 0, 3, bangEffectReach(c)), true, 'klient/bot: naproti přes stůl');
+
+    g.deck.cards = [mkCard(CardType.BANG, { id: 970 })];
+    g.activateGreenCard(0, c.id, { targetIdx: 3 });
+    assert.equal(g.phase, 'UHYB_DRAW', 'nejdřív líznutí (text karty)');
+    g.uhybDraw(0);
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.pendingResponse.targetIdx, 3);
+});
+
+test('Léčka: Derringer na Mustang/Paula Regreta nedosáhne (modifikátory platí)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}, { character: 'Paul Regret' }, {}, {}], 'LECKA');
+    const c = putGreen(g, 0, CardType.DERRINGER, { bangEffect: true, range: 1, draw: 1 });
+    assert.equal(computeCanHit(g, 0, 3, bangEffectReach(c)), false, 'Paul Regret +1');
+    g.deck.cards = [mkCard(CardType.BANG, { id: 971 })];
+    g.activateGreenCard(0, c.id, { targetIdx: 3 });
+    assert.equal(g.phase, 'PLAY', 'server aktivaci odmítl');
+    assert.equal(g.players[0].board.length, 1, 'karta zůstala na stole');
+});
+
+test('Léčka: bot s Derringerem střílí přes stůl', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}, { role: 'Outlaw' }, {}, {}], 'LECKA');
+    g.players[3]._roleRevealed = true;
+    const c = putGreen(g, 0, CardType.DERRINGER, { bangEffect: true, range: 1, draw: 1 });
+    const a = decideBotAction(g, 0, null);
+    assert.equal(a.event, 'activate_green_card');
+    assert.equal(a.payload.cardId, c.id);
+    assert.equal(a.payload.target.targetIdx, 3);
 });
 
 // ── Laso ────────────────────────────────────────────────────────────────────

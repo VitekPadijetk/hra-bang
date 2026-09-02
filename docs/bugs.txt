@@ -90,7 +90,6 @@ Q — boti a server              24, 46, 53
 OTEVŘENÉ
 --------
 
-- 23 zkontroluj jestli funguje derringer správně s léčkou
 - 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě)
 - 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif. Taky když jsem tento poslední hráč, tak se mi zeleně ukáží karty až po HN/FF do té doby pořád šedé. Taky byl problém, že madam zuzana posledního hráče se vyhodnotila až po jejich odhalení
 - 33 pokud duch ukončí hru během města duchů, nejedná se o živou postavu a nemá tak nárok na zachování postavy v další hře
@@ -104,6 +103,7 @@ HOTOVÉ
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 23 zkontroluj jestli funguje derringer správně s léčkou → OVĚŘENO, chyba nebyla: 30d2879 (pevný dostřel karty a Léčka se nekříží – vzdálenost je 1, takže Derringer dostřelí přes stůl; modifikátory Mustang/Paul Regret se počítají od jedničky dál a zase ho zkrátí. Server měří computeDistance, klient i bot bangEffectReach + computeCanHit – doplněny testy)
 - 38 madam zuzana - taky se počítá vyložení modré/zelené karty jako zahrání karty - naopak použití zelené karty ze stolu se nepočítá jako zahrání (už zahrána byla) - zahrání karty je de facto použití z ruky → oprava: fa10d11 (vyložení modré karty i zbraně vrací z playCard false = „nejde do odhozu", což se četlo jako „karta nebyla sehrána"; teď se vyložení pozná podle přírůstku na stole / výměny zbraně a _trackCard umí opts.fromBoard, kterým aktivace zelené ze stolu vynechá počítadlo Zuzany), 340eaf0 (komentář)
 - 51 dejme teda efekt divokého západu ať se spusí až PO líznutí 2/3 karet z Dost/WF → oprava: c0ac0a4 (Dostavník/Wells Fargo si jen nasadí na fázi lízání příznak wwsFlip a kartu otočí _finishDraw; zopakování Lee Van Kliffem příznak nenastavuje, takže dál neotáčí – Sciarra Q19)
 - 58 u lady růže i zuřivé doroty dáme limit 1x za tah pro každého → oprava: e042c14 (oba stropy stály na „x použití"; teď je to jedno použití za tah, _roseStreak mizí a dorothyBudget počítá z jedničky. Bot tím přišel o vlastní brzdu proti přesedávání – je to teď pravidlo)
