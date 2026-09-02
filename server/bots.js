@@ -159,6 +159,7 @@ module.exports = function installBotService(ctx) {
             (gs.storeCards || []).filter(c => c).length,
             gs.pendingDynamiteDamage?.hitsLeft ?? -1,
             gs._dorothyUsed || 0,
+            (gs._gagPending || []).length,       // Roubík: čekající pokuty za promluvení
         ].join('|');
     }
 
@@ -390,7 +391,8 @@ module.exports = function installBotService(ctx) {
     //
     // Pokuta za promluvení jde stejnou cestou jako u člověka (gs.gagSpeak), tedy se
     // ODLOŽÍ: jsme uprostřed cizího toku (těsně před odesláním stavu), takže se tady
-    // zásah vybírat nesmí. Vybere ho nejbližší klidné místo a odejde s jeho broadcastem.
+    // klikaný zásah nasazovat nesmí. Nasadí ho nejbližší vhodné místo a odejde s jeho
+    // broadcastem. Bot s nezaplacenou pokutou mlčí – stejný zákaz jako u člověka.
     function flushBotQuips(room) {
         const gs = room && room.gameState;
         if (!gs || !(gs.players || []).length || gs.winner) { if (room) room._quipSnap = null; return; }
@@ -404,6 +406,7 @@ module.exports = function installBotService(ctx) {
         for (const ev of events) {
             const seat = room.players.find(pl => pl.playerIdx === ev.playerIdx && (pl.isBot || pl.botControlled));
             if (!seat) continue;                 // hláška patří člověku – ten si ji napíše sám
+            if (gs.gagBlocked?.(ev.playerIdx)) continue;   // Roubík: nezaplacená pokuta = ticho
             const line = botQuip(ev, gs, ev.playerIdx, Math.random, { lastQuipTurn: room._quipTurn[ev.playerIdx] });
             if (!line) continue;
             room._quipTurn[ev.playerIdx] = gs.turnId || 0;

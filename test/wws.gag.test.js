@@ -4,9 +4,11 @@
 // 1 život." U stolu se to vynutit nedá, ve hře s chatem ano: odeslání zprávy stojí
 // 1 život. Zpráva projde normálně a nic se nepotvrzuje.
 //
-// Pokuta je ODLOŽENÁ (chat chodí asynchronně a může trefit libovolnou fázi) – zapíše se
-// do `_gagPending` a vybere se na nejbližším klidném místě. Testy sem míří především:
-// nesmí dopadnout uprostřed rozdělaného efektu a nesmí se ztratit.
+// Zásah se KLIKÁ (recykluje `pendingDynamiteDamage`), takže si ho hráč ubere sám a smí
+// se zachránit Pivem. Chat chodí asynchronně, takže se seat nejdřív zapíše do
+// `_gagPending` a zásah se nasadí na nejbližším místě, kde smí PŘERUŠIT – přerušit smí
+// i cizí obranu nebo výběr karty, jen ne rozhodnutí, na které se čeká od samotného
+// pokutovaného. Dokud pokuta visí, má zakázaný chat (`gagBlocked`).
 //
 // Ke kartě patří i hlášky botů (core/botChat.js) – bez nich by Roubík boty nikdy netrefil.
 const { test, before } = require('node:test');
@@ -32,12 +34,30 @@ function mkGag(specs, opts = {}, key = 'ROUBIK') {
 
 // ── Pravidla: kdy pokuta dopadne ────────────────────────────────────────────
 
-test('Roubík: promluvení ve fázi PLAY stojí 1 život hned', () => {
+test('Roubík: promluvení nasadí klikaný zásah, hráč si ho ubere sám', () => {
     const g = mkGag([{ role: 'Sheriff' }, {}, {}]);
     assert.equal(g.gagSpeak(1), true);
     assert.equal(g._drainGag(), true);
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.pendingDynamiteDamage.source, 'GAG');
+    assert.equal(g.pendingDynamiteDamage.playerIdx, 1);
+    assert.equal(g.players[1].health, 4, 'dokud neklikne, život má');
+    assert.equal(g.gagBlocked(1), true, 'a nesmí psát');
+    g.takeDynamiteHit(1);
     assert.equal(g.players[1].health, 3);
+    assert.equal(g.phase, 'PLAY', 'fáze se vrátila');
+    assert.equal(g.gagBlocked(1), false);
     assert.deepEqual(g._gagPending, [], 'fronta je vybraná');
+});
+
+test('Roubík: zásah jde odrazit Pivem (poslední život)', () => {
+    const g = mkGag([{ role: 'Sheriff' }, { health: 1 }, {}]);
+    const beerIdx = give(g, 1, CardType.BEER, { name: 'Pivo' });
+    g.gagSpeak(1);
+    g._drainGag();
+    assert.equal(g.beerLastLifeSave(1, beerIdx), true);
+    assert.equal(g.players[1].health, 1, 'zůstává naživu');
+    assert.equal(g.phase, 'PLAY');
 });
 
 test('bez Roubíku promluvení nestojí nic', () => {
@@ -53,46 +73,78 @@ test('Roubík: mrtvý (i duch mimo svůj tah) o nic nepřijde', () => {
     assert.equal(g.players[1].health, 0);
 });
 
-test('Roubík: uprostřed fáze RESPOND pokuta počká, dopadne až po ní', () => {
+test('Roubík: pokuta PŘERUŠÍ cizí obranu a fáze se pak vrátí', () => {
     const g = mkGag([{ role: 'Sheriff' }, {}, {}]);
     const i = give(g, 0, CardType.BANG, { name: 'Bang!' });
     g.playBang(0, 1, i);
     assert.equal(g.phase, 'RESPOND');
     assert.equal(g.gagSpeak(2), true);
-    assert.equal(g._drainGag(), false, 'uprostřed obrany se nesahá');
-    assert.equal(g.players[2].health, 4);
-    assert.deepEqual(g._gagPending, [2], 'pokuta čeká ve frontě');
+    assert.equal(g._drainGag(), true, 'zásah patří někomu jinému než obránci');
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    g.takeDynamiteHit(2);
+    assert.equal(g.players[2].health, 3);
+    assert.equal(g.phase, 'RESPOND', 'obrana pokračuje tam, kde skončila');
     g.handleResponse(1, null);                       // cíl nemá čím uhnout
-    assert.equal(g.phase, 'PLAY');
-    assert.equal(g.players[2].health, 3, 'pokuta dopadla, až obrana doběhla');
     assert.equal(g.players[1].health, 3, 'zásah Bangem proběhl normálně');
 });
 
-test('Roubík: rozdělaný výběr karty (Panika) pokutu taky odloží', () => {
+test('Roubík: na koho se čeká, ten platí až po svém rozhodnutí', () => {
+    const g = mkGag([{ role: 'Sheriff' }, {}, {}]);
+    const i = give(g, 0, CardType.BANG, { name: 'Bang!' });
+    g.playBang(0, 1, i);
+    assert.equal(g.gagSpeak(1), true);               // upovídal se obránce
+    assert.equal(g._drainGag(), false, 'jeho smrt by nechala viset pendingResponse');
+    assert.deepEqual(g._gagPending, [1]);
+    g.handleResponse(1, null);
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE', 'pokuta se nasadila hned po obraně');
+    assert.equal(g.pendingDynamiteDamage.playerIdx, 1);
+    g.takeDynamiteHit(1);
+    assert.equal(g.players[1].health, 2, 'zásah Bangem i pokuta');
+});
+
+test('Roubík: rozdělaný výběr karty (Panika) pokutu VYBÍRAJÍCÍMU odloží', () => {
     const g = mkGag([{ role: 'Sheriff' }, {}, {}]);
     give(g, 1, CardType.BANG, { name: 'Bang!' });
     const i = give(g, 0, CardType.PANIC, { name: 'Panika!' });
     g.playSpecialCard(0, 1, i);
     assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    g.gagSpeak(0);
+    assert.equal(g._drainGag(), false);
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    assert.deepEqual(g._gagPending, [0], 'pokuta drží pořadí, ve kterém se mluvilo');
+});
+
+test('Roubík: cizí pokuta výběr karty přerušit smí', () => {
+    const g = mkGag([{ role: 'Sheriff' }, {}, {}]);
+    give(g, 1, CardType.BANG, { name: 'Bang!' });
+    g.playSpecialCard(0, 1, give(g, 0, CardType.PANIC, { name: 'Panika!' }));
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD');
+    g.gagSpeak(2);
+    assert.equal(g._drainGag(), true);
+    assert.equal(g.pendingDynamiteDamage.playerIdx, 2);
+    g.takeDynamiteHit(2);
+    assert.equal(g.phase, 'SELECTING_TARGET_CARD', 'výběr karty pokračuje');
+});
+
+test('Roubík: konec tahu je poslední místo (nasadí i mimo fázi PLAY)', () => {
+    const g = mkGag([{ role: 'Sheriff' }, {}, {}], { phase: 'DISCARD' });
+    g._autoEndTurnPending = true;                    // čeká se na posun tahu → teď ne
     g.gagSpeak(2);
     assert.equal(g._drainGag(), false);
-    assert.equal(g.players[2].health, 4);
-});
-
-test('Roubík: konec tahu je poslední klidné místo (vybere i mimo fázi PLAY)', () => {
-    const g = mkGag([{ role: 'Sheriff' }, {}, {}], { phase: 'DISCARD' });
-    g.gagSpeak(2);
-    assert.equal(g._drainGag(), false, 'fáze DISCARD není klid');
     g.nextTurn();
-    assert.equal(g.players[2].health, 3, 'pokutu vybral konec tahu');
-    assert.equal(g.currentPlayerIndex, 1, 'tah se posunul normálně');
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE', 'pokutu nasadil konec tahu');
+    assert.equal(g.currentPlayerIndex, 0, 'tah se zatím neposunul');
+    g.takeDynamiteHit(2);
+    assert.equal(g.players[2].health, 3);
+    assert.equal(g.currentPlayerIndex, 1, 'teprve teď je na tahu další hráč');
 });
 
-test('Roubík: Bart Cassidy si za ztracený život lízne (jde přes handleDamage)', () => {
+test('Roubík: Bart Cassidy si za ztracený život lízne', () => {
     const g = mkGag([{ role: 'Sheriff' }, { character: 'Bart Cassidy' }, {}]);
     g.deck.cards.push({ id: 901, name: 'Bang!', type: CardType.BANG, suit: Suits.HEARTS, value: '5' });
     g.gagSpeak(1);
     assert.equal(g.gagFlush(), true);
+    g.takeDynamiteHit(1);
     assert.equal(g.players[1].health, 3);
     assert.equal(g.phase, 'BART_DRAW', 'schopnost se rozeběhla z fronty odložených akcí');
     g.bartCassidyDraw(1);
@@ -105,20 +157,23 @@ test('Roubík: smrt z pokuty nechá server posunout tah (_autoEndTurnPending)', 
     const g = mkGag([{ role: 'Outlaw', health: 1 }, { role: 'Sheriff' }, { role: 'Renegade' }]);
     g.gagSpeak(0);
     assert.equal(g._drainGag(), true);
+    g.takeDynamiteHit(0);
     assert.equal(g.players[0].health, 0, 'hráč na tahu se upovídal k smrti');
     assert.equal(g._autoEndTurnPending, true);
     assert.equal(g._deadPlayerIdx, 0);
 });
 
-test('Roubík: smrt na konci tahu tah neposune dvakrát', () => {
-    const g = mkGag([{ role: 'Outlaw' }, { role: 'Sheriff', health: 1 }, { role: 'Outlaw' }],
+test('Roubík: smrt z pokuty nasazené koncem tahu tah posune jednou', () => {
+    const g = mkGag([{ role: 'Outlaw' }, { role: 'Renegade', health: 1 }, { role: 'Sheriff' }],
                     { phase: 'DISCARD', current: 1 });
+    g._autoEndTurnPending = true;
     g.gagSpeak(1);
     assert.equal(g._drainGag(), false);
     g.nextTurn();
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    g.takeDynamiteHit(1);
     assert.equal(g.players[1].health, 0);
-    assert.ok(!g._autoEndTurnPending, 'tah posunul právě probíhající nextTurn, ne server');
-    assert.ok(g.winner, 'smrt šerifa hru ukončila');
+    assert.equal(g.currentPlayerIndex, 2, 'tah se posunul právě jednou');
 });
 
 test('Roubík: pokuta hráče, který mezitím vypadl ze hry, propadá', () => {
@@ -130,11 +185,29 @@ test('Roubík: pokuta hráče, který mezitím vypadl ze hry, propadá', () => {
     assert.equal(g.players[2].health, 0);
 });
 
-test('Roubík: dvě zprávy = dva životy', () => {
+test('Roubík: dvě pokuty se odklikají po jedné', () => {
     const g = mkGag([{ role: 'Sheriff' }, {}, {}]);
     g.gagSpeak(1); g.gagSpeak(1);
-    g._drainGag();
+    assert.equal(g._drainGag(), true);
+    g.takeDynamiteHit(1);
+    assert.equal(g.players[1].health, 3);
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE', 'druhá pokuta jde hned za první');
+    g.takeDynamiteHit(1);
     assert.equal(g.players[1].health, 2);
+    assert.equal(g.phase, 'PLAY');
+});
+
+test('Roubík: dokud pokuta visí, chat je zavřený', () => {
+    const g = mkGag([{ role: 'Sheriff' }, {}, {}], { phase: 'RESPOND' });
+    g.pendingResponse = { active: true, targetIdx: 1 };
+    g.gagSpeak(1);
+    assert.equal(g.gagBlocked(1), true, 'čeká ve frontě');
+    assert.equal(g.gagBlocked(2), false);
+    g.phase = 'PLAY'; g.pendingResponse = null;
+    g._drainGag();
+    assert.equal(g.gagBlocked(1), true, 'a čeká i na klik');
+    g.takeDynamiteHit(1);
+    assert.equal(g.gagBlocked(1), false);
 });
 
 // ── Hlášky botů (core/botChat.js) ───────────────────────────────────────────
@@ -230,13 +303,27 @@ function chatRoom(ctx, sockets, out, gs) {
     return { sock, room };
 }
 
-test('chat handler: zpráva projde a pod Roubíkem stojí 1 život', () => {
+test('chat handler: zpráva projde a pod Roubíkem nasadí klikaný zásah', () => {
     const { ctx, sockets, out } = chatCtx();
     const gs = mkGag([{ role: 'Sheriff' }, {}, {}]);
     const { sock } = chatRoom(ctx, sockets, out, gs);
     sock._h['chat_message']({ text: 'ahoj' });
     assert.ok(out.some(o => o.ev === 'chat_message' && o.msg.text === 'ahoj'), 'zpráva se nezahazuje');
+    assert.equal(gs.phase, 'DYNAMITE_DAMAGE');
+    gs.takeDynamiteHit(0);
     assert.equal(gs.players[0].health, 3, 'promluvení stálo život');
+});
+
+test('chat handler: s nezaplacenou pokutou zpráva neprojde vůbec', () => {
+    const { ctx, sockets, out } = chatCtx();
+    const gs = mkGag([{ role: 'Sheriff' }, {}, {}]);
+    const { sock } = chatRoom(ctx, sockets, out, gs);
+    sock._h['chat_message']({ text: 'ahoj' });
+    sock._h['chat_message']({ text: 'a ještě jednou' });
+    assert.ok(!out.some(o => o.ev === 'chat_message' && o.msg.text === 'a ještě jednou'),
+              'druhá zpráva se zahodila');
+    gs.takeDynamiteHit(0);
+    assert.equal(gs.players[0].health, 3, 'jeden život, ne dva');
 });
 
 test('chat handler: bez Roubíku zpráva nestojí nic', () => {
@@ -258,16 +345,19 @@ test('chat handler: kdo u stolu nesedí (divák), nic neplatí', () => {
     assert.deepEqual(gs.players.map(p => p.health), [4, 4, 4]);
 });
 
-test('chat handler: pokuta uprostřed obrany počká na klidné místo', () => {
+test('chat handler: pokuta útočníka přeruší obranu, ta pak pokračuje', () => {
     const { ctx, sockets, out } = chatCtx();
     const gs = mkGag([{ role: 'Sheriff' }, {}, {}]);
     const { sock } = chatRoom(ctx, sockets, out, gs);
     const i = give(gs, 0, CardType.BANG, { name: 'Bang!' });
     gs.playBang(0, 1, i);
     sock._h['chat_message']({ text: 'nestřílej!' });
-    assert.equal(gs.players[0].health, 4, 'uprostřed RESPOND se nesahá');
-    gs.handleResponse(1, null);
+    assert.equal(gs.phase, 'DYNAMITE_DAMAGE', 'na útočníka se nečeká, pokuta ho trefí hned');
+    gs.takeDynamiteHit(0);
     assert.equal(gs.players[0].health, 3);
+    assert.equal(gs.phase, 'RESPOND', 'obrana pokračuje');
+    gs.handleResponse(1, null);
+    assert.equal(gs.players[1].health, 3);
 });
 
 test('flushBotQuips: hláška jde do chatu a pod Roubíkem si sama vezme život', () => {
@@ -283,8 +373,8 @@ test('flushBotQuips: hláška jde do chatu a pod Roubíkem si sama vezme život'
     Math.random = () => 0;                   // hláška projde a vybere se první věta
     try { ctx.flushBotQuips(room); } finally { Math.random = rnd; }
     assert.ok(out.some(o => o.ev === 'chat_message' && QUIPS.hit.includes(o.msg.text)), 'bot se ozval');
-    assert.deepEqual(gs._gagPending, [1], 'Roubík platí i na boty – pokuta čeká na klid');
-    assert.equal(gs.players[1].health, 3, 'uprostřed broadcastu se zásah nevybírá');
+    assert.deepEqual(gs._gagPending, [1], 'Roubík platí i na boty – pokuta čeká na nasazení');
+    assert.equal(gs.players[1].health, 3, 'uprostřed broadcastu se zásah nenasazuje');
 });
 
 test('flushBotQuips: bez botů na místě nikdo nemluví', () => {

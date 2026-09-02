@@ -594,21 +594,16 @@ module.exports = function installAnimService(ctx) {
     }
 
     // ── Divoký západ – Roubík: promluvení stojí 1 život ─────────────────────────
-    // Pravidla si pokutu jen zapíšou (gs.gagSpeak) a vyberou ji na nejbližším klidném
-    // místě – `_drainGag` je tady jen pokus „nedá se to rovnou?". Když ano, musí se
-    // změna dostat ven přesně tou cestou jako po každé jiné akci: možná smrt (cinematika
-    // vyřazení, automatický konec tahu) → případné domíchání → broadcast. Když ne,
-    // pokuta počká na `_processSpecialQueue` / konec tahu a odejde s jejich broadcastem.
+    // Pravidla si pokutu zapíšou (gs.gagSpeak) a `gagFlush` zkusí rovnou nasadit klikaný
+    // zásah – hráč si ho pak ubere sám (a smí se zachránit Pivem). Když to zrovna nejde
+    // (běží jiný klikaný zásah, fronta odložených akcí, lízání), počká pokuta na nejbližší
+    // takové místo. Broadcast je potřeba v OBOU případech: buď je vidět čekající zásah,
+    // nebo aspoň to, že má mluvčí zablokovaný chat (`gagBlocked`).
     function applyGagPenalty(room, playerIdx) {
         const gs = room && room.gameState;
         if (!gs || typeof gs.gagSpeak !== 'function') return false;
         if (!gs.gagSpeak(playerIdx)) return false;   // Roubík neplatí / mluvčí není ve hře
-        if (!gs.gagFlush()) return true;             // zapsáno, vybere se později
-        handleAutoEndTurn(room, gs);
-        if (gs._deathAnimPlayerIdx !== undefined && gs._deathAnimPlayerIdx !== null) {
-            emitDeathAnim(room, gs, gs._deathAnimPlayerIdx);
-            gs._deathAnimPlayerIdx = null;
-        }
+        gs.gagFlush();
         handleReshuffleAndBroadcast(room, gs, 0);
         return true;
     }

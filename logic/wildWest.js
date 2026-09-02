@@ -467,15 +467,21 @@ const WildWestMixin = {
     // úplně – a nevaruje se ani nepotvrzuje: karta leží odkrytá na stole a je na hráči,
     // aby věděl, co platí (potvrzovací okno by z vtipu udělalo formulář).
     //
-    // Pokuta je ODLOŽENÁ. Chat přichází asynchronně a může trefit libovolnou fázi
-    // (RESPOND, míchání, cinematiku vyřazení); zásah uprostřed by rozbil rozdělaný
-    // efekt. Seat se proto jen zapíše do `_gagPending` a vybere se na nejbližším klidném
-    // místě – hned tady (když je zrovna klid), jinak v `_processSpecialQueue` /
-    // `_resumeAfterSpecial`, nejpozději na konci tahu (`_gagAtTurnEnd`).
+    // Pokuta se KLIKÁ (recykluje `pendingDynamiteDamage` jako Madam Zuzana a Ruská
+    // ruleta), takže si ji hráč musí sám ubrat – a smí se přitom zachránit Pivem.
     //
-    // Zásah jde přes `handleDamage(idx, null)`: Bart Cassidy si za ztracený život lízne,
-    // El Gringo nekrade (není útočník). Divák není hráč, takže ho nic nestojí; mrtvý
-    // hráč (a duch mimo svůj tah, který je taky na nule) taky o nic nepřijde.
+    // Chat přichází asynchronně a trefí libovolnou fázi, takže se seat nejdřív zapíše
+    // do `_gagPending` a klikaný zásah se nasadí na nejbližším místě, kde smí PŘERUŠIT
+    // (`_gagCalm`): hned tady, jinak v `_processSpecialQueue` / `_resumeAfterSpecial`,
+    // nejpozději na konci tahu (`_gagAtTurnEnd`). „Nejbližší" je doslova – přerušit se
+    // smí i cizí obrana nebo výběr karty, protože zásah patří někomu jinému a fáze se
+    // po kliknutí vrátí (`_gagResumePhase`).
+    //
+    // Dokud pokuta visí, má ten hráč ZAKÁZANÝ chat (`gagBlocked`) – bez toho by devíti
+    // zprávami za sebou naskládal devět zásahů a zabil se dřív, než by na první klikl.
+    //
+    // Divák není hráč, takže ho promluvení nestojí nic; mrtvý hráč (a duch mimo svůj
+    // tah, který je taky na nule) taky o nic nepřijde.
     gagSpeak(playerIdx) {
         if (!this.hasEvent('ROUBIK')) return false;
         const p = this.players?.[playerIdx];
@@ -486,68 +492,110 @@ const WildWestMixin = {
         return true;
     },
 
-    // Je klid na to vybrat odloženou pokutu? Fáze PLAY znamená, že neběží obrana,
-    // sejmutí, výběr karty ani klikané zásahy; k tomu prázdná fronta odložených akcí
-    // (do rozdělané schopnosti se sahat nesmí) a žádný čekající automatický konec tahu.
-    _gagCalm() {
+    // Má tenhle hráč zakázáno psát? Platí od chvíle, kdy si pokutu vysloužil, do chvíle,
+    // kdy si ji odklikne. Ptá se tím server (chat_message) i hlášky botů.
+    gagBlocked(playerIdx) {
+        if ((this._gagPending || []).includes(playerIdx)) return true;
+        const pdd = this.pendingDynamiteDamage;
+        return !!(pdd && pdd.source === 'GAG' && pdd.playerIdx === playerIdx);
+    },
+
+    // Smí odložená pokuta PŘERUŠIT to, co se právě děje? Nesmí jen tam, kde by se tím
+    // rozbil rozdělaný efekt:
+    //   • někdo už klikáním ztrácí život (dynamit, Pravé poledne, jiná pokuta) – pokuta
+    //     jde hned ZA ním, aby se dva klikané zásahy nepřepsaly,
+    //   • běží fronta odložených akcí, lízání nebo sejmutí – tam se sahat nesmí,
+    //   • hra čeká na rozhodnutí od SAMOTNÉHO pokutovaného (jeho obrana, jeho výběr
+    //     karty…): kdyby ho zásah zabil, zůstalo by `pending*` té fáze viset na mrtvém.
+    //     Výjimka je jeho vlastní tah (fáze PLAY/DISCARD) – smrt hráče na tahu umí
+    //     `handlePlayerDeath` (nastaví `_autoEndTurnPending`), stejně jako u Madam Zuzany.
+    _gagCalm(playerIdx) {
         if (this.winner || this._autoEndTurnPending) return false;
-        if (this.phase !== "PLAY") return false;
+        if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
         if (this.specialActionQueue?.length) return false;
         if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;
+        // Z fronty odložených akcí něco běží (`interruptedPhase` je JEJÍ návratová fáze)
+        // nebo si na její dobrání někdo naplánoval pokračování – do toho se lézt nesmí:
+        // pokuta by si na sebe vzala fázi rozdělané schopnosti a pokračování by se
+        // nikdy nespustilo. Viz „Rodina resume příznaků" v CLAUDE.md.
+        if (this.interruptedPhase) return false;
+        if (this._nextTurnAfterQueue || this._resumeBeginTurnAfterQueue ||
+            this._startChecksAfterQueue || this._advanceRouletteAfterQueue ||
+            this._advanceGrinnerAfterQueue || this._gagResumeAfterQueue) return false;
+        const pa = typeof pendingActor === 'function' ? pendingActor(this) : null;
+        if (pa && pa.idx === playerIdx && pa.kind !== 'PLAY' && pa.kind !== 'DISCARD') return false;
         return true;
     },
 
-    // Vybere odložené pokuty. Vrací true, když nějaká opravdu dopadla (volající pak musí
-    // počítat s tím, že se změnily životy, mohla vzniknout fronta odložených akcí nebo
-    // dokonce padnout hráč). `force` = volající si klid zaručuje sám (konec tahu).
+    // Nasadí klikaný zásah za nejstarší odloženou pokutu. Vrací true, když se opravdu
+    // nasadil – volající pak nesmí sahat na fázi (hra čeká na klik).
+    // `force` = volající si klid zaručuje sám (konec tahu).
     _drainGag(force = false) {
         if (!this._gagPending || !this._gagPending.length) return false;
-        if (!force && !this._gagCalm()) return false;
-        const queue = this._gagPending;
-        this._gagPending = [];
-        let hit = false;
-        for (const idx of queue) {
-            if (this.winner) break;
-            const p = this.players?.[idx];
-            if (!p || p.health <= 0) continue;   // mezitím vypadl ze hry → pokuta propadá
-            this.handleDamage(idx, null);
-            hit = true;
+        if (this.winner) return false;
+        // Kdo mezitím vypadl ze hry, tomu pokuta propadá.
+        let idx = null;
+        while (this._gagPending.length) {
+            const cand = this._gagPending[0];
+            const p = this.players?.[cand];
+            if (p && p.health > 0) {
+                if (!force && !this._gagCalm(cand)) return false;
+                idx = cand;
+                this._gagPending.shift();
+                break;
+            }
+            this._gagPending.shift();
         }
-        return hit;
-    },
-
-    // Vybrat pokutu a rovnou nechat rozeběhnout, co tím vzniklo (Bart Cassidy si za
-    // ztracený život líže). Tohle je vstup pro volající ZVENČÍ pravidel – server po
-    // příchodu zprávy do chatu a `_resumeAfterSpecial`. Uvnitř `_processSpecialQueue`
-    // se volá holý `_drainGag`: frontu tam dobere kód hned pod ním.
-    gagFlush() {
-        if (!this._drainGag()) return false;
-        if (this.specialActionQueue.length) this._processSpecialQueue();
+        if (idx === null) return false;
+        // Kam se po kliknutí vrátit. Fázi si drží pokuta sama (ne `interruptedPhase`),
+        // aby se nepotkala s frontou odložených akcí, která ho používá taky.
+        this._gagResumePhase = this.phase;
+        this.pendingDynamiteDamage = { playerIdx: idx, hitsLeft: 1, source: 'GAG', resume: 'GAG' };
+        this.phase = "DYNAMITE_DAMAGE";
         return true;
     },
 
-    // Konec tahu je poslední klidné místo, takže se tady vybírá i mimo fázi PLAY.
-    // Vrací true, když si pokuta vzala tok hry (výhra / rozdělaná fronta odložených
-    // akcí) a `nextTurn` má skončit – vrátí se do něj až `_resumeAfterSpecial`.
+    // Zásah je odkliknutý (nebo odražený Pivem) – vrať fázi a zkus nasadit další pokutu
+    // v řadě. Volá se z `_afterDamageClicks` (logic/combat.js).
+    _gagResume() {
+        this._gagResumeAfterQueue = false;
+        const back = this._gagResumePhase || "PLAY";
+        this._gagResumePhase = null;
+        this.phase = back;
+        // Pokuta mohla vyřadit hráče, jehož tah zrovna běží – fáze, do které se vracíme,
+        // by pak patřila mrtvému. `handlePlayerDeath` na to nepřišlo, protože zásah dopadl
+        // ve fázi DYNAMITE_DAMAGE, takže se příznak nastaví až tady (tah pak ukončí server
+        // stejně jako po každé jiné smrti v tahu).
+        const ownerIdx = this._turnOwner();
+        const owner = this.players[ownerIdx];
+        if (!this.winner && owner && !isInPlay(owner)) {
+            this._autoEndTurnPending = true;
+            this._deadPlayerIdx = ownerIdx;
+        }
+        this._drainGag();
+    },
+
+    // Nasadit pokutu, jde-li to. Tohle je vstup pro volající ZVENČÍ pravidel – server po
+    // příchodu zprávy do chatu a `_resumeAfterSpecial`. Uvnitř `_processSpecialQueue`
+    // se volá holý `_drainGag`.
+    gagFlush() {
+        return this._drainGag();
+    },
+
+    // Konec tahu je poslední místo, kde se pokuta smí nasadit, takže se tady nasazuje
+    // i mimo fázi PLAY (`force`). Vrací true, když si pokuta vzala tok hry a `nextTurn`
+    // má skončit – tah se posune až po odkliknutí zásahu (`resume: 'NEXT_TURN'`).
     _gagAtTurnEnd() {
         if (!this._gagPending || !this._gagPending.length || this.winner) return false;
-        // Zásah mohl vyřadit hráče, jehož tah právě končí. `handlePlayerDeath` na to ve
-        // fázi PLAY nastaví `_autoEndTurnPending` – jenže tah se posouvá právě teď, takže
-        // by ho server posunul podruhé. Příznak se proto vrátí na původní hodnotu.
-        const autoEnd = this._autoEndTurnPending;
+        // Klikaný zásah se sem vejde jen tehdy, když zrovna žádný jiný neběží (Madam
+        // Zuzana je hned nad tímhle gatem) – jinak se pokuta vybere až za ním.
+        if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
         if (!this._drainGag(true)) return false;
-        if (this.winner) return true;
-        this._autoEndTurnPending = autoEnd;
-        if (this.specialActionQueue.length) {
-            // Bart Cassidy / Herb Hunter / odměna za banditu se musí dobrat DŘÍV, než se
-            // posune tah. Pojistka podle CLAUDE.md: příznak se nechává nastavený jen
-            // tehdy, když se z fronty opravdu něco rozeběhlo (_pruneSuzyQueue ji umí
-            // vyprázdnit a hra by na `_nextTurnAfterQueue` čekala navždy).
-            this._nextTurnAfterQueue = true;
-            if (this._processSpecialQueue()) return true;
-            this._nextTurnAfterQueue = false;
-        }
-        return false;
+        // Tah se posune, až hráč klikne. `_gagResumePhase` z konce tahu nedává smysl –
+        // vracet se není kam.
+        this._gagResumePhase = null;
+        this.pendingDynamiteDamage.resume = 'NEXT_TURN';
+        return true;
     },
 
     // ── Postavy ───────────────────────────────────────────────────────────────

@@ -227,11 +227,15 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         const room = findRoomBySocket(socket.id);
         if (!room) return;
         const p = room.players.find(pl => pl.socketId === socket.id);
+        // Divoký západ – Roubík: dokud má hráč nezaplacenou pokutu za promluvení, zpráva
+        // neprojde vůbec. Bez toho by devíti zprávami za sebou naskládal devět zásahů
+        // a zabil se dřív, než by na první stihl kliknout.
+        if (p && room.gameState?.gagBlocked?.(p.playerIdx)) return;
         const name = p?.name || 'Divák';
         ctx.emitChat(room, name, text);
-        // Divoký západ – Roubík: kdo promluví, ztrácí 1 život. Zpráva projde normálně
-        // (karta mluvení zakazuje pod pokutou, ne úplně) a nic se nepotvrzuje. Divák
-        // není hráč, takže ho promluvení nestojí nic.
+        // Kdo promluví, ztrácí 1 život. Zpráva projde normálně (karta mluvení zakazuje
+        // pod pokutou, ne úplně) a nic se nepotvrzuje. Divák není hráč, takže ho
+        // promluvení nestojí nic.
         if (p) ctx.applyGagPenalty?.(room, p.playerIdx);
     });
 

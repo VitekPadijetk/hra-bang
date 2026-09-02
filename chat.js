@@ -100,6 +100,10 @@ function initChat() {
     function sendMsg() {
         const text = input.value.trim();
         if (!text) return;
+        // Divoký západ – Roubík: dokud mám nezaplacenou pokutu za promluvení, zprávu
+        // server stejně zahodí (aby z devíti zpráv nebylo devět zásahů). Nechat ji
+        // odejít by vypadalo jako výpadek spojení, takže se ani neodesílá.
+        if (gagBlockedForMe()) return;
         socket.emit('chat_message', { text });
         input.value = '';
     }
@@ -110,6 +114,17 @@ function initChat() {
     toggleBtn.addEventListener('click', toggleChat);
 
     App.chatMessages.forEach(m => appendChatMessage(m));
+}
+
+// Divoký západ – Roubík: mám nezaplacenou pokutu za promluvení? Zrcadlí serverový
+// `gagBlocked` (logic/wildWest.js) – čekající pokuta ve frontě i ta, na kterou se
+// zrovna kliká. Divák (myIndex je null) pokutu neplatí a psát smí vždycky.
+// `state` i `myIndex` jsou globály z game.js (chat.js se načítá až za ním).
+function gagBlockedForMe() {
+    if (!state || myIndex == null) return false;
+    if ((state._gagPending || []).includes(myIndex)) return true;
+    const pdd = state.pendingDynamiteDamage;
+    return !!(pdd && pdd.source === 'GAG' && pdd.playerIdx === myIndex);
 }
 
 function toggleChat() {

@@ -66,6 +66,12 @@ if (typeof TARGET_3P === 'undefined' && typeof require === 'function') {
 if (typeof evaluateWinner === 'undefined' && typeof require === 'function') {
     globalThis.evaluateWinner = require('./core/winCondition.js').evaluateWinner;
 }
+// „Na koho hra právě čeká" – Divoký západ, Roubík: odloženou pokutu za promluvení smí
+// přerušit cokoli, jen ne rozhodnutí, na které se čeká od samotného pokutovaného
+// (jeho smrt by pak nechala viset `pending*` té fáze). Viz `_gagCalm`.
+if (typeof pendingActor === 'undefined' && typeof require === 'function') {
+    globalThis.pendingActor = require('./core/pending.js').pendingActor;
+}
 // „Je to modrá karta?" (José Delgado) – jediný zdroj pravdy pro server, klient i bota.
 if (typeof isBlueCard === 'undefined' && typeof require === 'function') {
     globalThis.isBlueCard = require('./core/cardRules.js').isBlueCard;
@@ -336,8 +342,8 @@ class GameState {
         // neberou (Vězení sebralo tah, Vendeta neuspěla) – nejpozději na konci tahu.
         this._drainJohnPain();
         // Divoký západ – Roubík: pokuta za promluvení do chatu, na kterou se během tahu
-        // nenašel klid. Konec tahu je poslední klidné místo, takže se vybírá i mimo fázi
-        // PLAY; vrátí true, když si vzala tok hry (výhra / rozdělaná fronta odložených akcí).
+        // nenašlo místo. Konec tahu je poslední takové, takže se nasazuje i mimo fázi
+        // PLAY; vrátí true, když si vzala tok hry – tah se posune až po odkliknutí zásahu.
         if (this._gagAtTurnEnd()) return;
         // Divoký západ – Madam Zuzana: kdo za svůj tah nezahrál 3 karty, ztrácí život.
         // Je to úplně první gate: pořadí na konci tahu je fáze 3 (odhoz nad limit) →

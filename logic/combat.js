@@ -208,14 +208,20 @@ const CombatMixin = {
         // Divoký západ – Madam Zuzana: penalizace přišla z KONCE tahu (nextTurn), takže
         // se do něj vrací – rovnou na Vendetu, která je hned za ní.
         const toNextTurn = resume === 'NEXT_TURN';
+        // Divoký západ – Roubík: pokuta za promluvení PŘERUŠILA rozehranou fázi, takže
+        // se vrací přesně do ní (`_gagResume`, logic/wildWest.js) – a rovnou zkusí
+        // nasadit další pokutu, když jich čeká víc.
+        const toGag = resume === 'GAG';
         if (afterQueue) {
             if (toBeginTurn) this._resumeBeginTurnAfterQueue = true;
             else if (toNextTurn) this._nextTurnAfterQueue = true;
+            else if (toGag) this._gagResumeAfterQueue = true;
             else this._startChecksAfterQueue = true;
             return;
         }
         if (toBeginTurn) this._resumeBeginTurn();
         else if (toNextTurn) this.nextTurn();
+        else if (toGag) this._gagResume();
         else this.handleStartOfTurnChecks();
     },
 
@@ -249,6 +255,10 @@ const CombatMixin = {
             // na začátku tahu hráče na tahu). Když hráč na tahu žije dál, jeho start tahu
             // musí pokračovat – posunout tah by ho o něj připravilo.
             const _rouletteResume = resume === 'BEGIN_TURN' && isInPlay(this.getCurrentPlayer());
+            // Divoký západ – Roubík: pokuta přerušila cizí fázi, takže se po smrti
+            // pokutovaného posouvat tah NESMÍ – vrací se tam, odkud pokuta přerušila.
+            // (Umřel-li hráč na tahu, ukončí tah `_autoEndTurnPending` jako vždy.)
+            const _gagResume = resume === 'GAG';
             this._pruneSuzyQueue();
             // Divoký západ – Teren Kill: vyřazení se pozastavilo na sejmutí, hráč je
             // pořád ve hře. Zbytek zásahů propadá (FAQ Q12: snímá se JEDNOU – pending
@@ -261,10 +271,13 @@ const CombatMixin = {
             }
             if (this.specialActionQueue.length > 0) {
                 if (_rouletteResume) this._resumeBeginTurnAfterQueue = true;
+                else if (_gagResume) this._gagResumeAfterQueue = true;
                 else this._nextTurnAfterQueue = true;
                 this._processSpecialQueue();
             } else if (_rouletteResume) {
                 this._resumeBeginTurn();
+            } else if (_gagResume) {
+                this._gagResume();
             } else {
                 this.nextTurn();
             }

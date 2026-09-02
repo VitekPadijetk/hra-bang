@@ -158,11 +158,11 @@ const CharactersMixin = {
     // pokračuje sama a volající nemá sahat na fázi. `false` = fronta nic nespustila.
     _processSpecialQueue() {
         this._pruneSuzyQueue();
-        // Divoký západ – Roubík: odložená pokuta za promluvení do chatu se vybírá na
-        // nejbližším klidném místě, a tohle je ono (_drainGag si klid ověřuje sám).
-        // Zásah může frontu rovnou zase naplnit (Bart Cassidy si za ztracený život lízne),
-        // takže se test na prázdnou frontu dělá až POD ním.
-        if (this.specialActionQueue.length === 0) this._drainGag();
+        // Divoký západ – Roubík: odložená pokuta za promluvení do chatu se nasazuje na
+        // nejbližším místě, kde smí přerušit, a tohle je ono (_drainGag si to ověřuje
+        // sám). Nasadí-li se, čeká hra na klik – vrací se `true`, aby volající na fázi
+        // nesahal, přesně jako když se z fronty rozeběhne schopnost.
+        if (this.specialActionQueue.length === 0 && this._drainGag()) return true;
         if (this.specialActionQueue.length === 0) return false;
 
         // Neber další akci z fronty, když právě běží líznutí (běžné, Dostavník/Wells Fargo
@@ -243,6 +243,13 @@ const CharactersMixin = {
             this._advanceRouletteAfterQueue = false;
             this.interruptedPhase = null;
             if (!this.winner) this._continueRoulette();
+        } else if (this._gagResumeAfterQueue) {
+            // Divoký západ – Roubík: pokuta přerušila rozehranou fázi a její zásah do
+            // fronty ještě přidal líznutí (Bart Cassidy). Až doběhne, vrať se tam,
+            // odkud pokuta přerušila.
+            this._gagResumeAfterQueue = false;
+            this.interruptedPhase = null;
+            if (!this.winner) this._gagResume();
         } else if (this._startChecksAfterQueue) {
             // Výbuch dynamitu: Bartova líznutí za ztracené životy jsou dobraná → teprve
             // teď kontrola Vězení a fáze lízání (viz takeDynamiteHit).
@@ -256,8 +263,8 @@ const CharactersMixin = {
             // takže se vypůjčené sedadlo vrací jeho majiteli (viz `_dorothySettle`).
             this._dorothySettle();
             // Divoký západ – Roubík: fáze je obnovená a nic neběží, takže je teprve TEĎ
-            // klid na odloženou pokutu (výš se _processSpecialQueue ptal ještě ve fázi
-            // právě dokončené schopnosti). Zásah může frontu naplnit znovu.
+            // místo na odloženou pokutu (výš se _processSpecialQueue ptal ještě ve fázi
+            // právě dokončené schopnosti). Nasadí se klikaný zásah a hra čeká na klik.
             this.gagFlush();
         }
     },
