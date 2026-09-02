@@ -3419,10 +3419,15 @@ function drawDrawPiles(ctx) {
     }
 
     let discardSprite = null;
+    // Pedro Ramirez: z odhozu se bere jen PRVNÍ karta fáze lízání. Jakmile hráč klikne na
+    // balíček, volba padá – a padnout musí HNED, ne až s potvrzením serveru: do té doby
+    // šlo na odhoz kliknout a hra si z něj vzala kartu navíc (bug 57). Naklikané, ještě
+    // nepotvrzené líznutí drží App.pendingDrawCount (core/drawCounter.js).
     const isPedroDraw = state.phase === "DRAW" &&
                         state.drawPhaseState?.playerIdx === myIndex &&
                         (state.drawPhaseState?.options || []).includes('discard') &&
-                        state.deck.discardPile.length > 0;
+                        state.deck.discardPile.length > 0 &&
+                        App.pendingDrawCount === 0 && !App.pedroDrawLock;
     // A Fistful of Cards – Opuštěný důl: z odhozu se líže JEN ve fázi 1 hráče na tahu
     // (FAQ Q03/Q04, viz mineOn v game.js). Jen tehdy se prohodí, na kterou hromádku se
     // kliká a která svítí; sejmutí, hokynářství i zahrané karty zůstávají na svých
@@ -3560,15 +3565,17 @@ function drawDrawPiles(ctx) {
             // Presne 380ms od tohoto kliku: karta se objevi v ruce
             // Server posle room_update za 350ms (< 380ms) takze stav bude ready
             setTimeout(() => renderUI(), 380);
-            // Okamzite odzvyrazni balicek pokud to byl posledni povoleny klik
-            if (_drawStillNeeded - App.pendingDrawCount <= 0) renderUI();
+            // Okamzite odzvyrazni balicek pokud to byl posledni povoleny klik.
+            // Stejně tak Pedrovu nabídku „z odhozu": tou volbou byla první karta,
+            // takže odhoz musí přestat svítit i být klikatelný hned (bug 57).
+            if (_drawStillNeeded - App.pendingDrawCount <= 0 || isPedroDraw) renderUI();
         });
         // Pedro Ramirez: PRVNÍ kartu může vzít z odhozu. Tahle volba musí být dostupná
         // i během aktivního lízání (drawStillNeeded>0), jinak se odhoz jen označil
         // kurzorem, ale nešel kliknout (žádný tint, žádný pointerdown).
         // Zůstává na `discardSprite` (ne na aliasu): Pedrovým zdrojem JE odhoz a pod
         // Opuštěným dolem mu server volbu vůbec nenabídne (_getDrawOptions).
-        if (state.drawPhaseState.options.includes('discard') && state.deck.discardPile.length > 0 && !App.pedroDrawLock) {
+        if (isPedroDraw) {
             discardSprite?.setTint(0xffff44);
             discardSprite?.setInteractive({ useHandCursor: true });
             discardSprite?.on('pointerdown', () => {
@@ -3582,7 +3589,7 @@ function drawDrawPiles(ctx) {
     } else if (isMyDraw) {
         drawPileSprite.setAlpha(1);
 
-        if (state.drawPhaseState.options.includes('discard') && state.deck.discardPile.length > 0 && !App.pedroDrawLock) {
+        if (isPedroDraw) {
             discardSprite?.setTint(0xffff44);
             discardSprite?.setInteractive({ useHandCursor: true });
             discardSprite?.on('pointerdown', () => {
