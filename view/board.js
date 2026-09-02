@@ -8,7 +8,12 @@
 // Vera Custer: portrét kopírované postavy se v update() cyklicky přepíná (viz state.js).
 // Zaregistruj portrét hráče, pokud je to Vera s aktuálně zkopírovanou postavou.
 // getCharTex převede jméno postavy na texturu. Bez efektu pro ne-Veru / bez kopie.
-function registerVeraPortrait(sprite, player, getCharTex) {
+// `slideKey` / `playerIdx` = klíč reflow slidu a index hráče, pod kterými může portrét
+// zrovna letět PLOVOUCÍM spritem (reflowCard při přeskládání skupiny, runHealthSlide při
+// zásahu). Statický sprite je po tu dobu skrytý, takže bez registrace té plovoucí kopie
+// problikávání uprostřed pohybu zamrzlo na Veře a po dosednutí skočilo zpátky do fáze
+// cyklu (bug 50).
+function registerVeraPortrait(sprite, player, getCharTex, slideKey, playerIdx) {
     if (!sprite || !player) return;
     if (player.character !== 'Vera Custer' || !player._copiedCharacter) return;
     if (player._noAbility) return;   // Kocovina (High Noon): kopie neplatí → jen Vera
@@ -16,16 +21,22 @@ function registerVeraPortrait(sprite, player, getCharTex) {
     // Vyřazená Vera už žádnou schopnost nekopíruje – na jejím místě zůstane Vera.
     // (Duch z Města duchů má 0 životů, ale ve hře je → tomu problikávání zůstává.)
     if (!isInPlay(player)) return;
-    App.veraPortraits.push({
-        sprite,
+    const push = (sp) => App.veraPortraits.push({
+        sprite: sp,
         selfTex: getCharTex('Vera Custer'),
         copyTex: getCharTex(player._copiedCharacter),
         // Původní obarvení (zvýraznění tahu/čekání/mrtvý) – během „vlastní Very" fáze
         // ho vrátíme; během kopie ho přebije jemný zelený nádech.
-        baseTint: sprite.isTinted ? sprite.tintTopLeft : null,
+        baseTint: sp.isTinted ? sp.tintTopLeft : null,
         // Základní scaleX (pro plynulý překlopení-přechod mezi Verou a kopií).
-        baseScaleX: sprite.scaleX,
+        baseScaleX: sp.scaleX,
     });
+    push(sprite);
+    const floating = [
+        slideKey ? App.cardSlides[slideKey]?.sprite : null,
+        playerIdx != null ? App.healthAnims[playerIdx]?.sprite : null,
+    ];
+    for (const sp of floating) if (sp?.active) push(sp);
 }
 
 // ── Rozsvícení hráče na tahu ─────────────────────────────────────────────────
@@ -1035,7 +1046,7 @@ function drawOpponents(ctx) {
                 player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingL);
-            registerVeraPortrait(charOpp, player, getCharTex);
+            registerVeraPortrait(charOpp, player, getCharTex, 'ochar' + actualIdx, actualIdx);
 
             if (player.role === "Sheriff") {
                 let star = gameScene.add.image(
@@ -1109,7 +1120,7 @@ function drawOpponents(ctx) {
                 player.role === "Sheriff" ? { dx: cardW * 0.42, dy: cardH * 0.45, scale: starScale } : null, livesT.slots);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingT);
-            registerVeraPortrait(charOpp, player, getCharTex);
+            registerVeraPortrait(charOpp, player, getCharTex, 'ochar' + actualIdx, actualIdx);
 
             if (player.role === "Sheriff") {
                 let star = gameScene.add.image(
@@ -1182,7 +1193,7 @@ function drawOpponents(ctx) {
                 player.role === "Sheriff" ? { dx: -cardH * 0.45, dy: cardW * 0.42, scale: starScale } : null, livesT.slots);
             reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
             reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingR);
-            registerVeraPortrait(charOpp, player, getCharTex);
+            registerVeraPortrait(charOpp, player, getCharTex, 'ochar' + actualIdx, actualIdx);
 
             if (player.role === "Sheriff") {
                 let star = gameScene.add.image(
@@ -1302,7 +1313,7 @@ function drawCompactOpponent(ctx) {
         player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
     reflowStatic('olives' + actualIdx, livesOpp, 'lives', scaleOpp, angle, false);
     reflowStatic('ochar' + actualIdx, charOpp, getCharTex(player.character), scaleOpp, angle, _slidingC);
-    registerVeraPortrait(charOpp, player, getCharTex);
+    registerVeraPortrait(charOpp, player, getCharTex, 'ochar' + actualIdx, actualIdx);
 
     if (player.role === "Sheriff") {
         let star = gameScene.add.image(
@@ -1516,7 +1527,7 @@ function drawMyArea(ctx) {
         // (cíl musí vidět, kdo na něj míří) – sobě ne: já vím, že střílím já, a
         // vlastní portrét načervenalý jako terč jen mate (bug 5).
         // Divák (drawSpectatorPlayer) útočníka obarveného vidí, ten u stolu nesedí.
-        registerVeraPortrait(charImg, me, getCharTex);
+        registerVeraPortrait(charImg, me, getCharTex, null, myIndex);
         // Claus (Fistful) si právě bere kartu pro sebe → moje postava svítí stejně jako
         // postava kohokoli jiného, komu zrovna vybírá.
         if (clausTargetIdx() === myIndex) charImg.setTint(CLAUS_TINT);
