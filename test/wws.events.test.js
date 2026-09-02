@@ -14,6 +14,7 @@ const { cardPlayability, nativePlayInTurn, showdownBangOk, playsAsBang, playsAsM
 const { getActionForCard } = require('../core/cardRules.js');
 const { decideCardClick } = require('../core/selection.js');
 const { decideBotAction } = require('../core/botPolicy.js');
+const { pendingActor } = require('../core/pending.js');
 
 before(() => { console.log = () => {}; });
 
@@ -321,6 +322,35 @@ test('Madam Zuzana: 2 zahrané karty → −1 život (klik na životy)', () => {
     g.takeDynamiteHit(0);
     assert.equal(g.players[0].health, 3);
     assert.equal(g.currentPlayerIndex, 1, 'teprve teď je na tahu další hráč');
+});
+
+// Bug 25: penalizace patří hráči, jehož tah KONČÍ – vyhodnotí se tedy dřív, než se tah
+// posune na šerifa a odkryjí se karty událostí. Kdyby to bylo obráceně, klient by po
+// celou cinematiku odkrývání držel stav, ve kterém se čeká na předchozího hráče (svítil
+// by oranžově), zatímco animace už hlásí na tahu šerifa.
+test('Madam Zuzana: penalizace je PŘED odkrytím karty události (a tah se zatím nehne)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
+    g.highNoonCardData = hnData;
+    g._setupEventDeck({ expansions: { high_noon: true } });
+    g._sheriffTurns = 1;                 // příští šerifův tah už kartu odkryje
+    for (let k = 0; k < 20; k++) topDeck(g, Suits.CLUBS);
+    g.currentPlayerIndex = 2;            // poslední hráč v kole, za ním je zase šerif
+    g.players[2]._playedThisTurn = 0;
+
+    g.tryEndTurn();
+    assert.equal(g.phase, 'DYNAMITE_DAMAGE');
+    assert.equal(g.pendingDynamiteDamage.playerIdx, 2);
+    assert.equal(g.currentPlayerIndex, 2, 'tah se zatím neposunul');
+    assert.equal(g.activeEvent, null, 'karta události se ještě neodkryla');
+    assert.ok(!g._pendingHighNoonReveal, 'a nemá se ani co animovat');
+
+    g.takeDynamiteHit(2);
+    assert.equal(g.currentPlayerIndex, 0, 'teprve teď je na tahu šerif');
+    assert.ok(g.activeEvent, 'a teprve teď se odkryla karta události');
+    assert.equal(g._pendingHighNoonReveal.playerIdx ?? 0, 0);
+    // Nikdo nezůstal viset jako „čeká se na něj" – klient tedy nemá koho svítit oranžově.
+    const pa = pendingActor(g);
+    assert.ok(!pa || pa.idx === 0, 'čeká se už jen na šerifa');
 });
 
 test('Madam Zuzana: 3 zahrané karty → bez penalizace', () => {

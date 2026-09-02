@@ -2053,11 +2053,19 @@ function _playCardAnim(data) {
             // celé cinematice (fronta), takže hráče na tahu přepneme rovnou teď – jinak
             // po celou dobu odkrývání svítí ten předchozí.
             if (data.playerIdx !== undefined && state) {
+                // Přeskočil-li se tah na JINÉHO hráče, je všechno, na co čekal ten
+                // předchozí, hotové – jen to k nám ještě nedorazilo (stav čeká ve frontě
+                // za cinematikou). Fáze se proto srovná na PLAY nového hráče na tahu:
+                //   • jinak by `pendingActor` pořád ukazoval na předchozího hráče a ten
+                //     by po celou cinematiku svítil oranžově „čeká se na něj" (odhoz nad
+                //     limit, zásah Madam Zuzany / Roubíku, sejmutí Vendety…),
+                //   • a novému hráči na tahu by ruka zůstala šedá (isPlayTurn se ptá na
+                //     fázi), takže by se karty rozsvítily až po dojezdu cinematiky.
+                // Karta Divokého západu se otáčí UPROSTŘED tahu (zahraný Dostavník/Wells
+                // Fargo), tam se tah neposunul a čekající rozhodnutí platí dál – proto se
+                // fáze srovnává jen při skutečné změně hráče na tahu.
+                if (data.playerIdx !== state.currentPlayerIndex) state.phase = 'PLAY';
                 state.currentPlayerIndex = data.playerIdx;
-                // Zbylá fáze DISCARD po předchozím hráči (dobíral odhoz nad limit) by
-                // novému hráči na tahu obarvila ruku „odhoď kartu" – tah už ale skončil.
-                // Žádný přechodový trigger v _applyRoomUpdate se o DISCARD neopírá.
-                if (state.phase === 'DISCARD') state.phase = 'PLAY';
                 App.blockInput = true;
             }
             if (!gameScene.textures.exists(faceTex) || !slot) { renderUI(); break; }   // art se ještě nedotáhl
