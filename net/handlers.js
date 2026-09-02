@@ -2360,9 +2360,23 @@ function _playCardAnim(data) {
                 animateDrawToMyHand(data.toPlayerIdx, data.cardId, discard.x, discard.y, { faceUp: true, duration: 400 })) {
                 break;
             }
-            const handPos = getPlayerHandPos(data.toPlayerIdx);
-            animateCard(discard.x, discard.y, handPos.x, handPos.y, 'card_back', 400, null,
-                { startScale: pileScale(), endScale: sideScale(data.toPlayerIdx, 'hand') });
+            // Cíl = KONCOVÝ slot jeho vějíře (ne střed ruky) a karta se cestou dotočí
+            // z orientace odhozu (0°) do orientace jeho místa (bok ±90°, protější 180°) –
+            // jinak dosedla do bočního vějíře „naležato". exactAngle: u protějšího hráče
+            // by nearestCardAngle rotaci o 180° zrušil.
+            const _jpLen = state?.players?.[data.toPlayerIdx]?.hand?.length ?? 0;
+            const handPos = getHandSlotPos(data.toPlayerIdx, _jpLen, _jpLen + 1);
+            const _jpAngle = sideAngle(data.toPlayerIdx);
+            // Z odhozu je karta veřejná; do skryté ruky se za letu překlopí na rub.
+            if (hideIntoHand(data.toPlayerIdx)) {
+                animateCardFlip(discard.x, discard.y, handPos.x, handPos.y, 'card_back', getCardTex(data.cardId),
+                    { flip: true, reverse: true, startAngle: 0, endAngle: _jpAngle,
+                      startScale: pileScale(), endScale: sideScale(data.toPlayerIdx, 'hand'), duration: 400 });
+            } else {
+                animateCard(discard.x, discard.y, handPos.x, handPos.y, getCardTex(data.cardId), 400, null,
+                    { startAngle: 0, endAngle: _jpAngle, exactAngle: true,
+                      startScale: pileScale(), endScale: sideScale(data.toPlayerIdx, 'hand') });
+            }
             break;
         }
         case 'ragtime_steal': {
