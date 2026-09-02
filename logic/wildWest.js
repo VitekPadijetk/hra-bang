@@ -330,6 +330,10 @@ const WildWestMixin = {
     // ne jen když karta platí – přijde-li Zuzana uprostřed tahu, počítají se i karty
     // zahrané předtím (FAQ Q02).
     //
+    // „Zahrát kartu“ = karta opustila RUKU. Počítá se tedy i vyložení modré karty, zbraně
+    // a zelené karty, přestože do odhozu nejdou; naopak AKTIVACE zelené karty ze stolu se
+    // nepočítá – ta karta se zahrála už tehdy, když se vykládala (viz opts.fromBoard).
+    //
     // Gate sedí úplně nahoře v `nextTurn` (logic.js), PŘED Vendetou (Fistful): pořadí na
     // konci tahu je fáze 3 (odhoz nad limit) → Zuzana → Vendeta → nový tah. Do nextTurn
     // se chodí dvěma cestami (tryEndTurn i discardCard), takže by gate v tryEndTurn minul
