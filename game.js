@@ -117,8 +117,13 @@ function eventSlot(which, on) {
     const slots = eventPileSlots(L, d.hn, d.ff, d.wws);
     const s = slots[which];
     if (!s) return null;
+    // Přídavek „o řadu víc" patří JEN sloupcům srovnaným nad sebe (High Noon + Fistful):
+    // ty se při hokynářství musí uhnout i řadě rozdaných karet. Divoký západ leží vlevo
+    // v jedné řadě s balíčky, takže se zvedá přesně jako ony – jinak vyjel o 45 px výš
+    // než zbytek stolu (bug 43).
+    const stacked = slots.stacked && which !== 'wws';
     return { deckX: s.deckX, activeX: s.activeX,
-             y: s.y - eventPileLift(L, App.storePileLiftY || 0, slots.stacked) };
+             y: s.y - eventPileLift(L, App.storePileLiftY || 0, stacked) };
 }
 // Textury balíčku událostí: 'hn_<art>' / 'ff_<art>' / 'wws_<art>',
 // rub 'hn_back' / 'ff_back' / 'wws_back'.
