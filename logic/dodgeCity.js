@@ -229,7 +229,9 @@ const DodgeCityMixin = {
         const discardAndTrack = () => {
             player.board.splice(idx, 1);
             this.deck.discard(card);
-            this._trackCard(playerIdx, card.type);
+            // Madam Zuzana (Divoký západ): aktivace ZE STOLU není zahrání karty – zelená
+            // karta se zahrála už tehdy, když se vykládala z ruky (viz _trackCard).
+            this._trackCard(playerIdx, card.type, { fromBoard: true });
         };
 
         // Bang-efekt zelené (Pepperbox/Puška na bizony/Nůž/Derringer/Houfnice).

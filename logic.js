@@ -543,9 +543,14 @@ class GameState {
     // když karta platí, protože přijde-li Zuzana uprostřed tahu, počítají se i karty
     // zahrané předtím (FAQ Q02). Odhozy (Ruská ruleta, limit na konci tahu) ani cena
     // „odhoď další kartu" sem nechodí, takže se do počtu samy nezapočítají.
-    _trackCard(playerIdx, cardType) {
+    //
+    // Zuzaně se ale počítá jen ZAHRÁNÍ KARTY Z RUKY – a to i tehdy, když karta zůstane
+    // ležet na stole (modrá, zbraň, zelená). Aktivace zelené karty ZE STOLU se nepočítá:
+    // ta karta už zahraná byla, ze hry se jen odhazuje. Volající to řekne `opts.fromBoard`;
+    // do statistik jde jedno i druhé.
+    _trackCard(playerIdx, cardType, opts = {}) {
         const p = this.players[playerIdx];
-        if (p) p._playedThisTurn = (p._playedThisTurn || 0) + 1;
+        if (p && !opts.fromBoard) p._playedThisTurn = (p._playedThisTurn || 0) + 1;
         const s = p?.stats;
         if (!s) return;
         s.cardsUsed[cardType] = (s.cardsUsed[cardType] || 0) + 1;

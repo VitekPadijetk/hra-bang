@@ -343,6 +343,42 @@ test('Madam Zuzana: počítadlo běží i před jejím příchodem (FAQ Q02)', (
     assert.equal(g.players[0].health, hp);
 });
 
+test('Madam Zuzana: vyložení modré karty i zbraně se počítá jako zahraná karta', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
+    const barrel = give(g, 0, CardType.BARREL, { name: 'Barel' });
+    g.playCard(barrel);
+    assert.equal(g.players[0]._playedThisTurn, 1, 'modrá karta z ruky');
+    const scope = give(g, 0, CardType.EQUIPMENT, { name: 'Dalekohled' });
+    g.playCard(scope);
+    assert.equal(g.players[0]._playedThisTurn, 2);
+    const gun = give(g, 0, CardType.WEAPON, { name: 'Winchester', props: { range: 5 } });
+    g.playCard(gun);
+    assert.equal(g.players[0]._playedThisTurn, 3, 'zbraň taky opustila ruku');
+    g.tryEndTurn();
+    assert.notEqual(g.phase, 'DYNAMITE_DAMAGE');
+});
+
+test('Madam Zuzana: druhá stejná modrá karta se nezapočítá (na stůl nedosedne)', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
+    board(g, 0, CardType.BARREL, { name: 'Barel' });
+    const dup = give(g, 0, CardType.BARREL, { name: 'Barel' });
+    g.playCard(dup);
+    assert.equal(g.players[0]._playedThisTurn || 0, 0);
+    assert.equal(g.players[0].hand.length, 1, 'karta zůstala v ruce');
+});
+
+test('Madam Zuzana: zelená se počítá při vyložení, ne při aktivaci ze stolu', () => {
+    const g = mkEv([{ role: 'Sheriff', health: 1 }, {}, {}], 'MADAM_ZUZANA');
+    const canteen = give(g, 0, CardType.CANTEEN, { name: 'Čutora', props: { green: true, activate: 'heal_self' } });
+    g.playCard(canteen);
+    assert.equal(g.players[0]._playedThisTurn, 1, 'vyložení z ruky');
+    const onBoard = g.players[0].board[0];
+    onBoard._playedTurn = -1;                    // jako by ležela z minulého tahu
+    g.activateGreenCard(0, onBoard.id);
+    assert.equal(g.players[0].health, 2, 'efekt proběhl');
+    assert.equal(g.players[0]._playedThisTurn, 1, 'aktivace ze stolu není zahrání karty');
+});
+
 test('Madam Zuzana: počítadlo patří jednomu tahu (další hráč začíná od nuly)', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'MADAM_ZUZANA');
     g.players[0]._playedThisTurn = 3;

@@ -98,9 +98,17 @@ const PlayMixin = {
 
         const effect = cardEffects[card.type];
         if (effect) {
+            const boardBefore = player.board.length;
+            const weaponBefore = player.weapon.id;
             const shouldDiscard = effect();
             if (shouldDiscard === false) {
-                // Karta nebyla sehrána
+                // Karta nebyla sehrána – NEBO se vyložila na stůl (modrá karta, zbraň),
+                // což do odhozu nevede, ale zahrání to je: Madam Zuzaně (Divoký západ)
+                // se počítá každá karta, která opustila ruku. Poznají se podle toho, že
+                // po efektu přibyla na stole / vyměnila se zbraň.
+                if (player.board.length > boardBefore || player.weapon.id !== weaponBefore) {
+                    this._trackCard(this.currentPlayerIndex, card.type);
+                }
             } else {
                 this._trackCard(this.currentPlayerIndex, card.type);
                 // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty.
