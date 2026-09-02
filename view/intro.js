@@ -291,9 +291,10 @@ function _introOppSlots(idx, health) {
     // Dráha životů (core/layout.js): nad 5 životů leží v ose pohybu portrétu DRUHÁ
     // karta a dvojice tvoří jednu dráhu o 10 slotech. Kompaktní sloupec (mobil) je
     // široký jednu kartu → zůstává jednokartový a portrét se zastaví na 5. slotu.
-    // maxHealth ze stavu; než ho server dopočítá, drží se předaných životů.
-    const oppMaxHp = (state?.players?.[idx]?.maxHealth) || health || 4;
-    const track = livesTrack(oppMaxHp, oppScl, side === 'compact' ? 1 : 2);
+    // Řídí se ZOBRAZENÝMI životy, ne maxHealth: druhá karta se vykládá až od 6 (bug 56)
+    // a v intru navazující hry maxHealth ve stavu stejně ještě není – přeživší ho
+    // dostane až s potvrzením postavy, takže by karta chyběla i tam, kde patří (bug 65).
+    const track = livesTrack(Math.max(1, Number(health) || 0), oppScl, side === 'compact' ? 1 : 2);
     const hpSlot = livesSlot(track, health);
 
     // Jmenovka soupeře – PŘESNĚ na herní pozici (drawOpponents): x = anchor.x,
@@ -700,9 +701,11 @@ function MY_LIVES_SCALE() { return currentLayout().scaleMe; }                   
 // charY = MY_LIVES_Y() - bulletH * health, bulletH = 500*0.36*0.93/5 = 33.48
 
 // Druhá karta MOJÍ dráhy životů (postavy nad 5 životů – Divoký západ) leží o 5 nábojů
-// výš; null = dráha je jednokartová, tedy dnešní stav.
-function MY_LIVES2_Y(maxHealth) {
-    const t = livesTrack(maxHealth, MY_LIVES_SCALE());
+// výš; null = dráha je jednokartová, tedy dnešní stav. Řídí se ZOBRAZENÝMI životy, ne
+// maxHealth (livesCardsShown, bug 56) – v intru navazující hry navíc maxHealth ve stavu
+// ještě nemusí být dopočítané, přeživší ho dostane až s potvrzením postavy (bug 65).
+function MY_LIVES2_Y(health) {
+    const t = livesTrack(health, MY_LIVES_SCALE());
     return t.cards > 1 ? MY_LIVES_Y() - t.cardOff : null;
 }
 
@@ -770,10 +773,10 @@ function _introPlaceSurvivors() {
             s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: MY_LIVES_Y(),
                 scale: MY_LIVES_SCALE(), depth: 21, key: 'lives:' + sv.idx,
                 rl: { kind: 'myLives' } });
-            const my2Y = MY_LIVES2_Y(p.maxHealth);
+            const my2Y = MY_LIVES2_Y(sv.health);
             if (my2Y != null) s.placedCards.push({ tex: 'lives', x: MY_LIVES_X(), y: my2Y,
                 scale: MY_LIVES_SCALE(), depth: 21, key: 'lives2:' + sv.idx,
-                rl: { kind: 'myLives2', hp: p.maxHealth } });
+                rl: { kind: 'myLives2', hp: sv.health } });
             s.placedCards.push({ tex: charTex, x: MY_LIVES_X(), y: _myCharY(sv.health),
                 scale: MY_LIVES_SCALE(), depth: 23, key: 'char:' + sv.idx,
                 rl: { kind: 'myChar', hp: sv.health } });
@@ -799,6 +802,31 @@ function _introPlaceSurvivors() {
         }
         s.placedForIdx.push(sv.idx);
     });
+}
+
+// Druhá karta dráhy životů se vykládá až od 6 životů (livesCardsShown, core/layout.js),
+// takže v intru musí přibýt / zmizet přesně ve chvíli, kdy se změní ZOBRAZENÉ životy:
+// přeživší si nechá postavu (Big Spencer nastupuje na 9) nebo se odhalí role a šerifovi
+// přibude život (Gary Looter 5 → 6). Bez toho se karta objevila až se startem hry (bug 65).
+function _introSyncLives2(idx, health) {
+    const s = _introState;
+    if (!s || !gameScene) return;
+    const isMe = idx === _introMyIdx();
+    const sl = isMe ? null : _introOppSlots(idx, health);
+    const y2 = isMe ? MY_LIVES2_Y(health) : (sl.lives2X != null ? sl.lives2Y : null);
+    const existing = _introFindPlaced('lives2:' + idx);
+    if (y2 == null) { if (existing) _introFadeAwayPlaced('lives2:' + idx); return; }
+    if (existing) {
+        existing.x = isMe ? MY_LIVES_X() : sl.lives2X;
+        existing.y = y2;
+        if (existing.rl) existing.rl.hp = health;
+        return;
+    }
+    s.placedCards.push(isMe
+        ? { tex: 'lives', x: MY_LIVES_X(), y: y2, scale: MY_LIVES_SCALE(), depth: 21,
+            key: 'lives2:' + idx, rl: { kind: 'myLives2', hp: health } }
+        : { tex: 'lives', x: sl.lives2X, y: sl.lives2Y, scale: sl.scale, angle: sl.angle,
+            depth: 21, key: 'lives2:' + idx, rl: { kind: 'oppLives2', idx, hp: health } });
 }
 
 // Moje postava vyletí ze stolu doprostřed a zvětší se – pak přijdou tlačítka ANO/NE.
@@ -879,6 +907,7 @@ function _confirmKeepChoice(keep) {
                 const entry = _introFindPlaced('char:' + myIdx);
                 if (entry) { entry.y = toY; entry.hidden = false;
                              if (entry.rl) entry.rl.hp = baseHealthForCharacter(sv.char); }
+                _introSyncLives2(myIdx, baseHealthForCharacter(sv.char));
                 renderUI();
             }
         });
@@ -956,6 +985,7 @@ function _introKeepAnimateOther(idx, keep) {
                 const e = _introFindPlaced('char:' + idx);
                 if (e) { e.x = to.charX; e.y = to.charY; e.hidden = false;
                          if (e.rl) e.rl.hp = baseHealthForCharacter(sv.char); }
+                _introSyncLives2(idx, baseHealthForCharacter(sv.char));
                 renderUI();
             }
         });
@@ -994,6 +1024,9 @@ function _introSheriffReveal(idx) {
             if (sp?.active) sp.destroy();
             const e = _introFindPlaced('char:' + idx);
             if (e) { e.x = toX; e.y = toY; e.hidden = false; if (e.rl) e.rl.hp = health; }
+            // Šerifův +1 může být právě ten život, od kterého se dráha dělí na dvě karty
+            // (Gary Looter 5 → 6) – druhá musí přibýt teď, ne až se startem hry (bug 65).
+            _introSyncLives2(idx, health);
             renderUI();
         }
     });
