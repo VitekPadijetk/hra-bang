@@ -2409,7 +2409,18 @@ function drawMyArea(ctx) {
             const hasActiveAbility =
                 (hasAbility(me, "Chuck Wengam") && me.health > 1) ||
                 (hasAbility(me, "Doc Holyday") && !me._docUsed && me.hand.length >= 2) ||
-                (hasAbility(me, "José Delgado") && (me._joseUses || 0) < 2 && me.hand.some(isBlueCard));
+                (hasAbility(me, "José Delgado") && (me._joseUses || 0) < 2 && me.hand.some(isBlueCard)) ||
+                // Fistful – Uncle Will: 1×/tah libovolná karta jako Hokynářství. Dokud
+                // schopnost nevyužil, má co hrát a „Ukončit tah" blikat nesmí (bug 31).
+                (hasAbility(me, "Uncle Will") && me._willUsedTurn !== state.turnId && me.hand.length > 0) ||
+                // Divoký západ – Flint Westwood (výměna karty za dvě) a Lee Van Kliff
+                // (zopakování efektu hnědé karty); obojí je tlačítko ve slotu schopnosti.
+                (hasAbility(me, "Flint Westwood") && me._flintUsedTurn !== state.turnId && me.hand.length > 0 &&
+                    state.players.some((pl, i) => i !== myIndex && isInPlay(pl) && (pl.hand || []).length > 0)) ||
+                !!lvkOffer(state, me, myIndex) ||
+                // Divoký západ – Lady Růže z Texasu: výměna míst není schopnost postavy,
+                // ale je to hratelná akce ve stejném slotu.
+                roseSwapOffer(state, myIndex) != null;
             const hasPlayable = sidCanHeal || hasPlayableGreen || hasActiveAbility || me.hand.some((card, idx) => {
                 const p = getCardPlayability(card, idx);
                 return p !== false;
