@@ -45,7 +45,7 @@ I — Zúčtování a Právo západu   26, 30, 32, 34, 36, 55, 66   HOTOVO
       core/playability.js, core/selection.js, view/board.js (slot tlačítek), logic/fistful.js
 J — letící karty a otáčení     28, 29, 37, 45, 49, 59   HOTOVO
       net/handlers.js, server/anim.js
-K — cinematiky Divokého záp.   54, 60, 61
+K — cinematiky Divokého záp.   54, 60, 61   HOTOVO
       core/wwsAnim.js, net/handlers.js, server/anim.js, server/rooms.js (redakce rolí)
 L — Greygory Deck              40, 41
       view/board.js, positions.js, core/layout.js, net/handlers.js, core/wwsAnim.js, logic/wildWest.js
@@ -101,12 +101,9 @@ OTEVŘENÉ
 - 51 dejme teda efekt divokého západu ať se spusí až PO líznutí 2/3 karet z Dost/WF
 - 52 při 8 hráčích, hráči nahoře - ten co je vlevo a vpravo by měli být více k hráči nahoře uprostřed, zasahují do hráče vlevo/vpravo nahoře pokud mají vyloženo 4 a více karet (posun stačí tak o 1/2 šířky karty)
 - 53 když se rozdávají role, tak počkej ne jen na všechny hráče jak kliknou OK, ale i na to až se role rozdá i všem botům (takhle může začít míchání postav když se ještě rozdávají role)
-- 54 u zuřivé Dorothy to otočení karet pokud nemá udělejme plynulé přetočení tam i pak zpátky (jako u sacagaway)
 - 56 když posatva co má 6 a více životů klesne na 5 životů, druhá karta životů plynule zmizí, naopak když by se měl vyléčit z 5 na 6, tak se zase plynule objeví (akorát to zbytečně zabírá místo)
 - 57 pedro ramierz pokud si vezmu první kartu z balíčku a ne z odhozu, tak by v moment kliknutí na balíček mělo zmizet zvýraznění a klikatelnost odhozu, teď na něj jde kliknout a jsou tam pak vizuálně chyby
 - 58 u lady růže i zuřivé doroty dáme limit 1x za tah pro každého
-- 60 když se rozdají role kvůli hřbitovu, chvilku tam jde vidět ta odhalená role (asi ta stará), až pak se objeví rubová karta
-- 61 helena zontero ta animace by chtěla zlepšít - všechny karty rolí se naskládají do balíčku doprostřed ten se zamíchá a pak se vše rozdá jako na začátku hry a všichni to potvrdí (během té doby u hráčů není vidět role)
 - 62 když je ruská ruleta, požehnání a všichni mají barel - její efekt zruš poté, co všichni ten barel použijí (ale jen když je požehnání - jelo by to do nekonečna)
 - 63 hvězdička šerifa a karta zuřivá doroty, a názvy hráčů by neměla překrývat karty u výběru zuřivé doroty
 - 64 u zuřivé doroty nemůžu poručit hráčům zahrát bang kteří už v tom kole hráli (hra si asi myslí že 1bang/tah), ale ten limit už neplatí, takže by se měli ukazovat všichni
@@ -116,6 +113,10 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 54 u zuřivé Dorothy to otočení karet pokud nemá udělejme plynulé přetočení tam i pak zpátky (jako u sacagaway) → oprava: b48ba36 (je to táž situace jako příchod/odchod Sacagaway, jen na jediném vějíři – použije se beze změny její vlna přetáčení; výdrž se počítá až od dotočení)
+- 60 když se rozdají role kvůli hřbitovu, chvilku tam jde vidět ta odhalená role (asi ta stará), až pak se objeví rubová karta → oprava: 02058d7 (sprity se uklízely pevným časovačem do stejného okamžiku, ve kterém teprve dosedal nový stav – teď se úklid věší přímo na jeho commit, onNextState)
+- 61 helena zontero ta animace by chtěla zlepšít - všechny karty rolí se naskládají do balíčku doprostřed ten se zamíchá a pak se vše rozdá jako na začátku hry a všichni to potvrdí (během té doby u hráčů není vidět role) → oprava: eb18f7a (veřejná půlka se hraje za VŠECHNY míchané role, ne jen za ty ležící na stole – neviditelné přiletí zpoza okraje jeviště; nahlédnutí dostalo tlačítko OK a hra čeká, až potvrdí všichni)
 
 - 29 když se karty odhozené dají vulture samovi, jdou vidět jako odhalené, ne jako rubové, někde se ztatilo otočení. Insta se otočí jak skončí odhalení role → oprava: c2c55cb (do cizí ruky se stage-uje placeholder bez ID, ne skutečná karta – deska kreslí líc podle ID; nový handFaceUp řídí i překlopení za letu)
 - 37 když letí karta 2 karta k black jackovi, neotočí se po cestě → oprava: 9ccb1cb (překlopení proběhlo, ale při dosednutí si klient vložil do cizí ruky SKUTEČNOU kartu a ta se hned odkryla; teď placeholder + flip podle hideIntoHand)
