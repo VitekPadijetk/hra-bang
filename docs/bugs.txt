@@ -49,9 +49,10 @@ K — cinematiky Divokého záp.   54, 60, 61   HOTOVO
       core/wwsAnim.js, net/handlers.js, server/anim.js, server/rooms.js (redakce rolí)
 L — Greygory Deck              40, 41   HOTOVO
       view/board.js, positions.js, core/layout.js, net/handlers.js, core/wwsAnim.js, logic/wildWest.js
-M — deska: zvýraznění a míry   31, 42, 43, 44, 50, 52, 56, 57, 65
-      view/board.js, core/layout.js, positions.js (+ logic/highNoon.js u 44,
-      view/intro.js u 65)
+M — deska: zvýraznění a míry   31, 42, 43, 44, 50, 52, 56, 57, 65   HOTOVO
+      view/board.js, core/layout.js, positions.js (+ game.js u 43, view/intro.js
+      u 42 a 65). Bug 44 nakonec logic/highNoon.js nepotřeboval – server rozhodoval
+      správně, mýlil se klient.
 N — okna → klikání na desce    27, 35, 63
       view/screens.js, view/board.js, game.js, logic/wildWest.js, logic/draw.js
 O — Divoký západ: pravidla     38, 47, 48, 51, 58, 64
@@ -84,33 +85,34 @@ OTEVŘENÉ
 - 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě)
 - 25 když začíná HN/FF tak se někdy ukazuje ten předchozí hráč oranžově jakoby se na něho čekalo, ale už je na tahu de facto šerif. Taky když jsem tento poslední hráč, tak se mi zeleně ukáží karty až po HN/FF do té doby pořád šedé. Taky byl problém, že madam zuzana posledního hráče se vyhodnotila až po jejich odhalení
 - 27 veře custer se na obrazovku nevejde 7 postav vedle sebe, pokud se hraje v 8, uděláme to tak, že se jí zvýrazní postavy normálně ve hře a ona si vybere, ne žádné special okno (prostě zvýraznění třeba jak když na někoho střílím)
-- 31 u uncla willa by nemělo svítit tlačítko ukončit tah když může použít svou schopnost
 - 33 pokud duch ukončí hru během města duchů, nejedná se o živou postavu a nemá tak nárok na zachování postavy v další hře
 - 35 u miláčka valentýna bych na všechny ty karty měl kliknout já, ne automatika
 - 38 madam zuzana - taky se počítá vyložení modré/zelené karty jako zahrání karty - naopak použití zelené karty ze stolu se nepočítá jako zahrání (už zahrána byla) - zahrání karty je de facto použití z ruky
 - 39 když se snímá karta a je poslední z balíčku a pak se míchá, tak v odhozu zůstane karta co tam byla (a na ni se dá ta ze snímání), a jsou tam tak dvě, měla by tam být jen ta ze snímání a ta stará se měla též zamíchat (chvíli tak v balíčku nebude nic)
-- 42 big spencer, ano zasahuje do balíčku, vyřešíme to tak (zatím řešíme jen můj pohled), že celý blok BS + 2 karty životů bude menší (zarovnaný dole), tak aby se tam vešel a když bude spencer přicházet o životy, bude se ten blok zase plynule zvětšovat, až se tam vejde, naopak když získá, tak se zase zmenší.
-- 43 když je hokynářství a balíčky ze posunou nahoru, minimálně divoký západ se posune víc než ostatní balíčky, zařiď ať se posunou stejně
-- 44 u daltonů mi svítil stetson jako že jde odhodit, lze ale jen modrou, nevím jestli to tak je i u dalších zelených karet, každopádně se pak vrátila a já musel odhodit zbraň
 - 46 v debugu se nerozlišuje, kdo píše do chatu
 - 47 když ztracím život kvůli roubíku, ať to přeruší ostatní akce (pokud teda někdo zrovna nemá ztratit život, tím pádem hned po tom, mezitím se tomu hráči zablokuje chat, aby nemohl napsat 9 zpáv a instakillnout se), budu muset kliknout na životy abych to ubral (pivo, pokud to jde, použít mohu) 
 - 48 když hráč zemře kvůli roubíku, role se odhalí nějak divně až pozdě, viz bug 47
-- 50 když se vera custer postava + životy posouvá (že si vykládá karty) tak to tam divně bliká když tam jde vidět její vybraná postava
 - 51 dejme teda efekt divokého západu ať se spusí až PO líznutí 2/3 karet z Dost/WF
-- 52 při 8 hráčích, hráči nahoře - ten co je vlevo a vpravo by měli být více k hráči nahoře uprostřed, zasahují do hráče vlevo/vpravo nahoře pokud mají vyloženo 4 a více karet (posun stačí tak o 1/2 šířky karty)
 - 53 když se rozdávají role, tak počkej ne jen na všechny hráče jak kliknou OK, ale i na to až se role rozdá i všem botům (takhle může začít míchání postav když se ještě rozdávají role)
-- 56 když posatva co má 6 a více životů klesne na 5 životů, druhá karta životů plynule zmizí, naopak když by se měl vyléčit z 5 na 6, tak se zase plynule objeví (akorát to zbytečně zabírá místo)
-- 57 pedro ramierz pokud si vezmu první kartu z balíčku a ne z odhozu, tak by v moment kliknutí na balíček mělo zmizet zvýraznění a klikatelnost odhozu, teď na něj jde kliknout a jsou tam pak vizuálně chyby
 - 58 u lady růže i zuřivé doroty dáme limit 1x za tah pro každého
 - 62 když je ruská ruleta, požehnání a všichni mají barel - její efekt zruš poté, co všichni ten barel použijí (ale jen když je požehnání - jelo by to do nekonečna)
 - 63 hvězdička šerifa a karta zuřivá doroty, a názvy hráčů by neměla překrývat karty u výběru zuřivé doroty
 - 64 u zuřivé doroty nemůžu poručit hráčům zahrát bang kteří už v tom kole hráli (hra si asi myslí že 1bang/tah), ale ten limit už neplatí, takže by se měli ukazovat všichni
-- 65 gary looter když si nechá svou postavu na navazující hru, v té animaci, kdy mu přibude život na šerifa se neobjeví ta druhá karta životů (objeví se až se startem hry)
 
 HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 31 u uncla willa by nemělo svítit tlačítko ukončit tah když může použít svou schopnost → oprava: edf9be2 (hasActiveAbility zrcadlí tlačítka ve slotu schopnosti, ale znalo jen Chucka, Doca a Josého – přibyl Uncle Will a s ním Flint Westwood, Lee Van Kliff i výměna míst Lady Růže z Texasu)
+- 42 big spencer, ano zasahuje do balíčku, vyřešíme to tak (zatím řešíme jen můj pohled), že celý blok BS + 2 karty životů bude menší (zarovnaný dole), tak aby se tam vešel a když bude spencer přicházet o životy, bude se ten blok zase plynule zvětšovat, až se tam vejde, naopak když získá, tak se zase zmenší. → oprava: 6a66d55 (nový livesFitScale/myLivesGeom zmenší CELÝ blok, zarovnaný dolů; strop drží livesTopY v profilu rozložení – na desktopu spodek odhozu, na mobilu spodek kompaktní řady. Do 7 životů je to no-op), ce675bf (stejná velikost i v intru, ať se blok se startem hry neskokne)
+- 43 když je hokynářství a balíčky ze posunou nahoru, minimálně divoký západ se posune víc než ostatní balíčky, zařiď ať se posunou stejně → oprava: 7e02850 (přídavek „o řadu víc" patří jen sloupcům srovnaným nad sebe, ale stacked se bral z celé sady slotů – Divoký západ leží v jedné řadě s balíčky)
+- 44 u daltonů mi svítil stetson jako že jde odhodit, lze ale jen modrou, nevím jestli to tak je i u dalších zelených karet, každopádně se pak vrátila a já musel odhodit zbraň → oprava: 92a2a4c (výběr Daltonů je postavený stejně jako Ragtime Lee Van Kliffa na vlastní stůl, takže ho vyzvedla i jeho větev – a ta rozsvítí všechny karty)
+- 50 když se vera custer postava + životy posouvá (že si vykládá karty) tak to tam divně bliká když tam jde vidět její vybraná postava → oprava: f01226e (portrét jede za pohybu PLOVOUCÍM spritem a statický je skrytý; do App.veraPortraits se registroval jen ten statický, takže problikávání zamrzlo)
+- 52 při 8 hráčích, hráči nahoře - ten co je vlevo a vpravo by měli být více k hráči nahoře uprostřed, zasahují do hráče vlevo/vpravo nahoře pokud mají vyloženo 4 a více karet (posun stačí tak o 1/2 šířky karty) → oprava: 4205bf1 (skupina se středí na kotvě, takže se se 4 kartami roztáhne na obě strany – krajní horní kotvy jdou o půl karty ke střednímu hráči)
+- 56 když posatva co má 6 a více životů klesne na 5 životů, druhá karta životů plynule zmizí, naopak když by se měl vyléčit z 5 na 6, tak se zase plynule objeví (akorát to zbytečně zabírá místo) → oprava: be71b92 (nový livesCardsShown váže kartu na SOUČASNÉ životy; kapacita dráhy zůstává z maxHealth, takže se vzorec pohybu portrétu nemění. Přechod drží App.livesFade, aby přežil překreslení)
+- 57 pedro ramierz pokud si vezmu první kartu z balíčku a ne z odhozu, tak by v moment kliknutí na balíček mělo zmizet zvýraznění a klikatelnost odhozu, teď na něj jde kliknout a jsou tam pak vizuálně chyby → oprava: fa3007f (nabídka se ptala jen stavu, takže mezi klikem a potvrzením serveru odhoz dál svítil – teď se řídí i naklikaným líznutím a klik balíček překreslí hned)
+- 65 gary looter když si nechá svou postavu na navazující hru, v té animaci, kdy mu přibude život na šerifa se neobjeví ta druhá karta životů (objeví se až se startem hry) → oprava: be2536e (maxHealth je v té chvíli ve stavu ještě 4 – přeživší ho dostane až s potvrzením postavy; dráha se v intru řídí zobrazenými životy a _introSyncLives2 kartu přidá v každém okamžiku, kdy se mění)
 
 - 41 postavy u gregory decka nebudeme dávat na místo vybavení, dáme je vedle sebe cca tam jak je tlačítko pro nějakou special akci - to bude mít holt posunuté víc doprava, až za těmi postavami, pro ostatní budou ty postavy (ty karty mohou být lehce menší) jakoby "nad" tedy směrem ke středu od postavy gregory decka vedle sebe. Budou zvětšitelné a budou se posouvat s postavou → oprava: df1aa20 (není to karta ve hře, ale počítadlo schopností – leží vedle portrétu směrem ke středu stolu a jede s ním po nábojích; u mé zóny si bere slot tlačítka schopnosti, které jí uhne doprava. Kompaktní profil (mobil) na tu geometrii místo nemá, tam zůstává na konci pásu)
 - 40 u gregory decka bych si představoval nějakou animaci, že přiletí zase zhora balíček (čítající jen postavy, co si gregory může vzít), (pokud už měl) tak se tam přidají jeho postavy (posun + přetočení) a balíček se zamíchá, mu se dají ty dvě nové postavy a balíček hned zase odletí. Pak jak se ukazují jestli chce nechat tak taky ať z těch míst se zvětší a pak případně zmenší zpět → oprava: 4c80b0e (balíček volných karet postav přiletí shora, stávající dvojice se do něj vrátí a přetočí na rub, zamíchá se stávajícím riffle a vypadne z něj nová dvojice; na začátku hry se nehraje, tam karty rozdává intro. Karty nabídky navíc vyrostou ze svých míst a po volbě se tam smrští)
