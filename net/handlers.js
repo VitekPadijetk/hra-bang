@@ -1553,6 +1553,11 @@ const ROLE_PILE_PX = 3;                       // překryv vrstev hromádky rolí
 function ROLE_CX() { return (stageLeft() + stageRight()) / 2; }
 function ROLE_CY() { return 470; }
 const ROLE_PILE_SCALE = 0.34;
+// Jak dlouho po dojezdu cinematiky se ještě čeká na nový stav, než se sprity uklidí
+// natvrdo. Stav chodí ZA celou dvojicí animací (roles_reshuffle + role_peek), takže
+// pojistka musí být delší než soukromá půlka – jinak by se spustila dřív než commit
+// a stará odkrytá role by problikla přesně tak, jak se to opravuje.
+const ROLE_CLEANUP_CAP_MS = 12000;
 
 // Kde karta role u daného hráče leží (slot 0 jeho skupiny) a pod jakým úhlem/měřítkem.
 function _roleSlotView(pid) {
@@ -1654,11 +1659,22 @@ function playRolesReshuffle(data) {
     });
 
     // 4) úklid: sprity pryč a sloty se kreslí zase staticky (rubem – role je tajná).
-    gameScene.time.delayedCall(dealStart + D.dealMs + D.tailMs, () => {
+    // Uklízí se AŽ NA DOSEDNUTÍ NOVÉHO STAVU, ne na konec animace. Pod sprity totiž leží
+    // pořád ten starý – a v něm je role vyřazených hráčů ještě ODKRYTÁ (`_roleRevealed`
+    // shodí až přerozdání, viz redactState v server/rooms.js). Původní `delayedCall` na
+    // konec cinematiky se se commitem stavu trefoval do stejného okamžiku, takže na pár
+    // snímků problikla stará odhalená role a teprve pak naskočil rub. Pojistka časem
+    // zůstává: kdyby stav nedorazil (odchod ze hry), sprity by tu jinak zůstaly ležet.
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
         sprites.forEach(spr => { if (spr && spr.active) spr.destroy(); });
         App.roleShuffleHide = new Set();
         renderUI();
-    });
+    };
+    onNextState(cleanup);
+    gameScene.time.delayedCall(dealStart + D.dealMs + D.tailMs + ROLE_CLEANUP_CAP_MS, cleanup);
 }
 
 // „Každý hráč se podívá na svou novou roli." Event chodí všem se STEJNÝM `playerIdxs`
@@ -2919,9 +2935,22 @@ socket.on('card_animation', (data) => {
     _animQ.pushAnim(() => _playCardAnim(data), _animDurationMs(data), { essential });
 });
 
+// Úklid, který musí proběhnout PŘESNĚ na dosednutí následujícího stavu – ne o poll
+// dřív a ne o poll později. Potřebuje to cinematika, po které se deska kreslí jinak,
+// než jak vypadal stav pod ní (přerozdání rolí: pod sprity leží ještě STARÁ odkrytá
+// role, takže by ji zánik spritů na okamžik odhalil). Fronta animací drží stav za
+// cinematikou, takže stačí navěsit se na jeho commit; volá se ve stejném ticku hned
+// za `_applyRoomUpdate`, tedy bez jediného snímku mezi tím.
+const _afterStateOnce = [];
+function onNextState(fn) { _afterStateOnce.push(fn); }
+function _drainAfterState() {
+    const due = _afterStateOnce.splice(0, _afterStateOnce.length);
+    due.forEach(fn => { try { fn(); } catch (e) { /* úklid nesmí shodit aplikaci stavu */ } });
+}
+
 socket.on('room_update', (payload) => {
     if (!payload) return;
-    _animQ.pushState(() => _applyRoomUpdate(payload));
+    _animQ.pushState(() => { _applyRoomUpdate(payload); _drainAfterState(); });
 });
 
 // Čeká ve frontě ještě něco (další animace nebo neaplikovaný stav)? Používá
