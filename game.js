@@ -2773,7 +2773,14 @@ function renderUI() {
             const { bg } = themeButton(gameScene, bx, btnY, btnW, btnH,
                 `P${i + 1}: ${p.name.replace('Debug', '')}`,
                 { origin: [0, 0], ...themeToggleStyle(isActive), fontSize: '15px',
-                  onClick: isActive ? undefined : () => { App.debugViewAs = i; myIndex = i; renderUI(); } });
+                  onClick: isActive ? undefined : () => {
+                      // Deska se otočí na jiné sedadlo – zahoď domovské pozice klouzání,
+                      // jinak by každá cizí karta přeletěla přes stůl na své nové místo
+                      // (vypadalo to, že karty odlétají i hráči, který je na řadě po mně).
+                      App.debugViewAs = i; myIndex = i;
+                      if (typeof resetBoardSlides === 'function') resetBoardSlides();
+                      renderUI();
+                  } });
             bg.setDepth(1000);
         });
     }

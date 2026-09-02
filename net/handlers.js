@@ -3117,12 +3117,22 @@ function _applyRoomUpdate(payload) {
             }
         });
     }
-    if (state?.isDebug && App.debugViewAs !== undefined && App.debugViewAs !== null) {
+    const _prevViewIdx = myIndex;
+    if (state?.isDebug) {
+        // Debug hra: jeden socket sedí na VŠECH místech, takže mu broadcastRoom pošle
+        // room_update za každé z nich – pokaždé s jiným myIndex. Bez ukotvení se deska
+        // při jednom broadcastu několikrát otočí (a s ní přeskládají všechny karty).
+        // Drž se proto vybraného sedadla; dokud si žádné nevybral, platí to první.
+        if (App.debugViewAs === undefined || App.debugViewAs === null) App.debugViewAs = payload.myIndex ?? 0;
         myIndex = App.debugViewAs;
     } else {
         myIndex = payload.myIndex ?? null;
-        if (!state?.isDebug) App.debugViewAs = null;
+        App.debugViewAs = null;
     }
+    // Změna sedadla, ze kterého se deska kreslí: celý stůl se otočí, ale klouzání karet
+    // (reflowCard) si drží domovské pozice z minulého pohledu – každá cizí karta by tedy
+    // „přeletěla" přes stůl na nové místo. Domovské pozice proto zahoď.
+    if (_prevViewIdx !== myIndex && typeof resetBoardSlides === 'function') resetBoardSlides();
     App.spectating = (myIndex === null);
 
     // Fistful – Ranč: označené karty patří jedné fázi, s odchodem z ní se zahodí (jinak by
