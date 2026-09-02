@@ -81,9 +81,11 @@ const WildWestMixin = {
         this.logEvent('system', { msg: `Divoký západ: balíček událostí (${this.wwsDeck.length} karet)` });
     },
 
-    // Odkrytí karty z balíčku Divokého západu. Volá se z `playCard` (logic/play.js) při
-    // zahrání Dostavníku nebo Wells Farga, PŘED nastavením fáze lízání – efekt karty se
-    // čte nahlas hned a některé karty mění to, co hráč vzápětí uvidí a smí zahrát.
+    // Odkrytí karty z balíčku Divokého západu. Volá se ze závěru fáze lízání (_finishDraw
+    // v logic/draw.js) podle příznaku `wwsFlip`, který na fázi nasadil Dostavník nebo
+    // Wells Fargo v `playCard` (logic/play.js): hráč si nejdřív vezme svoje 2/3 karty
+    // a teprve pak se čte, co se ve městě semlelo – nová událost už tedy nezmění to,
+    // co si právě líznul.
     //
     // Vrací true, když se hra musí na vyhodnocení nově příchozí karty pozastavit
     // (zatím žádná taková není – Helena Zontero přibude ve své fázi).
@@ -115,7 +117,8 @@ const WildWestMixin = {
     },
 
     // Efekty, které se vyhodnotí JEDNOU při příchodu karty do hry. Na rozdíl od High Noonu
-    // a Fistfulu to NEBĚŽÍ v krokovači startu tahu – karta přichází uprostřed cizí fáze 2.
+    // a Fistfulu to NEBĚŽÍ v krokovači startu tahu – karta přichází na konci lízání za
+    // Dostavník / Wells Fargo, tedy uprostřed cizí fáze 2.
     // Vrací true, když se čeká na rozhodnutí hráče (zatím nikdy; Helena Zontero přibude
     // ve své fázi).
     _applyWwsEventOnEnter() {

@@ -313,6 +313,10 @@ const DrawMixin = {
         const isKillReward = this.drawPhaseState.isKillReward;
         const wasStartOfTurn = this.drawPhaseState.isStartOfTurn;
         const isValentine = this.drawPhaseState.isValentine;
+        // Divoký západ: Dostavník / Wells Fargo otáčí kartu událostí až po lízání
+        // (viz playCard). Kdo si líznul, je v `playerIdx` – Zuřivá Doroty umí lízání
+        // poručit, a to i sedadlu, které na tahu není.
+        const wwsFlip = this.drawPhaseState.wwsFlip ? this.drawPhaseState.playerIdx : null;
         this.drawPhaseState.active = false;
         if (isValentine) {
             // Divoký západ – Miláček Valentýn: výměna ruky je KROK STARTU TAHU, ne fáze 1.
@@ -331,6 +335,7 @@ const DrawMixin = {
             this._resumeAfterSpecial();
         } else {
             this.phase = "PLAY";
+            if (wwsFlip !== null) this._flipWwsEvent(wwsFlip);
             this._processSpecialQueue();
             // High Noon – Želízka: po fázi lízání si hráč na tahu volí barvu. Ptáme se až
             // po frontě odložených akcí (na konci lízání bývá prázdná); kdyby si ji fronta

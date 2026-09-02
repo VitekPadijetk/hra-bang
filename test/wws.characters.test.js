@@ -784,12 +784,12 @@ test('Lee Van Kliff: opakovaný Dostavník NEOTOČÍ kartu Divokého západu (Sc
     g._setupWwsDeck({ expansions: { divoky_zapad: true } });
     for (let i = 0; i < 10; i++) g.deck.cards.push(mkCard(CardType.BANG, { name: 'Bang!' }));
     g.playCard(give(g, 0, CardType.STAGECOACH, { name: 'Dostavník' }));
+    // Karta se odkrývá až ZA lízáním (bug 51) – dolízni obě, ať je zase fáze PLAY.
+    g.drawCard('deck'); g.drawCard('deck');
+    assert.equal(g.phase, 'PLAY');
     const afterFirst = g.activeWws;
     assert.ok(afterFirst, 'první zahrání kartu odkrylo');
     assert.equal(g.wwsDeck.length, 9);
-    // Dolízni obě karty, ať je zase fáze PLAY.
-    g.drawCard('deck'); g.drawCard('deck');
-    assert.equal(g.phase, 'PLAY');
 
     const payId = g.players[0].hand.find(c => c.type === CardType.BANG).id;
     assert.ok(g.useLeeVanKliff(0, payId, null));

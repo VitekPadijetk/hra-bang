@@ -5,7 +5,7 @@ const { test, before } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { mkGame, give } = require('./_helpers.js');
+const { mkGame, mkCard, give } = require('./_helpers.js');
 const { CardType } = require('../logic.js');
 const { eventActive } = require('../core/highNoon.js');
 
@@ -72,6 +72,15 @@ test('bez zapnutého rozšíření je balíček prázdný a hasEvent vždy false
     assert.equal(g.activeWws, null);
 });
 
+// Dostavník / Wells Fargo odkrývají kartu událostí až ZA lízáním (bug 51), takže
+// se ve zkouškách musí fáze lízání doopravdy dobrat.
+const finishDraw = (g) => {
+    for (let k = 0; k < 12 && g.phase === 'DRAW' && g.drawPhaseState.active; k++) {
+        if (!g.deck.cards.length) g.deck.cards.push(mkCard(CardType.BANG));
+        g.drawCard('deck');
+    }
+};
+
 // ── Odkrývání ───────────────────────────────────────────────────────────────
 
 test('na začátku hry neplatí žádná událost Divokého západu', () => {
@@ -93,6 +102,10 @@ test('Dostavník odkryje kartu, nachystá animaci a teprve pak se líže', () =>
     const g = mkWwsGame([{ role: 'Sheriff' }, {}, {}]);
     const idx = give(g, 0, CardType.STAGECOACH);
     g.playCard(idx);
+    assert.equal(g.activeWws, null, 'nejdřív se líže, karta se otočí až potom');
+    assert.equal(g.phase, 'DRAW', 'fáze lízání Dostavníku běží');
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    finishDraw(g);
     assert.ok(g.activeWws, 'karta je platná');
     assert.equal(g.wwsDeck.length, 9);
     assert.equal(g.wwsPile.length, 1);
@@ -101,21 +114,23 @@ test('Dostavník odkryje kartu, nachystá animaci a teprve pak se líže', () =>
     assert.equal(g._pendingWwsReveal.remaining, 9);
     assert.equal(g._pendingWwsReveal.playerIdx, 0);
     assert.equal(g._pendingWwsReveal.key, g.activeWws.key);
-    assert.equal(g.phase, 'DRAW', 'fáze lízání Dostavníku běží dál');
-    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    assert.equal(g.phase, 'PLAY', 'a hráč pokračuje ve svém tahu');
 });
 
 test('Wells Fargo odkrývá taky a nahradí předchozí kartu', () => {
     const g = mkWwsGame([{ role: 'Sheriff' }, {}, {}]);
     g.playCard(give(g, 0, CardType.STAGECOACH));
+    finishDraw(g);
     const first = g.activeWws;
-    g.phase = 'PLAY';
-    g.playCard(give(g, 0, CardType.WELLS_FARGO));
+    const wf = give(g, 0, CardType.WELLS_FARGO);
+    g.playCard(wf);
+    assert.equal(g.drawPhaseState.cardsNeeded, 3);
+    assert.equal(g.activeWws.key, first.key, 'stará karta platí, dokud se líže');
+    finishDraw(g);
     assert.notEqual(g.activeWws.key, first.key, 'platí nová karta');
     assert.equal(g.wwsPile.length, 2);
     assert.equal(g.wwsPile[1], g.activeWws);
     assert.equal(g.hasEvent(first.key), false, 'předchozí karta odchází ze hry');
-    assert.equal(g.drawPhaseState.cardsNeeded, 3);
 });
 
 test('Divoký západ zůstává v platnosti a dalším Dostavníkem se nevymění', () => {
@@ -123,10 +138,11 @@ test('Divoký západ zůstává v platnosti a dalším Dostavníkem se nevyměn�
     g.wwsDeck = [wwsData.find(c => c.key === 'ROUBIK'),
                  wwsData.find(c => c.key === 'DIVOKY_ZAPAD')];
     g.playCard(give(g, 0, CardType.STAGECOACH));
+    finishDraw(g);
     assert.equal(g.activeWws.key, 'DIVOKY_ZAPAD');
-    g.phase = 'PLAY';
     g._pendingWwsReveal = null;
     g.playCard(give(g, 0, CardType.STAGECOACH));
+    finishDraw(g);
     assert.equal(g.activeWws.key, 'DIVOKY_ZAPAD', 'zůstává do konce hry');
     assert.equal(g.wwsDeck.length, 1, 'z balíčku se nic nevzalo');
     assert.equal(g._pendingWwsReveal, null, 'a neodkrývá se ani animace');
@@ -152,6 +168,7 @@ test('došlý balíček nechá platnou poslední kartu a nespadne', () => {
     g.wwsDeck = [];
     g.activeWws = wwsData.find(c => c.key === 'SACAGAWAY');
     g.playCard(give(g, 0, CardType.STAGECOACH));
+    finishDraw(g);
     assert.equal(g.hasEvent('SACAGAWAY'), true);
 });
 
@@ -178,6 +195,7 @@ test('všechna tři rozšíření jdou zapnout naráz a balíčky se nepletou', 
     if (!g._beginTurn()) g.handleStartOfTurnChecks();
     g.phase = 'PLAY';
     g.playCard(give(g, 0, CardType.STAGECOACH));
+    finishDraw(g);
     assert.equal(g.eventDeck.length, 14);
     assert.equal(g.ffDeck.length, 14);
     assert.equal(g.wwsDeck.length, 9);
@@ -186,6 +204,7 @@ test('všechna tři rozšíření jdou zapnout naráz a balíčky se nepletou', 
 test('setup nové hry balíček uklidí (žádná platná karta z minulé hry)', () => {
     const g = mkWwsGame([{ role: 'Sheriff' }, {}]);
     g.playCard(give(g, 0, CardType.STAGECOACH));
+    finishDraw(g);
     assert.ok(g.activeWws);
     g._setupWwsDeck({ expansions: { divoky_zapad: true } });
     assert.equal(g.activeWws, null);
