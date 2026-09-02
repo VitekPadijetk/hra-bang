@@ -2877,8 +2877,9 @@ function renderUI() {
         App.greyOffer.active = state.pendingGreygory?.playerIdx === myIndex && !App.greyOffer.decided;
     }
     renderGameBoard();
-    // Dodge City – Vera Custer volí kopírovanou postavu (overlay přes desku).
-    if (state.phase === "VERA_COPY") renderVeraCopyOverlay();
+    // Dodge City – Vera Custer volí kopírovanou postavu klikem na hráče u stolu
+    // (drawOpponents + banner v drawPhaseOverlays, view/board.js) – vlastní okno
+    // s portréty se v osmi hráčích na obrazovku nevešlo (bug 27).
     // High Noon (přibalené) – Želízka: volba barvy; Nová identita: výměna postavy.
     if (state.phase === "HANDCUFFS_SUIT") renderHandcuffsOverlay();
     if (state.phase === "NEW_IDENTITY") renderNewIdentityOverlay();

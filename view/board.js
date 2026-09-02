@@ -596,6 +596,14 @@ function drawOpponents(ctx) {
         // Fistful – Odražená střela: klikatelné jsou VYLOŽENÉ karty kteréhokoli soupeře
         // (vzdálenost nehraje roli, FAQ Q15).
         const isRicochetTarget = _ricoArmed && ricochetTargetOk(state, myIndex, actualIdx);
+        // Dodge City – Vera Custer: kopírovanou postavu si vybírá klikem na hráče
+        // u stolu (dřív k tomu bylo vlastní okno, do kterého se v osmi hráčích
+        // nevešlo sedm portrétů vedle sebe – bug 27). Seznam postav posílá server
+        // (pendingVeraCopy.choices), ať se klient s pravidly nerozejde.
+        const isVeraPick = state.phase === 'VERA_COPY' && !App.blockInput &&
+            state.pendingVeraCopy?.playerIdx === myIndex;
+        const veraValid = isVeraPick &&
+            (state.pendingVeraCopy.choices || []).includes(player.character);
         // Fistful – Pokrevní bratři: na začátku svého tahu smí hráč darovat 1 život
         // zraněnému spoluhráči. Cíl se vybírá klikem na jeho postavu; seznam platných
         // cílů posílá server (pendingBlood.targets), ať se klient s pravidly nerozejde.
@@ -837,6 +845,22 @@ function drawOpponents(ctx) {
                 sprite.on('pointerdown', () => {
                     if (!bloodValid || App.blockInput) return;
                     socket.emit('blood_brothers', { targetIdx: actualIdx });
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
+
+            // Dodge City – Vera Custer: klik na hráče = jeho postavu tenhle tah kopíruju.
+            // Zvýrazňuje se stejnou řečí jako cíl výstřelu, takže je vidět, kdo přichází
+            // v úvahu (druhá Vera ani vyřazený hráč mezi volbami nejsou).
+            if (isVeraPick) {
+                sprite.setInteractive({ useHandCursor: veraValid });
+                sprite.setTint(veraValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (veraValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(veraValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!veraValid || App.blockInput) return;
+                    socket.emit('vera_copy', { charName: player.character });
                     App.blockInput = true;
                     renderUI();
                 });
@@ -3057,6 +3081,31 @@ function drawPhaseOverlays(ctx) {
                     { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
                 mAdd(l1, 206);
             }
+        }
+    }
+
+    // ── Dodge City – Vera Custer: banner „klikni na postavu, kterou zkopíruješ" ──
+    // Volba se dřív klikala ve vlastním okně; v osmi hráčích se do něj sedm portrétů
+    // vedle sebe nevešlo (bug 27), takže se kliká rovnou na hráče u stolu. KOHO si
+    // vybrala, ostatní vidět nesmí – banner pro ně mluví jen o čekání.
+    if (state.phase === "VERA_COPY" && state.pendingVeraCopy) {
+        const _vMine = state.pendingVeraCopy.playerIdx === myIndex;
+        const _vName = state.players[state.pendingVeraCopy.playerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _vMine ? 0xff5555 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_vMine) {
+            let l1 = gameScene.add.text(960, 66, '🎭 Vera Custer – kterou postavu tenhle tah zkopíruješ?',
+                { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, 'Klikni na hráče, jehož schopnost si vezmeš (platí do začátku tvého dalšího tahu)',
+                { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_vName} – Vera Custer (kopíruje postavu)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
         }
     }
 

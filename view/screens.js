@@ -356,57 +356,6 @@ function renderCharacterSelectScreen() {
         return;
 }
 
-// Dodge City – Vera Custer: na začátku tahu vybírá živou postavu ke zkopírování.
-// Vykresluje se přes herní desku (renderGameBoard už proběhl). Klik → emit vera_copy.
-function renderVeraCopyOverlay() {
-    const pvc = state.pendingVeraCopy;
-    if (!pvc) return;
-    // Okno s výběrem vidí POUZE Vera – ostatní hráči (ani diváci) nesmí vidět, kterou
-    // postavu si zvolila (skrytá informace jako role). Pro ně se overlay nekreslí vůbec.
-    // TODO(návrh, zatím NEimplementováno): jak dát ostatním vědět, koho Vera kopíruje –
-    //   viz komentář nad funkcí / poznámku pro uživatele.
-    if (pvc.playerIdx !== myIndex) return;
-    const charData = gameScene.cache.json.get('characters_data');
-
-    // Ztmavené pozadí přes celou desku.
-    const backdrop = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.78)
-        .setInteractive();   // spolkne kliknutí mimo portréty
-    gameScene.cardsSprites.add(backdrop);
-
-    const iAmVera = true;   // sem se dostane jen Vera (viz early return výše)
-
-    themeTitle(gameScene, 960, 150, 'Vera Custer – vyber postavu ke zkopírování',
-        { fontSize: '40px' });
-
-    const choices = pvc.choices || [];
-    const n = choices.length;
-    const spacing = 340;
-    const startX = 960 - (n - 1) * spacing / 2;
-
-    choices.forEach((name, i) => {
-        const cx = startX + i * spacing;
-        const charInfo = charData?.find(c => c.name === name);
-        const texKey = charInfo && gameScene.textures.exists('char_' + charInfo.id)
-            ? 'char_' + charInfo.id : 'placeholder';
-
-        const portrait = gameScene.add.image(cx, 520, texKey).setScale(0.55);
-        gameScene.cardsSprites.add(portrait);
-
-        const label = gameScene.add.text(cx, 780, name,
-            { fontSize: '26px', color: '#fff', backgroundColor: 'rgba(0,0,0,0.6)', padding: 8 })
-            .setOrigin(0.5);
-        gameScene.cardsSprites.add(label);
-
-        if (iAmVera) {
-            portrait.setInteractive({ useHandCursor: true });
-            const pick = () => socket.emit('vera_copy', { charName: name });
-            portrait.on('pointerover', () => portrait.setScale(0.6));
-            portrait.on('pointerout', () => portrait.setScale(0.55));
-            portrait.on('pointerdown', pick);
-        }
-    });
-}
-
 // ── High Noon (přibalené) – Želízka: volba barvy pro tenhle tah ──────────────
 // Vykresluje se přes herní desku (renderGameBoard už proběhl). Vidí ho jen hráč,
 // který volí; ostatním stačí čekací štítek (core/pending.js).

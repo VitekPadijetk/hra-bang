@@ -81,7 +81,7 @@ nebo „nejdřív doběhne efekt") — to sem patří aspoň jako jednořádkov�
 |---|---|
 | `view/board.js` | **Herní deska.** `renderGameBoard()` orchestrátor → `drawOpponents` / `drawMyArea` / `drawSpectatorPlayer` / `drawPhaseOverlays` / `drawDrawPiles`. |
 | `view/intro.js` | **Intro cinematika.** Míchání/rozdávání (`_animateIntroShuffle`, `renderIntroScene`, `_renderRoleReveal`, `_renderIntroCharSelect`), pozice bloku soupeře `_introOppSlots` (sdílí i slide-in v `net/handlers.js`) a **navazující hra**: `_introPlaceSurvivors`, `_startKeepReveal`/`_renderKeepChoice`/`_confirmKeepChoice`, `_introKeepAnimateOther`, `_introSheriffReveal`. |
-| `view/screens.js` | `renderWinnerScreen()` + `renderCharacterSelectScreen()` + překryvná okna přes desku: `renderVeraCopyOverlay()` (Vera Custer), `renderHandcuffsOverlay()` (Želízka – volba barvy) a `renderNewIdentityOverlay()` (Nová identita – ANO/NE). Volá je `renderUI()` v game.js podle fáze. |
+| `view/screens.js` | `renderWinnerScreen()` + `renderCharacterSelectScreen()` + překryvná okna přes desku: `renderHandcuffsOverlay()` (Želízka – volba barvy) a `renderNewIdentityOverlay()` (Nová identita – ANO/NE). Volá je `renderUI()` v game.js podle fáze. **Okno musí mít vlastní hloubku** (`DOROTHY_DEPTH` u Zuřivé Doroty): deska si kreslí hvězdičku šerifa, jména hráčů i karty s hloubkou 46–205, takže ztmavení v hloubce 0 nic nezakryje. **Vera Custer okno NEMÁ** – kopírovanou postavu vybírá klikem na hráče u stolu (`view/board.js`), protože v osmi hráčích se sedm portrétů vedle sebe na obrazovku nevejde. |
 
 ### Čisté helpery (`core/`) — BEZ Phaseru/DOM, izomorfní, testované
 | Soubor | Export | Co rozhoduje |
