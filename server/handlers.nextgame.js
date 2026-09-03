@@ -34,14 +34,13 @@ module.exports = function registerNextGameHandlers(socket, ctx, withRoom) {
         room._introRoleConfirmed.add(p.playerIdx);
         ctx.glog.system(`[INTRO] role_ok from ${p.playerIdx} confirmed: ${room._introRoleConfirmed.size}/${room.players.length}`);
         if (room._introRoleConfirmed.size >= room.players.length) {
-            room._introRoleConfirmed = null;
-            room._introRolesDone = true;   // fáze rolí uzavřena (viz intro.js await_role_ok)
-            room._introActive = true;
             // Poslední hráč právě klikl OK – jeho snap animace role (~550 ms) ještě
             // letí. Char fáze začíná 'shuffle_chars', která na klientu volá
             // _clearIntroSprites() a snap by zničila. Počkáme, ať doletí u všech.
             // (V navazující hře se mezitím ještě odhalí šerifova hvězda – viz intro.js.)
-            ctx.introAfterRoles(room);
+            // Uzavření fáze je v intro.js: dokud se ještě rozdává, jen se zapamatuje
+            // (boti potvrzují dřív, než jim karta role doletí).
+            ctx.closeRolePhase(room);
         }
     });
 

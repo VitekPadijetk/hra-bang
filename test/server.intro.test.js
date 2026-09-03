@@ -358,3 +358,47 @@ test('runIntroSequence mimo hru pro 3 roli v broadcastu NEposílá (je tajná)',
     assert.ok(flies.every(e => e.payload.role === undefined),
         'role unikla do broadcastu: ' + JSON.stringify(flies.map(e => e.payload)));
 });
+
+// ── Uzavření fáze rolí čeká na dorozdání ───────────────────────────────
+// Boti potvrzují roli hned, jak vznikne _introRoleConfirmed (tick po intro emitu) –
+// u stolu jen botů je tedy „potvrzeno všemi“ dřív, než první karta role vzlétne.
+// Míchání postav se pak rozjelo přes rozdávání rolí.
+function mkClock() {
+    const orig = global.setTimeout;
+    let now = 0, seq = 0;
+    const q = [];
+    global.setTimeout = (fn, ms = 0) => { q.push({ at: now + ms, seq: seq++, fn }); return 0; };
+    return {
+        runAll() {
+            while (q.length) {
+                q.sort((a, b) => a.at - b.at || a.seq - b.seq);
+                const t = q.shift();
+                now = t.at;
+                t.fn();
+            }
+        },
+        restore() { global.setTimeout = orig; },
+    };
+}
+
+test('fáze rolí se neuzavře, dokud se rozdává (stůl jen botů)', () => {
+    const { io, addSocket, emits } = mkIo();
+    ['s0', 's1', 's2'].forEach(addSocket);
+    const room = mkRoom3p(false);
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    // Driver botů: jakmile Set vznikne, všechna sedadla roli hned potvrdí.
+    ctx.afterIntroEmit = () => {
+        if (!room._introRoleConfirmed) return;
+        room.players.forEach(rp => room._introRoleConfirmed.add(rp.playerIdx));
+        ctx.closeRolePhase(room);
+    };
+    installIntroService(ctx);
+    const clock = mkClock();
+    try { ctx.runIntroSequence(room); clock.runAll(); } finally { clock.restore(); }
+    const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase')
+                      .map(e => e.payload.sub);
+    const lastFly = subs.lastIndexOf('role_card_fly');
+    const chars = subs.indexOf('shuffle_chars');
+    assert.equal(subs.filter(x => x === 'role_card_fly').length, 3, 'rozdat se musí všechny tři role');
+    assert.ok(chars > lastFly, 'míchání postav začalo během rozdávání rolí: ' + subs.join(', '));
+});

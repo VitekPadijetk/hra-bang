@@ -102,6 +102,20 @@ module.exports = function installIntroService(ctx) {
         setTimeout(() => runIntroSequence(room), 1600);
     }
 
+    // Uzavření fáze rolí. Volá se, jakmile roli potvrdili všichni (intro_role_ok
+    // v handlers.nextgame.js), ale ROZDAT se ještě musí stačit: potvrzení od botů přijde
+    // dřív, než karty rolí doletí. Dokud rozdávání běží, uzavření se jen zapamatuje
+    // (_introRolesPending) a dotáhne ho timeout waitAfterDeal v runIntroSequence.
+    function closeRolePhase(room) {
+        if (room._introRolesDone) return;
+        if (!room._introDealDone) { room._introRolesPending = true; return; }
+        room._introRolesPending = false;
+        room._introRoleConfirmed = null;
+        room._introRolesDone = true;   // fáze rolí uzavřena (viz await_role_ok výše)
+        room._introActive = true;
+        introAfterRoles(room);
+    }
+
     // Po potvrzení rolí všemi hráči. V navazující hře může být šerifem hráč, který už
     // postavu na stole má – tomu se teď přidá 1 život a fade-inem hvězda; v klasické
     // hře nemá postavu nikdo, takže se rovnou pokračuje char fází (chování beze změny).
@@ -132,6 +146,8 @@ module.exports = function installIntroService(ctx) {
 
         ctx.glog.system(`[INTRO] Start, players: ${n}, sheriffIdx: ${sheriffIdx}`);
         room._introRolesDone = false;
+        room._introDealDone = false;      // dorozdáno? (viz closeRolePhase)
+        room._introRolesPending = false;  // potvrzeno všemi, ale ještě se rozdává
 
         // Fáze 1: míchání rolí
         emitIntro(room, { sub: 'shuffle_roles', roleCount });
@@ -161,9 +177,15 @@ module.exports = function installIntroService(ctx) {
 
             const waitAfterDeal = roleOrder.length * 500 + 600;
             setTimeout(() => {
-                // Roli už potvrdili všichni (stihnou to boti dřív, než sem sekvence
-                // dojde) – Set se NESMÍ obnovit ani poslat await_role_ok, jinak by se
-                // potvrzování rozjelo podruhé a s ním celá fáze postav.
+                // Teď teprve je rozdáno. Boti roli potvrzují hned, jak Set vznikne
+                // (tick po intro emitu), takže u stolu jen botů bylo „potvrzeno všemi“
+                // dřív, než první karta role vůbec vzlétla – a míchání postav se rozjelo
+                // přes rozdávání rolí. Uzavření fáze proto čeká tady (closeRolePhase).
+                room._introDealDone = true;
+                if (room._introRolesPending) { closeRolePhase(room); return; }
+                // Roli už potvrdili všichni – Set se NESMÍ obnovit ani poslat
+                // await_role_ok, jinak by se potvrzování rozjelo podruhé a s ním
+                // celá fáze postav.
                 if (room._introRolesDone) return;
                 // Set už existuje (vytvořen výše) – jen fallback label pro klienty,
                 // kterým by se reveal náhodou nezobrazil dřív. NEPŘEPISOVAT Set!
@@ -342,7 +364,7 @@ module.exports = function installIntroService(ctx) {
     Object.assign(ctx, {
         emitIntro, emitIntroRole, emitIntroChars,
         runIntroSequence, introStartCharPhase, introStartDeckPhase,
-        runNextGameIntro, introKeepResult, introAfterRoles,
+        runNextGameIntro, introKeepResult, introAfterRoles, closeRolePhase,
     });
     return ctx;
 };
