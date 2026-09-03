@@ -366,11 +366,13 @@ test('Youl Grinner × Suzy Lafayette: poslední karta → nejdřív líznutí, p
     const g = mkGame([{ character: 'Youl Grinner' }, { character: 'Suzy Lafayette' }, {}]);
     give(g, 1, CardType.BANG, { name: 'Bang!' });
     give(g, 2, CardType.BANG, { name: 'Bang!' });
+    g.deck.cards.push(mkCard(CardType.BEER, { name: 'Pivo' }));   // ať je Suzy odkud líznout
     g.startDrawPhase();
     g.grinnerGive(1, g.players[1].hand[0].id);
     assert.equal(g.phase, 'SUZY_DRAW', 'Suzy si líže dřív, než se kolečko posune');
     g.suzyLafayetteDraw(1);
     assert.equal(g.players[1].hand.length, 1);
+    assert.equal(g.players[1].hand[0].name, 'Pivo');
     assert.deepEqual(pendingActor(g), { idx: 2, kind: 'GRINNER_GIVE' });
 });
 

@@ -200,7 +200,16 @@ const DrawMixin = {
             const fromDiscard = this._mineTurn && ds.isStartOfTurn;
             const deckBefore = fromDiscard ? this.deck.discardPile.length : this.deck._drawPile.length;
             const card = this._mineDrawCard(ds);
-            if (!card) return;
+            // `draw()` vrátí null jedině tehdy, když jsou prázdné OBĚ hromádky (dobírací
+            // i odhoz – míchání se o to pokusilo a nemělo z čeho). Do toho stavu se hra
+            // dostane, když všechny karty skončí v rukou hráčů: pod Městem duchů (High
+            // Noon) odcházejí duchové každé kolo a Herb Hunter si za každý odchod líže
+            // dvě karty. Tichý `return` tady znamenal, že fáze DRAW neskončí NIKDY –
+            // klik na balíček nic neudělá a tah nejde ukončit (u bota nekonečný tick,
+            // u člověka zamrzlá hra). Není-li co líznout, fáze prostě končí tím, co se
+            // stihlo nalízat. Stejná past a stejné řešení jako u Opuštěného dolu
+            // (`_mineDrawCard`, logic/fistful.js).
+            if (!card) { this._finishDraw(); return; }
 
             this.drawPhaseState.options = ['deck'];
 

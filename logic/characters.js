@@ -20,7 +20,10 @@ const CharactersMixin = {
     suzyLafayetteDraw(playerIdx) {
         if (this.phase !== "SUZY_DRAW" || !this.pendingSuzyDraw) return;
         if (this.pendingSuzyDraw.playerIdx !== playerIdx) return;
-        this.players[playerIdx].hand.push(this.deck.draw());
+        // Došlé OBĚ hromádky → draw() vrací null a do ruky by se dostala „karta", která
+        // není karta (pravidla i klient by na ní spadly). Schopnost pak prostě nic nedá.
+        const c = this.deck.draw();
+        if (c) this.players[playerIdx].hand.push(c);
         this.pendingSuzyDraw = null;
         this._resumeAfterSpecial();
     },
@@ -347,7 +350,8 @@ const CharactersMixin = {
     bartCassidyDraw(playerIdx) {
         if (this.phase !== "BART_DRAW" || !this.pendingBartDraw) return;
         if (this.pendingBartDraw.playerIdx !== playerIdx) return;
-        this.players[playerIdx].hand.push(this.deck.draw());
+        const c = this.deck.draw();   // null = došly obě hromádky, viz suzyLafayetteDraw
+        if (c) this.players[playerIdx].hand.push(c);
         this.pendingBartDraw = null;
         this._resumeAfterSpecial();
     },

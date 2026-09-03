@@ -150,3 +150,48 @@ test('Pedro Ramirez lízne první kartu z odhozu', () => {
     assert.ok(g.players[0].hand.some(c => c.name === 'z_odhozu'));
     assert.equal(g.deck.discardPile.length, 0);
 });
+
+// ── Došlé OBĚ hromádky ───────────────────────────────────────────────────────
+// Když všechny karty skončí v rukou hráčů (Město duchů + Herb Hunter to umí – duchové
+// odcházejí každé kolo a on si za každý odchod líže dvě karty), nemá draw() z čeho brát
+// ani po zamíchání. Dřív se drawCard tiše vrátil, takže fáze DRAW neskončila NIKDY:
+// klik na balíček nic neudělal a tah nešlo ukončit (bot klikal donekonečna – padalo to
+// jako „hra nedoběhla, phase=DRAW" ~1× z 10 běhů zátěžových testů).
+
+test('prázdné obě hromádky ukončí fázi lízání místo zaseknutí', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { current: 0 });
+    g.deck.cards = [];
+    g.deck.discardPile = [];
+    g.startDrawPhase();
+    assert.equal(g.phase, 'DRAW');
+    g.drawCard('deck');
+    assert.equal(g.phase, 'PLAY', 'fáze skončila, hráč může hrát dál');
+    assert.equal(g.players[0].hand.length, 0);
+});
+
+test('došlé hromádky uprostřed lízání nechají to, co se stihlo', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }], { current: 0 });
+    g.deck.cards = [mkCard(CardType.BANG)];
+    g.deck.discardPile = [];
+    g.startDrawPhase();
+    g.drawCard('deck');            // první karta ještě byla
+    assert.equal(g.phase, 'DRAW', 'druhá karta se pořád čeká');
+    g.drawCard('deck');            // druhá už není z čeho
+    assert.equal(g.phase, 'PLAY');
+    assert.equal(g.players[0].hand.length, 1);
+});
+
+test('Suzy Lafayette ani Bart Cassidy si z prázdna nelíznou null', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Suzy Lafayette' },
+                      { role: 'Outlaw', character: 'Bart Cassidy' }], { current: 0 });
+    g.deck.cards = [];
+    g.deck.discardPile = [];
+    g.phase = 'SUZY_DRAW';
+    g.pendingSuzyDraw = { playerIdx: 0 };
+    g.suzyLafayetteDraw(0);
+    assert.deepEqual(g.players[0].hand, []);
+    g.phase = 'BART_DRAW';
+    g.pendingBartDraw = { playerIdx: 1 };
+    g.bartCassidyDraw(1);
+    assert.deepEqual(g.players[1].hand, []);
+});
