@@ -493,3 +493,17 @@ test('PLAY: zbraň, která nic neodemkne, zůstává až za střelbou', () => {
     give(g, 0, CardType.WEAPON, { name: 'Schofield', props: { range: 2 } });
     assert.equal(decideBotAction(g, 0).event, 'play_bang');
 });
+
+// ── Uncle Will (Fistful) ───────────────────────────────────────────────────
+test('PLAY: Uncle Will promění kartu, o kterou nestojí, v hokynářství', () => {
+    // Vězení nemá kam jít (jediný soupeř je šerif), takže zbyde jako veteš v ruce.
+    const g = mkGame([{ role: 'Outlaw', character: 'Uncle Will' }, { role: 'Sheriff' }], { current: 0 });
+    const jail = give(g, 0, CardType.JAIL);
+    assert.deepEqual(decideBotAction(g, 0), { event: 'uncle_will', payload: { cardIdx: jail } });
+});
+
+test('PLAY: Uncle Will neplatí kartou, kterou si chce nechat', () => {
+    const g = mkGame([{ role: 'Outlaw', character: 'Uncle Will' }, { role: 'Sheriff' }], { current: 0 });
+    give(g, 0, CardType.MISSED);   // keepScore 6 – až do dalšího tahu se hodí víc než hokynářství
+    assert.equal(decideBotAction(g, 0).event, 'end_turn');
+});

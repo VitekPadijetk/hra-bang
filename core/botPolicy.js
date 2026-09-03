@@ -50,6 +50,9 @@ if (typeof require === 'function') {
     if (typeof lawProtectedCard === 'undefined') {
         globalThis.lawProtectedCard = require('./playability.js').lawProtectedCard;
     }
+    if (typeof lawLocksOther === 'undefined') {
+        globalThis.lawLocksOther = require('./playability.js').lawLocksOther;
+    }
     if (typeof lawHandcuffsSuit === 'undefined') {
         globalThis.lawHandcuffsSuit = require('./playability.js').lawHandcuffsSuit;
     }
@@ -870,14 +873,24 @@ function decidePlay(state, myIndex, beliefs) {
     // se to hlavně z přebytku – karta, kterou by stejně odhodil na konci tahu, se změní
     // v novou z balíčku (a vybírá si první). Podmínky musí sedět se serverem
     // (useUncleWill), jinak by server akci odmítl a bot ji zkoušel donekonečna.
-    if (hasAbility(me, 'Uncle Will') && me._willUsedTurn !== state.turnId && me.hand.length > me.health) {
+    if (hasAbility(me, 'Uncle Will') && me._willUsedTurn !== state.turnId && me.hand.length > 0) {
         let idx = -1, low = Infinity;
         me.hand.forEach((c, i) => {
             if (suitBlockedFor(state, myIndex, c)) return;   // Želízka
             if (lawProtectedCard(state, me, myIndex, c)) return;   // Právo západu
             if (keepScore(c) < low) { low = keepScore(c); idx = i; }
         });
-        if (idx !== -1) consider(16, { event: 'uncle_will', payload: { cardIdx: idx } });
+        // Zaplatí se buď z přebytku (karta by stejně padla na konci tahu), nebo kartou,
+        // o kterou bot stejně nestojí (dynamit bez rozumného směru, Vězení bez cíle, veteš).
+        // Bez té druhé větve schopnost prakticky neexistovala – ruku nad počet životů
+        // bot naplnit nestihne, takže přebytek měl jen výjimečně.
+        // Serverový useUncleWill se ptá i na _lawLocked (jedna karta z ruky ven, jedna
+        // z hokynářství zpátky) – bez téhož dotazu by server akci mlčky odmítl a bot
+        // by ji posílal donekonečna.
+        const lawOk = !lawLocksOther(state, me, myIndex, null, { discards: 1, draws: 1 });
+        if (idx !== -1 && lawOk && (me.hand.length > me.health || low <= 2)) {
+            consider(16, { event: 'uncle_will', payload: { cardIdx: idx } });
+        }
     }
     // Flint Westwood (Divoký západ): 1× za tah vymění 1 kartu z ruky za 2 náhodné
     // z ruky jiného hráče. Je to čistý zisk karty, takže se to vyplatí skoro vždycky –
