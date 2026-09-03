@@ -1,6 +1,7 @@
 // server/handlers.lobby.js — socket handlery pro lobby/místnosti, spectate, chat,
 // odpojení. registerLobbyHandlers(socket, ctx, withRoom) – těla byte-identická
 // s původním io.on('connection'); helpery se berou z ctx.
+const { pendingActor } = require('../core/pending.js');
 module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     const { rooms, makeRoom, roomPayload, broadcastRoom, broadcastLobbyList,
             findRoomBySocket, leaveRoom, leaveSpectate, disbandRoom, closeRoom, getGameList, startGame, io,
@@ -226,7 +227,14 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
     socket.on('chat_message', ({ text }) => {
         const room = findRoomBySocket(socket.id);
         if (!room) return;
-        const p = room.players.find(pl => pl.socketId === socket.id);
+        // Debug hra: jeden socket ovládá VŠECHNA místa, takže `find` podle socketId vrací
+        // pořád první sedadlo – do chatu psal věčně Debug1 a Roubík pokutoval jeho.
+        // Kdo právě mluví, se pozná stejně jako u guardu: podle toho, na koho hra čeká
+        // (a když na nikoho, podle hráče na tahu).
+        const gs = room.gameState;
+        const p = gs?.isDebug
+            ? room.players[pendingActor(gs)?.idx ?? gs.currentPlayerIndex] || room.players[0]
+            : room.players.find(pl => pl.socketId === socket.id);
         // Divoký západ – Roubík: dokud má hráč nezaplacenou pokutu za promluvení, zpráva
         // neprojde vůbec. Bez toho by devíti zprávami za sebou naskládal devět zásahů
         // a zabil se dřív, než by na první stihl kliknout.

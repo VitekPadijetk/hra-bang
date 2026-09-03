@@ -383,3 +383,23 @@ test('odmítnutá karta se neanimuje (Želízka: špatná barva → žádný let
     assert.ok(anims.some(a => a.type === 'hand_to_discard' && a.cardId === 902),
         'povolená karta se animuje jako dřív');
 });
+
+// Debug hra: jeden socket ovládá všechna sedadla, takže `find` podle socketId vrací pořád
+// první – do chatu psal věčně Debug1 a Roubík pokutoval jeho, ne toho, kdo právě hraje.
+// Mluví ten, na koho hra čeká.
+test('chat v debug hře mluví za sedadlo, na které se čeká', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    const said = [];
+    s.emit = (ev, msg) => { if (ev === 'chat_message') said.push(msg.name); };
+    s.fire('debug_start', { playerCount: 3 });
+    const gs = [...ctx.rooms.values()][0].gameState;
+    gs.phase = 'PLAY';
+    gs.currentPlayerIndex = 2;
+    s.fire('chat_message', { text: 'ahoj' });
+    gs.currentPlayerIndex = 0;
+    s.fire('chat_message', { text: 'nazdar' });
+    // Každá zpráva dojde třikrát – všechna tři sedadla visí na tomtéž socketu.
+    assert.equal(said[0], 'Debug3');
+    assert.equal(said[said.length - 1], 'Debug1');
+});

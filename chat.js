@@ -119,12 +119,21 @@ function initChat() {
 // Divoký západ – Roubík: mám nezaplacenou pokutu za promluvení? Zrcadlí serverový
 // `gagBlocked` (logic/wildWest.js) – čekající pokuta ve frontě i ta, na kterou se
 // zrovna kliká. Divák (myIndex je null) pokutu neplatí a psát smí vždycky.
-// `state` i `myIndex` jsou globály z game.js (chat.js se načítá až za ním).
+// `state` i `myIndex` jsou globály z game.js (chat.js se načítá až za ním),
+// `pendingActor` z core/pending.js.
 function gagBlockedForMe() {
-    if (!state || myIndex == null) return false;
-    if ((state._gagPending || []).includes(myIndex)) return true;
+    if (!state) return false;
+    // Debug hra: jeden prohlížeč ovládá všechna místa, takže „já“ je to sedadlo, na které
+    // hra zrovna čeká – stejně to bere server, když zprávu pojmenovává a pokutuje
+    // (chat_message v server/handlers.lobby.js). Bez toho by se klient ptal pořád
+    // za sedadlo 0 a s Roubíkem se rozcházel se serverem.
+    const seat = (state.isDebug && myIndex != null)
+        ? (pendingActor(state)?.idx ?? state.currentPlayerIndex)
+        : myIndex;
+    if (seat == null) return false;
+    if ((state._gagPending || []).includes(seat)) return true;
     const pdd = state.pendingDynamiteDamage;
-    return !!(pdd && pdd.source === 'GAG' && pdd.playerIdx === myIndex);
+    return !!(pdd && pdd.source === 'GAG' && pdd.playerIdx === seat);
 }
 
 function toggleChat() {
