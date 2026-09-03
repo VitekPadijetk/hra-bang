@@ -73,8 +73,11 @@ P — pravidla ostatní           23, 25, 33, 39, 62   HOTOVO
       logic/dodgeCity.js, core/distance.js, core/pending.js ani logic/highNoon.js
       nakonec nepotřebovaly nic: 23 byla planá (doplněny testy) a u 25 se mýlil
       jen klient, server měl pořadí správně.
-Q — boti a server              24, 46, 53
-      core/botPolicy.js, server/bots.js, server/intro.js, server/handlers.lobby.js, chat.js
+Q — boti a server              24, 46, 53   HOTOVO
+      core/botPolicy.js, server/intro.js, server/handlers.lobby.js, chat.js
+      (+ server/handlers.nextgame.js u 53 – uzavření fáze rolí se přestěhovalo
+      do closeRolePhase v intro.js). server/bots.js nakonec nepotřeboval nic:
+      boti potvrzují roli dál hned, čeká se až při uzavření fáze.
 
   Proč právě takhle (šetření tokenů):
   - Tři velké soubory se čtou jen v pár batchích: core/playability.js celý v I,
@@ -94,15 +97,16 @@ Q — boti a server              24, 46, 53
 OTEVŘENÉ
 --------
 
-- 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě)
-- 46 v debugu se nerozlišuje, kdo píše do chatu
-- 53 když se rozdávají role, tak počkej ne jen na všechny hráče jak kliknou OK, ale i na to až se role rozdá i všem botům (takhle může začít míchání postav když se ještě rozdávají role)
+(prázdné – všechny nahlášené bugy jsou opravené)
 
 HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě) → oprava: 87dcaeb (schopnost měl bot podmíněnou přebytkem karet, který si nestihne nahromadit – druhá větev: zaplatí i kartou, o kterou stejně nestojí (dynamit bez rozumného směru, Vězení bez cíle, veteš). Skóre zůstává nízké, takže se to stane, až když není nic lepšího; k tomu chyběl dotaz na _lawLocked, který server dělá)
+- 46 v debugu se nerozlišuje, kdo píše do chatu → oprava: f12306c (debug hra má všechna sedadla na jednom socketu, takže find(socketId) vracel pořád první – psal věčně Debug1 a Roubík pokutoval jeho. Mluvčí se určuje jako u guardu, přes pendingActor; klientský gagBlockedForMe se ptá stejně)
+- 53 když se rozdávají role, tak počkej ne jen na všechny hráče jak kliknou OK, ale i na to až se role rozdá i všem botům (takhle může začít míchání postav když se ještě rozdávají role) → oprava: 3a331b4 (boti potvrzují roli hned, jak vznikne _introRoleConfirmed – u stolu s boty bylo „potvrzeno všemi“ dřív, než první karta role vzlétla. Uzavření fáze se sjednotilo do closeRolePhase, které se při běžícím rozdávání jen zapamatuje a dotáhne ho timeout waitAfterDeal)
 - 23 zkontroluj jestli funguje derringer správně s léčkou → OVĚŘENO, chyba nebyla: b00dd6d (pevný dostřel karty a Léčka se nekříží – vzdálenost je 1, takže Derringer dostřelí přes stůl; modifikátory Mustang/Paul Regret se počítají od jedničky dál a zase ho zkrátí. Server měří computeDistance, klient i bot bangEffectReach + computeCanHit – doplněny testy)
 - 33 pokud duch ukončí hru během města duchů, nejedná se o živou postavu a nemá tak nárok na zachování postavy v další hře → oprava: 9f8b9e0 (přeživší se poznával přes health > 0, jenže duch si během svého tahu smí naléčit životy – teď se ptá i na _ghost)
 - 39 když se snímá karta a je poslední z balíčku a pak se míchá, tak v odhozu zůstane karta co tam byla (a na ni se dá ta ze snímání), a jsou tam tak dvě, měla by tam být jen ta ze snímání a ta stará se měla též zamíchat (chvíli tak v balíčku nebude nic) → oprava: 3681c4f (míchání si nechává vrchní kartu odhozu, ať odhoz nezůstane prázdný – u sejmutí je to zbytečné, sejmutá karta ji vzápětí nahradí. Nové draw({ toDiscard: true }) zamíchá celý odhoz; klient tak animoval už dřív, rozcházel se server)
