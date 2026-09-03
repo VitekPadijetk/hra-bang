@@ -403,6 +403,11 @@ const WildWestMixin = {
     _roseSkip(p) {
         if (!p || !p._skipNextTurn) return false;
         p._skipNextTurn = false;
+        // Dva přeskočené tahy za sebou nikdo dostat nesmí – jinak vznikne smyčka, ve
+        // které hráč nikdy nepřijde na tah (viz `roseSwapOffer`). Příznak drží OBĚŤ,
+        // ne ten, kdo přesedal: přeskakovat ho totiž může pokaždé někdo jiný.
+        // Shodí ho až tah, který si hráč doopravdy odehraje (`_beginTurn`).
+        p._roseSkippedLast = true;
         if (isInPlay(p)) {
             this.logEvent('event', { card: 'Lady Růže z Texasu', who: p.name, msg: 'přeskakuje tah' });
         }

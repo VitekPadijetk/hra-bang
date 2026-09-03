@@ -423,8 +423,14 @@ Co už platí (fáze 0):
   se přeskakují. Prohozený dostane `_skipNextTurn` a `nextTurn` ho přeskočí ve stejné
   smyčce jako mrtvé – přeskočení je „jako by tam neseděl", tedy bez startu tahu, bez
   sejmutí na Dynamit/Vězení i bez penalizace Madam Zuzany. Počet použití karta neomezuje,
-  hra ale ano: **jedna výměna za tah** (`_roseUsedThisTurn`, nuluje ho začátek každého
-  tahu) – jediná pojistka proti smyčce, ve které jeden hráč nikdy nepřijde na tah. Právo západu (Fistful) výměnu **nezakazuje
+  hra ale ano, a to **dvěma pojistkami proti smyčce, ve které jeden hráč nikdy nepřijde
+  na tah**: (1) **jedna výměna za tah** (`_roseUsedThisTurn`, nuluje ho začátek každého
+  tahu) a (2) **nikdo nepřijde o dva tahy za sebou** (`p._roseSkippedLast` nasazuje
+  `_roseSkip` na OBĚŤ, shazuje ho tah, který si doopravdy odehraje). Ta druhá je nutná:
+  v koncovce chce přesednout každý (soused je nepřítel), takže se zbytek stolu střídá
+  v tom, koho přeskočí – hlídat „tutéž dvojici" proto nestačí, přeskakovat ho může
+  pokaždé někdo jiný. Naměřeno v zátěži: hra pro 3, 865 tahů, oběť odehrála 1 tah
+  a 861× byla přeskočena. Právo západu (Fistful) výměnu **nezakazuje
   plošně**, jen když by se jí hráč vyvlékl z povinnosti (vzdálenosti se přesednutím
   mění) – ověřuje se to na kopii stavu s prohozenými sedadly, viz `roseSwapOffer`.
   **Bot** se vymění jen s pravděpodobným nepřítelem; „nejvýš jednou za tah" je rovnou

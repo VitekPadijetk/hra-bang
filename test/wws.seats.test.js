@@ -197,6 +197,39 @@ test('další tah strop uvolní', () => {
     g.nextTurn();                                       // sedadlo 0 se přeskakuje
     assert.equal(g._roseUsedThisTurn, false);
     g.phase = 'PLAY';                                   // fázi 1 tady neřešíme
+    // Soused po pravici je zrovna ten čerstvě přeskočený – to hlídá DRUHÁ pojistka
+    // (test níž), tady jde jen o strop za tah, tak ho z cesty odklidíme.
+    g.players.forEach(p => { p._roseSkippedLast = false; });
+    assert.notEqual(roseSwapOffer(g, g.currentPlayerIndex), null);
+});
+
+// ── Pojistka: nikdo nepřijde o dva tahy za sebou ──────────────────────────────
+// Bez ní se v koncovce zbytek stolu střídá v tom, koho přeskočí, a on nepřijde na tah
+// NIKDY (naměřeno v zátěži: hra pro 3, 865 tahů, oběť odehrála 1 tah a 861× byla
+// přeskočena – hra pak nemohla skončit). Nestačí hlídat tutéž dvojici: přeskakovat
+// ho může pokaždé někdo jiný, proto příznak drží OBĚŤ.
+
+test('s čerstvě přeskočeným se místo měnit nedá', () => {
+    const g = mkRose(4, 0);
+    g.useLadyRose(0);                                   // obětí je hráč ze sedadla 3
+    g.nextTurn();                                       // ten teď svůj tah přeskočí
+    const victim = g.players[0];
+    assert.equal(victim._roseSkippedLast, true);
+    g.phase = 'PLAY';
+    assert.equal(roseSwapOffer(g, g.currentPlayerIndex), null, 'podruhé za sebou ne');
+    assert.equal(g.useLadyRose(g.currentPlayerIndex), null);
+});
+
+test('odehraný tah příznak shodí a přesedat jde zase', () => {
+    const g = mkRose(4, 0);
+    g.useLadyRose(0);
+    g.nextTurn();                                       // oběť přeskakuje
+    const victim = g.players[0];
+    assert.equal(victim._roseSkippedLast, true);
+    g.nextTurn(); g.nextTurn(); g.nextTurn();           // až se dostane znovu na řadu
+    assert.equal(g.getCurrentPlayer(), victim, 'teď hraje on');
+    assert.equal(victim._roseSkippedLast, false, 'odehraný tah příznak shodil');
+    g.phase = 'PLAY';
     assert.notEqual(roseSwapOffer(g, g.currentPlayerIndex), null);
 });
 

@@ -900,8 +900,8 @@ test('20 her jen botů jede i s balíčkem samých Sacagaway', () => {
 
 // Lady Růže z Texasu je riziková jinak než ostatní: neposouvá stav dopředu, ale MĚNÍ
 // SEDADLA. Kdyby se na některém indexovém poli zapomnělo, hra by se rozjela za špatného
-// hráče; kdyby bot neměl vlastní strop na použití za tah, vyčerpal by celý strop pravidla
-// (x použití za sebou) a stůl by se jen přesedával, dokud by nedošly tahy.
+// hráče; a bez pojistky „nikdo nepřijde o dva tahy za sebou" (`_roseSkippedLast`) se
+// stůl střídá v tom, koho přeskočí, a hra neskončí NIKDY.
 test('20 her jen botů jede i s balíčkem samých Lady Růží (a nepřesedávají donekonečna)', () => {
     const ctx = buildCtx();
     let stalls = 0;

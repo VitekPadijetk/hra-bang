@@ -105,6 +105,9 @@ const HighNoonMixin = {
         // ze stejného důvodu jako `_lastBrown`: tudy jde i Vendetin tah navíc, a ten je
         // taky tah.
         this._roseUsedThisTurn = false;
+        // …a kdo se tahu dožil, přestává být „čerstvě přeskočený" – od téhle chvíle se
+        // s ním zase smí měnit místo (viz `_roseSkip` a `roseSwapOffer`).
+        if (cp) cp._roseSkippedLast = false;
         return this._runBeginTurn();
     },
 

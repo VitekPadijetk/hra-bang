@@ -676,10 +676,16 @@ function lvkTargetOk(state, me, myIndex, targetIdx) {
 // „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici a ten tak
 // přeskočí svůj nejbližší tah."
 //
-// Počet použití karta sama neomezuje, hra ale ano: JEDNOU ZA TAH (`state._roseUsedThisTurn`,
-// nuluje ho začátek každého tahu). Je to jediná pojistka proti smyčce, ve které jeden
-// hráč nikdy nepřijde na tah – přesednout tam a zpátky by šlo donekonečna – takže ji
-// musí znát server, klient i bot, tedy tenhle helper.
+// Počet použití karta sama neomezuje, hra ale ano, a to DVĚMA pojistkami:
+//   1. JEDNOU ZA TAH (`state._roseUsedThisTurn`, nuluje ho začátek každého tahu),
+//   2. nikdo nesmí přijít o DVA TAHY ZA SEBOU (`p._roseSkippedLast` na oběti, shazuje
+//      ho tah, který si doopravdy odehraje).
+// Bez té druhé vzniká smyčka, ve které jeden hráč nikdy nepřijde na tah: v koncovce
+// chce přesednout každý (soused je nepřítel), takže se zbytek stolu střídá v tom, koho
+// přeskočí – a on jen sedí. Naměřeno v zátěži: hra pro 3, 865 tahů, oběť odehrála 1 tah
+// a 861× byla přeskočena. Nestačí přitom hlídat „tutéž dvojici": přeskakovat ho může
+// pokaždé někdo jiný, proto příznak patří OBĚTI.
+// Obě pojistky musí znát server, klient i bot, tedy tenhle helper.
 
 // Kdo sedí „po pravici"? = předchozí hráč PO SMĚRU hodinových ručiček, tedy
 // (i − 1 + n) % n, a to BEZ ohledu na Zlatou horečku (High Noon). Je to efekt karty,
@@ -705,6 +711,7 @@ function roseSwapOffer(state, myIndex) {
     const j = roseRightNeighbor(state, myIndex);
     if (j == null) return null;
     if (state._roseUsedThisTurn) return null;
+    if (state.players[j]._roseSkippedLast) return null;   // o dva tahy za sebou nikdo nepřijde
     // A Fistful of Cards – Právo západu: vynucená karta zamyká jen akce, po kterých už
     // by nešla zahrát (viz lawLocksOther). Výměna míst sice kartami nehýbe, ale MĚNÍ
     // VZDÁLENOSTI – přesednutím by se hráč mohl vyvléknout z dostřelu vynuceného Bang!
