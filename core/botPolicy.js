@@ -1213,7 +1213,12 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'DYNAMITE_DAMAGE': {
             const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
             if (me.health === 1 && aliveCount > 2 && !beerBlockedFor(state)) {
-                const beerIdx = me.hand.findIndex(c => c.type === T.BEER);
+                // Želízka (High Noon) platí i na záchranné Pivo – klikané zásahy padají
+                // ve VLASTNÍM tahu (Dynamit, Ruská ruleta, Madam Zuzana), takže barva
+                // sedí. Bez téhle podmínky nabídne bot Pivo, které server odmítne
+                // (beerLastLifeSave, logic/response.js), stav se nezmění a další tick
+                // pošle totéž → hra jen botů se zasekne na stall guardu.
+                const beerIdx = me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
                 if (beerIdx !== -1) return { event: 'beer_dynamite_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
             }
             return { event: 'take_dynamite_hit' };
@@ -1224,7 +1229,10 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'NOON_DAMAGE': {
             const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
             if (me.health === 1 && aliveCount > 2 && !beerBlockedFor(state)) {
-                const beerIdx = me.hand.findIndex(c => c.type === T.BEER);
+                // Želízka (viz DYNAMITE_DAMAGE výš) – Pravé poledne bere život taky
+                // na začátku VLASTNÍHO tahu, takže se barva zvolená pro tenhle tah
+                // vztahuje i na záchranné Pivo.
+                const beerIdx = me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
                 if (beerIdx !== -1) return { event: 'beer_noon_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
             }
             return { event: 'take_noon_hit' };

@@ -494,6 +494,43 @@ test('PLAY: zbraň, která nic neodemkne, zůstává až za střelbou', () => {
     assert.equal(decideBotAction(g, 0).event, 'play_bang');
 });
 
+// ── Klikané zásahy: záchrana Pivem se musí ptát na Želízka ─────────────────
+// Dynamit, Pravé poledne (i Madam Zuzana a Ruská ruleta, které recyklují tentýž
+// pending) padají ve VLASTNÍM tahu, takže na záchranné Pivo platí barva zvolená pro
+// tenhle tah – server ho jinak odmítne (beerLastLifeSave, logic/response.js). Bez
+// téhle podmínky bot nabízel Pivo dokola, stav se nehnul a hra jen botů se zasekla
+// na stall guardu (padalo to ~1× z 200 partií).
+const hnZelizka = JSON.parse(fs.readFileSync('cards.high_noon.json', 'utf8'))
+    .find(c => c.key === 'ZELIZKA');
+
+function cuffed(phase, pending) {
+    const g = mkGame([{ role: 'Sheriff', health: 1 }, { role: 'Outlaw' }, { role: 'Renegade' }],
+                     { phase, current: 0 });
+    g.activeEvent = hnZelizka;
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    Object.assign(g, pending);
+    return g;
+}
+
+test('DYNAMITE_DAMAGE: Pivo zakázané barvy bot nenabídne, schytá zásah', () => {
+    const g = cuffed('DYNAMITE_DAMAGE', { pendingDynamiteDamage: { playerIdx: 0, hitsLeft: 1 } });
+    give(g, 0, CardType.BEER, { suit: Suits.SPADES });
+    assert.deepEqual(decideBotAction(g, 0), { event: 'take_dynamite_hit' });
+});
+
+test('DYNAMITE_DAMAGE: Pivo povolené barvy se zahraje dál', () => {
+    const g = cuffed('DYNAMITE_DAMAGE', { pendingDynamiteDamage: { playerIdx: 0, hitsLeft: 1 } });
+    const beer = give(g, 0, CardType.BEER, { suit: Suits.HEARTS });
+    assert.deepEqual(decideBotAction(g, 0),
+        { event: 'beer_dynamite_save', payload: { playerIdx: 0, cardIdx: beer } });
+});
+
+test('NOON_DAMAGE: totéž platí pro Pravé poledne', () => {
+    const g = cuffed('NOON_DAMAGE', { pendingNoonDamage: { playerIdx: 0 } });
+    give(g, 0, CardType.BEER, { suit: Suits.SPADES });
+    assert.deepEqual(decideBotAction(g, 0), { event: 'take_noon_hit' });
+});
+
 // ── Uncle Will (Fistful) ───────────────────────────────────────────────────
 test('PLAY: Uncle Will promění kartu, o kterou nestojí, v hokynářství', () => {
     // Vězení nemá kam jít (jediný soupeř je šerif), takže zbyde jako veteš v ruce.
