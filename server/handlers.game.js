@@ -120,8 +120,18 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     // místo aby mu z veřejné hromádky odletěl rub neznámé karty.
                     emitAnim(room, { type: 'draw', playerIdx, cardId: drawnId, fromDiscard: true });
                 } else {
+                    // Divoký západ: poslední karta Dostavníku / Wells Farga otáčí kartu
+                    // události, takže hned za líznutím jde do fronty cinematika odkrytí
+                    // (4,6 s) a stav čeká až za ní – karta by se majiteli objevila v ruce
+                    // teprve po ní (bug 67). Pošleme mu proto i DATA líznuté karty a klient
+                    // si ji položí do ruky rovnou se startem letu (staging jako u karty,
+                    // která ve stavu už je); stav ji za cinematikou jen potvrdí. Jde to jen
+                    // MAJITELI (emitAnimPrivate), ostatním pořád letí jen rub.
+                    const revealPending = !!(gs._pendingWwsReveal || gs._pendingHighNoonReveal ||
+                                             gs._pendingFistfulReveal);
                     emitAnimPrivate(room, playerIdx,
-                        { type: 'draw', playerIdx, cardId: drawnId },
+                        { type: 'draw', playerIdx, cardId: drawnId,
+                          stageCard: revealPending ? drawn : undefined },
                         { type: 'draw', playerIdx });
                 }
             }

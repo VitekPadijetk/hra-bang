@@ -2145,6 +2145,20 @@ function _playCardAnim(data) {
             const _fromDiscard = !!data.fromDiscard;
             const mineDone = mineTakeFromPile(_fromDiscard ? data.cardId : null);
             const _mineFace = _fromDiscard && data.cardId != null;
+            // Divoký západ: za posledním líznutím Dostavníku / Wells Farga jde do fronty
+            // cinematika odkrytí karty události (4,6 s) a stav čeká až za ní – karta by se
+            // tak v ruce objevila teprve po ní (bug 67). Server proto majiteli poslal i její
+            // DATA (stageCard) a my ji do ruky položíme rovnou: vějíř se hned rozestoupí na
+            // finální počet, letící karta míří na svůj skutečný slot (gatedSlotPos) a po
+            // dosednutí se odkryje. Stav ji za cinematikou jen potvrdí (je to plný snímek,
+            // takže se nic rozejít nemůže) a `holdUntil` v animateDrawToMyHand je tím rovnou
+            // splněné – sprite tedy na cíli neparkuje přes celou cinematiku.
+            const _stageHand = data.stageCard && myIndex !== null && data.playerIdx === myIndex
+                ? state.players?.[myIndex]?.hand : null;
+            if (_stageHand && !_stageHand.some(c => c.id === data.stageCard.id)) {
+                _stageHand.push(data.stageCard);
+                registerCardTexAliases(state);
+            }
             // Majitel: reveal flip do finálního slotu + staging (objeví se po dosednutí).
             // Pod dolem bez překlápění (faceUp) – karta z odhozu už lícem nahoru je.
             const _src = _fromDiscard ? discard : deck;

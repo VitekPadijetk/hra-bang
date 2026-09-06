@@ -1,7 +1,7 @@
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { GameState } = require('../logic.js');
+const { GameState, Card, CardType } = require('../logic.js');
 
 const installRoomService = require('../server/rooms.js');
 const installIntroService = require('../server/intro.js');
@@ -16,6 +16,7 @@ const registerDebug = require('../server/handlers.debug.js');
 const cardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.json', 'utf8'));
 const highNoonCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.high_noon.json', 'utf8'));
 const fistfulCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.fistful.json', 'utf8'));
+const wwsCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.divoky_zapad.json', 'utf8'));
 
 before(() => { console.log = () => {}; });
 
@@ -37,7 +38,7 @@ function mkEnv() {
             };
         },
     };
-    const ctx = { io, cardData, highNoonCardData, fistfulCardData, GameState };
+    const ctx = { io, cardData, highNoonCardData, fistfulCardData, wwsCardData, GameState };
     installRoomService(ctx);
     installIntroService(ctx);
     installAnimService(ctx);
@@ -402,4 +403,37 @@ test('chat v debug hře mluví za sedadlo, na které se čeká', () => {
     // Každá zpráva dojde třikrát – všechna tři sedadla visí na tomtéž socketu.
     assert.equal(said[0], 'Debug3');
     assert.equal(said[said.length - 1], 'Debug1');
+});
+
+// Bug 67: za posledním líznutím Dostavníku / Wells Farga jde do fronty cinematika
+// odkrytí karty Divokého západu (4,6 s) a stav čeká až za ní – karta by se majiteli
+// objevila v ruce teprve po ní. Server mu proto k poslednímu líznutí přibalí i DATA
+// karty (`stageCard`) a klient si ji položí do ruky rovnou. Ostatním jde pořád jen rub,
+// takže se nic neprozradí.
+test('poslední líznutí Dostavníku nese majiteli i data karty (stageCard)', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    const anims = [];
+    s.emit = (ev, payload) => { if (ev === 'card_animation') anims.push(payload); };
+    s.fire('debug_start', { playerCount: 3, divokyZapad: true });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+    gs.phase = 'PLAY';
+    gs.currentPlayerIndex = 0;
+    const me = gs.players[0];
+    me.hand.push(new Card(9001, 'Dostavník', CardType.STAGECOACH, 'Srdce', 'A'));
+    gs.playCard(me.hand.length - 1);
+    assert.equal(gs.phase, 'DRAW');
+    assert.equal(gs.drawPhaseState.wwsFlip, true);
+
+    s.fire('draw_card', { source: 'deck' });
+    s.fire('draw_card', { source: 'deck' });
+
+    const draws = anims.filter(a => a.type === 'draw');
+    assert.equal(draws.length, 2);
+    assert.equal(draws[0].stageCard, undefined, 'první líznutí nic nestaguje – stav dorazí včas');
+    assert.ok(gs.activeWws, 'druhé líznutí kartu události otočilo');
+    assert.ok(draws[1].stageCard, 'poslední líznutí nese data karty');
+    assert.equal(draws[1].stageCard.id, draws[1].cardId);
+    assert.ok(me.hand.some(c => c.id === draws[1].stageCard.id), 'a je to opravdu karta v jeho ruce');
 });
