@@ -2110,6 +2110,10 @@ function drawMyArea(ctx) {
                 // (Claus "The Saint" tudy NECHODÍ – rozděluje odkrytou řadu uprostřed
                 // stolu, ruky se to netýká a její indexy s ní nemají nic společného.)
                 const isWillActive = !!selectedState.will;
+                // Uncle Will × Želízka (High Noon): karta jde Z RUKY ven, takže smí být
+                // jen zvolené barvy – jinou server odmítne. Bez tohohle zůstalo UI po
+                // kliknutí zamčené (bug 68). Ptá se stejným predikátem jako server i bot.
+                const _willPayOk = isWillActive && willPayOk(state, me, myIndex, card);
                 // Doc Holyday: jako Sid – v aktivním režimu jsou všechny karty červené,
                 // vybrané (2) se zmenší a zašednou. José: modré karty se zvýrazní.
                 const isDocActive = !!selectedState.doc;
@@ -2145,7 +2149,8 @@ function drawMyArea(ctx) {
                 if (state.phase === "DISCARD" && state.currentPlayerIndex === myIndex) cSprite.setTint(0xff6666);
                 if (isMySidActive) cSprite.setTint(0xff6666);
                 if (isDocActive) cSprite.setTint(0xff6666);   // Doc: všechny karty červené (jako Sid)
-                if (isWillActive) cSprite.setTint(0xff6666);  // Uncle Will: vyber kartu za hokynářství
+                // Uncle Will: platné karty červeně, ostatní zašedle (jako u ceny „odhoď další kartu").
+                if (isWillActive) cSprite.setTint(_willPayOk ? 0xff6666 : 0x777777);
                 if (isStagedCard) cSprite.setTint(0xbbbbbb);
 
                 // „Odhoď další kartu": hlavní (zmenšená) karta zašedne, ostatní červeně
@@ -2294,6 +2299,7 @@ function drawMyArea(ctx) {
                     }
                     // Uncle Will: klik = zahraj tuhle kartu jako Hokynářství (1×/tah).
                     if (isWillActive) {
+                        if (!_willPayOk) return;   // Želízka / Právo západu – server by ji odmítl
                         socket.emit('uncle_will', { cardIdx: index });
                         selectedState = { cardIndex: null, action: null };
                         App.blockInput = true;
@@ -2514,7 +2520,8 @@ function drawMyArea(ctx) {
                 (hasAbility(me, "José Delgado") && (me._joseUses || 0) < 2 && me.hand.some(isBlueCard)) ||
                 // Fistful – Uncle Will: 1×/tah libovolná karta jako Hokynářství. Dokud
                 // schopnost nevyužil, má co hrát a „Ukončit tah" blikat nesmí (bug 31).
-                (hasAbility(me, "Uncle Will") && me._willUsedTurn !== state.turnId && me.hand.length > 0) ||
+                // Co všechno ji musí pustit (Želízka, Právo západu), ví willOffer.
+                willOffer(state, me, myIndex) ||
                 // Divoký západ – Flint Westwood (výměna karty za dvě) a Lee Van Kliff
                 // (zopakování efektu hnědé karty); obojí je tlačítko ve slotu schopnosti.
                 (hasAbility(me, "Flint Westwood") && me._flintUsedTurn !== state.turnId && me.hand.length > 0 &&
@@ -2829,8 +2836,7 @@ function drawMyArea(ctx) {
             }
             // Uncle Will (Fistful): 1× za tah zahraj libovolnou kartu jako Hokynářství.
             // Aktivní režim pak čeká na klik na kartu v ruce (stejně jako José/Doc).
-            if (myPlayTurn && hasAbility(me, "Uncle Will") &&
-                me._willUsedTurn !== state.turnId && (selectedState.will || me.hand.length > 0)) {
+            if (myPlayTurn && (selectedState.will || willOffer(state, me, myIndex))) {
                 _abilSlotUsed = true;
                 const active = !!selectedState.will;
                 themeButton(gameScene, _abilX, BTN_Y, 320, 58, active ? 'WILL: zrušit ↩' : 'WILL: karta → 🏪', {

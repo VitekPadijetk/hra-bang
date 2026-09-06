@@ -33,19 +33,17 @@ const CharactersMixin = {
     // Karta se odhodí a z balíčku se rozdá každému ve hře, přesně jako po zahrání
     // opravdového Hokynářství (openStore). Soudce (Fistful) to neomezuje – nic se
     // nevykládá před hráče; Želízka (High Noon) ano, karta jde z ruky.
+    //
+    // Co schopnost pustí a čím se smí zaplatit, rozhodují sdílené predikáty
+    // `willOffer`/`willPayOk` (core/playability.js) – týmiž se ptá klientské zvýraznění
+    // i bot, takže se výčet nemůže rozejít (bug 68: Želízka odmítla kartu jiné barvy,
+    // klik ale UI zamkl a hra zůstala stát).
     useUncleWill(playerIdx, cardIdx) {
         if (this.phase !== "PLAY" || playerIdx !== this.currentPlayerIndex) return false;
         const p = this.players[playerIdx];
-        if (!p || !hasAbility(p, "Uncle Will")) return false;
-        if (p._willUsedTurn === this.turnId) return false;
+        if (!p || !willOffer(this, p, playerIdx)) return false;
         const card = p.hand[cardIdx];
-        if (!card) return false;
-        // Fistful – Právo západu: vynucenou kartu schopnost spolknout nesmí (odhazuje se,
-        // nehraje); jinak schopnost vadí jen tehdy, když by po ní vynucená karta přestala
-        // jít zahrát – jedna karta z ruky ven, jedna z hokynářství zpátky.
-        if (this._lawProtected(playerIdx, card)) return false;
-        if (this._lawLocked(playerIdx, null, { discards: 1, draws: 1 })) return false;
-        if (this._suitBlocked(playerIdx, card)) return false;
+        if (!willPayOk(this, p, playerIdx, card)) return false;
         p._willUsedTurn = this.turnId;
         this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
         this._trackCard(playerIdx, CardType.STORE);

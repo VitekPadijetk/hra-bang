@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { mkGame, mkCard, give, board, CardType, Suits } = require('./_helpers.js');
+const { willPayOk, willOffer } = require('../core/playability.js');
 
 before(() => { console.log = () => {}; });
 
@@ -165,6 +166,38 @@ test('Uncle Will: Želízka pustí jen kartu zvolené barvy', () => {
     assert.equal(g.useUncleWill(0, spade), false);
     const heart = give(g, 0, CardType.BANG, { suit: Suits.HEARTS });
     assert.equal(g.useUncleWill(0, heart), true);
+});
+
+// Bug 68: klient (zvýraznění + klik) a bot se ptají týmiž predikáty jako server. Kdyby se
+// rozešly, server by kartu mlčky odmítl, žádný nový stav by nepřišel a hráči by zůstalo
+// zamčené UI (a bot by akci posílal donekonečna).
+test('Uncle Will: willPayOk/willOffer sedí se serverem – Želízka', () => {
+    const g = mkGame([{ character: 'Uncle Will' }, {}]);
+    g.activeEvent = ev('ZELIZKA');
+    g.players[0]._handcuffsSuit = Suits.HEARTS;
+    fillDeck(g);
+    const me = g.players[0];
+    const spade = give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+
+    assert.equal(willPayOk(g, me, 0, me.hand[spade]), false, 'jiná barva se nenabízí');
+    assert.equal(willOffer(g, me, 0), false, 'a se samými piky se nenabízí ani tlačítko');
+
+    const heart = give(g, 0, CardType.BANG, { suit: Suits.HEARTS });
+    assert.equal(willPayOk(g, me, 0, me.hand[heart]), true);
+    assert.equal(willOffer(g, me, 0), true, 'jedna karta v barvě stačí');
+    assert.equal(g.useUncleWill(0, heart), true, 'a server to pustí');
+});
+
+test('Uncle Will: willOffer zhasne s použitou schopností i s prázdnou rukou', () => {
+    const g = mkGame([{ character: 'Uncle Will' }, {}]);
+    fillDeck(g);
+    const me = g.players[0];
+    assert.equal(willOffer(g, me, 0), false, 'prázdná ruka: není čím zaplatit');
+    give(g, 0, CardType.BANG);
+    assert.equal(willOffer(g, me, 0), true);
+    assert.equal(willOffer(g, g.players[1], 1), false, 'hráč mimo tah ne');
+    me._willUsedTurn = g.turnId;
+    assert.equal(willOffer(g, me, 0), false, '1× za tah');
 });
 
 // ── Johnny Kisch ────────────────────────────────────────────────────────────

@@ -56,6 +56,11 @@ if (typeof require === 'function') {
     if (typeof lawHandcuffsSuit === 'undefined') {
         globalThis.lawHandcuffsSuit = require('./playability.js').lawHandcuffsSuit;
     }
+    // Uncle Will (Fistful) – samostatný guard ze stejného důvodu.
+    if (typeof willOffer === 'undefined') {
+        globalThis.willOffer = require('./playability.js').willOffer;
+        globalThis.willPayOk = require('./playability.js').willPayOk;
+    }
     // Ruská ruleta (Fistful) – samostatný guard ze stejného důvodu.
     if (typeof rouletteDiscardable === 'undefined') {
         globalThis.rouletteDiscardable = require('./playability.js').rouletteDiscardable;
@@ -873,22 +878,20 @@ function decidePlay(state, myIndex, beliefs) {
     // se to hlavně z přebytku – karta, kterou by stejně odhodil na konci tahu, se změní
     // v novou z balíčku (a vybírá si první). Podmínky musí sedět se serverem
     // (useUncleWill), jinak by server akci odmítl a bot ji zkoušel donekonečna.
-    if (hasAbility(me, 'Uncle Will') && me._willUsedTurn !== state.turnId && me.hand.length > 0) {
+    if (willOffer(state, me, myIndex)) {
         let idx = -1, low = Infinity;
         me.hand.forEach((c, i) => {
-            if (suitBlockedFor(state, myIndex, c)) return;   // Želízka
-            if (lawProtectedCard(state, me, myIndex, c)) return;   // Právo západu
+            if (!willPayOk(state, me, myIndex, c)) return;   // Želízka, Právo západu
             if (keepScore(c) < low) { low = keepScore(c); idx = i; }
         });
         // Zaplatí se buď z přebytku (karta by stejně padla na konci tahu), nebo kartou,
         // o kterou bot stejně nestojí (dynamit bez rozumného směru, Vězení bez cíle, veteš).
         // Bez té druhé větve schopnost prakticky neexistovala – ruku nad počet životů
         // bot naplnit nestihne, takže přebytek měl jen výjimečně.
-        // Serverový useUncleWill se ptá i na _lawLocked (jedna karta z ruky ven, jedna
-        // z hokynářství zpátky) – bez téhož dotazu by server akci mlčky odmítl a bot
-        // by ji posílal donekonečna.
-        const lawOk = !lawLocksOther(state, me, myIndex, null, { discards: 1, draws: 1 });
-        if (idx !== -1 && lawOk && (me.hand.length > me.health || low <= 2)) {
+        // Zámek Práva západu (jedna karta z ruky ven, jedna z hokynářství zpátky) i výčet
+        // toho, čím se smí zaplatit, sedí se serverem přes willOffer/willPayOk – bez toho
+        // by server akci mlčky odmítl a bot by ji posílal donekonečna.
+        if (idx !== -1 && (me.hand.length > me.health || low <= 2)) {
             consider(16, { event: 'uncle_will', payload: { cardIdx: idx } });
         }
     }

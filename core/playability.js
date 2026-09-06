@@ -479,6 +479,32 @@ function lawHandcuffsSuit(state, me, myIndex) {
     return lawForcedCard(sim, simMe, myIndex) ? suit : null;
 }
 
+// ── A Fistful of Cards – Uncle Will: co smí jít jako Hokynářství ─────────────
+// „Jednou za svůj tah smí zahrát libovolnou kartu z ruky jako Hokynářství." Karta jde
+// Z RUKY ven, takže ji omezují dvě pravidla:
+//   • Právo západu (Fistful) – vynucenou kartou se platit nedá (lawProtectedCard),
+//   • Želízka (High Noon) – hrát smí jen karty zvolené barvy (suitBlockedFor).
+// Jediný zdroj pravdy pro server (useUncleWill v logic/characters.js), klientské
+// zvýraznění (view/board.js) i bota. Rozejít se nesmí: server by klik mlčky odmítl,
+// hráči by zůstalo zamčené UI a bot by akci posílal donekonečna.
+function willPayOk(state, me, myIndex, card) {
+    if (!card || card._placeholder) return false;
+    if (lawProtectedCard(state, me, myIndex, card)) return false;
+    if (suitBlockedFor(state, myIndex, card)) return false;
+    return true;
+}
+
+// Je schopnost právě teď k dispozici? (Umí ji, tenhle tah ji ještě nepoužil, Právo
+// západu ji nezamyká – jedna karta z ruky ven, jedna z hokynářství zpátky – a hlavně
+// je čím zaplatit.) Podle toho se kreslí tlačítko a rozhoduje bot.
+function willOffer(state, me, myIndex) {
+    if (!me || !hasAbility(me, "Uncle Will")) return false;
+    if (state.currentPlayerIndex !== myIndex) return false;
+    if (me._willUsedTurn === state.turnId) return false;
+    if (lawLocksOther(state, me, myIndex, null, { discards: 1, draws: 1 })) return false;
+    return (me.hand || []).some(c => willPayOk(state, me, myIndex, c));
+}
+
 // ── A Fistful of Cards – Ruská ruleta: co se počítá za „kartu Vedle!" ────────
 // „Počínaje šerifem každý hráč odhodí kartu Vedle!. První, kdo nemůže, ztrácí 2 životy."
 // Jediný zdroj pravdy pro server (_rouletteValidCard v logic/fistful.js), klientské
@@ -883,7 +909,7 @@ function lvkOffer(state, me, myIndex) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { cardPlayability, nativePlayInTurn, lawForcedCard, lawSelfShootOnly, lawLocksOther,
-                       lawProtectedCard, lawHandcuffsSuit,
+                       lawProtectedCard, lawHandcuffsSuit, willPayOk, willOffer,
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
                        playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, bigSpencerBlocked,
                        turnActionForCard,

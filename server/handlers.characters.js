@@ -359,7 +359,9 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             const idx = gs.currentPlayerIndex;
             const card = gs.players[idx]?.hand[d?.cardIdx];
             const ok = gs.useUncleWill(idx, d?.cardIdx);
-            if (!ok) return;
+            // Odmítnutá karta (Želízka jiné barvy, vynucená karta Práva západu) nový stav
+            // nevyvolá – bez odemčení by hráči zůstalo viset zamčené UI (bug 68).
+            if (!ok) { socket.emit('action_rejected', { event: 'uncle_will', reason: 'refused' }); return; }
             emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: card?.id });
             // Hokynářství: míchání si přebírá klientská cinematika (stejně jako po zahrání
             // opravdové karty Hokynářství, viz play_card).
