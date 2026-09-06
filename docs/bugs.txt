@@ -5,7 +5,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
 
 - Čísla jsou TRVALÁ. Nikdy se nepřečíslovávají a hotová čísla se neuvolňují —
   odkazuju se na ně v commitech i v zadání session.
-- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 67
+- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 69
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -97,13 +97,14 @@ Q — boti a server              24, 46, 53   HOTOVO
 OTEVŘENÉ
 --------
 
-(prázdné – všechny nahlášené bugy jsou opravené)
 
 HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 67 když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit → oprava: 0ca0801 (odkrytí karty jde do fronty hned za líznutím a stav čeká až za ním; prohodit pořadí nejde kvůli Sacagaway a Heleně Zontero, které stav dřív dostat nesmí. Majitel proto dostane k animaci i DATA karty a položí si ji do ruky rovnou – stav ji za cinematikou jen potvrdí)
+- 68 pokud uncle will zkusí použít během želízek kartu, která není té barvy, hra se zasekne. Už když vybírá kterou kartu odhodí, neměly by být zvýrazněny ty karty co nejsou v barvě co si vybral. Může totiž takto zahrát jen kartu jako hokynářství co má tu barvu → oprava: f8f20be (server kartu odmítal správně, jenže klik už zamkl UI a odmítnutá akce nový stav nevyvolá. Nové sdílené predikáty willPayOk/willOffer v core/playability.js – ptá se jimi server, klientské zvýraznění i klik a bot; karty mimo barvu zašednou a tlačítko se bez platné karty nenabídne. K tomu action_rejected jako pojistka)
 - 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě) → oprava: 87dcaeb (schopnost měl bot podmíněnou přebytkem karet, který si nestihne nahromadit – druhá větev: zaplatí i kartou, o kterou stejně nestojí (dynamit bez rozumného směru, Vězení bez cíle, veteš). Skóre zůstává nízké, takže se to stane, až když není nic lepšího; k tomu chyběl dotaz na _lawLocked, který server dělá)
 - 46 v debugu se nerozlišuje, kdo píše do chatu → oprava: f12306c (debug hra má všechna sedadla na jednom socketu, takže find(socketId) vracel pořád první – psal věčně Debug1 a Roubík pokutoval jeho. Mluvčí se určuje jako u guardu, přes pendingActor; klientský gagBlockedForMe se ptá stejně)
 - 53 když se rozdávají role, tak počkej ne jen na všechny hráče jak kliknou OK, ale i na to až se role rozdá i všem botům (takhle může začít míchání postav když se ještě rozdávají role) → oprava: 3a331b4 (boti potvrzují roli hned, jak vznikne _introRoleConfirmed – u stolu s boty bylo „potvrzeno všemi“ dřív, než první karta role vzlétla. Uzavření fáze se sjednotilo do closeRolePhase, které se při běžícím rozdávání jen zapamatuje a dotáhne ho timeout waitAfterDeal)
