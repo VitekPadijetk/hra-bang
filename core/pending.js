@@ -53,6 +53,10 @@ function pendingActor(state) {
             ? { idx: state.pendingDorothy.playerIdx, kind: 'DOROTHY_TARGET' } : null;
         // Divoký západ – Greygory Deck: nechat si dvojici postav, nebo líznout novou?
         case 'GREYGORY_OFFER':   return state.pendingGreygory ? { idx: state.pendingGreygory.playerIdx, kind: 'GREYGORY_OFFER' } : null;
+        // Zlatá horečka – hnědé vybavení s volbou (Panák): kupující vybírá, komu efekt
+        // patří. Kupuje se ve fázi PLAY, takže tohle je jediná fáze, kterou obchod má.
+        case 'GEAR_TARGET':      return state.pendingGearTarget
+            ? { idx: state.pendingGearTarget.playerIdx, kind: 'GEAR_TARGET' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         case 'EL_GRINGO_STEAL':  return state.pendingElGringoSteal ? { idx: state.pendingElGringoSteal.playerIdx, kind: 'EL_GRINGO_STEAL' } : null;
@@ -95,6 +99,7 @@ const _WAIT_LABELS = {
     NEW_IDENTITY:          'Nová identita – rozmýšlí si postavu',
     GREYGORY_OFFER:        'Greygory Deck – vybírá si postavy',
     DOROTHY_TARGET:        'Zuřivá Doroty – vybírá cíl poručené karty',
+    GEAR_TARGET:           'vybírá, komu vybavení pomůže',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     EL_GRINGO_STEAL:       'El Gringo – bere kartu',

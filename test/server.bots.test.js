@@ -477,15 +477,22 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
             const tag = `${all ? 'vše' : 'jen ZH'} (${n}p)`;
             const room = { id: `zh${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
             ctx.rooms.set(room.id, room);
+            // Valouny se dají utratit (bot v obchodě nakupuje), takže „někdo si vydělal"
+            // se z konce hry nepozná – čte se z proudu událostí pravidel (gs._onEvent).
+            let gained = false;
+            gs._onEvent = (e) => { if (e && e.ev === 'nuggets' && e.gain) gained = true; };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
-            assert.equal(gs.gearDeck.length, 24, `${tag}: balíček vybavení`);
+            // Do hry jdou jen HOTOVÉ druhy (GEAR_READY, logic/goldRush.js) – ve fázi 1
+            // Panák 3× a Union Pacific 1×; tři z nich hned leží v obchodě.
+            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 4, `${tag}: balíček vybavení`);
+            assert.equal(gs.gearRow.filter(Boolean).length, 3, `${tag}: obchod je plný`);
             assert.ok(gs.players.every(p => p.nuggets === 0), `${tag}: začíná se bez valounů`);
 
             gs.players.forEach(p => ctx.createBot(room, p.name));
             const guard = pumpToWinner(ctx, room);
             assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
             assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
-            if (gs.players.some(p => p.nuggets > 0)) earned++;
+            if (gained) earned++;
         });
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani se Zlatou horečkou');

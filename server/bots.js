@@ -140,12 +140,16 @@ module.exports = function installBotService(ctx) {
         // hráči, který jmenovanou kartu nemá, jen na chvíli odkryje jeho ruku. Karty,
         // životy ani fáze se nehnou – posune se jen strop poručení za tah, takže musí
         // být v otisku (jinak je z legálního tahu falešný stall).
+        // Zlatá horečka přidala pokrok, který se v rukou ani na stole neprojeví:
+        // nákup vybavení jen ubere valouny (hnědá karta) nebo přidá kartu do `gear`.
         const hands = [];
-        let boardSum = 0, hpSum = 0;
+        let boardSum = 0, hpSum = 0, nugSum = 0, gearSum = 0;
         for (const p of gs.players) {
             hands.push(p.hand?.length || 0);
             boardSum += p.board?.length || 0;
             hpSum += Math.max(0, p.health || 0);
+            nugSum += p.nuggets || 0;
+            gearSum += p.gear?.length || 0;
         }
         return [
             gs.phase, gs.currentPlayerIndex, hands.join(','), boardSum, hpSum,
@@ -160,6 +164,7 @@ module.exports = function installBotService(ctx) {
             gs.pendingDynamiteDamage?.hitsLeft ?? -1,
             gs._dorothyUsed || 0,
             (gs._gagPending || []).length,       // Roubík: čekající pokuty za promluvení
+            nugSum, gearSum,                     // Zlatá horečka: nákup v obchodě
         ].join('|');
     }
 
@@ -185,6 +190,11 @@ module.exports = function installBotService(ctx) {
             case 'VALENTINE_DISCARD': {
                 const c = gs.players[idx]?.hand?.[0];
                 return c ? { event: 'valentine_discard', payload: { cardId: c.id } } : null;
+            }
+            // Zlatá horečka – Panák: cíl léčení je povinný, vezme se první z nabídky.
+            case 'GEAR_TARGET': {
+                const t = gs.pendingGearTarget?.targets?.[0];
+                return t == null ? null : { event: 'gear_target', payload: { targetIdx: t } };
             }
             // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
             case 'GRINNER_GIVE': {

@@ -544,6 +544,127 @@ function renderDorothyOverlay() {
     cancel.setDepth(DOROTHY_DEPTH + 6);
 }
 
+// ── Zlatá horečka: obchod jako překryvné okno ────────────────────────────────
+// Na desku se obchod nevešel: po zapnutí tří balíčků událostí zabírá vodorovné pásmo
+// balíčků x 420–1330 a nad ním leží druhá řada karet horních soupeřů. Nabídku proto
+// otevírá klik na rub balíčku vybavení (drawGearPile ve view/board.js) a tady se vysází
+// celá – včetně obou zbylých možností fáze 2, které do obchodu patří:
+//   1. nákup jedné nebo více karet vybavení,
+//   2. donucení jiného hráče odhodit vybavení (cena + 1),
+//   3. Pivo z ruky za 1 valoun.
+// Co je legální, rozhoduje VÝHRADNĚ core/goldRush.js – týmiž predikáty se ptá server
+// i bot, takže okno nikdy nenabídne akci, kterou by pravidla mlčky odmítla.
+//
+// Okno má vlastní hloubku ze stejného důvodu jako Zuřivá Doroty: deska si kreslí
+// hvězdičku šerifa, jména i karty s hloubkou 46–205, takže ztmavení v hloubce 0
+// by pod nimi prosvítalo.
+const GEAR_DEPTH = 1000;
+
+function renderGearShopOverlay() {
+    if (!state || !goldRushOn(state)) return;
+    const me = myIndex != null ? state.players[myIndex] : null;
+
+    const backdrop = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.82)
+        .setInteractive().setDepth(GEAR_DEPTH);   // spolkne kliknutí mimo okno
+    gameScene.cardsSprites.add(backdrop);
+
+    const nug = me ? (me.nuggets || 0) : 0;
+    const title = themeTitle(gameScene, 960, stageTop() + 80,
+        me ? `💰 Obchod – máš ${nug} valounů` : '💰 Obchod s vybavením', { fontSize: '38px' });
+    title.bg.setDepth(GEAR_DEPTH + 2);
+    title.txt.setDepth(GEAR_DEPTH + 3);
+
+    const canBuyNow = me && gearShopOpen(state, myIndex);
+    const hint = gameScene.add.text(960, stageTop() + 132,
+        canBuyNow
+            ? 'Hnědý rám se použije hned, černý ti zůstane ležet před tebou. Koupená karta se rovnou nahradí.'
+            : 'Kupovat smíš jen ve svém tahu (fáze 2).',
+        { fontFamily: THEME.fontUI, fontSize: '21px', color: THEME.color.textMuted })
+        .setOrigin(0.5).setDepth(GEAR_DEPTH + 3);
+    gameScene.cardsSprites.add(hint);
+
+    // ── Nabídka: 3 karty lícem vzhůru ───────────────────────────────────────
+    const SCALE = 0.62;
+    const step = 340;
+    const row = state.gearRow || [];
+    const startX = 960 - (row.length - 1) * step / 2;
+    row.forEach((card, i) => {
+        const cx = startX + i * step, cy = 470;
+        if (!card) {
+            const empty = gameScene.add.text(cx, cy, '(prázdné)',
+                { fontFamily: THEME.fontUI, fontSize: '22px', color: '#777' })
+                .setOrigin(0.5).setDepth(GEAR_DEPTH + 1);
+            gameScene.cardsSprites.add(empty);
+            return;
+        }
+        const tex = gearTexKey(card);
+        const img = gameScene.add.image(cx, cy, gameScene.textures.exists(tex) ? tex : 'placeholder')
+            .setScale(SCALE).setDepth(GEAR_DEPTH + 1);
+        gameScene.cardsSprites.add(img);
+
+        const why = me ? gearBuyReason(state, myIndex, i) : 'není tvůj tah';
+        const ok = why === null && !App.blockInput;
+        if (!ok) img.setTint(0x777777);
+        img.setInteractive({ useHandCursor: ok });
+        img.on('pointerover', () => { if (ok) img.setScale(SCALE * 1.06).clearTint(); });
+        img.on('pointerout', () => { img.setScale(SCALE); if (!ok) img.setTint(0x777777); });
+        img.on('pointerdown', () => {
+            if (!ok) return;
+            socket.emit('gear_buy', { rowIdx: i });
+            App.blockInput = true;
+            renderUI();
+        });
+
+        const label = gameScene.add.text(cx, cy + 500 * SCALE / 2 + 12,
+            ok ? `KOUPIT za ${gearCostFor(state, myIndex, card)} 💰` : (why || ''),
+            { fontFamily: THEME.fontUI, fontSize: '21px', fontStyle: ok ? 'bold' : 'normal',
+              color: ok ? '#ffd24d' : '#aa8888',
+              backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 10, y: 5 } })
+            .setOrigin(0.5, 0).setDepth(GEAR_DEPTH + 3);
+        gameScene.cardsSprites.add(label);
+    });
+
+    // ── Pivo za valoun (FAQ Q11: platí i ve dvou hráčích) ───────────────────
+    const beerIdx = me ? (me.hand || []).findIndex(c => c && !c._placeholder && beerNuggetOk(state, myIndex, c)) : -1;
+    if (beerIdx !== -1) {
+        const { bg: beerBtn } = themeButton(gameScene, 660, 830, 460, 60, '🍺 PIVO Z RUKY → 1 💰', {
+            fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum, textColor: THEME.color.gold,
+            fontSize: '22px',
+            onClick: () => {
+                if (App.blockInput) return;
+                socket.emit('beer_for_nugget', { cardIdx: beerIdx });
+                App.blockInput = true;
+                renderUI();
+            },
+        });
+        beerBtn.setDepth(GEAR_DEPTH + 4);
+        if (App.blockInput) { beerBtn.setAlpha(0.45); beerBtn.disableInteractive(); }
+    }
+
+    // ── Donutit odhodit vybavení: okno se zavře a kliká se na kartu soupeře ──
+    if (me && gearForceAvailable(state, myIndex)) {
+        const { bg: forceBtn } = themeButton(gameScene, 1260, 830, 460, 60, '🗑 DONUTIT ODHODIT (cena +1)', {
+            fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+            fontSize: '21px',
+            onClick: () => {
+                if (App.blockInput) return;
+                App.gearShop = false;
+                selectedState = { cardIndex: null, action: null, gearForce: true };
+                renderUI();
+            },
+        });
+        forceBtn.setDepth(GEAR_DEPTH + 4);
+        if (App.blockInput) { forceBtn.setAlpha(0.45); forceBtn.disableInteractive(); }
+    }
+
+    const { bg: close } = themeButton(gameScene, 960, 1080 - 46, 220, 52, '✕ Zavřít', {
+        fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum, stroke: THEME.color.borderNum,
+        fontSize: '20px',
+        onClick: () => { App.gearShop = false; renderUI(); },
+    });
+    close.setDepth(GEAR_DEPTH + 6);
+}
+
 // Kam a jak velké se zvětšené karty nabídky posadí (a odkud se pak smrští zpátky).
 const GREY_OFFER_Y = 420;
 const GREY_OFFER_SCALE = 0.62;

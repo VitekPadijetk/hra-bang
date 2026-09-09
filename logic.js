@@ -258,6 +258,8 @@ class GameState {
         this.gearRow = [null, null, null];
         this.gearPile = [];
         this._goldRush = false;   // je rozšíření zapnuté? (`_goldRushOn`, viz logic/goldRush.js)
+        // Hnědá karta vybavení, která potřebuje volbu cíle (zatím Panák) – fáze GEAR_TARGET.
+        this.pendingGearTarget = null;
     }
 
     getCurrentPlayer() {

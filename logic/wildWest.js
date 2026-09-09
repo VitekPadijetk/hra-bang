@@ -44,6 +44,9 @@ const NOT_SEAT_KEYS = new Set([
     'dynamiteIdx', 'jailIdx', 'handIdx', 'cardIdx', 'cardIndex', 'cardIndices',
     'targetCardIdx', 'extraCardIdx', 'charSelectIndex', 'stolenIndex', 'revealIdx',
     'keptIdxs', 'randomIdx', 'randomIndex',
+    // Zlatá horečka: index do obchodu (gearRow) a do vybavení hráče (player.gear) –
+    // ani jedno není sedadlo.
+    'rowIdx', 'gearIdx',
 ]);
 // Podstromy, do kterých se při přemapování vůbec nechodí (viz `_remapSeats`).
 const SEAT_SKIP_KEYS = new Set(['players', 'deck', 'storeCards', 'cardData', '_deathAnimData']);

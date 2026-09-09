@@ -139,6 +139,17 @@ if (typeof require === 'function') {
     if (typeof boardDeadFor === 'undefined') {
         globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
     }
+    // Zlatá horečka – obchod: „smí se koupit / donutit odhodit / vyměnit Pivo za valoun".
+    // Stejné predikáty, jaké vynucuje server i klient (core/goldRush.js).
+    if (typeof gearBuyOk === 'undefined') {
+        const __gr = require('./goldRush.js');
+        globalThis.goldRushOn = __gr.goldRushOn;
+        globalThis.gearBuyOk = __gr.gearBuyOk;
+        globalThis.gearCostFor = __gr.gearCostFor;
+        globalThis.gearForceOk = __gr.gearForceOk;
+        globalThis.gearForceCost = __gr.gearForceCost;
+        globalThis.beerNuggetOk = __gr.beerNuggetOk;
+    }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
         globalThis.ROLES = __b.ROLES;
@@ -160,6 +171,15 @@ const T = {
     JAIL: 'Vězení', PANIC: 'Panika!', CAT_BALOU: 'Cat Balou', DUEL: 'Duel',
     GATLING: 'Kulomet', INDIANS: 'Indiáni!', UHYB: 'Úhyb',
 };
+// ── Zlatá horečka: co pro bota znamená koupené vybavení ──────────────────────
+// Ocenění musí být PO MAJITELI (stejná past jako u boardCardValue): karta má cenu jen
+// tehdy, když z ní bot něco má. Tabulka roste s fázemi plánu, stejně jako GEAR_READY
+// (logic/goldRush.js) – druh, který ještě není hotový, se do obchodu vůbec nedostane.
+const GEAR_VALUE = {
+    ZH_PANAK: 12,          // +1 život komukoli (jen se zraněním, viz decidePlay)
+    ZH_UNION_PACIFIC: 32,  // 4 karty za 4 valouny – skoro Wells Fargo
+};
+
 const HEARTS = '♥️';
 const DIAMONDS = '♦️';
 const SPADES = '♠️';
@@ -1020,6 +1040,38 @@ function decidePlay(state, myIndex, beliefs) {
             consider(score, { event: 'lee_van_kliff', payload: { cardId: payId, targetIdx } });
         }
     }
+    // ── Zlatá horečka: obchod ───────────────────────────────────────────────
+    // Nakupuje se ve fázi PLAY jako každá jiná akce, takže stačí přihodit nabídky do
+    // téhož `consider`. Ptáme se STEJNÝM predikátem jako server i klient (gearBuyOk),
+    // jinak by bot posílal akci, kterou pravidla mlčky odmítnou – a hra jen botů by
+    // se zasekla na tahu, který nic nemění.
+    if (goldRushOn(state)) {
+        (state.gearRow || []).forEach((card, rowIdx) => {
+            if (!card || !gearBuyOk(state, myIndex, rowIdx)) return;
+            let val = GEAR_VALUE[card.effect] || 0;
+            // Panák léčí – bez zranění by se za něj zaplatilo a efekt by vyšuměl.
+            if (card.effect === 'ZH_PANAK' && me.health >= me.maxHealth) val = 0;
+            if (val > 0) consider(val, { event: 'gear_buy', payload: { rowIdx } });
+        });
+        // Pivo za valoun jen s PLNÝM životem: jinak je vyléčení cennější než zlato
+        // (a Pivo na plný život stejně nejde zahrát, takže by v ruce jen leželo).
+        if (me.health >= me.maxHealth) {
+            const bi = me.hand.findIndex(c => c && !c._placeholder && beerNuggetOk(state, myIndex, c));
+            if (bi !== -1) consider(6, { event: 'beer_for_nugget', payload: { cardIdx: bi } });
+        }
+        // Donutit odhodit vybavení jen PRAVDĚPODOBNÉHO nepřítele – spojenci by tím bot
+        // jen ubližoval a přišel by o valouny.
+        state.players.forEach((t, i) => {
+            if (i === myIndex || !isInPlay(t)) return;
+            if (hostilityOf(state, myIndex, i, beliefs) <= ENEMY_EPS) return;
+            (t.gear || []).forEach((g, gearIdx) => {
+                if (!gearForceOk(state, myIndex, i, gearIdx)) return;
+                const val = (GEAR_VALUE[g.effect] || 0) / 2;
+                if (val > 0) consider(val, { event: 'gear_force_discard', payload: { targetIdx: i, gearIdx } });
+            });
+        });
+    }
+
     if (hasAbility(me, 'Doc Holyday') && !me._docUsed && me.hand.length >= 3) {
         const reach = weaponReach(state, me.weapon);
         const tgt = shootTargets(state, myIndex, beliefs).find(e => computeDistance(state, myIndex, e.idx) <= reach);
@@ -1346,6 +1398,22 @@ function decideBotAction(state, myIndex, beliefs) {
         // Nová je NÁHODNÁ, takže se výměna vyplatí jen tehdy, když je ta současná pod
         // průměrem balíčku postav (GREYGORY_AVG) – nebo když v ní karta chybí úplně
         // (na začátku hry nezbyla volná).
+        // Zlatá horečka – Panák: „hráč dle tvé volby (i ty) si doplní 1 život."
+        // Sobě, pokud je v nabídce (bot si Panáka kupuje jen zraněný); jinak
+        // nejzraněnějšímu SPOJENCI. Volba je POVINNÁ – nabídka obsahuje jen hráče,
+        // kterým je co léčit, takže se vždycky vrací legální cíl.
+        case 'GEAR_TARGET': {
+            const targets = state.pendingGearTarget?.targets || [];
+            if (targets.includes(myIndex)) return { event: 'gear_target', payload: { targetIdx: myIndex } };
+            let pick = targets[0], pickH = Infinity;
+            targets.forEach(i => {
+                if (hostilityOf(state, myIndex, i, beliefs) > -ENEMY_EPS) return;
+                const p = state.players[i];
+                if (p && p.health < pickH) { pickH = p.health; pick = i; }
+            });
+            return { event: 'gear_target', payload: { targetIdx: pick } };
+        }
+
         case 'GREYGORY_OFFER': {
             const cur = state.pendingGreygory?.current || [];
             const free = state.pendingGreygory?.free || 0;

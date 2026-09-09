@@ -155,6 +155,11 @@ const App = {
     //   grown   – růst už proběhl (další renderUI kreslí karty rovnou velké)
     //   decided – hráč klikl, běží smrštění zpátky
     greyOffer: { active: false, grown: false, decided: false },
+    // Zlatá horečka: je otevřené okno obchodu? Nabídka se na desku nevešla, takže se
+    // otevírá klikem na rub balíčku vybavení (renderGearShopOverlay, view/screens.js).
+    // Zavírá se sama, jakmile fáze opustí PLAY – jinak by okno spolklo klik ve chvíli,
+    // kdy hráč musí něco rozhodnout (výběr cíle, obrana, lízání).
+    gearShop: false,
     // ID karet právě odlétajících z RUKY vlastníka (hraná/odhazovaná karta, panika/CB).
     // Server ji může dočasně vrátit do ruky a znovu rozeslat (aby zůstala vidět, než ji
     // zvedne animace) → room_update by ji jinak vrátil zpět doprostřed letu a přepočítal

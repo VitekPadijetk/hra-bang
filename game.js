@@ -2435,6 +2435,64 @@ function paintCardTexture(scene, rt, card, sKey) {
     }
 }
 
+// ── Zlatá horečka: náhradní art karet vybavení ───────────────────────────────
+// Art rozšíření zatím CELÝ chybí (plán §2.8) a karty vybavení nejsou karty hracího
+// balíčku – nemají barvu ani hodnotu, takže se nedají upéct přes buildCardTextures.
+// Do doby, než art dorazí, se z dat vysází čitelný štítek: rám podle `border`
+// (hnědý = efekt hned, černý = leží před hráčem), jméno, cena v rohu a text karty.
+// Klíč textury je `zh_<effect>` – identita karty je `effect`, nikdy jméno (R1).
+// Až art dorazí, tahle funkce jen přestane kreslit a načtou se obrázky pod stejný klíč.
+function gearTexKey(card) { return card && card.effect ? 'zh_' + card.effect : null; }
+
+function buildGearTextures(scene) {
+    const data = scene.cache.json.get('cards_zlata_horecka_data');
+    if (!data) return;
+    const W = CARD_TEX_W, H = CARD_TEX_H;
+    scene._gearRTs = scene._gearRTs || {};
+    data.forEach(kind => {
+        const key = gearTexKey(kind);
+        if (!key || scene.textures.exists(key)) return;
+        const brown = kind.border !== 'black';
+        const rt = scene.make.renderTexture({ width: W, height: H }, false);
+        scene._gearRTs[kind.effect] = rt;      // RT drží texturu → nedestruovat
+        rt.saveTexture(key);
+        // Papír + rám v barvě podle typu karty.
+        const paper = scene.make.graphics({ add: false });
+        paper.fillStyle(0xe8dcc0, 1).fillRoundedRect(0, 0, W, H, 26);
+        paper.lineStyle(26, brown ? 0x8a5a2b : 0x1e1e1e, 1).strokeRoundedRect(13, 13, W - 26, H - 26, 20);
+        rt.draw(paper, 0, 0); paper.destroy();
+
+        const name = scene.make.text({ x: 0, y: 0, add: false, text: kind.name || '', style: {
+            fontFamily: 'Arial', fontSize: '38px', color: '#1a1a1a', fontStyle: 'bold',
+            align: 'center', wordWrap: { width: W * 0.8 } } }).setOrigin(0.5, 0);
+        rt.draw(name, W / 2, H * 0.10); name.destroy();
+
+        const text = scene.make.text({ x: 0, y: 0, add: false, text: kind.text || '', style: {
+            fontFamily: 'Arial', fontSize: '26px', color: '#33261a',
+            align: 'center', wordWrap: { width: W * 0.8 } } }).setOrigin(0.5, 0.5);
+        rt.draw(text, W / 2, H * 0.55); text.destroy();
+
+        // Cena je vytištěná v pravém dolním rohu karty (stejně jako na skutečném artu).
+        const coin = scene.make.graphics({ add: false });
+        coin.fillStyle(0xd4a12a, 1).fillCircle(W - 62, H - 62, 44);
+        coin.lineStyle(5, 0x6b4a10, 1).strokeCircle(W - 62, H - 62, 44);
+        rt.draw(coin, 0, 0); coin.destroy();
+        const cost = scene.make.text({ x: 0, y: 0, add: false, text: String(kind.cost), style: {
+            fontFamily: 'Arial', fontSize: '46px', color: '#2b1d05', fontStyle: 'bold' } })
+            .setOrigin(0.5);
+        rt.draw(cost, W - 62, H - 62); cost.destroy();
+    });
+}
+
+// Zlatá horečka: kde na stole leží rub balíčku vybavení. Obchod sám se nekreslí –
+// otevírá se klikem na rub jako překryvné okno (renderGearShopOverlay ve view/screens.js),
+// protože 3 karty lícem vzhůru + rub se do žádného volného pásma desky nevejdou.
+// Zvedá se při hokynářství přesně jako balíčky (řada rozdaných karet jde až k x 1429).
+function gearDeckSlot() {
+    const s = gearSlot(currentLayout());
+    return { x: s.x, y: s.y - (App.storePileLiftY || 0) };
+}
+
 function buildCardTextures(scene, cardList) {
     const allData = cardList || scene.cache.json.get('cards_data');
     if (!allData) { clog('error', 'cards_data nenačteno – karty zůstanou na rubu'); return; }
@@ -2574,6 +2632,7 @@ function createScene() {
     normalizeCharTextures(this);
     normalizeRoleTextures(this);
     buildCardTextures(this);
+    buildGearTextures(this);   // Zlatá horečka: náhradní art karet vybavení (chybí, plán §2.8)
 
     // Pozadí i závoj se roztahují přes CELÉ jeviště (tedy i přes pruhy po stranách,
     // které při širším poměru stran přibyly) – jinak by z nich prosvítala holá výplň
@@ -2888,6 +2947,15 @@ function renderUI() {
     } else {
         App.greyOffer.active = state.pendingGreygory?.playerIdx === myIndex && !App.greyOffer.decided;
     }
+    // Zlatá horečka: okno obchodu se zavře samo, jakmile fáze opustí PLAY – jinak by
+    // spolklo klik ve chvíli, kdy se na hráči něco čeká. Totéž platí pro nabité „donutit
+    // odhodit vybavení": mimo můj tah není na co kliknout, takže by zvýraznění cizích
+    // karet jen viselo a nabízelo akci, kterou server odmítne. Obojí se musí srovnat
+    // PŘED deskou, jinak by se jeden snímek kreslila podle už neplatného režimu.
+    if (App.gearShop && state.phase !== "PLAY") App.gearShop = false;
+    if (selectedState?.gearForce && (state.phase !== "PLAY" || state.currentPlayerIndex !== myIndex)) {
+        selectedState = { cardIndex: null, action: null };
+    }
     renderGameBoard();
     // Dodge City – Vera Custer volí kopírovanou postavu klikem na hráče u stolu
     // (drawOpponents + banner v drawPhaseOverlays, view/board.js) – vlastní okno
@@ -2901,6 +2969,9 @@ function renderUI() {
     // fáze (jméno karty se ještě nikam neposlalo), ale nabitá schopnost – stejně jako
     // „DOC: 2 karty → BANG" žije v `selectedState`, dokud hráč nedoklikne.
     if (selectedState?.dorothy && !selectedState.dorothy.cardName) renderDorothyOverlay();
+    // Zlatá horečka: obchod. Není to fáze (kupuje se ve fázi PLAY, kolikrát hráč chce),
+    // takže okno drží `App.gearShop`.
+    if (App.gearShop) renderGearShopOverlay();
     // board.js právě zapsal přesné pozice rezervovaných slotů → zaměř na ně letící líznutí.
     retargetDrawAnims();
     // Nové sprity vznikly bez zvýraznění → hned nasaď hover na kartu pod kurzorem (bez čekání

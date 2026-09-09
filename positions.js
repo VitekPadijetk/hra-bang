@@ -32,6 +32,12 @@ function _greyBandCount(player, L) {
     const n = player && player._greygoryChars ? player._greygoryChars.length : 0;
     return _greyDetached(L) ? 0 : n;
 }
+// Zlatá horečka: koupené vybavení leží před hráčem a zabírá sloty v pásu vyložených
+// karet – vždy až ZA skutečnými kartami (a za dvojicí Greygoryho), takže indexy karet
+// na stole neposouvá, jen roztahuje pás. MUSÍ zrcadlit view/board.js.
+function _gearBandCount(player) {
+    return (player && player.gear) ? player.gear.length : 0;
+}
 
 // Jediný zdroj pravdy pro kotevní body soupeřů. Klíč = počet protihráčů
 // (= počet hráčů − 1). Konzumuje positions.js i view/board.js. Mobilní profil
@@ -157,7 +163,8 @@ function getBoardCardPos(playerIdx, boardIdx) {
         // Divoký západ – Greygory Deck: dvojice postav leží vedle portrétu, ne v pásu
         // (viz getGreygoryCardPos). Slot si bere jen v kompaktním profilu, a to na KONCI
         // pásu, takže indexy skutečných karet nemění – jen roztahuje band.
-        const myCount = Math.max(boardIdx + 1, 1 + (player.board?.length || 0) + _greyBandCount(player, L));
+        const myCount = Math.max(boardIdx + 1, 1 + (player.board?.length || 0)
+            + _greyBandCount(player, L) + _gearBandCount(player));
         const band = _boardBand(myCount, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
         const s = _boardSlot(boardIdx, band);
         const bx = roleX - (myCardW + L.boardGap) - s.col * band.step;
@@ -180,7 +187,7 @@ function getBoardCardPos(playerIdx, boardIdx) {
     // slot v pásu si bere jen v kompaktním profilu, a to na KONCI – do počtu slotů se pak
     // počítá, ale displayIdx skutečných karet neposouvá.
     const numBoardCards = Math.max(boardIdx, (hasRoleCard ? 1 : 0) + (player.weapon?.id !== -1 ? 1 : 0)
-        + (player.board?.length || 0) + _greyBandCount(player, L));
+        + (player.board?.length || 0) + _greyBandCount(player, L) + _gearBandCount(player));
     const numBlue = Math.min(numBoardCards, L.oppBoardPerRow);
     const displayIdx = hasRoleCard ? boardIdx + 1 : boardIdx;
     const count = Math.max(displayIdx + 1, numBoardCards);
@@ -234,6 +241,7 @@ function getGreygoryCardPos(playerIdx, k, countOverride) {
         const before = playerIdx === view
             ? 1 + (player.board?.length || 0)
             : ((player.weapon && player.weapon.id !== -1) ? 1 : 0) + (player.board?.length || 0);
+        // (vybavení Zlaté horečky sedí v pásu AŽ ZA dvojicí, takže `before` neposouvá)
         const p = getBoardCardPos(playerIdx, before + k);
         return { ...p, scale: null, angle: null };
     }
@@ -252,7 +260,7 @@ function _oppPortraitPos(player, anchor, L, scaleOpp) {
     const cardW = 325 * scaleOpp, cardH = 500 * scaleOpp, gap = L.oppGap;
     const hasRoleCard = !!state.mode3p || player.health <= 0;
     const shown = (hasRoleCard ? 1 : 0) + ((player.weapon && player.weapon.id !== -1) ? 1 : 0)
-        + (player.board?.length || 0) + _greyBandCount(player, L);
+        + (player.board?.length || 0) + _greyBandCount(player, L) + _gearBandCount(player);
     const numBlue = Math.min(shown, L.oppBoardPerRow);
     const group = (1 + numBlue) * cardW + numBlue * gap;
     const track = _livesTrack(player.maxHealth, scaleOpp, anchor.side === 'compact' ? 1 : 2);

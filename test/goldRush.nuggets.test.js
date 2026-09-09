@@ -50,11 +50,17 @@ test('data: identita karty je `effect`, ne jméno – a je unikátní', () => {
     assert.ok(gearData.every(c => c.suit === undefined && c.value === undefined));
 });
 
-test('setup: balíček má 24 kusů s unikátním id, obchod je zatím prázdný (fáze 1)', () => {
+test('setup: do balíčku jdou jen HOTOVÉ druhy (GEAR_READY) a obchod se hned naplní', () => {
     const g = mkZH();
-    assert.equal(g.gearDeck.length, 24);
-    assert.equal(new Set(g.gearDeck.map(c => c.id)).size, 24);
-    assert.deepEqual(g.gearRow, [null, null, null]);
+    // Kusů je celkem 24, ale do hry se rozdávají jen druhy, jejichž efekt už umí
+    // pravidla (fáze 1: Panák 3× + Union Pacific 1×). Karta bez efektu by se prodala
+    // za valouny a neudělala nic – viz GEAR_READY v logic/goldRush.js.
+    const all = g.gearDeck.concat(g.gearRow.filter(Boolean));
+    assert.equal(all.length, 4);
+    assert.equal(new Set(all.map(c => c.id)).size, 4);
+    assert.ok(all.every(c => ['ZH_PANAK', 'ZH_UNION_PACIFIC'].includes(c.effect)));
+    // Obchod má 3 karty lícem vzhůru hned od začátku hry.
+    assert.equal(g.gearRow.filter(Boolean).length, 3);
     assert.deepEqual(g.gearPile, []);
 });
 

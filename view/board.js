@@ -168,6 +168,7 @@ function renderGameBoard() {
     drawEventPile({ scaleDeck }, 'hn');
     drawEventPile({ scaleDeck }, 'ff');
     drawEventPile({ scaleDeck }, 'wws');
+    drawGearPile({ scaleDeck });
 
     const handlePanicCBClick = (targetIdx, area, boardIdx = null) => {
         // Zelená karta se steal/discard efektem ze stolu (Krytý vůz / Kankán): klik na
@@ -632,6 +633,14 @@ function drawOpponents(ctx) {
         const isBloodMine = state.phase === 'BLOOD_BROTHERS' && !App.blockInput &&
             state.pendingBlood?.playerIdx === myIndex;
         const bloodValid = isBloodMine && (state.pendingBlood.targets || []).includes(actualIdx);
+        // Zlatá horečka – Panák: „hráč dle tvé volby (i ty) si doplní 1 život." Cíl se
+        // vybírá klikem na postavu; seznam platných cílů posílá server (pendingGearTarget
+        // .targets), ať se klient s pravidly nerozejde. Sebe si hráč vybere tlačítkem
+        // (viz drawMyArea) – vlastní portrét se v mojí zóně neklika.
+        const isGearTargetMine = state.phase === 'GEAR_TARGET' && !App.blockInput &&
+            state.pendingGearTarget?.playerIdx === myIndex;
+        const gearTargetValid = isGearTargetMine &&
+            (state.pendingGearTarget.targets || []).includes(actualIdx);
         // Divoký západ – Flint Westwood: nabitá schopnost čeká na klik na postavu soupeře
         // (dostřel neplatí – karta o vzdálenosti nemluví). Cíl musí mít aspoň 1 kartu.
         const isFlintPick = !!selectedState.flint && selectedState.flint.targetIdx == null &&
@@ -710,10 +719,17 @@ function drawOpponents(ctx) {
         const _greyCards = greyDetached(L) ? [] : (player._greygoryChars || []).map((n, k) => ({
             _pseudo: true, _tex: getCharTex(n), _zoomKey: 'greygory:' + actualIdx + ':' + k
         }));
+        // Zlatá horečka: koupené vybavení leží před hráčem („pokládejte viditelně před
+        // sebe"), ale je to VLASTNÍ pole vedle `board` – Panika, Cat Balou ani Pat Brennan
+        // na něj nesmí (rozhodnutí R3). V pásu proto sedí až ZA skutečnými kartami:
+        // indexy karet na stole se tím nehnou a klikací větve výš se ho netýkají.
+        const _gearCards = (player.gear || []).map((g, k) => ({
+            _pseudo: true, _gear: k, _tex: gearTexKey(g), _zoomKey: 'gear:' + actualIdx + ':' + g.id,
+        }));
         const displayCards = (_roleSlot
             ? [{ _isRole: true, _pseudo: true, _zoomKey: 'role:' + actualIdx,
                  _tex: deadRoleMap[player.role] || 'role_card_back' }, ...allBoardCards]
-            : [...allBoardCards]).concat(_greyCards);
+            : [...allBoardCards]).concat(_greyCards, _gearCards);
 
         const numBluePrimary = Math.min(displayCards.length, L.oppBoardPerRow);
         // Pás vyložených karet – MUSÍ zrcadlit getBoardCardPos v positions.js. Řady jsou
@@ -872,6 +888,22 @@ function drawOpponents(ctx) {
                 });
             }
 
+            // Zlatá horečka – Panák: klik na hráče mu doplní 1 život. Stejný vzor jako
+            // Pokrevní bratři – vlastní blok, ať se nemíchá s cílením karet (ve fázi
+            // GEAR_TARGET se stejně žádná karta zahrát nedá).
+            if (isGearTargetMine) {
+                sprite.setInteractive({ useHandCursor: gearTargetValid });
+                sprite.setTint(gearTargetValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (gearTargetValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(gearTargetValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!gearTargetValid || App.blockInput) return;
+                    socket.emit('gear_target', { targetIdx: actualIdx });
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
+
             // Dodge City – Vera Custer: klik na hráče = jeho postavu tenhle tah kopíruju.
             // Zvýrazňuje se stejnou řečí jako cíl výstřelu, takže je vidět, kdo přichází
             // v úvahu (druhá Vera ani vyřazený hráč mezi volbami nejsou).
@@ -979,7 +1011,11 @@ function drawOpponents(ctx) {
             const tex = card._pseudo ? card._tex : getTex(card.id);
             let bCard = gameScene.add.image(x, y, tex).setScale(scaleOpp).setAngle(angle);
 
-            bCard.setInteractive({ useHandCursor: (canTargetThisPlayer || isPatDraw || isRicochetTarget) && !card._pseudo });
+            // Vybavení (Zlatá horečka) je pseudo-karta, takže ho běžné cílení míjí – ručičku
+            // dostane jen tehdy, když je nabité „donutit odhodit" (viz níž).
+            const _gearForceHere = card._gear != null && !!selectedState.gearForce &&
+                gearForceOk(state, myIndex, actualIdx, card._gear);
+            bCard.setInteractive({ useHandCursor: ((canTargetThisPlayer || isPatDraw || isRicochetTarget) && !card._pseudo) || _gearForceHere });
             // Zvětšit jde i karta role (vyřazený hráč / hra pro 3) – text na ní je vysázený
             // drobně a v herní velikosti se nedá přečíst. Klik na ni nikdy nejde (kurzor
             // zůstává šipkou), klíč zoomu je stejný jako u mojí role v drawMyArea.
@@ -987,6 +1023,19 @@ function drawOpponents(ctx) {
             bCard._zoomKey = zoomKey;
             bCard.on('pointerover', () => startCardZoom(tex, zoomKey));
             bCard.on('pointerout', scheduleZoomFade);
+
+            // Zlatá horečka: nabité „donutit odhodit vybavení" (cena karty + 1) čeká na klik
+            // na CIZÍ kartu vybavení. Vlastník se nebrání, takže je to jeden krok bez fáze.
+            if (card._gear != null && selectedState.gearForce) {
+                bCard.setTint(_gearForceHere ? 0x88ff88 : 0xff6666);
+                bCard.on('pointerdown', () => {
+                    if (!_gearForceHere || App.blockInput) return;
+                    socket.emit('gear_force_discard', { targetIdx: actualIdx, gearIdx: card._gear });
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
 
             if (canTargetThisPlayer && !card._pseudo) {
                 bCard.setTint(0xffff44);
@@ -1777,7 +1826,12 @@ function drawMyArea(ctx) {
         const _myGrey = greyDetached(L) ? [] : _myGreyAll;
         // Slot tlačítka schopnosti uhne doprava, až za dvojici postav (bug 41).
         const _abilX = L.btnAbilX + greyAbilShift(L, _myGreyAll.length);
-        const myBand = boardBand(myBoardCards.length + _myGrey.length, L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
+        // Zlatá horečka: moje koupené vybavení sedí v pásu za skutečnými kartami (a za
+        // dvojicí Greygoryho) – je to vlastní pole vedle `board`, takže se ho cílení
+        // Paniky/Cat Balou ani Daltonů netýká (rozhodnutí R3).
+        const _myGear = me?.gear || [];
+        const myBand = boardBand(myBoardCards.length + _myGrey.length + _myGear.length,
+                                 L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
         const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action);
         // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
         // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
@@ -1889,6 +1943,25 @@ function drawMyArea(ctx) {
             const gy = myBaseY - s.row * (boardCardH + L.boardGap);
             const gTex = getCharTex(name);
             const gKey = 'greygory:me:' + k;
+            const gSprite = gameScene.add.image(gx, gy, gTex).setScale(scaleMe);
+            gameScene.cardsSprites.add(gSprite);
+            gSprite.setInteractive({ useHandCursor: false });
+            gSprite._zoomKey = gKey;
+            gSprite.on('pointerover', () => startCardZoom(gTex, gKey));
+            gSprite.on('pointerout', scheduleZoomFade);
+            reflowCard('mb_' + gKey, gSprite, gx, gy, gTex, scaleMe, 0);
+        });
+
+        // Zlatá horečka: moje vybavení. Cílit na něj nejde (Panika ani Cat Balou na
+        // vybavení nesmí; odhodit ho může jen soupeř zaplacením ceny + 1), zvětšit ano –
+        // text karty je na štítku vysázený drobně.
+        _myGear.forEach((g, k) => {
+            const s2 = boardSlot(myBoardCards.length + _myGrey.length + k, myBand);
+            const gx = roleX - (myCardW + L.boardGap) - s2.col * myBand.step;
+            const gy = myBaseY - s2.row * (boardCardH + L.boardGap);
+            const gTex = gearTexKey(g);
+            if (!gTex || !gameScene.textures.exists(gTex)) return;
+            const gKey = 'gear:me:' + g.id;
             const gSprite = gameScene.add.image(gx, gy, gTex).setScale(scaleMe);
             gameScene.cardsSprites.add(gSprite);
             gSprite.setInteractive({ useHandCursor: false });
@@ -2557,7 +2630,10 @@ function drawMyArea(ctx) {
                 !!lvkOffer(state, me, myIndex) ||
                 // Divoký západ – Lady Růže z Texasu: výměna míst není schopnost postavy,
                 // ale je to hratelná akce ve stejném slotu.
-                roseSwapOffer(state, myIndex) != null;
+                roseSwapOffer(state, myIndex) != null ||
+                // Zlatá horečka: nákup v obchodě je hratelná akce fáze 2 – dokud si hráč
+                // má za co koupit, „Ukončit tah" blikat nemá.
+                (state.gearRow || []).some((c, i) => c && gearBuyOk(state, myIndex, i));
             const hasPlayable = sidCanHeal || hasPlayableGreen || hasActiveAbility || me.hand.some((card, idx) => {
                 const p = getCardPlayability(card, idx);
                 return p !== false;
@@ -2743,6 +2819,35 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _bbSkip.setAlpha(0.45); _bbSkip.disableInteractive(); }
+        }
+
+        // ── Zlatá horečka – Panák: „hráč dle tvé volby (i ty)" ──────────────────
+        // Ostatní se vybírají klikem na postavu (drawOpponents); vlastní portrét se
+        // v mojí zóně neklika, takže na sebe je tlačítko. Kreslí se jen tehdy, když
+        // jsem mezi platnými cíli (tedy když mám co léčit).
+        if (state.phase === "GEAR_TARGET" && state.pendingGearTarget?.playerIdx === myIndex &&
+            (state.pendingGearTarget.targets || []).includes(myIndex)) {
+            const { bg: _selfBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 300, L.btnH, '🥃 SOBĚ +1 ❤', {
+                fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum,
+                textColor: THEME.color.gold, fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('gear_target', { targetIdx: myIndex });
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _selfBtn.setAlpha(0.45); _selfBtn.disableInteractive(); }
+        }
+
+        // ── Zlatá horečka: zrušit nabité „donutit odhodit vybavení" ─────────────
+        if (selectedState.gearForce) {
+            const { bg: _gfBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH, 'ODHOZENÍ: zrušit ↩', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '21px',
+                onClick: () => { selectedState = { cardIndex: null, action: null }; renderUI(); },
+            });
+            if (App.blockInput) { _gfBtn.setAlpha(0.45); _gfBtn.disableInteractive(); }
         }
 
         // ── A Fistful of Cards – Odstřelovač: 2 karty Bang! naráz ──────────────
@@ -3538,6 +3643,54 @@ function drawEventPile(ctx, which) {
         spr.on('pointerover', () => startCardZoom(tex, zoomKey));
         spr.on('pointerout', scheduleZoomFade);
     }
+}
+
+// ── Zlatá horečka: rub balíčku vybavení = vstup do obchodu ───────────────────
+// Obchod má 3 karty lícem vzhůru + rub, a na to na desce místo není: po zapnutí všech
+// tří balíčků událostí zabírá vodorovné pásmo balíčků x 420–1330 a nad ním leží druhá
+// řada karet horních soupeřů. Nabídka se proto otevírá KLIKEM na tenhle rub jako
+// překryvné okno (renderGearShopOverlay, view/screens.js) a na stole zůstává jen
+// hromádka s počtem karet.
+//
+// Rub vybavení vlastní texturu nemá (art rozšíření zatím celý chybí, plán §2.8), takže
+// se kreslí rubem hrací karty; odliší ho zlatý štítek s počtem.
+function drawGearPile(ctx) {
+    const { scaleDeck } = ctx;
+    if (!state || !goldRushOn(state)) return;
+    const slot = gearDeckSlot();
+    // Do hromádky se počítají i odhozené karty – leží lícem vzhůru POD balíčkem
+    // a zamíchají se do něj, jakmile se na vrch dostanou (viz _gearDraw).
+    const left = (state.gearDeck?.length || 0) + (state.gearPile?.length || 0);
+    const pxPerCard = 0.25;
+    const layers = Math.max(1, Math.min(left, 40));
+    const topY = slot.y - (layers - 1) * pxPerCard / 2;
+    let top = null;
+    for (let k = layers - 1; k >= 0; k--) {
+        const img = gameScene.add.image(slot.x, topY + k * pxPerCard, 'card_back').setScale(scaleDeck);
+        if (!left) img.setAlpha(0.35);
+        gameScene.cardsSprites.add(img);
+        if (k === 0) top = img;
+    }
+    const myTurn = myIndex != null && gearShopOpen(state, myIndex);
+    const label = gameScene.add.text(slot.x, topY - 500 * scaleDeck / 2 - 6,
+        myTurn ? '💰 OBCHOD' : 'VYBAVENÍ',
+        { fontFamily: THEME.fontUI, fontSize: '17px', fontStyle: 'bold',
+          color: myTurn ? '#ffd24d' : '#bbbbbb',
+          backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } })
+        .setOrigin(0.5, 1).setDepth(46);
+    gameScene.cardsSprites.add(label);
+    const count = gameScene.add.text(slot.x, topY + 500 * scaleDeck / 2 + 4, String(left),
+        { fontFamily: THEME.fontUI, fontSize: '16px', color: '#dddddd',
+          backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 5, y: 2 } })
+        .setOrigin(0.5, 0).setDepth(46);
+    gameScene.cardsSprites.add(count);
+
+    // Nahlédnout do obchodu smí kdokoli (nabídka je veřejná) – kupovat jen hráč na tahu,
+    // což řeší samo okno (zašedlé karty + důvod z gearBuyReason).
+    if (!top) return;
+    top.setInteractive({ useHandCursor: true });
+    if (myTurn) top.setTint(0xffe98a);
+    top.on('pointerdown', () => { App.gearShop = true; renderUI(); });
 }
 
 function drawDrawPiles(ctx) {

@@ -4,7 +4,7 @@ const {
     getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
 const {
-    computeStage, resolveLayout, LAYOUT_PROFILES, oppScale, eventPileSlots, eventPileLift,
+    computeStage, resolveLayout, LAYOUT_PROFILES, oppScale, eventPileSlots, eventPileLift, gearSlot,
     compactMetrics, compactAnchors, compactBoardPos, compactHandPos,
 } = require('../core/layout.js');
 
@@ -516,6 +516,77 @@ test('sloupec Divokého západu nedosáhne na vyložené karty soupeřů ani na 
             global.state = null; global.myIndex = null;
         }
     }
+});
+
+// ── Zlatá horečka: rub balíčku vybavení ──────────────────────────────────────
+// Obchod se na desku nevešel (3 karty lícem vzhůru + rub), takže se otevírá jako
+// překryvné okno a na stole zůstává JEDNA hromádka. I ta ale musí mít volné místo
+// ve všech kombinacích rozšíření, v obou profilech a při každém počtu hráčů –
+// jinak by ležela na kartách, na které se kliká.
+function gearRect(L) {
+    const s = gearSlot(L);
+    const w = 325 * L.scaleDeck, h = 500 * L.scaleDeck;
+    const stack = 23 * 0.125;   // balíček vybavení má nejvýš 24 karet
+    return { x0: s.x - w / 2, x1: s.x + w / 2, y0: s.y - h / 2 - stack, y1: s.y + h / 2 };
+}
+
+test('balíček vybavení nekoliduje s balíčky ani se sloupci událostí (oba profily)', () => {
+    ['desktop', 'mobile'].forEach(name => {
+        const L = LAYOUT_PROFILES[name];
+        const gear = gearRect(L);
+        assert.ok(!overlaps(gear, centerPilesRect(L)), `${name}: vybavení leze na balíčky`);
+        for (let mask = 0; mask < 8; mask++) {
+            const slots = eventPileSlots(L, !!(mask & 1), !!(mask & 2), !!(mask & 4));
+            ['hn', 'ff', 'wws'].filter(k => slots[k]).forEach(k => {
+                assert.ok(!overlaps(gear, slotRect(L, slots[k])),
+                    `${name}, kombinace ${mask}: vybavení se překrývá se sloupcem ${k}`);
+            });
+        }
+    });
+});
+
+test('balíček vybavení nedosáhne na vyložené karty soupeřů ani na moje', () => {
+    const rect = gearRect(DSK);
+    for (let total = 2; total <= 8; total++) {
+        const anchors = getOpponentAnchors(total);
+        if (!anchors.length) continue;
+        for (let k = 1; k <= 14; k++) {
+            const players = Array.from({ length: total }, () => ({
+                health: 4, hand: [], board: Array.from({ length: k - 1 }, (_, i) => ({ id: i })),
+                weapon: { id: 1 },
+            }));
+            setWorld(players, 0);
+            for (let opp = 1; opp < total; opp++) {
+                const side = anchors[opp - 1].side;
+                for (let b = 0; b < k; b++) {
+                    const r = cardRect(getBoardCardPos(opp, b), side, DSK.scaleOpp);
+                    assert.ok(!overlaps(r, rect),
+                        `${total} hráčů, soupeř ${opp} (${side}), ${k} karet, karta ${b}: leze na vybavení`);
+                }
+            }
+            for (let b = 0; b < k; b++) {
+                const r = cardRect(getBoardCardPos(0, b), 'bottom', DSK.scaleMe);
+                assert.ok(!overlaps(r, rect), `${total} hráčů, ${k} karet, moje karta ${b}: leze na vybavení`);
+            }
+            global.state = null; global.myIndex = null;
+        }
+    }
+});
+
+test('koupené vybavení roztahuje pás, ale indexy karet na stole neposouvá', () => {
+    // Vybavení leží v pásu AŽ ZA skutečnými kartami (rozhodnutí R3 – je to vlastní pole
+    // vedle `board`), takže se pozice zbraně ani modrých karet přidáním vybavení nesmí
+    // hnout. Kdyby ano, mířily by animace Paniky/Cat Balou o kartu vedle.
+    const mk = (gear) => ([
+        { health: 4, hand: [], board: [{ id: 1 }, { id: 2 }], weapon: { id: 9 }, gear },
+        { health: 4, hand: [], board: [{ id: 3 }], weapon: { id: 8 }, gear: [] },
+    ]);
+    setWorld(mk([]), 0);
+    const before = [0, 1, 2].map(b => getBoardCardPos(0, b));
+    setWorld(mk([{ id: 6000 }, { id: 6001 }]), 0);
+    const after = [0, 1, 2].map(b => getBoardCardPos(0, b));
+    assert.deepEqual(after, before, 'moje karty na stole se vybavením nehnuly');
+    global.state = null; global.myIndex = null;
 });
 
 test('hokynářství zvedne srovnané sloupce mezi řadu karet a horního soupeře', () => {

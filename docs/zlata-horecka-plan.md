@@ -10,12 +10,17 @@ k výkladu sporných míst.
 
 Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 sad.
 
-> **Stav: hotová fáze 0** (2026-09-09) — data, mixin `logic/goldRush.js`, `player.nuggets`
-> a `player.gear`, trychtýř `_afterLifeLost` ze všech tří vstupů, zisk valounu
-> v `handleDamage`, přepínač ve všech třech lobby obrazovkách, redakce `gearDeck`
-> a zobrazení valounů u hráče. `npm test` = **1388 testů, 0 chyb**
-> (nová sada `test/goldRush.nuggets.test.js` + matice botů se zapnutým rozšířením).
-> Odchylky od plánu jsou popsané u fáze 0 v §9.
+> **Stav: hotové fáze 0 a 1** (2026-09-09).
+> **Fáze 0** — data, mixin `logic/goldRush.js`, `player.nuggets` a `player.gear`, trychtýř
+> `_afterLifeLost` ze všech tří vstupů, zisk valounu v `handleDamage`, přepínač ve všech
+> třech lobby obrazovkách, redakce `gearDeck` a zobrazení valounů u hráče.
+> **Fáze 1** — hromádky vybavení a jejich pravidlo o zamíchání, obchod s okamžitým
+> doplněním, nákup (hnědé i černé), vynucené odhození, Pivo za valoun, **Panák**
+> a **Union Pacific**, zrcadlo `core/goldRush.js`, fáze `GEAR_TARGET`, větve bota,
+> okno obchodu na klientovi a odhození vybavení při vyřazení hráče.
+> `npm test` = **1414 testů, 0 chyb** (nová sada `test/goldRush.shop.test.js`
+> + invarianty rozložení v `test/positions.test.js`).
+> Odchylky od plánu jsou popsané u fází 0 a 1 v §9.
 
 > **Assety zatím nejsou.** Plán je proto napsaný tak, aby se dal odpracovat celý bez nich
 > (§2.8 říká, co se s chybějícím artem děje) a aby se **jména karet daly doplnit na jednom
@@ -491,7 +496,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 | fáze | co | hratelné po ní |
 |---|---|---|
 | **0** ✅ | data, mixin, `player.nuggets`, `_afterLifeLost`, zisk valounu, přepínač v lobby, redakce | valouny přibývají a jsou vidět |
-| **1** | `GearDeck`, obchod, nákup, doplnění, vynucené odhození, Pivo za valoun + **Panák, Union Pacific** | ekonomika kompletní |
+| **1** ✅ | hromádky vybavení, obchod, nákup, doplnění, vynucené odhození, Pivo za valoun + **Panák, Union Pacific** | ekonomika kompletní |
 | **2** | pasivní černé: **Boty, Talisman, Opasek, Krumpáč, Kalumet, Podkova** | 6 karet |
 | **3** | placené černé: **Rýžovací pánev, Batoh** (vč. záchrany posledního života) | 8 karet |
 | **4** | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 12 karet |
@@ -532,6 +537,46 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
   jinak nad „Počet hráčů" nevejde) a debug obrazovka posunula spodní tlačítka o 52 px.
   Výchozí sada příznaků má nově jedno místo (`emptyExpansions()` ve view/menu.js) —
   ručních výčtů byly čtyři a další rozšíření by se do jednoho z nich zapomnělo dopsat.
+
+### Co se ve fázi 1 odchýlilo od plánu (a proč)
+
+- **`GearDeck` jako třída nevznikla** (§2.5). Návrh držel odhozené karty UVNITŘ balíčku
+  (`faceUpFrom`), jenže ty leží **lícem vzhůru**, tedy veřejně — redakce (server/rooms.js)
+  by je musela skrývat spolu s tajným pořadím balíčku. Zůstaly proto DVĚ pole, jaká už stav
+  měl: `gearDeck` (lícem dolů, v redakci skryté) a `gearPile` (lícem vzhůru, veřejné).
+  Pravidlo „jakmile se na vrchu objeví karta lícem vzhůru, balíček se zamíchá" je tím
+  doslovné: došel-li `gearDeck`, zamíchá se do něj celý `gearPile`. Důvod pro třídu (jeden
+  trychtýř) drží **`_gearDraw` / `_gearDiscard`** — jiná cesta na hromádky vybavení není,
+  stejně jako u `Deck`.
+- **Do balíčku se rozdávají jen HOTOVÉ druhy** (`GEAR_READY` v logic/goldRush.js, vzor
+  `WILD_WEST_READY`): ve fázi 1 Panák (3 kusy) a Union Pacific (1 kus). Karta, jejíž efekt
+  ještě není napsaný, by se prodala za valouny a neudělala nic. Seznam roste s fázemi
+  a ve fázi 5 bude úplný. `gearForceDiscard`, pravidlo „ne dvě stejného `effect`"
+  i odhození vybavení při vyřazení jsou hotové a otestované — uplatní se s prvním
+  černým druhem ve fázi 2.
+- **Obchod se na desku nevešel** (§2.7, otázka §11.2 — rozhodl uživatel). Vodorovné pásmo
+  balíčků drží při všech zapnutých rozšířeních x 420–1330 a nad ním leží druhá řada karet
+  horních soupeřů, takže 3 karty lícem vzhůru + rub nemají kam. Na stole leží jen **rub
+  balíčku vybavení** (`gearSlot`, x 1385) a klik na něj otevře **překryvné okno**
+  (`renderGearShopOverlay`), ve kterém jsou všechny tři možnosti fáze 2. Že je slot volný
+  ve všech kombinacích rozšíření, obou profilech a při 2–8 hráčích, hlídají dva invarianty
+  v `test/positions.test.js`.
+- **Vybavení sdílí pás vyložených karet** (otázka §11.3): kreslí se AŽ ZA skutečnými
+  kartami, takže indexy karet na stole neposouvá — jen roztahuje pás (`_gearBandCount`
+  v positions.js, hlídá test).
+- **Art chybí, takže se karty vysází jako štítek** (`buildGearTextures` v game.js →
+  textura `zh_<effect>`: rám podle `border`, jméno, text, cena v rohu). Ze stejného důvodu
+  **nemá nákup animaci letu** — z obchodu by letěl neidentifikovatelný rub. Až art dorazí,
+  načte se pod tentýž klíč a doplní se let karty (§10).
+- **Intro nedostalo beat s mícháním vybavení** (§2.8). Obchod se naplní při setupu; bez
+  artu by beat ukazoval rub hrací karty. Patří k dodání artu.
+- **Bot umí nakupovat už teď**, i když plán to řadil do fáze 8 — bez toho by se obchod
+  v zátěži (`test/server.bots.test.js`) nikdy neprotočil. Politika je zatím hloupá:
+  tabulka `GEAR_VALUE`, kupuje se nejcennější dostupné, Panák jen se zraněním, Pivo na
+  valoun jen s plným životem, vynucené odhození jen proti pravděpodobnému nepříteli.
+- **`progressSig` (server/bots.js) dostal součet valounů a vybavení** — nákup hnědé karty
+  se jinak v otisku pokroku neprojeví vůbec a stall guard by z legálního tahu udělal
+  falešné zaseknutí.
 
 Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `master`.
 

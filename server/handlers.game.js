@@ -1110,4 +1110,55 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             broadcastRoomDelayed(room, 400);
         });
     });
+    // ── Zlatá horečka: obchod ────────────────────────────────────────────────
+    // Nákup NENÍ fáze (rozhodnutí R6) – je to akce ve fázi PLAY, kolikrát chce hráč.
+    // Pravidla vrátí koupenou kartu, nebo null (nákup neprošel); animace se proto emituje
+    // AŽ podle výsledku, stejně jako u karet z ruky (viz cardLeftHand výš).
+    on('gear_buy', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const rowIdx = d && d.rowIdx;
+            // Animace letu karty z obchodu zatím žádná: art rozšíření ještě neexistuje
+            // (plán §2.8), takže by z obchodu letěl neidentifikovatelný rub. Karty se
+            // proto kreslí jako štítek se jménem a cenou a nákup je vidět ze stavu.
+            gs.gearBuy(idx, rowIdx);
+            broadcastRoom(room);
+        });
+    });
+
+    // Hnědé vybavení s volbou cíle (Panák): kupující vybral, komu život patří.
+    on('gear_target', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingGearTarget?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            gs.resolveGearTarget(idx, d && d.targetIdx);
+            broadcastRoom(room);
+        });
+    });
+
+    // Donucení jiného hráče odhodit vybavení (cena karty + 1). Vlastník se nebrání,
+    // takže je to jeden atomický krok – žádná fáze RESPOND.
+    on('gear_force_discard', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const targetIdx = d && d.targetIdx, gearIdx = d && d.gearIdx;
+            gs.gearForceDiscard(idx, targetIdx, gearIdx);
+            broadcastRoom(room);
+        });
+    });
+
+    // Pivo za valoun: „místo doplnění života si vezmi 1 valoun." Karta odchází do
+    // BĚŽNÉHO odhozu (je to hrací karta, ne vybavení), takže letí stejnou animací
+    // jako každá jiná zahraná karta z ruky.
+    on('beer_for_nugget', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const cardIdx = d && d.cardIdx;
+            const card = gs.beerForNugget(idx, cardIdx);
+            if (!card) { broadcastRoom(room); return; }
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: card.id });
+            broadcastRoom(room);
+        });
+    });
 };
+

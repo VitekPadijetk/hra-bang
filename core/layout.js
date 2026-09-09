@@ -137,6 +137,12 @@ const LAYOUT_DESKTOP = {
     // s Fistfulem srovnávají nad sebe vpravo – sedne si Divoký západ rovnou na něj.
     // Tenhle pár je až záložní „ještě o krok doleva" pro mobil, kde levý drží Fistful.
     wwsPileX: 530, wwsActiveX: 420,
+    // Zlatá horečka: balíček vybavení leží NAPRAVO od balíčků událostí (High Noon má
+    // aktivní kartu na 1280, pravý soupeř začíná na 1551 – mezi tím je volno). Obchod
+    // sám se na desku nekreslí: 3 karty lícem vzhůru + rub by se do žádného volného
+    // pásma nevešly, takže se otevírá klikem na tenhle rub jako překryvné okno
+    // (view/screens.js `renderGearShopOverlay`).
+    gearPileX: 1385,
 };
 const LAYOUT_MOBILE = {
     ...LAYOUT_DESKTOP, name: 'mobile',
@@ -583,6 +589,14 @@ function eventPileSlots(L, hnOn, ffOn, wwsOn) {
     };
 }
 
+// Zlatá horečka: kde na stole leží rub balíčku vybavení. Na rozdíl od balíčků událostí
+// nemá „aktivní" kartu – nabídka obchodu se otevírá překryvným oknem. Zvedá se přesně
+// jako balíčky (řada rozdaných karet hokynářství sahá při 8 hráčích až na x 1429).
+function gearSlot(L) {
+    const P = L || LAYOUT_DESKTOP;
+    return { x: P.gearPileX, y: P.pileY };
+}
+
 // O kolik se sloupce událostí zvednou při cinematice hokynářství. Řada rozdaných karet
 // leží `storeRowOffY` pod balíčky, takže při svislém srovnání nad sebe by na spodní
 // sloupec dosáhla – zvedají se proto o kus víc než balíčky.
@@ -649,6 +663,7 @@ if (typeof module !== 'undefined' && module.exports) {
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile, shouldAskLayout,
         resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
         boardBand, boardSlot,
+        gearSlot,
         GREY_SCALE, GREY_GAP, greyDetached, greyScale, greyStep, greyAbilShift,
         greyMySlot, greyOppSlot,
         LIVES_PER_CARD, livesTrack, livesSlot, livesCardsShown, livesFitScale, myLivesGeom,

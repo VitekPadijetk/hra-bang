@@ -132,6 +132,12 @@ const CombatMixin = {
             deadPlayer.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
         }
 
+        // Zlatá horečka: koupené vybavení jde na spodek balíčku vybavení lícem vzhůru
+        // a Vulture Sam ho NEZÍSKÁVÁ. Že se do jeho hrsti nemá jak dostat, plyne z toho,
+        // že `player.gear` je vlastní pole vedle `board` (rozhodnutí R3) – tady se jen
+        // uklidí, ať karty nezůstanou viset u vyřazeného hráče. Viz logic/goldRush.js.
+        this._gearDropAll(deadIdx);
+
         // Dodge City – reakce na vyřazení JINÉ postavy (nezáleží, kdo zabil):
         // Greg Digger +2 životy (do maxima), Herb Hunter lízne 2 karty (kill-reward fronta).
         // Herb je ve frontě PŘED odměnou za banditu: schopnost postavy se vyhodnotí dřív
