@@ -227,6 +227,14 @@ function menuRow(x, y, w, h, onClick) {
 // zapnutí High Noon, takže v pokročilých možnostech je vidět jako zapnuté a jde ručně
 // vypnout. Tři místa (založení hry, hra botů, debug) hledej podle „HN_EXTRA_AUTO".
 
+// Výchozí (všechna vypnutá) sada příznaků rozšíření. Jedno místo pro všechny tři
+// obrazovky i pro reset po založení hry – přibývající rozšíření se jinak zapomene
+// dopsat do jednoho ze čtyř ručních výčtů a checkbox pak nejde zaškrtnout.
+function emptyExpansions() {
+    return { dodge_city: false, high_noon: false, fistful: false,
+             divoky_zapad: false, zlata_horecka: false };
+}
+
 // Jeden řádek zaškrtávátka rozšíření (zakládání hry i hra botů kreslí totéž).
 // `exps` je objekt s příznaky rozšíření, který se rovnou přepíná; `onToggle` slouží
 // k doprovodné akci (dotažení artu rozšíření, který se v preloadu nestahuje).
@@ -421,26 +429,30 @@ function renderMenuScreen(screen) {
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(extLabel);
         {
-            // Čtyři řádky se do pásma nad „Počet hráčů" vejdou jen s roztečí 40 px
-            // (dřív tři po 50). Zaškrtávátko je 36 px vysoké, takže mezi rámečky
-            // zůstávají 4 px a popisek s nápovědou se do řádku pořád vejdou.
-            if (!App.createOptions.expansions) App.createOptions.expansions = { dodge_city: false, high_noon: false, fistful: false, divoky_zapad: false };
+            // PĚT řádků se do pásma nad „Počet hráčů" (y 512) vejde jen s roztečí 34 px
+            // (dřív čtyři po 40, ještě dřív tři po 50). Zaškrtávátko je 36 px vysoké,
+            // takže se rámečky o 2 px překrývají, ale popisek (y-10) i nápověda (y+14)
+            // se do řádku pořád vejdou a poslední nápověda končí 2 px nad „Počet hráčů".
+            if (!App.createOptions.expansions) App.createOptions.expansions = emptyExpansions();
             const exps = App.createOptions.expansions;
-            expansionRow(350, exps, 'dodge_city', 'Dodge City',
+            expansionRow(340, exps, 'dodge_city', 'Dodge City',
                 '(+40 karet a +15 postav; karty se symbolem býka)',
                 () => loadExpansionAssets(gameScene, 'dodge_city'));
-            expansionRow(390, exps, 'high_noon', 'High Noon',
+            expansionRow(374, exps, 'high_noon', 'High Noon',
                 '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
                 () => {
                     loadExpansionAssets(gameScene, 'high_noon');
                     App.createOptions.highNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
                 });
-            expansionRow(430, exps, 'fistful', 'Fistful',
+            expansionRow(408, exps, 'fistful', 'Fistful',
                 '(15 karet událostí a 3 postavy; hraje se i vedle High Noonu)',
                 () => loadExpansionAssets(gameScene, 'fistful'));
-            expansionRow(470, exps, 'divoky_zapad', 'Divoký západ',
+            expansionRow(442, exps, 'divoky_zapad', 'Divoký západ',
                 '(10 karet událostí; otáčí je Dostavník a Wells Fargo)',
                 () => loadExpansionAssets(gameScene, 'divoky_zapad'));
+            expansionRow(476, exps, 'zlata_horecka', 'Zlatá horečka',
+                '(zlaté valouny za zranění; obchod s 24 kartami vybavení)',
+                () => loadExpansionAssets(gameScene, 'zlata_horecka'));
         }
 
         const playerCountLabel = gameScene.add.text(960, 512, 'Počet hráčů',
@@ -541,7 +553,7 @@ function renderMenuScreen(screen) {
                 App.createPlayerCount = null;
                 App.createGameName = null;
                 App.createGameNameOwner = null;
-                App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false, fistful: false, divoky_zapad: false } };
+                App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: emptyExpansions() };
             } : undefined,
         });
 
@@ -585,24 +597,28 @@ function renderMenuScreen(screen) {
             { fontFamily: THEME.fontUI, fontSize: '26px', color: THEME.color.gold, fontStyle: 'bold' }).setOrigin(0.5);
         gameScene.cardsSprites.add(extLabel);
         {
-            // Rozteč 40 px stejně jako u vytvoření hry – čtyři řádky se jinak nevejdou.
-            if (!App.botGameExpansions) App.botGameExpansions = { dodge_city: false, high_noon: false, fistful: false, divoky_zapad: false };
+            // Rozteč 34 px stejně jako u vytvoření hry – pět řádků se jinak nevejde
+            // (poslední nápověda končí 8 px nad řádkem „+ přibalené karty" na y 668).
+            if (!App.botGameExpansions) App.botGameExpansions = emptyExpansions();
             const bexps = App.botGameExpansions;
-            expansionRow(496, bexps, 'dodge_city', 'Dodge City',
+            expansionRow(488, bexps, 'dodge_city', 'Dodge City',
                 '(+40 karet a +15 postav; karty se symbolem býka)',
                 () => loadExpansionAssets(gameScene, 'dodge_city'));
-            expansionRow(536, bexps, 'high_noon', 'High Noon',
+            expansionRow(522, bexps, 'high_noon', 'High Noon',
                 '(13 karet událostí; šerif odkrývá jednu na začátku kola)',
                 () => {
                     loadExpansionAssets(gameScene, 'high_noon');
                     App.botGameHighNoonExtra = true;   // DOČASNÉ (testování), viz HN_EXTRA_AUTO
                 });
-            expansionRow(576, bexps, 'fistful', 'Fistful',
+            expansionRow(556, bexps, 'fistful', 'Fistful',
                 '(15 karet událostí a 3 postavy; hraje se i vedle High Noonu)',
                 () => loadExpansionAssets(gameScene, 'fistful'));
-            expansionRow(616, bexps, 'divoky_zapad', 'Divoký západ',
+            expansionRow(590, bexps, 'divoky_zapad', 'Divoký západ',
                 '(10 karet událostí; otáčí je Dostavník a Wells Fargo)',
                 () => loadExpansionAssets(gameScene, 'divoky_zapad'));
+            expansionRow(624, bexps, 'zlata_horecka', 'Zlatá horečka',
+                '(zlaté valouny za zranění; obchod s 24 kartami vybavení)',
+                () => loadExpansionAssets(gameScene, 'zlata_horecka'));
         }
 
         // Přibalené karty (Nová identita, Želízka) – jen když je High Noon zapnuté a
@@ -631,6 +647,7 @@ function renderMenuScreen(screen) {
                             high_noon: hn,
                             fistful: !!(App.botGameExpansions && App.botGameExpansions.fistful),
                             divoky_zapad: !!(App.botGameExpansions && App.botGameExpansions.divoky_zapad),
+                            zlata_horecka: !!(App.botGameExpansions && App.botGameExpansions.zlata_horecka),
                         },
                         highNoonExtra: hn && !!App.botGameHighNoonExtra,
                     },
@@ -853,11 +870,21 @@ function renderMenuScreen(screen) {
                     renderUI();
                 },
             });
+            const zhOn = !!App.debugZlataHorecka;
+            themeButton(gameScene, 960, 460, 480, 46,
+                (zhOn ? '☑' : '☐') + '  Rozšíření Zlatá horečka (valouny, obchod)', {
+                ...themeToggleStyle(zhOn), fontSize: '18px',
+                onClick: () => {
+                    App.debugZlataHorecka = !App.debugZlataHorecka;
+                    if (App.debugZlataHorecka) loadExpansionAssets(gameScene, 'zlata_horecka');
+                    renderUI();
+                },
+            });
             // Přibalené karty se se zapnutým Fistfulem přidávají samy (_hnExtraOn), takže
             // se řádek kreslí jen pro hru se samotným High Noonem.
             if (hnOn && !ffOn) {
                 const exOn = !!App.debugHighNoonExtra;
-                themeButton(gameScene, 960, 460, 480, 46,
+                themeButton(gameScene, 960, 512, 480, 46,
                     (exOn ? '☑' : '☐') + '  + přibalené (Nová identita, Želízka)', {
                     ...themeToggleStyle(exOn), fontSize: '18px',
                     onClick: () => { App.debugHighNoonExtra = !App.debugHighNoonExtra; renderUI(); },
@@ -865,7 +892,7 @@ function renderMenuScreen(screen) {
             }
         }
 
-        const dbgStartY = (App.debugHighNoon && !App.debugFistful) ? 528 : 476;
+        const dbgStartY = (App.debugHighNoon && !App.debugFistful) ? 580 : 528;
         [2, 3, 4, 5].forEach((n, i) => {
             themeButton(gameScene, 720 + i * 160, dbgStartY, 132, 58, `▶  ${n}P`, {
                 fill: THEME.color.goldDarkNum, fillHover: 0xa8842a,
@@ -873,7 +900,7 @@ function renderMenuScreen(screen) {
                 onClick: () => socket.emit('debug_start', { playerCount: n, roles: App.debugRoles || [],
                     dodgeCity: !!App.debugDodgeCity, highNoon: !!App.debugHighNoon,
                     highNoonExtra: !!App.debugHighNoonExtra, fistful: !!App.debugFistful,
-                    divokyZapad: !!App.debugDivokyZapad }),
+                    divokyZapad: !!App.debugDivokyZapad, zlataHorecka: !!App.debugZlataHorecka }),
             });
         });
     }

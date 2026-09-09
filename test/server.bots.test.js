@@ -15,6 +15,7 @@ const dodgeCityCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.dodg
 const highNoonCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.high_noon.json', 'utf8'));
 const fistfulCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.fistful.json', 'utf8'));
 const wwsCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.divoky_zapad.json', 'utf8'));
+const gearCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.zlata_horecka.json', 'utf8'));
 
 before(() => { console.log = () => {}; console.warn = () => {}; });
 
@@ -445,6 +446,50 @@ test('Divoký západ: hra jen botů doběhne sama i vedle obou ostatních balí�
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci');
     assert.ok(flipped > 0, 'aspoň v jedné hře někdo zahrál Dostavník / Wells Fargo a otočil kartu');
+});
+
+// Zlatá horečka (fáze 0) – zapnuté rozšíření nesmí hru rozbít a valouny musí opravdu
+// přibývat SKUTEČNOU cestou zranění (`handleDamage`), ne jen v jednotkovém testu.
+// Fáze 0 nepřidává žádnou fázi ani akci, takže bot nemá co nového dělat – právě proto
+// je tohle ta správná pojistka: kdyby se zisk valounu zavěsil špatně, hra doběhne, ale
+// nikdo nikdy nic nevydělá.
+test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibývají', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
+    COMBOS.push({ n: 4, all: true }, { n: 7, all: true });
+
+    let earned = 0;
+    try {
+        COMBOS.forEach(({ n, all }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            const opts = { expansions: { dodge_city: all, high_noon: all, fistful: all,
+                                         divoky_zapad: all, zlata_horecka: true } };
+            const tag = `${all ? 'vše' : 'jen ZH'} (${n}p)`;
+            const room = { id: `zh${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            assert.equal(gs.gearDeck.length, 24, `${tag}: balíček vybavení`);
+            assert.ok(gs.players.every(p => p.nuggets === 0), `${tag}: začíná se bez valounů`);
+
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+            if (gs.players.some(p => p.nuggets > 0)) earned++;
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani se Zlatou horečkou');
+    assert.equal(earned, COMBOS.length, 'v každé hře někdo někoho zranil, takže si vydělal valoun');
 });
 
 // Cílená zátěž na fázi 2 Fistfulu: v balíčku jsou JEN Léčka, Laso a Soudce, takže platí

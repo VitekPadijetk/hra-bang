@@ -461,6 +461,10 @@ const CharactersMixin = {
         const p = this.players[playerIdx];
         if (!p || !hasAbility(p, "Chuck Wengam") || p.health <= 1) return false;
         p.health--;
+        // Zlatá horečka: dobrovolná ztráta života jde mimo handleDamage, ale reakce
+        // oběti (Boty, Talisman, Simeon Picos) na ni platí taky (R5, logic/goldRush.js).
+        // `last` je vždy false – schopnost na poslední život nejde (podmínka výš).
+        this._afterLifeLost(playerIdx, { attackerIdx: null, last: false });
         this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 2 });
         this._processSpecialQueue();
         return true;

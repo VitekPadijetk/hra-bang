@@ -107,9 +107,13 @@ module.exports = function installRoomService(ctx) {
         const clausState = (gs.clausState && viewerIdx !== gs.currentPlayerIndex)
             ? { ...gs.clausState, revealed: hideAll(gs.clausState.revealed) }
             : gs.clausState;
+        // Zlatá horečka: `gearDeck` je čtvrtá hromádka, jejíž POŘADÍ je tajné – je to
+        // příští nabídka obchodu. Zbytek rozšíření je naopak veřejný a zůstává tak, jak
+        // je: `gearRow` (obchod leží lícem vzhůru), `gearPile` (odhozené lícem vzhůru)
+        // i `player.gear` / `player.nuggets` („pokládejte viditelně před sebe").
         return { ...gs, players, deck, clausState,
                  eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck),
-                 wwsDeck: hideAll(gs.wwsDeck) };
+                 wwsDeck: hideAll(gs.wwsDeck), gearDeck: hideAll(gs.gearDeck) };
     }
 
     function roomPayload(room, viewerIdx = null, revealAll = false) {

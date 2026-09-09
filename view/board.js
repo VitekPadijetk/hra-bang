@@ -537,6 +537,28 @@ function drawLivesCounter(track, player, x, y) {
     gameScene.cardsSprites.add(txt);
 }
 
+// ── Zlatá horečka: zlaté valouny hráče ───────────────────────────────────────
+// „Své zlaté valouny pokládejte VIDITELNĚ PŘED SEBE" – jsou veřejné, vidí je celý stůl
+// (redakce je neskrývá, viz server/rooms.js). Kreslí se jako zlatý štítek vedle jména
+// hráče: jméno má každá ze čtyř větví okruhu, moje zóna i divák, takže je to jediné
+// místo, které se nemusí počítat pro každou stranu stolu zvlášť. Výjimkou je kompaktní
+// sloupec (mobil), kde je vedle jména místo přesně na jméno – tam štítek sedí v rohu
+// portrétu naproti hvězdě i počítadlu životů (stejný idiom jako drawLivesCounter).
+// Až dorazí ikona valounu (assets/other_cards/valoun.webp, plán §2.8), nahradí emoji.
+//
+// Nula se nekreslí vůbec – bez zapnutého rozšíření (a na začátku hry s ním) by jinak
+// u každého hráče visela nula.
+function drawNuggets(player, x, y, originX = 1, originY = 0) {
+    const n = (player && player.nuggets) || 0;
+    if (!n) return null;
+    const txt = gameScene.add.text(x, y, '💰' + n,
+        { fontFamily: THEME.fontUI, fontSize: '17px', color: '#ffd24d', fontStyle: 'bold',
+          backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 5, y: 3 } })
+        .setOrigin(originX, originY).setDepth(STAR_DEPTH);
+    gameScene.cardsSprites.add(txt);
+    return txt;
+}
+
 // ── Soupeři kolem stolu (vykresleno relativně k mému indexu) ──────────────────
 function drawOpponents(ctx) {
     const { anchors, scaleOpp, getTex, getCharTex, isMyDraw, handlePanicCBClick, L } = ctx;
@@ -1147,6 +1169,7 @@ function drawOpponents(ctx) {
                       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } })
                     .setOrigin(0.5, 0).setDepth(50);
                 gameScene.cardsSprites.add(nameTxt);
+                drawNuggets(player, nameTxt.x - nameTxt.width / 2 - 5, nameY);
                 if (isWaiting && _waiting.text) {
                     let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _waiting.text,
                         { fontSize: '15px', color: '#ffcc44',
@@ -1221,6 +1244,7 @@ function drawOpponents(ctx) {
                       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } })
                     .setOrigin(0.5, 0).setDepth(50);
                 gameScene.cardsSprites.add(nameTxt);
+                drawNuggets(player, nameTxt.x - nameTxt.width / 2 - 5, nameY);
                 if (isWaiting && _waiting.text) {
                     let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _waiting.text,
                         { fontSize: '15px', color: '#ffcc44',
@@ -1295,6 +1319,7 @@ function drawOpponents(ctx) {
                       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 6, y: 3 } })
                     .setOrigin(0.5, 0).setDepth(50);
                 gameScene.cardsSprites.add(nameTxt);
+                drawNuggets(player, nameTxt.x - nameTxt.width / 2 - 5, nameY);
                 if (isWaiting && _waiting.text) {
                     let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _waiting.text,
                         { fontSize: '15px', color: '#ffcc44',
@@ -1389,6 +1414,8 @@ function drawCompactOpponent(ctx) {
     // Sloupec je široký jednu kartu, takže se dráha životů nedělí – nad 5 se dopíše
     // číslo do rohu naproti hvězdě (viz drawLivesCounter / R11 plánu).
     drawLivesCounter(livesT, player, charOpp.x + cardH * 0.4, charOpp.y + cardW * 0.34);
+    // Valouny (Zlatá horečka) do zbylého rohu – vedle jména na ně ve sloupci místo není.
+    drawNuggets(player, charOpp.x - cardH * 0.4, charOpp.y - cardW * 0.3, 0.5, 0.5);
 
     // Vyložené karty stojí (angle 0) v jedné řadě – čitelné stejně jako moje.
     displayCards.forEach((card, bIdx) => {
@@ -1483,6 +1510,7 @@ function drawMyArea(ctx) {
                   backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 7, y: 4 } })
                 .setOrigin(0.5, 0);
             gameScene.cardsSprites.add(myNameTxt);
+            drawNuggets(me, myNameTxt.x - myNameTxt.width / 2 - 5, myNameTxt.y);
             if (isWaitingMe && _myWaiting.text) {
                 let myStTxt = gameScene.add.text(roleX, myBaseY + L.myStatusOffY, '⏳ ' + _myWaiting.text,
                     { fontSize: '16px', color: '#ffcc44',
@@ -2978,11 +3006,11 @@ function drawSpectatorPlayer(ctx) {
                 gameScene.add.image(livesX_adj + cW * 0.42, charY2 - cH * 0.45, 'sheriff_star').setScale(sOpp).setDepth(STAR_DEPTH)
             );
         }
-        gameScene.cardsSprites.add(
-            gameScene.add.text(livesX_adj, charY2 - cH * 0.52 - 4, player.name,
-                { fontSize: '17px', color: isCurrent ? '#ffff88' : '#ccc',
-                  backgroundColor: 'rgba(0,0,0,0.65)', padding: { x: 5, y: 3 } }).setOrigin(0.5, 1)
-        );
+        const specNameTxt = gameScene.add.text(livesX_adj, charY2 - cH * 0.52 - 4, player.name,
+            { fontSize: '17px', color: isCurrent ? '#ffff88' : '#ccc',
+              backgroundColor: 'rgba(0,0,0,0.65)', padding: { x: 5, y: 3 } }).setOrigin(0.5, 1);
+        gameScene.cardsSprites.add(specNameTxt);
+        drawNuggets(player, specNameTxt.x - specNameTxt.width / 2 - 5, specNameTxt.y, 1, 1);
 
         const texOf = (c) => c._pseudo ? c._tex : getTex(c.id);
         // Skrytá při letu Paniky/Cat Balou i při odhazování karet po smrti; karta role

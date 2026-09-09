@@ -110,6 +110,14 @@ class Player {
         this.hand = [];
         this.board = [];
         this.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+        // Zlatá horečka (Gold Rush): koupené vybavení a zlaté valouny. Vybavení má
+        // ZÁMĚRNĚ vlastní pole vedle `board` – pravidla říkají, že nemůže být cílem
+        // Paniky, Cat Balou ani schopností (Pat Brennan) a že ho Vulture Sam nedostane,
+        // takže to strukturálně zaručí to, že ho výběr karet ze stolu vůbec nevidí
+        // (rozhodnutí R3 plánu). Valouny jsou jen číslo – zásoba se nemodeluje (R4).
+        // Obojí je VEŘEJNÉ („pokládejte viditelně před sebe"), redakce je neskrývá.
+        this.gear = [];
+        this.nuggets = 0;
         this.bangsPlayedThisTurn = 0;
         this.stats = {
             cardsUsed: {},

@@ -5,7 +5,7 @@ const { baseHealthForCharacter, startCardsForCharacter } = require('../core/role
 module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
     const { rooms, makeRoom, broadcastRoom, broadcastLobbyList,
             findRoomBySocket, leaveRoom, cardData, dodgeCityCardData, highNoonCardData,
-            fistfulCardData, wwsCardData } = ctx;
+            fistfulCardData, wwsCardData, gearCardData } = ctx;
 
     // ── DEBUG ────────────────────────────────────────────────────────────────
     socket.on('debug_start', (data) => {
@@ -18,8 +18,10 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         const hnExtra = typeof data === 'object' ? !!data.highNoonExtra : false;
         const fistful = typeof data === 'object' ? !!data.fistful : false;
         const divokyZapad = typeof data === 'object' ? !!data.divokyZapad : false;
+        const zlataHorecka = typeof data === 'object' ? !!data.zlataHorecka : false;
         const options = { expansions: { dodge_city: dodgeCity, high_noon: highNoon, fistful,
-                                        divoky_zapad: divokyZapad },
+                                        divoky_zapad: divokyZapad,
+                                        zlata_horecka: zlataHorecka },
                           highNoonExtra: highNoon && hnExtra };
         const names = Array.from({ length: playerCount }, (_, i) => `Debug${i + 1}`);
         const room = makeRoom('DEBUG', playerCount, socket.id, 'Debug1', options);
@@ -31,6 +33,7 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         room.gameState.highNoonCardData = highNoonCardData;
         room.gameState.fistfulCardData = fistfulCardData;
         room.gameState.wwsCardData = wwsCardData;
+        room.gameState.gearCardData = gearCardData;
         ctx.glog.openGame(room);
         room.gameState._onEvent = (evt) => ctx.glog.rule(room, evt);
         room.gameState.setupDebugGame(playerCount, names, debugRoles, options);

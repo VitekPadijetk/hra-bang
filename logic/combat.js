@@ -15,6 +15,16 @@ const CombatMixin = {
         const attName = attackerIdx !== null ? this.players[attackerIdx]?.name : null;
         this.logEvent('damage', { who: target.name, hp: `${target.health + 1}→${target.health}`, by: attName });
 
+        // Zlatá horečka: valoun za KAŽDÉ způsobené zranění – jedna karta, která zraní víc
+        // hráčů, jich přinese víc (Kulomet v 5 hráčích a třech zásazích = 3 valouny).
+        // Tohle je JEDINÉ místo, kde valoun útočníkovi přibývá: hromadné útoky (Kulomet,
+        // Indiáni), Duel i obyčejný Bang! sem chodí jednou za oběť. Co jde mimo, mimo
+        // patří – u dynamitu, událostí a vlastní pokuty nikdo nikomu nic *nezpůsobil*.
+        if (attackerIdx !== null && attackerIdx !== targetIdx) this._gainNugget(attackerIdx);
+        // …a REAKCE OBĚTI (Boty, Talisman, Simeon Picos) jde přes společný trychtýř,
+        // protože platí i pro zdroje mimo handleDamage (R5, logic/goldRush.js).
+        this._afterLifeLost(targetIdx, { attackerIdx, last: target.health <= 0 });
+
         if (target.health <= 0) {
             target.health = 0;
             // High Noon – Město duchů: duch během svého tahu umřít nemůže. Zásah mu život
@@ -236,6 +246,10 @@ const CombatMixin = {
         p.health--;
         p.stats.damageTaken++;
         this.logEvent('dynamite', { who: p.name, hp: p.health, hitsLeft: pdd.hitsLeft - 1 });
+        // Zlatá horečka: klikaný zásah (dynamit, Madam Zuzana, Roubík) jde mimo
+        // handleDamage – útočník žádný není, takže valoun nikomu nepatří, ale reakce
+        // oběti (Boty, Talisman, Simeon Picos) platí i tady (R5, logic/goldRush.js).
+        this._afterLifeLost(playerIdx, { attackerIdx: null, last: p.health <= 0 });
 
         if (p.health <= 0) {
             p.health = 0;

@@ -1,0 +1,18 @@
+[
+  { "id": 600, "effect": "ZH_PANAK", "name": "Panák", "art": "panak", "border": "brown", "cost": 1, "copies": 3, "text": "Hráč dle tvé volby (i ty) si doplní 1 život." },
+  { "id": 601, "effect": "ZH_LAHEV", "name": "Láhev", "art": "lahev", "border": "brown", "cost": 2, "copies": 3, "text": "Může být zahrána jako Panika!, Pivo nebo BANG!" },
+  { "id": 602, "effect": "ZH_KOMPLIC", "name": "Komplic", "art": "komplic", "border": "brown", "cost": 2, "copies": 3, "text": "Může být zahrán jako Hokynářství, Duel nebo Cat Balou." },
+  { "id": 603, "effect": "ZH_RUM", "name": "Rum", "art": "rum", "border": "brown", "cost": 3, "copies": 2, "text": "„Otoč!“ 4 karty: doplň si 1 život za každou různou barvu." },
+  { "id": 604, "effect": "ZH_UNION_PACIFIC", "name": "Union Pacific", "art": "union_pacific", "border": "brown", "cost": 4, "copies": 1, "text": "Lízni si 4 karty z balíčku." },
+  { "id": 605, "effect": "ZH_ZLATA_HORECKA", "name": "Zlatá horečka", "art": "zlata_horecka", "border": "brown", "cost": 5, "copies": 1, "text": "Tvůj tah končí. Doplň si všechny životy a zahraj další tah." },
+
+  { "id": 606, "effect": "ZH_BOTY", "name": "Boty", "art": "boty", "border": "black", "cost": 3, "copies": 1, "text": "Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku." },
+  { "id": 607, "effect": "ZH_WANTED", "name": "Wanted!", "art": "wanted", "border": "black", "cost": 2, "copies": 3, "text": "Zahraj na libovolného hráče. Kdo toho hráče vyřadí, lízne si 2 karty a vezme si 1 valoun." },
+  { "id": 608, "effect": "ZH_RYZOVACI_PANEV", "name": "Rýžovací pánev", "art": "ryzovaci_panev", "border": "black", "cost": 3, "copies": 1, "text": "Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za tah." },
+  { "id": 609, "effect": "ZH_PODKOVA", "name": "Podkova", "art": "podkova", "border": "black", "cost": 2, "copies": 1, "text": "Pokaždé, když „otáčíš!“, odkryj o kartu navíc a vyber výsledek." },
+  { "id": 610, "effect": "ZH_TALISMAN", "name": "Talisman", "art": "talisman", "border": "black", "cost": 3, "copies": 1, "text": "Pokaždé, když ztratíš 1 život, vezmi si 1 valoun." },
+  { "id": 611, "effect": "ZH_BATOH", "name": "Batoh", "art": "batoh", "border": "black", "cost": 3, "copies": 1, "text": "Zaplať 2 valouny a doplň si 1 život." },
+  { "id": 612, "effect": "ZH_KALUMET", "name": "Kalumet", "art": "kalumet", "border": "black", "cost": 3, "copies": 1, "text": "Karty káry zahrané ostatními na tebe nemají efekt." },
+  { "id": 613, "effect": "ZH_OPASEK", "name": "Opasek", "art": "opasek", "border": "black", "cost": 2, "copies": 1, "text": "Na konci tahu smíš mít v ruce až 8 karet." },
+  { "id": 614, "effect": "ZH_KRUMPAC", "name": "Krumpáč", "art": "krumpac", "border": "black", "cost": 4, "copies": 1, "text": "Ve fázi 1 svého tahu si lízni o kartu navíc." }
+]

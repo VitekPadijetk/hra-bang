@@ -47,6 +47,7 @@ const App = {
     debugHighNoonExtra: false,
     debugFistful: false,
     debugDivokyZapad: false,
+    debugZlataHorecka: false,
     // High Noon (přibalené) – Nová identita: stav cinematiky nabídky (net/handlers.js).
     // { ready, decided } – ready = karta doletěla doprostřed a je překlopená lícem nahoru.
     niReveal: null,
@@ -58,7 +59,7 @@ const App = {
     createGameName: null,
     createGameNameOwner: null,
     createPlayerCount: null,
-    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false, fistful: false } },
+    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false, fistful: false, divoky_zapad: false, zlata_horecka: false } },
     botGameCount: 4,
     // ID karet, které právě letí do MOJÍ ruky (animace líznutí/krádeže). Dokud je
     // karta tady, board.js ji v ruce nevykreslí – slot je rezervovaný a karta se

@@ -2145,6 +2145,7 @@ function preload() {
     loadAsset(this, 'json', 'cards_high_noon_data', 'cards.high_noon.json');
     loadAsset(this, 'json', 'cards_fistful_data', 'cards.fistful.json');
     loadAsset(this, 'json', 'cards_divoky_zapad_data', 'cards.divoky_zapad.json');
+    loadAsset(this, 'json', 'cards_zlata_horecka_data', 'cards.zlata_horecka.json');
 
     loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
@@ -2295,6 +2296,17 @@ const EXPANSION_LOADERS = {
                 normalizeCharTextures(scene, 34, 41);
             },
         };
+    },
+
+    // Zlatá horečka (Gold Rush): NENÍ to balíček událostí – jsou to karty vybavení,
+    // obchod a portréty postav (042–049). Art zatím CELÝ chybí (plán §2.8), takže
+    // loader zatím nic nestahuje. Zaregistrovaný ale být MUSÍ: start hry čeká na
+    // `expansion_ready` každého zapnutého rozšíření (server/lifecycle.js) a bez loaderu
+    // by `loadExpansionAssets` mlčky nic neudělal a hra by 12 s visela na timeoutu.
+    // Prázdné `critical` proto hlásí připravenost hned. Až art dorazí, přibude sem
+    // stahování `zh_*` textur, rub balíčku a `normalizeCharTextures(scene, 42, 49)`.
+    zlata_horecka(scene) {
+        return { critical: [], done: () => {} };
     },
 };
 

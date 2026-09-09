@@ -248,6 +248,16 @@ class GameState {
         // osobně vyřadil svého určeného nepřítele, a tím hru vyhrál.
         this.mode3p = false;
         this._winClaim3p = null;
+        // Rozšíření Zlatá horečka (Gold Rush) – NEPŘIDÁVÁ balíček událostí, ale balíček
+        // VYBAVENÍ a obchod: `gearDeck` (lícem dolů), `gearRow` (3 karty lícem vzhůru,
+        // ze kterých se kupuje) a `gearPile` (odhozené, vracejí se pod balíček).
+        // Bez zapnutého rozšíření zůstávají prázdné. Viz logic/goldRush.js.
+        // POZOR: `gearDeck` je jediné z nich, co se skrývá v redakci (server/rooms.js) –
+        // jeho pořadí je příští nabídka obchodu.
+        this.gearDeck = [];
+        this.gearRow = [null, null, null];
+        this.gearPile = [];
+        this._goldRush = false;   // je rozšíření zapnuté? (`_goldRushOn`, viz logic/goldRush.js)
     }
 
     getCurrentPlayer() {
@@ -592,7 +602,8 @@ if (typeof module !== 'undefined' && typeof require === 'function') {
         require('./logic/dodgeCity.js'),
         require('./logic/highNoon.js'),
         require('./logic/fistful.js'),
-        require('./logic/wildWest.js')
+        require('./logic/wildWest.js'),
+        require('./logic/goldRush.js')
     );
 }
 
