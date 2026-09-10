@@ -317,7 +317,7 @@ test('lucky_duke_pick: nejdřív lucky_duke_result (s chosenId), pak výsledek c
     assert.ok(iJail !== -1, 'odlet vězení do odhozu se musí odeslat');
     assert.ok(iRes < iJail, 'odkryté karty odlétají dřív než výsledek checku');
     assert.equal(anims[iRes].chosenId, 942);
-    assert.equal(anims[iRes].otherId, 941);
+    assert.deepEqual(anims[iRes].otherIds, [941]);   // s Podkovou (ZH) jich je víc
     assert.equal(anims[iJail].cardId, jail.id);
 });
 

@@ -45,6 +45,25 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Zlatá horečka – Boty: „Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku."
+    // Klikací líznutí, tělem i časováním shodné s Bartem Cassidym (viz bart_cassidy_draw).
+    on('boots_draw', () => {
+        withRoom((room, p, gs) => {
+            const playerIdx = gs.pendingBootsDraw?.playerIdx ?? p.playerIdx;
+            const before = gs.players[playerIdx]?.hand.length ?? 0;
+            gs.bootsDraw(playerIdx);
+            // Majitel uvidí líznutou kartu (reveal flip), ostatní jen rub.
+            const hand = gs.players[playerIdx].hand;
+            if (hand.length > before) {
+                const drawnId = hand[hand.length - 1]?.id;
+                emitAnimPrivate(room, playerIdx,
+                    { type: 'draw', playerIdx, cardId: drawnId },
+                    { type: 'draw', playerIdx });
+            }
+            handleReshuffleAndBroadcast(room, gs, 350);
+        });
+    });
+
     on('get_taken_names', () => {
         const taken = new Set();
         for (const [, r] of rooms) {

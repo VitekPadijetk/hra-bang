@@ -25,6 +25,13 @@ if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
     }
+    if (typeof hasAbility === 'undefined') {
+        globalThis.hasAbility = require('./distance.js').hasAbility;
+    }
+    // Fistful – Laso vypíná i vybavení (R10); zrcadlo serverového _boardDead.
+    if (typeof boardDeadFor === 'undefined') {
+        globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
+    }
     // Fistful – Právo západu: nákup nesmí „vypnout" vynucenou kartu. Zrcadlo serverového
     // _lawLocked leží v playability.js, tady se jen volá.
     if (typeof lawLocksOther === 'undefined') {
@@ -46,6 +53,17 @@ function gearOf(state, playerIdx) {
 
 function hasGearFor(state, playerIdx, effect) {
     return gearOf(state, playerIdx).some(c => c && c.effect === effect);
+}
+
+// „Platí té kartě zrovna teď efekt?" – zrcadlo GameState._gearOn. Kromě vlastnictví
+// v něm sedí obě karty, které vybavení VYPÍNAJÍ (R10): Laso (Fistful, celý stůl)
+// a Belle Star (Dodge City, v jejím tahu cizí karty na stole). Vlastnictví samo
+// (nákup, „ne dvě stejného", vynucené odhození) se ptá `hasGearFor`.
+function gearOnFor(state, playerIdx, effect) {
+    if (!hasGearFor(state, playerIdx, effect)) return false;
+    if (boardDeadFor(state)) return false;
+    const cur = state.currentPlayerIndex;
+    return !(playerIdx !== cur && hasAbility(state.players?.[cur], "Belle Star"));
 }
 
 // Cena karty pro konkrétního hráče. Zrcadlí GameState._gearCost – jediné místo, kde se
@@ -130,7 +148,7 @@ function beerNuggetOk(state, playerIdx, card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { goldRushOn, gearOf, hasGearFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
+    module.exports = { goldRushOn, gearOf, hasGearFor, gearOnFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
                        gearShopOpen, gearBuyReason, gearBuyOk,
                        gearForceCost, gearForceOk, gearForceAvailable, beerNuggetOk };
 }

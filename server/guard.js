@@ -37,7 +37,7 @@ module.exports = function installActionGuard(ctx) {
         'gear_buy', 'gear_target', 'gear_force_discard', 'beer_for_nugget',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another',
         'activate_green_card',
-        'bart_cassidy_draw', 'uhyb_draw', 'el_gringo_steal', 'suzy_draw',
+        'bart_cassidy_draw', 'boots_draw', 'uhyb_draw', 'el_gringo_steal', 'suzy_draw',
         'trigger_check_draw', 'resolve_check', 'resolve_black_jack',
         'chuck_wengam', 'jose_delgado', 'doc_holyday', 'vera_copy',
     ]);

@@ -10,7 +10,7 @@ k výkladu sporných míst.
 
 Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 sad.
 
-> **Stav: hotové fáze 0 a 1** (2026-09-09).
+> **Stav: hotové fáze 0, 1 a 2** (2026-09-10).
 > **Fáze 0** — data, mixin `logic/goldRush.js`, `player.nuggets` a `player.gear`, trychtýř
 > `_afterLifeLost` ze všech tří vstupů, zisk valounu v `handleDamage`, přepínač ve všech
 > třech lobby obrazovkách, redakce `gearDeck` a zobrazení valounů u hráče.
@@ -20,7 +20,13 @@ Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 
 > okno obchodu na klientovi a odhození vybavení při vyřazení hráče.
 > `npm test` = **1414 testů, 0 chyb** (nová sada `test/goldRush.shop.test.js`
 > + invarianty rozložení v `test/positions.test.js`).
-> Odchylky od plánu jsou popsané u fází 0 a 1 v §9.
+> **Fáze 2** — šest pasivních karet s černým rámem (**Boty, Talisman, Opasek, Krumpáč,
+> Kalumet, Podkova**), trychtýř „vybavení právě teď platí" (`_gearOn` + zrcadlo
+> `gearOnFor`), klikací fáze `BOOTS_DRAW` a zobecnění sejmutí s výběrem na N karet
+> (`_checkRevealCount`, Podkova × Lucky Duke).
+> `npm test` = **1448 testů, 0 chyb** (nová sada `test/goldRush.cards.test.js`
+> + zátěžová varianta „plná kapsa valounů" v `test/server.bots.test.js`).
+> Odchylky od plánu jsou popsané u fází 0–2 v §9.
 
 > **Assety zatím nejsou.** Plán je proto napsaný tak, aby se dal odpracovat celý bez nich
 > (§2.8 říká, co se s chybějícím artem děje) a aby se **jména karet daly doplnit na jednom
@@ -497,7 +503,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 |---|---|---|
 | **0** ✅ | data, mixin, `player.nuggets`, `_afterLifeLost`, zisk valounu, přepínač v lobby, redakce | valouny přibývají a jsou vidět |
 | **1** ✅ | hromádky vybavení, obchod, nákup, doplnění, vynucené odhození, Pivo za valoun + **Panák, Union Pacific** | ekonomika kompletní |
-| **2** | pasivní černé: **Boty, Talisman, Opasek, Krumpáč, Kalumet, Podkova** | 6 karet |
+| **2** ✅ | pasivní černé: **Boty, Talisman, Opasek, Krumpáč, Kalumet, Podkova** | 6 karet |
 | **3** | placené černé: **Rýžovací pánev, Batoh** (vč. záchrany posledního života) | 8 karet |
 | **4** | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 12 karet |
 | **5** | **Wanted!** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
@@ -577,6 +583,50 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
 - **`progressSig` (server/bots.js) dostal součet valounů a vybavení** — nákup hnědé karty
   se jinak v otisku pokroku neprojeví vůbec a stall guard by z legálního tahu udělal
   falešné zaseknutí.
+
+### Co se ve fázi 2 odchýlilo od plánu (a proč)
+
+- **`_gearDead(playerIdx)` (§2.2) se jmenuje `_gearOn(player, effect)` a ptá se
+  POZITIVNĚ**: „platí té kartě zrovna teď efekt?" Sloučit vlastnictví s vypnutím do
+  jednoho dotazu je nutné, protože obojí se ptá na tomtéž místě a rozdělené by se to
+  dřív nebo později zeptalo jen na půlku. Vlastnictví samo (nákup, „ne dvě stejného",
+  vynucené odhození) zůstává na `_gearHas` – **vypnutá karta pořád leží před hráčem**
+  a pořád se nedá koupit podruhé. Bere hráče jako OBJEKT, ne sedadlo: všech pět háků
+  fáze 2 dostává `player`, ne index.
+- **Zrcadlo `gearOnFor` v `core/goldRush.js` vzniklo hned** (plán ho v §2.2 nejmenoval).
+  Potřebuje ho klient na limit karet v ruce (Opasek) – ten dnes rozhoduje, jestli se po
+  odhození přepne na `TRANSITIONING`, a rozejít se se serverem nesmí.
+- **R10 se tím uplatnilo doopravdy**: Laso (Fistful) vypíná vybavení celého stolu a
+  Belle Star (Dodge City) ve svém tahu cizí vybavení. Do háků to nepřibylo ani řádkem –
+  sedí to celé v `_gearOn`.
+- **Podkova nedostala vlastní mechaniku.** Jede po existující fázi `LUCKY_DUKE`; jediné,
+  co bylo potřeba, je **`_checkRevealCount(player)`** (logic/characters.js) = kolik karet
+  se u sejmutí odkryje. Nahradilo to `hasAbility(p, "Lucky Duke")` na všech PĚTI místech,
+  kde se snímá, takže se sčítání (R8) nemá kde rozejít. `startLuckyDukeCheck` líže N karet
+  a `luckyDukePick` odhazuje všechny nevybrané (ne `1 - cardIdx`).
+  Popisek čekání se řídí `luckyDukeState.via` – hráč bez Lucky Duka nesmí číst cizí jméno.
+- **Panel odkrytých karet umí tři.** Geometrie se přesunula do `getLuckySlotPos`
+  (positions.js), protože ji potřebují DVĚ místa – rozdávání (`startLuckyDukeDeal`
+  v game.js) a kreslení (`view/board.js`). Při dvou kartách vrací pixelově dnešní
+  stav (660 / 1260). Server posílá `otherIds` (pole) místo `otherId`.
+- **Kalumet nepotřeboval vlastní hák** (§4 s tím počítal): je to Apache Kid jako
+  vybavení, takže sedí na `_apacheImmune`. Přibyl mu jen `opts.duel` kvůli dodatku
+  „toto vybavení nemá efekt v průběhu duelu" – Apache Kida kárový Duel dál míjí, majitele
+  Kalumetu ne. Duelové cesty jsou dvě: `playSpecialCard` a opakování Lee Van Kliffem.
+- **Krumpáč se veze zdarma i postavám, které fázi 1 mění.** `_drawCountFor` je jediný
+  zdroj: Kit Carlson tedy odkrývá pořád 3 karty a nechá si 2, kartu navíc si dolízne
+  z balíčku (`kitExtra`) – stejně jako pod Příjezdem vlaku; Black Jackovi se +1 přičte
+  k základu a Clausovi k počtu ponechaných.
+- **Boty musely do `_pruneSuzyQueue`.** Fáze `BOOTS_DRAW` čeká na KLIK majitele, takže by
+  u hráče, který mezitím odešel ze hry, uvázla. Je to zároveň důvod, proč se čistí právě
+  tam: kdo se rozhoduje podle délky fronty, musí po pročištění dostat jen to, co se
+  opravdu rozeběhne (viz „Rodina resume příznaků" v CLAUDE.md).
+- **Opasek bere VYŠŠÍ z obojího** (`Math.max(životy, 8)`), ne pevných 8 – Big Spencer
+  (Divoký západ) má 9 životů a Opaskem by si jinak pohoršil.
+- **Do zátěže přibyla varianta „plná kapsa valounů"** (`test/server.bots.test.js`).
+  Valouny se vydělávají pomalu, takže by se dražší černé karty v běžné hře protočily jen
+  občas; s doplňovanou kapsou se spolehlivě rozjede nákup, fáze `BOOTS_DRAW` i výběr
+  karty pod Podkovou. `pumpToWinner` k tomu dostal volitelný `onTick`.
 
 Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `master`.
 

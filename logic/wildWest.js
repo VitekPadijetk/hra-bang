@@ -1161,7 +1161,8 @@ const WildWestMixin = {
                 break;
             }
             case 'DUEL': {
-                if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx)) { done(); return; }
+                // `duel` – Zlatá horečka: Kalumet v duelu neúčinkuje (viz _apacheImmune).
+                if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx, { duel: true })) { done(); return; }
                 this.pendingResponse = {
                     active: true, originatorIdx: playerIdx, targetIdx,
                     initialTargetIdx: targetIdx,

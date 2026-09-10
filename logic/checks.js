@@ -48,7 +48,7 @@ const ChecksMixin = {
         // žádná karta na stole, jen důvod – jinak jede úplně stejnou cestou jako
         // Dynamit/Vězení, takže se zdarma veze i Lucky Duke a klientská cinematika.
         if (pcd.reason) {
-            if (hasAbility(p, "Lucky Duke")) {
+            if (this._checkRevealCount(p) > 1) {
                 this.startLuckyDukeCheck({ reason: pcd.reason, playerIdx: pcd.playerIdx, boardIdx: null, checksLeft: 1, active: false });
                 return;
             }
@@ -70,7 +70,7 @@ const ChecksMixin = {
         }
 
         if (pcd.dynamiteIdx !== null) {
-            if (hasAbility(p, "Lucky Duke")) {
+            if (this._checkRevealCount(p) > 1) {
                 this.startLuckyDukeCheck({ reason: "DYNAMITE", playerIdx: pcd.playerIdx, boardIdx: pcd.dynamiteIdx, checksLeft: 1, active: false });
                 return;
             }
@@ -90,7 +90,7 @@ const ChecksMixin = {
         }
 
         if (pcd.jailIdx !== null) {
-            if (hasAbility(p, "Lucky Duke")) {
+            if (this._checkRevealCount(p) > 1) {
                 this.startLuckyDukeCheck({ reason: "JAIL", playerIdx: pcd.playerIdx, boardIdx: pcd.jailIdx, checksLeft: 1, active: false });
                 return;
             }
@@ -265,7 +265,7 @@ const ChecksMixin = {
         const p = this.players[check.playerIdx];
         check.active = false;
 
-        if (hasAbility(p, "Lucky Duke")) {
+        if (this._checkRevealCount(p) > 1) {
             this.startLuckyDukeCheck(check);
             return;
         }

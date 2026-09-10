@@ -44,7 +44,9 @@ function gearPieces(kind) {
 // (logic/entities.js): rozšíření se dá hrát dřív, než je hotových všech 15 druhů, a karta,
 // jejíž efekt ještě není napsaný, se nesmí dostat do obchodu – hráč by za ni zaplatil
 // valouny a nedostal nic. Seznam roste s fázemi plánu (§9); ve fázi 5 bude úplný.
-const GEAR_READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC'];
+const GEAR_READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
+                    // fáze 2 – pasivní černé vybavení (leží před hráčem a jen mění pravidla)
+                    'ZH_BOTY', 'ZH_TALISMAN', 'ZH_OPASEK', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA'];
 
 const GoldRushMixin = {
     // ── Příprava balíčku vybavení (setupGame / setupDebugGame / setupNextGame) ──
@@ -116,8 +118,7 @@ const GoldRushMixin = {
     //                   („neúčinkují při ztrátě posledního života"); Simeon Picos ano,
     //                   jeho text tu výjimku nemá.
     //
-    // Fáze 0: trychtýř je zapojený ze všech tří vstupů a zatím jen loguje. Těla plní
-    // fáze 2 (Boty, Talisman) a 6 (Simeon Picos) – přibývají SEM, ne k volajícím.
+    // Fáze 6 (Simeon Picos) přibude SEM, ne k volajícím.
     _afterLifeLost(playerIdx, opts = {}) {
         if (!this._goldRushOn()) return;
         const p = this.players[playerIdx];
@@ -127,13 +128,47 @@ const GoldRushMixin = {
             by: opts.attackerIdx != null ? this.players[opts.attackerIdx]?.name : null,
             last: !!opts.last,
         });
+        // „Neúčinkují při ztrátě POSLEDNÍHO života" – platí na Boty i Talisman shodně
+        // (dodatek v pravidlech). Zbytek trychtýře (Simeon Picos) tu výjimku nemá,
+        // proto se nesmí odbýt jedním early returnem nahoře.
+        if (opts.last) return;
+        // Talisman: „Pokaždé, když ztratíš 1 život, vezmi si 1 valoun." Vždy ze SPOLEČNÉ
+        // zásoby, ne od toho, kdo ztrátu způsobil – útočník o svůj valoun nepřichází.
+        if (this._gearOn(p, 'ZH_TALISMAN')) this._gainNugget(playerIdx, 1);
+        // Boty: „Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku." Je to přesně
+        // tvar Barta Cassidyho, takže se líznutí odkládá do FRONTY – platí pro ně celé
+        // pravidlo „nejdřív doběhne efekt zahrané karty". Vlastní typ (ne recyklovaný
+        // BART_DRAW), aby log i klientské zvýraznění říkaly správnou příčinu.
+        if (this._gearOn(p, 'ZH_BOTY')) {
+            this.specialActionQueue.push({ type: 'GEAR_BOOTS_DRAW', playerIdx });
+        }
     },
 
     // ── Dotazy ───────────────────────────────────────────────────────────────
     // „Ne dvě stejného jména" i všechny háky se ptají na `effect`, ne na `name` (R1).
     _hasGear(playerIdx, effect) {
-        const p = this.players[playerIdx];
-        return !!p && (p.gear || []).some(c => c.effect === effect);
+        return this._gearHas(this.players[playerIdx], effect);
+    },
+
+    // Totéž nad OBJEKTEM hráče. Většina háků fáze 2 (limit karet v ruce, počet líznutých
+    // karet, sejmutí, kárová imunita) dostává hráče, ne jeho sedadlo – dohledávat index
+    // by znamenalo `indexOf` na každém z nich.
+    _gearHas(player, effect) {
+        return !!player && (player.gear || []).some(c => c && c.effect === effect);
+    },
+
+    // JEDINÝ dotaz, kterým se ptají pravidlové háky vybavení: „platí téhle kartě zrovna
+    // teď efekt?" Kromě vlastnictví v něm sedí obě karty, které vybavení VYPÍNAJÍ (R10) –
+    // jinak by se výjimka musela psát u každého druhu zvlášť a jeden by se zapomněl.
+    //   • Fistful – Laso: „karty na stole nemají efekt" (platí pro celý stůl),
+    //   • Dodge City – Belle Star: v jejím tahu nemají efekt CIZÍ karty na stole.
+    // Vlastnictví samo (nákup, „ne dvě stejného", vynucené odhození) se ptá `_gearHas`:
+    // vypnutá karta pořád leží před hráčem a pořád se dá koupit jen jednou.
+    _gearOn(player, effect) {
+        if (!this._gearHas(player, effect)) return false;
+        if (this._boardDead()) return false;
+        const idx = this.players.indexOf(player);
+        return !(idx !== this.currentPlayerIndex && this._belleIgnoresBoard(this.currentPlayerIndex));
     },
 
     // Cena karty pro KONKRÉTNÍHO hráče. Jediné místo, kde se cena liší podle toho, kdo

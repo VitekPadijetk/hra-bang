@@ -290,7 +290,21 @@ function getStoreSlotPos(i, count, lift) {
     return { x: startX + i * spacing, y: rowY };
 }
 
+// Panel odkrytých karet u sejmutí, ze kterých si hráč vybere výsledek (Lucky Duke,
+// Zlatá horečka – Podkova, obojí naráz = 3 karty). JEDINÝ zdroj geometrie pro rozdání
+// karet do panelu (`startLuckyDukeDeal` v game.js) i pro jejich kreslení a klikání
+// (view/board.js) – kdyby se ta dvě místa rozešla, karta by dosedla vedle svého slotu.
+// Dvě karty musí zůstat pixelově tam, kde byly (660 / 1260); tři se rozestoupí
+// symetricky kolem středu tak, aby se ve své velikosti nepřekrývaly.
+const LUCKY_SLOT_Y = 480;
+const LUCKY_SLOT_SCALE = 0.65;
+function getLuckySlotPos(i, count) {
+    const spacing = count >= 3 ? 440 : 600;
+    const startX = 960 - (count - 1) * spacing / 2;
+    return { x: startX + i * spacing, y: LUCKY_SLOT_Y, scale: LUCKY_SLOT_SCALE };
+}
+
 // Izomorfní: v prohlížeči globály, v Node/testech require('./positions.js').
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getDeadRoleCardPos, getStoreSlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
+    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getDeadRoleCardPos, getStoreSlotPos, getLuckySlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
 }

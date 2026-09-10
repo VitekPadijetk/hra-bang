@@ -323,7 +323,8 @@ const PlayMixin = {
             // Apache Kid: kárový Duel (karta samotná ♦) na něj nemá efekt – odhodí se
             // naprázdno, žádná výměna Bang!. (Bang! zahrané JAKO reakce uvnitř duelu jsou
             // reakce, ne cílené karty, takže ty Apache zasáhnou bez ohledu na barvu.)
-            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
+            // Zlatá horečka – Kalumet naopak v duelu neúčinkuje vůbec (dodatek), proto `duel`.
+            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx, { duel: true })) {
                 this._processSpecialQueue();
                 return;
             }
@@ -381,7 +382,7 @@ const PlayMixin = {
     startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null, roulette = false) {
         const target = this.players[targetIdx];
 
-        if (hasAbility(target, "Lucky Duke")) {
+        if (this._checkRevealCount(target) > 1) {
             const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette };
             this.startLuckyDukeCheck(checkContext);
             return;

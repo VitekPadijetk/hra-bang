@@ -53,12 +53,18 @@ test('data: identita karty je `effect`, ne jméno – a je unikátní', () => {
 test('setup: do balíčku jdou jen HOTOVÉ druhy (GEAR_READY) a obchod se hned naplní', () => {
     const g = mkZH();
     // Kusů je celkem 24, ale do hry se rozdávají jen druhy, jejichž efekt už umí
-    // pravidla (fáze 1: Panák 3× + Union Pacific 1×). Karta bez efektu by se prodala
-    // za valouny a neudělala nic – viz GEAR_READY v logic/goldRush.js.
+    // pravidla (fáze 1: Panák 3× + Union Pacific 1×; fáze 2: šest pasivních černých
+    // po jednom kusu). Karta bez efektu by se prodala za valouny a neudělala nic –
+    // viz GEAR_READY v logic/goldRush.js.
+    const READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
+                   'ZH_BOTY', 'ZH_TALISMAN', 'ZH_OPASEK', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA'];
     const all = g.gearDeck.concat(g.gearRow.filter(Boolean));
-    assert.equal(all.length, 4);
-    assert.equal(new Set(all.map(c => c.id)).size, 4);
-    assert.ok(all.every(c => ['ZH_PANAK', 'ZH_UNION_PACIFIC'].includes(c.effect)));
+    assert.equal(all.length, 10);
+    assert.equal(new Set(all.map(c => c.id)).size, 10);
+    assert.ok(all.every(c => READY.includes(c.effect)));
+    // Černé druhy fáze 2 jsou v balíčku po JEDNOM kuse (`copies: 1` v datech), takže
+    // se „ne dvě stejného vybavení" nedá porušit ani dvěma nákupy různých hráčů.
+    READY.slice(2).forEach(e => assert.equal(all.filter(c => c.effect === e).length, 1, e));
     // Obchod má 3 karty lícem vzhůru hned od začátku hry.
     assert.equal(g.gearRow.filter(Boolean).length, 3);
     assert.deepEqual(g.gearPile, []);

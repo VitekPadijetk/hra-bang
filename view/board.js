@@ -2546,8 +2546,10 @@ function drawMyArea(ctx) {
                         case 'DISCARD': {
                             socket.emit('discard_card', intent.index);
                             optimisticRemoveCard(intent.index);
-                            // Sean Mallory (Dodge City) drží až 10 karet místo počtu životů.
-                            const _limit = hasAbility(me, "Sean Mallory") ? 10 : me.health;
+                            // Sean Mallory (Dodge City) drží až 10 karet místo počtu životů,
+                            // Opasek (Zlatá horečka) zvedá limit na 8 – zrcadlo _handLimit (logic.js).
+                            const _limit = hasAbility(me, "Sean Mallory") ? 10
+                                : (gearOnFor(state, myIndex, 'ZH_OPASEK') ? Math.max(me.health, 8) : me.health);
                             if (me.hand.length <= _limit) {
                                 state.phase = "TRANSITIONING";
                                 App.blockInput = true;
@@ -3426,8 +3428,10 @@ function drawPhaseOverlays(ctx) {
         ld.cards.forEach((card, i) => {
             // Karta ještě letí z balíčku do panelu (rozdávání) – slot zatím prázdný.
             if (App.luckyDealIds.has(card.id)) return;
-            let cx = i === 0 ? 660 : 1260;
-            let cSprite = gameScene.add.image(cx, 480, getTex(card.id)).setScale(0.65);
+            // Sdílená geometrie s rozdáváním (startLuckyDukeDeal) – karet je 2, nebo 3
+            // (Zlatá horečka, Podkova: „odkryj o kartu navíc a vyber výsledek").
+            const _slot = getLuckySlotPos(i, ld.cards.length);
+            let cSprite = gameScene.add.image(_slot.x, _slot.y, getTex(card.id)).setScale(_slot.scale);
             mAdd(cSprite);
 
             // Marky se při výběru ZÁMĚRNĚ nezvýrazňují (blikání na obou kartách mate) –
@@ -3435,8 +3439,8 @@ function drawPhaseOverlays(ctx) {
             if (isMyCheck) {
                 cSprite.setInteractive({ useHandCursor: true });
                 cSprite.setTint(0xddffdd);
-                cSprite.on('pointerover', () => { cSprite.setScale(0.72); cSprite.setTint(0xffff44); });
-                cSprite.on('pointerout', () => { cSprite.setScale(0.65); cSprite.setTint(0xddffdd); });
+                cSprite.on('pointerover', () => { cSprite.setScale(_slot.scale * 1.11); cSprite.setTint(0xffff44); });
+                cSprite.on('pointerout', () => { cSprite.setScale(_slot.scale); cSprite.setTint(0xddffdd); });
                 cSprite.on('pointerdown', () => socket.emit('lucky_duke_pick', i));
             }
         });
@@ -3775,6 +3779,7 @@ function drawDrawPiles(ctx) {
         (state.phase === "CHECK_DRAW" && state.pendingCheckDraw?.playerIdx === myIndex) ||
         (state.phase === "BARREL_DRAW" && state.pendingBarrelCheck?.targetIdx === myIndex) ||
         (state.phase === "BART_DRAW" && state.pendingBartDraw?.playerIdx === myIndex) ||
+        (state.phase === "BOOTS_DRAW" && state.pendingBootsDraw?.playerIdx === myIndex) ||
         (state.phase === "SUZY_DRAW" && state.pendingSuzyDraw?.playerIdx === myIndex) ||
         (state.phase === "UHYB_DRAW" && state.pendingUhybDraw?.playerIdx === myIndex);
     const discardNeedsCursor = _mine ? _wantsDrawClick : _wantsDiscardClick;
@@ -3990,6 +3995,18 @@ function drawDrawPiles(ctx) {
         drawPileSprite.on('pointerdown', () => {
             socket.emit('bart_cassidy_draw');
             state.pendingBartDraw = null;
+            state.phase = state.interruptedPhase || 'PLAY';
+            renderUI();
+        });
+    }
+
+    // Zlatá horečka – Boty: líznutí za ztracený život (stejné jako Bart Cassidy výš).
+    if (state.phase === "BOOTS_DRAW" && state.pendingBootsDraw?.playerIdx === myIndex) {
+        tintPile(drawPileSprite, 0xffff44);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => {
+            socket.emit('boots_draw');
+            state.pendingBootsDraw = null;
             state.phase = state.interruptedPhase || 'PLAY';
             renderUI();
         });

@@ -775,10 +775,12 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // dosedla na hromádku dřív než ty dvě, přes které se pak přehrály.
             const ld = gs.luckyDukeState;
             const chosenId = ld?.cards?.[index]?.id ?? null;
-            const otherId = ld?.cards?.[1 - index]?.id ?? null;
+            // Nevybraných je s Podkovou (Zlatá horečka) víc než jedna – posílá se proto
+            // seznam, ne `1 - index`. Klient si je stejně bere z vlastního panelu.
+            const otherIds = (ld?.cards || []).filter((_, i) => i !== index).map(c => c.id);
             gs.luckyDukePick(index);
             if (chosenId !== null) {
-                emitAnim(room, { type: 'lucky_duke_result', chosenId, otherId });
+                emitAnim(room, { type: 'lucky_duke_result', chosenId, otherIds });
                 // Vybraná karta se ještě „sejme" uprostřed obrazovky – stejná cinematika
                 // (a stejně dlouhá) jako u běžného checku. Boti po tu dobu nehrají, jinak
                 // by hráli přes ni: klient do jejího konce drží stav ve frontě.

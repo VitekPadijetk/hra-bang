@@ -82,6 +82,12 @@ const DrawMixin = {
         else if (hasAbility(player, "Bill Noface")) n = 1 + (player.maxHealth - player.health);
         if (this.hasEvent('ZIZEN')) n -= 1;
         if (this.hasEvent('PRIJEZD_VLAKU')) n += 1;
+        // Zlatá horečka – Krumpáč: „Ve fázi 1 svého tahu si lízni o kartu navíc."
+        // Patří sem, a ne k volajícím: Kit Carlson i Black Jack si z téhle funkce berou
+        // základ, takže Krumpáč platí i jim (Kit si nechá o kartu víc, Black Jack líže
+        // o kartu víc). Fáze lízání mimo začátek tahu (Dostavník, Union Pacific, odměna
+        // za banditu) sem nechodí vůbec.
+        if (this._gearOn(player, 'ZH_KRUMPAC')) n += 1;
         return Math.max(1, n);
     },
 

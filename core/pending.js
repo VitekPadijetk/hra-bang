@@ -59,6 +59,8 @@ function pendingActor(state) {
             ? { idx: state.pendingGearTarget.playerIdx, kind: 'GEAR_TARGET' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
+        // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
+        case 'BOOTS_DRAW':       return state.pendingBootsDraw ? { idx: state.pendingBootsDraw.playerIdx, kind: 'BOOTS_DRAW' } : null;
         case 'EL_GRINGO_STEAL':  return state.pendingElGringoSteal ? { idx: state.pendingElGringoSteal.playerIdx, kind: 'EL_GRINGO_STEAL' } : null;
         case 'SUZY_DRAW':        return state.pendingSuzyDraw ? { idx: state.pendingSuzyDraw.playerIdx, kind: 'SUZY_DRAW' } : null;
         case 'UHYB_DRAW':        return state.pendingUhybDraw ? { idx: state.pendingUhybDraw.playerIdx, kind: 'UHYB_DRAW' } : null;
@@ -102,6 +104,7 @@ const _WAIT_LABELS = {
     GEAR_TARGET:           'vybírá, komu vybavení pomůže',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
+    BOOTS_DRAW:            'Boty – líže za zranění',
     EL_GRINGO_STEAL:       'El Gringo – bere kartu',
     SUZY_DRAW:             'Suzy Lafayette – líže si kartu',
     UHYB_DRAW:             'Úhyb – líže si kartu',
@@ -130,6 +133,12 @@ function waitingStatus(state) {
     // High Noon – Daltonové: hráč vybírá kartu na VLASTNÍM stole, ne soupeřovu.
     if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isDaltons) {
         text = 'Daltonové – odhazuje modrou kartu';
+    }
+    // Zlatá horečka – Podkova: „odkryj o kartu navíc a vyber výsledek." Jede po TÉŽE
+    // fázi jako Lucky Duke (viz startLuckyDukeCheck), takže se popisek řídí tím, čím
+    // výběr vznikl – jinak by hráč bez Lucky Duka četl cizí jméno.
+    if (pa.kind === 'LUCKY_DUKE' && state.luckyDukeState?.via === 'Podkova') {
+        text = 'Podkova – vybírá kartu';
     }
     return { idx: pa.idx, kind: pa.kind, text };
 }

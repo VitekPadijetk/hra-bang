@@ -167,6 +167,7 @@ class GameState {
         this.sidKetchumPending = null;
         this.specialActionQueue = [];
         this.pendingBartDraw = null;
+        this.pendingBootsDraw = null;   // Zlatá horečka – Boty (líznutí za ztracený život)
         this.pendingUhybDraw = null;
         this.pendingElGringoSteal = null;
         this.turnId = 0;   // monotonní ID tahu (zelené karty: nelze aktivovat ve stejném tahu)
@@ -289,10 +290,17 @@ class GameState {
     // REAKCE uvnitř duelu jsou reakce (ne cílené karty), takže Apache Kida zasáhnou bez
     // ohledu na barvu – proto se v handleResponse tento test nevolá. Kárová karta, kterou
     // zahraje Apache Kid SÁM NA SEBE, efekt má (pravidlo mluví o kartách „ostatních hráčů").
-    _apacheImmune(targetIdx, cardSuit, attackerIdx = null) {
+    // Zlatá horečka – Kalumet: „Karty káry zahrané ostatními na tebe nemají efekt."
+    // Je to Apache Kid jako vybavení, takže sedí na TÝŽ hák; jediný rozdíl je dodatek
+    // „toto vybavení nemá efekt v průběhu duelu" – proto `opts.duel` (kárový Duel na
+    // majitele Kalumetu platí, kdežto Apache Kida mine). Bang! zahrané JAKO reakce
+    // uvnitř duelu jsou reakce, ne cílené karty, takže sem nechodí ani u jednoho.
+    _apacheImmune(targetIdx, cardSuit, attackerIdx = null, opts = {}) {
         if (attackerIdx !== null && attackerIdx === targetIdx) return false;
         const t = this.players[targetIdx];
-        return !!t && hasAbility(t, "Apache Kid") && cardSuit === Suits.DIAMONDS;
+        if (!t || cardSuit !== Suits.DIAMONDS) return false;
+        if (hasAbility(t, "Apache Kid")) return true;
+        return !opts.duel && this._gearOn(t, 'ZH_KALUMET');
     }
 
     // Belle Star (Dodge City): v jejím tahu nemají cizí karty na stole (Barel, Mustang/Skrýš,
@@ -304,10 +312,13 @@ class GameState {
     }
 
     // Limit karet v ruce na konci tahu. Normálně = počet životů; Sean Mallory (Dodge City)
-    // drží až 10 karet.
+    // drží až 10 karet a Opasek (Zlatá horečka) zvedá limit na 8.
+    // Bere se to VYŠŠÍ z obojího: Big Spencer s 9 životy by si Opaskem jinak pohoršil.
     _handLimit(player) {
         if (player && hasAbility(player, "Sean Mallory")) return 10;
-        return player ? (player.health || 0) : 0;
+        const base = player ? (player.health || 0) : 0;
+        if (player && this._gearOn(player, 'ZH_OPASEK')) return Math.max(base, 8);
+        return base;
     }
 
     // Vyléčení se stropem na maximu životů. Mrtvého neléčí – ten se vrací do hry jen

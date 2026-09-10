@@ -32,11 +32,14 @@ function mkRealSocket(id) {
 }
 
 // Synchronně dohraje hru jen botů (broadcasty jsou v buildCtx no-op).
-function pumpToWinner(ctx, room) {
+// `onTick` (volitelný) se volá PŘED každou akcí bota – dá se jím sledovat, jakými
+// fázemi hra prošla, nebo do ní zasáhnout (např. doplnit valouny, ať se protočí obchod).
+function pumpToWinner(ctx, room, onTick) {
     let guard = 0;
     while (!room.gameState.winner && guard++ < 8000) {
         const pa = pendingActor(room.gameState);
         if (!pa || !room.players[pa.idx]?.isBot) break;
+        if (onTick) onTick(room.gameState);
         ctx.runBotTickOnce(room);
     }
     return guard;
@@ -482,9 +485,10 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
             let gained = false;
             gs._onEvent = (e) => { if (e && e.ev === 'nuggets' && e.gain) gained = true; };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
-            // Do hry jdou jen HOTOVÉ druhy (GEAR_READY, logic/goldRush.js) – ve fázi 1
-            // Panák 3× a Union Pacific 1×; tři z nich hned leží v obchodě.
-            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 4, `${tag}: balíček vybavení`);
+            // Do hry jdou jen HOTOVÉ druhy (GEAR_READY, logic/goldRush.js) – fáze 1
+            // Panák 3× a Union Pacific 1×, fáze 2 šest pasivních černých po jednom;
+            // tři z nich hned leží v obchodě.
+            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 10, `${tag}: balíček vybavení`);
             assert.equal(gs.gearRow.filter(Boolean).length, 3, `${tag}: obchod je plný`);
             assert.ok(gs.players.every(p => p.nuggets === 0), `${tag}: začíná se bez valounů`);
 
@@ -497,6 +501,53 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani se Zlatou horečkou');
     assert.equal(earned, COMBOS.length, 'v každé hře někdo někoho zranil, takže si vydělal valoun');
+});
+
+// Zlatá horečka (fáze 2) – pasivní černé vybavení. Bot ho kupuje ze stejného `consider`
+// jako všechno ostatní, jenže valouny se vydělávají pomalu, takže by se v běžné hře
+// dražší kusy protočily jen občas. Tady se všem valouny doplňují po každém broadcastu:
+// nákupy černých karet se tím spolehlivě rozjedou a s nimi i větve, které z nich plynou
+// (fáze BOOTS_DRAW za ztracený život, výběr karty u sejmutí s Podkovou, vynucené
+// odhození cizího vybavení). Kdyby některé z nich chyběl handler nebo větev bota,
+// projeví se to tady jako stall, ne až v ostré hře.
+test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vybavení', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+
+    let bought = 0, bootsSeen = 0, pickSeen = 0;
+    try {
+        for (let ci = 0; ci < 6; ci++) {
+            const n = 4 + (ci % 4);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            const opts = { expansions: { zlata_horecka: true } };
+            const room = { id: `zhrich${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room, () => {
+                // Kapsa se doplňuje průběžně – nákup je akce ve fázi PLAY, takže stačí
+                // hlídat, aby na ni bot vždycky měl.
+                gs.players.forEach(p => { if (p.nuggets < 6) p.nuggets = 6; });
+                if (gs.phase === 'BOOTS_DRAW') bootsSeen++;
+                if (gs.luckyDukeState?.via === 'Podkova') pickSeen++;
+                bought += gs.players.filter(p => (p.gear || []).length).length;
+            });
+            assert.ok(gs.winner, `hra ${ci} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `hra ${ci} nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci');
+    assert.ok(bought > 0, 'někdo si koupil černé vybavení (leží před ním)');
+    assert.ok(bootsSeen > 0, 'Boty aspoň jednou vedly na klikané líznutí');
+    assert.ok(pickSeen > 0, 'Podkova aspoň jednou vedla na výběr karty u sejmutí');
 });
 
 // Cílená zátěž na fázi 2 Fistfulu: v balíčku jsou JEN Léčka, Laso a Soudce, takže platí

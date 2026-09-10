@@ -412,7 +412,7 @@ function _zoomSuppressed(key) {
         (state.phase === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.playerIdx === myIndex)
     );
     if (iAmActing) {
-        const suppressPhases = ['RESPOND','DISCARD','BARREL_DRAW','BART_DRAW',
+        const suppressPhases = ['RESPOND','DISCARD','BARREL_DRAW','BART_DRAW','BOOTS_DRAW',
                                 'SUZY_DRAW','EL_GRINGO_STEAL','CHECK_DRAW','KIT_CARLSON','LUCKY_DUKE','DRAW','DYNAMITE_DAMAGE'];
         if (suppressPhases.includes(state.phase)) return true;
     }
@@ -1840,14 +1840,15 @@ function _kitSpecFlyToDeck(slot, delay = 0) {
         onComplete: () => { if (sp.active) sp.destroy(); } });
 }
 
-// Lucky Duke (vidí všichni): 2 karty z balíčku do panelu.
+// Lucky Duke (vidí všichni): odkryté karty z balíčku do panelu. Dvě, nebo tři –
+// s Podkovou (Zlatá horečka) se odkrývá o kartu navíc, viz _checkRevealCount.
 function startLuckyDukeDeal() {
     if (!gameScene || !state?.luckyDukeState) return;
     const cards = state.luckyDukeState.cards || [];
-    const slotY = 480, slotScale = 0.65;
-    const xOf = i => i === 0 ? 660 : 1260;
+    const _slot = i => getLuckySlotPos(i, cards.length);
+    const slotScale = _slot(0).scale;
     App.luckyDealIds = new Set(cards.map(c => c.id));
-    App.luckyRevealCards = cards.map((c, i) => ({ id: c.id, x: xOf(i), y: slotY }));
+    App.luckyRevealCards = cards.map((c, i) => ({ id: c.id, x: _slot(i).x, y: _slot(i).y }));
     renderUI();
     // Karty odcházejí z VRCHU balíčku a v jeho velikosti (PILE_SCALE) – ne ze středu
     // hromádky a o kus menší, jinak to vypadá, že se v balíčku „objevují" zevnitř.
@@ -1859,7 +1860,7 @@ function startLuckyDukeDeal() {
     cards.forEach((card, i) => {
         setTimeout(() => {
             if (!gameScene) return;
-            animateCardFlip(_from.x, _from.y, xOf(i), slotY, 'card_back', getCardTex(card.id),
+            animateCardFlip(_from.x, _from.y, _slot(i).x, _slot(i).y, 'card_back', getCardTex(card.id),
                 { flip: true, startScale: PILE_SCALE, endScale: slotScale, duration: 420,
                   onComplete: () => { App.luckyDealIds.delete(card.id); renderUI(); } });
         }, i * 160);

@@ -178,6 +178,14 @@ const T = {
 const GEAR_VALUE = {
     ZH_PANAK: 12,          // +1 život komukoli (jen se zraněním, viz decidePlay)
     ZH_UNION_PACIFIC: 32,  // 4 karty za 4 valouny – skoro Wells Fargo
+    // Pasivní černé vybavení (fáze 2). Leží před hráčem, takže se platí JEDNOU a hraje
+    // do konce hry – proto je oceněné výš než jednorázová hnědá karta stejné ceny.
+    ZH_BOTY: 30,           // karta za každý ztracený život – nejlepší obrana proti sérii
+    ZH_KRUMPAC: 26,        // +1 karta v každé fázi 1 (ta se opakuje každý tah)
+    ZH_PODKOVA: 22,        // výběr ze dvou karet u každého sejmutí (dynamit, vězení, barel)
+    ZH_KALUMET: 18,        // imunita vůči károvým kartám ostatních
+    ZH_TALISMAN: 16,       // valoun za každý ztracený život – měna na další nákupy
+    ZH_OPASEK: 12,         // limit 8 karet v ruce
 };
 
 const HEARTS = '♥️';
@@ -1454,6 +1462,8 @@ function decideBotAction(state, myIndex, beliefs) {
         }
 
         case 'BART_DRAW':       return { event: 'bart_cassidy_draw' };
+        // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
+        case 'BOOTS_DRAW':      return { event: 'boots_draw' };
         case 'EL_GRINGO_STEAL': return { event: 'el_gringo_steal' };
         case 'SUZY_DRAW':       return { event: 'suzy_draw' };
         case 'UHYB_DRAW':       return { event: 'uhyb_draw' };

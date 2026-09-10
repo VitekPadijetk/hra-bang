@@ -149,6 +149,13 @@ const CharactersMixin = {
         this._drainJohnPain();
         for (let i = this.specialActionQueue.length - 1; i >= 0; i--) {
             const a = this.specialActionQueue[i];
+            // Zlatá horečka – Boty: líznutí za ztracený život. Hráč mezitím mohl ze hry
+            // odejít (Teren Kill, zásah dobraný až za frontou) a fáze BOOTS_DRAW čeká na
+            // KLIK jeho majitele – u mrtvého by na ni nikdo neklikl a hra by uvázla.
+            if (a.type === 'GEAR_BOOTS_DRAW') {
+                if (!isInPlay(this.players[a.playerIdx])) this.specialActionQueue.splice(i, 1);
+                continue;
+            }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
             if (!p || p.health <= 0 || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
@@ -173,7 +180,7 @@ const CharactersMixin = {
         // / _finishDraw (ty aktivní draw nastaví na false PŘED voláním, takže tenhle guard pustí).
         if (this.phase === "DRAW" && this.drawPhaseState?.active) return true;
 
-        if (this.phase !== "BART_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW") {
+        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW") {
             this.interruptedPhase = this.phase;
         }
 
@@ -181,6 +188,11 @@ const CharactersMixin = {
         if (action.type === 'BART_DRAW') {
             this.pendingBartDraw = { playerIdx: action.playerIdx };
             this.phase = "BART_DRAW";
+        } else if (action.type === 'GEAR_BOOTS_DRAW') {
+            // Zlatá horečka – Boty: líznutí za ztracený život. Vlastní fáze (ne
+            // recyklovaný BART_DRAW), aby log i klientské zvýraznění řekly příčinu.
+            this.pendingBootsDraw = { playerIdx: action.playerIdx };
+            this.phase = "BOOTS_DRAW";
         } else if (action.type === 'EL_GRINGO_STEAL') {
             this.pendingElGringoSteal = { playerIdx: action.playerIdx, attackerIdx: action.attackerIdx };
             this.phase = "EL_GRINGO_STEAL";
@@ -354,6 +366,17 @@ const CharactersMixin = {
         this._resumeAfterSpecial();
     },
 
+    // Zlatá horečka – Boty: „Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku."
+    // Klikací líznutí ve vlastní fázi, přesně jako Bart Cassidy (kdo má obojí, líže dvakrát).
+    bootsDraw(playerIdx) {
+        if (this.phase !== "BOOTS_DRAW" || !this.pendingBootsDraw) return;
+        if (this.pendingBootsDraw.playerIdx !== playerIdx) return;
+        const c = this.deck.draw();   // null = došly obě hromádky, viz suzyLafayetteDraw
+        if (c) this.players[playerIdx].hand.push(c);
+        this.pendingBootsDraw = null;
+        this._resumeAfterSpecial();
+    },
+
     // Úhyb: majitel si po uhnutí lízne 1 kartu kliknutím na balíček (fronta UHYB_DRAW).
     uhybDraw(playerIdx) {
         if (this.phase !== "UHYB_DRAW" || !this.pendingUhybDraw) return;
@@ -398,16 +421,42 @@ const CharactersMixin = {
         }
     },
 
+    // Kolik karet se u sejmutí odkryje, než si hráč vybere výsledek. 1 = klasické
+    // sejmutí (nevybírá se vůbec). Dva zdroje výběru se SČÍTAJÍ (rozhodnutí R8):
+    //   • Lucky Duke – „otočí 2 karty a vybere si, která platí",
+    //   • Zlatá horečka, Podkova – „pokaždé, když otáčíš, odkryj o kartu navíc".
+    // Obojí naráz = 3 karty. Je to jediné místo, kde se to počítá: ptá se jím všech
+    // PĚT cest, kudy se snímá (Dynamit, Vězení, Vendeta/Teren Kill, Barel/Jourdonnais
+    // a `resolveCheck`) – kdyby se rozešly, jedna z nich by Podkovu tiše ignorovala.
+    _checkRevealCount(player) {
+        let n = 1;
+        if (hasAbility(player, "Lucky Duke")) n += 1;
+        if (this._gearOn(player, 'ZH_PODKOVA')) n += 1;
+        return n;
+    },
+
+    // Fáze LUCKY_DUKE se jmenuje po postavě, ale jede po ní i Podkova – rozhoduje
+    // `_checkRevealCount`, ne konkrétní schopnost.
     startLuckyDukeCheck(checkContext) {
-        const hadEnough = this.deck._drawPile.length >= 2;
-        const c1 = this.deck.draw({ toDiscard: true });
-        const c2 = this.deck.draw({ toDiscard: true });
-        if (!c1 || !c2) return;
+        const p = this.players[checkContext.playerIdx];
+        const want = this._checkRevealCount(p);
+        const hadEnough = this.deck._drawPile.length >= want;
+        const cards = [];
+        for (let i = 0; i < want; i++) {
+            const c = this.deck.draw({ toDiscard: true });
+            if (c) cards.push(c);
+        }
+        // Došly OBĚ hromádky – nemá se z čeho vybírat. (Míň karet, než chtěl, je
+        // legální stav: vybírá se z toho, co zbylo.)
+        if (!cards.length) return;
         if (this.deck._reshuffleOccurred && !hadEnough) {
             this.deck._reshuffleWasProactive = false;
         }
         this.luckyDukeState = {
-            cards: [c1, c2],
+            cards,
+            // Čím výběr vznikl – jen popisek pro UI („Lucky Duke – vybírá kartu"
+            // × „Podkova – vybírá kartu"). Pravidlově je to jedna a tatáž cesta.
+            via: hasAbility(p, "Lucky Duke") ? 'Lucky Duke' : 'Podkova',
             checkContext
         };
         this.phase = "LUCKY_DUKE";
@@ -417,11 +466,12 @@ const CharactersMixin = {
         if (this.phase !== "LUCKY_DUKE") return;
         const ld = this.luckyDukeState;
         const chosen = ld.cards[cardIdx];
-        const other = ld.cards[1 - cardIdx];
-        // Pořadí v odhozu kopíruje animaci: NEvybraná odletí hned, vybraná až po
+        if (!chosen) return;
+        // Pořadí v odhozu kopíruje animaci: NEvybrané odletí hned, vybraná až po
         // klasickém sejmutí uprostřed obrazovky – leží tedy navrchu (viz
         // playLuckyDukeResult v game.js, kde se z vrchu odhozu i pozná).
-        this.deck.discard(other);
+        // S Podkovou jsou nevybrané dvě, proto průchod polem, ne `1 - cardIdx`.
+        ld.cards.forEach((c, i) => { if (i !== cardIdx) this.deck.discard(c); });
         this.deck.discard(chosen);
         // Divoký západ – John Pain bere OBĚ Lucky Dukeovy karty (Sciarra Q22), a to
         // v pořadí SNÍMÁNÍ (ld.cards), ne v pořadí odhozu.
