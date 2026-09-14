@@ -574,8 +574,9 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
   textura `zh_<effect>`: rám podle `border`, jméno, text, cena v rohu). Ze stejného důvodu
   **nemá nákup animaci letu** — z obchodu by letěl neidentifikovatelný rub. Až art dorazí,
   načte se pod tentýž klíč a doplní se let karty (§10).
-- **Intro nedostalo beat s mícháním vybavení** (§2.8). Obchod se naplní při setupu; bez
-  artu by beat ukazoval rub hrací karty. Patří k dodání artu.
+- **Intro má jen beat s mícháním vybavení** (`shuffle_gear`, §2.8), ne `gear_row`: obchod
+  na desce neleží (otevírá se oknem), takže tři karty nemají kam dosednout. Bez artu se
+  míchá rub hrací karty – stejný, jaký kreslí deska. Až art dorazí, stačí vyměnit texturu.
 - **Bot umí nakupovat už teď**, i když plán to řadil do fáze 8 — bez toho by se obchod
   v zátěži (`test/server.bots.test.js`) nikdy neprotočil. Politika je zatím hloupá:
   tabulka `GEAR_VALUE`, kupuje se nejcennější dostupné, Panák jen se zraněním, Pivo na

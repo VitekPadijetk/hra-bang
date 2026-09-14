@@ -76,6 +76,10 @@ const INTRO_FF_ASIDE   = { x: INTRO_FF_DECK.x, y: 350 };
 // Balíček událostí Divokého západu má šestý slot, o krok dál doleva (rozteč stejná).
 const INTRO_WWS_DECK   = { x: INTRO_FF_DECK.x - 160, y: 540 };
 const INTRO_WWS_ASIDE  = { x: INTRO_WWS_DECK.x, y: 350 };
+// Balíček vybavení Zlaté horečky leží o krok napravo od High Noonu (rozteč stejná) –
+// zrcadlově k Divokému západu, na herní pozici (gearDeckSlot) sjede na konci intra.
+// Vlastní rub zatím nemá (art rozšíření chybí), takže je to rub hrací karty jako na desce.
+const INTRO_GEAR_DECK  = { x: INTRO_HN_DECK.x + 160, y: 540 };
 
 // Popis balíčku událostí pro intro. Beaty všech tří rozšíření jsou identické – liší se
 // jen místem na stole, texturami a kartou, kterou šerif odkládá vespod.
@@ -1198,6 +1202,9 @@ function renderIntroScene() {
         if (aside && gameScene.textures.exists(aside))
             _iAdd(gameScene.add.image(C.aside.x, C.aside.y, aside).setScale(0.30).setDepth(40));
     });
+    // Balíček vybavení (Zlatá horečka) – jen rub, odloženou kartu nemá.
+    if (s.gearCount > 0 && !shuffling('shuffle_gear') && !s.gearMoving)
+        _drawIntroStack(INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y, 'card_back', s.gearCount, 0.30);
 
     // Umístěné karty (role, lives, char) + jmenovky - persistují přes všechny fáze
     if (s.placedCards) s.placedCards.forEach(_drawPlacedCard);
@@ -1315,11 +1322,14 @@ function _renderIntroCharSelect() {
         _drawIntroStack(INTRO_PLAY_DECK.x, INTRO_PLAY_DECK.y, 'card_back', s.deckCount, 0.30, '');
     if (s.charCount > 0)
         _drawIntroStack(INTRO_CHAR_DECK.x, INTRO_CHAR_DECK.y, 'lives', s.charCount, 0.30);
-    // Balíčky událostí (High Noon, Fistful) leží na stole po celé intro – i během výběru postav.
-    ['hn', 'ff'].forEach(w => {
+    // Balíčky událostí (High Noon, Fistful, Divoký západ) a vybavení leží na stole po celé
+    // intro – i během výběru postav.
+    ['hn', 'ff', 'wws'].forEach(w => {
         const C = introEventCfg(w);
         if (s[w + 'Count'] > 0) _drawIntroStack(C.deck.x, C.deck.y, C.back, s[w + 'Count'], 0.30);
     });
+    if (s.gearCount > 0)
+        _drawIntroStack(INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y, 'card_back', s.gearCount, 0.30);
 
     // Umístěné karty (role atd.) + jmenovky
     if (s.placedCards) s.placedCards.forEach(_drawPlacedCard);

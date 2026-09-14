@@ -111,7 +111,9 @@ module.exports = function installLifecycle(ctx) {
                               charCount: _charCount,
                               hnCount: gs.eventDeck?.length || 0,
                               ffCount: gs.ffDeck?.length || 0,
-                              wwsCount: gs.wwsDeck?.length || 0 });
+                              wwsCount: gs.wwsDeck?.length || 0,
+                              // Zlatá horečka: balíček vybavení (bez obchodu – ten leží v okně).
+                              gearCount: (gs.gearDeck?.length || 0) + (gs.gearPile?.length || 0) });
             runIntroSequence(room);
         }, 50);
     }

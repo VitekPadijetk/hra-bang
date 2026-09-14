@@ -57,6 +57,12 @@ animací. Úklid je odložený (`App.introDoneToken` ho zruší, kdyby mezitím 
 - **Balíček High Noon leží v intru se stejnou roztečí jako ostatní tři**
   (`INTRO_PLAY_DECK.x + 160`). Že je jeho herní pozice (`HN_PILE_X`) blíž se dorovná
   tím, že jeho závěrečný přesun je kratší, ne jinou roztečí na stole.
+- **Balíček vybavení Zlaté horečky** leží o krok napravo od High Noonu
+  (`INTRO_GEAR_DECK`, zrcadlově k Divokému západu) a má **jediný beat** `shuffle_gear` –
+  hned za hracími kartami, před balíčky událostí. Kartu „vespod" nemá a obchod (3 karty
+  lícem vzhůru) se nevykládá, protože na desce neleží (otevírá se oknem). Míchá se proto
+  jen to, co pak ukazuje deska (`gearDeck` + `gearPile`, jako `drawGearPile`), a na konci
+  sjede na `gearDeckSlot()` spolu s balíčky událostí.
 
 ## Intro navazující hry
 

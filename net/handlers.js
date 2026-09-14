@@ -87,6 +87,10 @@ socket.on('intro_phase', (data) => {
             wwsTotal: data.wwsCount || 0,
             wwsAsideTex: null,
             wwsMoving: false,
+            // Zlatá horečka: balíček vybavení. Nemá odloženou kartu, jen se zamíchá
+            // (shuffle_gear) a na konci sjede na svou herní pozici.
+            gearCount: data.gearCount || 0,
+            gearMoving: false,
         };
         // Navazující hra: přeživší mají svou postavu na stole hned (s tolika životy,
         // kolik jim zbylo z minulé hry) – ještě bez šerifovy hvězdy, role se teprve rozdají.
@@ -372,6 +376,24 @@ socket.on('intro_phase', (data) => {
         renderUI();
     }
 
+    // Zlatá horečka: balíček vybavení se zamíchá hned za hracími kartami. Jediný beat –
+    // kartu „vespod" nemá a obchod na stole neleží (otevírá se oknem).
+    else if (sub === 'shuffle_gear') {
+        _introState.gearCount = data.gearCount || 0;
+        _introState.shuffleAnimDone = false;
+        _clearIntroSprites();
+        if (gameScene) {
+            _animateIntroShuffle(
+                INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y,
+                'card_back', 0.30,
+                Math.max(1, data.gearCount || 0), true,
+                null,
+                () => { if (_introState) { _introState.shuffleAnimDone = true; renderUI(); } }
+            );
+        }
+        renderUI();
+    }
+
     // Rozšíření High Noon / A Fistful of Cards / Divoký západ, 1. beat: balíček leží
     // kompletní a šerif z něj sejme vrchní kartu (Pravé poledne / Fistful of Cards /
     // Divoký západ). Ta jen kousek přelétne vedle, otočí se lícem nahoru a zůstane ležet
@@ -569,10 +591,16 @@ socket.on('intro_phase', (data) => {
                         const _evOn = { hn: (_introState.hnCount || 0) > 0,
                                         ff: (_introState.ffCount || 0) > 0,
                                         wws: (_introState.wwsCount || 0) > 0 };
+                        // Balíček vybavení (Zlatá horečka) jede stejně, jen má vlastní slot.
+                        const slotFor = (which) => {
+                            if (which !== 'gear') return eventSlot(which, _evOn);
+                            const g = gearDeckSlot();
+                            return { deckX: g.x, y: g.y };
+                        };
                         const evMovers = (which, from, count, texKey) => {
                             const n = count || 0;
                             const layers = n > 0 ? shuffleLayers(n) : 0;
-                            const slot = layers > 0 ? eventSlot(which, _evOn) : null;
+                            const slot = layers > 0 ? slotFor(which) : null;
                             if (!slot) return;
                             _introState[which + 'Moving'] = true;
                             const topY = _introStackTopY(from.y, n);
@@ -593,6 +621,7 @@ socket.on('intro_phase', (data) => {
                         evMovers('hn', INTRO_HN_DECK, _introState.hnCount, 'hn_back');
                         evMovers('ff', INTRO_FF_DECK, _introState.ffCount, 'ff_back');
                         evMovers('wws', INTRO_WWS_DECK, _introState.wwsCount, 'wws_back');
+                        evMovers('gear', INTRO_GEAR_DECK, _introState.gearCount, 'card_back');
                         renderUI(); // skryje statický intro balíček
                         gameScene.tweens.add({
                             targets: movers, x: DECK_X,

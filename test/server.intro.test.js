@@ -310,7 +310,34 @@ test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', 
     assert.ok(!subs.includes('highnoon_top'));
     assert.ok(!subs.includes('shuffle_highnoon'));
     assert.ok(!subs.includes('wws_top'));
+    assert.ok(!subs.includes('shuffle_gear'));
     assert.ok(subs.includes('deal_cards'));
+});
+
+test('introStartDeckPhase se Zlatou horečkou zamíchá balíček vybavení hned za hracími kartami', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0'); addSocket('s1');
+    const room = mkRoom();
+    room.gameState = {
+        players: [{ role: 'Sheriff', hand: [], _baseHealth: 4 }, { role: 'Outlaw', hand: [], _baseHealth: 4 }],
+        deck: { cards: [] },
+        eventDeck: new Array(13).fill(0).map((_, i) => ({ id: 300 + i })),
+        // Obchod (gearRow) na stole neleží – míchá se jen to, co pak ukazuje deska.
+        gearDeck: new Array(9).fill(0).map((_, i) => ({ id: 6000 + i })),
+        gearRow: [{ id: 6100 }, { id: 6101 }, { id: 6102 }],
+        gearPile: [],
+    };
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    runWithInstantTimers(() => ctx.introStartDeckPhase(room));
+
+    const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase').map(e => e.payload.sub);
+    assert.ok(subs.includes('shuffle_gear'), 'chybí míchání balíčku vybavení');
+    assert.ok(subs.indexOf('shuffle_deck') < subs.indexOf('shuffle_gear'), 'nejdřív hrací balíček');
+    assert.ok(subs.indexOf('shuffle_gear') < subs.indexOf('highnoon_top'), 'balíčky událostí až po vybavení');
+    assert.ok(subs.indexOf('shuffle_gear') < subs.indexOf('deal_cards'), 'rozdává se až potom');
+    const gear = emits.find(e => e.ev === 'intro_phase' && e.payload.sub === 'shuffle_gear');
+    assert.equal(gear.payload.gearCount, 9);
 });
 
 // ── Hra pro 3 (Město duchů): role jsou veřejné už během intra ────────────────

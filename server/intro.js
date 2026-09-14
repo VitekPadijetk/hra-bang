@@ -78,6 +78,7 @@ module.exports = function installIntroService(ctx) {
             hnCount: gs.eventDeck?.length || 0,
             ffCount: gs.ffDeck?.length || 0,
             wwsCount: gs.wwsDeck?.length || 0,
+            gearCount: gearIntroCount(gs),
             survivors,
         });
 
@@ -285,6 +286,17 @@ module.exports = function installIntroService(ctx) {
         return HN_TOP_MS + hnShuffleMs(count) + HN_BOTTOM_MS;
     }
 
+    // Zlatá horečka: balíček vybavení se jen zamíchá – jediný beat. Kartu „vespod" nemá
+    // a obchod (3 karty lícem vzhůru) na stole neleží, otevírá se oknem (view/screens.js).
+    // Počet je ten, který pak ukazuje deska (drawGearPile: balíček + odhozené pod ním),
+    // aby hromádka při přechodu do hry neposkočila.
+    const gearIntroCount = (gs) => (gs.gearDeck?.length || 0) + (gs.gearPile?.length || 0);
+    function gearDeckBeat(room, count, at) {
+        if (!count) return 0;
+        setTimeout(() => emitIntro(room, { sub: 'shuffle_gear', gearCount: count }), at);
+        return shuffleDurationMs(count) + SHUFFLE_PAD_MS;
+    }
+
     function introStartDeckPhase(room) {
         const gs = room.gameState;
         const n = room.players.length;
@@ -317,12 +329,15 @@ module.exports = function installIntroService(ctx) {
                 // (Pravé poledne, ukáže se vedle), zbytek zamíchá a odloženou kartu dá
                 // vespod. Bez rozšíření je hnCount 0 a beaty se úplně přeskočí.
                 // Fistful of Cards má stejnou trojici beatů a jede AŽ ZA High Noonem.
+                // Balíček vybavení (Zlatá horečka) se míchá ještě před nimi – hned za
+                // hracími kartami, ke kterým patří.
                 const hnCount = gs.eventDeck?.length || 0;
                 const ffCount = gs.ffDeck?.length || 0;
                 const wwsCount = gs.wwsDeck?.length || 0;
-                const hnDelay = eventDeckBeats(room, 'hn', hnCount, 0);
-                const ffDelay = eventDeckBeats(room, 'ff', ffCount, hnDelay);
-                const wwsDelay = eventDeckBeats(room, 'wws', wwsCount, hnDelay + ffDelay);
+                const gearDelay = gearDeckBeat(room, gearIntroCount(gs), 0);
+                const hnDelay = eventDeckBeats(room, 'hn', hnCount, gearDelay);
+                const ffDelay = eventDeckBeats(room, 'ff', ffCount, gearDelay + hnDelay);
+                const wwsDelay = eventDeckBeats(room, 'wws', wwsCount, gearDelay + hnDelay + ffDelay);
                 setTimeout(() => {
                 emitIntro(room, { sub: 'deal_cards', order: cardOrder });
 
@@ -355,7 +370,7 @@ module.exports = function installIntroService(ctx) {
                     emitIntro(room, { sub: 'done' });
                     broadcastRoom(room); // phase=DRAW
                 }, doneDelay);
-                }, hnDelay + ffDelay + wwsDelay);
+                }, gearDelay + hnDelay + ffDelay + wwsDelay);
 
             }, deckShuffleDelay);
         }, slideInStart + slideInDur);
