@@ -446,8 +446,13 @@ class GameState {
         // tedy i duchovi, který si zrovna odbývá svůj tah.
         const aliveCount = this.players.filter(p => isInPlay(p)).length;
         const origCount = this.deck._drawPile.length;
+        // Rozdávají se jen karty, které doopravdy existují. Když balíček i odhoz dojdou
+        // (všechny karty drží hráči v rukou), `draw()` vrací null – a null v řadě dřív
+        // znamenal slot, ze kterého si nikdo nevybere. Samé null = fáze STORE, která
+        // nikdy neskončí. Méně karet než hráčů je legální: poslední v pořadí nedostanou nic.
         for (let i = 0; i < aliveCount; i++) {
-            this.storeCards.push(this.deck.draw());
+            const card = this.deck.draw();
+            if (card) this.storeCards.push(card);
         }
         // Cinematika hokynářství řízená klientem (zvednutí balíčků, rozdání, míchání
         // v horní poloze). dealtBefore (k) = kolik karet šlo rozdat z původního balíčku;
@@ -472,6 +477,13 @@ class GameState {
         this.deck._reshuffleCount = 0;
         this.deck._reshuffleWasProactive = false;
         this.storePickerIndex = this.currentPlayerIndex;
+        // Nebylo co rozdat → Hokynářství vyšumí a tah pokračuje (bez cinematiky – ta se
+        // spouští jen ve fázi STORE).
+        if (!this.storeCards.length) {
+            this.phase = "PLAY";
+            this.storeAnim = null;
+            this.logEvent('system', { msg: 'Hokynářství: balíček i odhoz jsou prázdné, není co rozdat' });
+        }
     }
 
     pickFromStore(cardIdx) {

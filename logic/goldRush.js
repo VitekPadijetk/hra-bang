@@ -46,7 +46,12 @@ function gearPieces(kind) {
 // valouny a nedostal nic. Seznam roste s fázemi plánu (§9); ve fázi 5 bude úplný.
 const GEAR_READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
                     // fáze 2 – pasivní černé vybavení (leží před hráčem a jen mění pravidla)
-                    'ZH_BOTY', 'ZH_TALISMAN', 'ZH_OPASEK', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA'];
+                    'ZH_BOTY', 'ZH_TALISMAN', 'ZH_OPASEK', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
+                    // fáze 3 – placené černé vybavení (leží před hráčem a používá se za valouny)
+                    'ZH_RYZOVACI_PANEV', 'ZH_BATOH'];
+
+// Rýžovací pánev: „Použitelné až 2× za tah."
+const PAN_USES_PER_TURN = 2;
 
 const GoldRushMixin = {
     // ── Příprava balíčku vybavení (setupGame / setupDebugGame / setupNextGame) ──
@@ -61,7 +66,9 @@ const GoldRushMixin = {
         this.gearPile = [];                  // odhozené: lícem vzhůru POD balíčkem
         this._goldRush = false;
         this.pendingGearTarget = null;
-        (this.players || []).forEach(p => { p.gear = []; p.nuggets = 0; });
+        // Počítadlo Rýžovací pánve je klíčované `turnId`, který navazující hra čísluje
+        // znovu – starý záznam by jinak mohl sednout na tah nové hry.
+        (this.players || []).forEach(p => { p.gear = []; p.nuggets = 0; p._panTurn = null; p._panUses = 0; });
         const on = options.expansions && options.expansions.zlata_horecka;
         if (!on || !Array.isArray(this.gearCardData)) return;
         this._goldRush = true;
@@ -354,6 +361,66 @@ const GoldRushMixin = {
         this.checkSuzyLafayette(p);
         this._processSpecialQueue();
         return card;
+    },
+
+    // ── Placené černé vybavení (fáze 3): Rýžovací pánev a Batoh ─────────────
+    // Obě karty leží před hráčem a používají se za valouny. Stejně jako nákup to NENÍ
+    // fáze (R6): používá je hráč na tahu ve fázi PLAY a nikdo jiný nečeká. Jedinou
+    // výjimkou je Batoh na posledním životě – ten smí i mimo tah (rucksackLastLifeSave,
+    // logic/response.js). Zrcadlo pro klienta a bota: gearPanOk / gearRucksackOk /
+    // gearRucksackSaveOk (core/goldRush.js).
+
+    // Kolikrát už hráč v TOMHLE tahu rýžoval. Klíčované `turnId`, takže se nic nenuluje:
+    // nový tah (i Vendetin tah navíc) má nové ID a počítadlo začíná od nuly.
+    _panUsesThisTurn(player) {
+        return player && player._panTurn === this.turnId ? (player._panUses || 0) : 0;
+    },
+
+    // Rýžovací pánev: „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2×
+    // za tah." Líže se KLIKEM na balíček, běžnou fází lízání mimo začátek tahu – stejně
+    // jako Union Pacific (líznutí jdou jednou cestou, včetně animace). Vrací true, když
+    // se rýžovalo.
+    gearPanUse(playerIdx) {
+        if (!this._goldRushOn() || this.phase !== "PLAY") return false;
+        if (playerIdx !== this.currentPlayerIndex) return false;
+        const p = this.players[playerIdx];
+        if (!p || !isInPlay(p) || !this._gearOn(p, 'ZH_RYZOVACI_PANEV')) return false;
+        const used = this._panUsesThisTurn(p);
+        if (used >= PAN_USES_PER_TURN) return false;
+        // Fistful – Právo západu: líznutá karta může vynucenou kartu „vypnout" (_lawLocked).
+        if (this._lawLocked(playerIdx, null, { draws: 1 })) return false;
+        if (!this._payNuggets(playerIdx, 1)) return false;
+        p._panTurn = this.turnId;
+        p._panUses = used + 1;
+        this.logEvent('gear', { act: 'pan', who: p.name, use: p._panUses });
+        this._setDrawPhase({ active: true, playerIdx, cardsNeeded: 1, cardsDrawn: 0,
+                             options: ['deck'], isStartOfTurn: false });
+        this.phase = "DRAW";
+        return true;
+    },
+
+    // Platí hráči Batoh a má na něj? Společná podmínka obou použití (v tahu i na
+    // posledním životě); `_gearOn` v sobě nese Laso i Belle Star (R10).
+    _rucksackReady(player) {
+        return !!player && this._gearOn(player, 'ZH_BATOH') && (player.nuggets || 0) >= 2;
+    },
+
+    // Batoh: „Zaplať 2 valouny a doplň si 1 život." Ve svém tahu (fáze PLAY) kolikrát
+    // chce, má-li co doplnit. Mimo fázi PLAY jen jako záchrana POSLEDNÍHO života
+    // (dodatek „i mimo tah vlastníka") – to je `rucksackLastLifeSave` vedle Piva a Sida.
+    // Tahle metoda je jen rozcestí, ať klient i bot posílají jednu akci.
+    gearRucksackUse(playerIdx) {
+        if (!this._goldRushOn()) return false;
+        if (this.phase !== "PLAY") return this.rucksackLastLifeSave(playerIdx);
+        if (playerIdx !== this.currentPlayerIndex) return false;
+        const p = this.players[playerIdx];
+        if (!p || !isInPlay(p) || !this._rucksackReady(p)) return false;
+        if (p.health >= p.maxHealth) return false;
+        if (this._lawLocked(playerIdx, null, { heal: 1 })) return false;   // Právo západu
+        this._payNuggets(playerIdx, 2);
+        const healed = this._heal(p, 1);
+        this.logEvent('gear', { act: 'rucksack', who: p.name, heal: healed });
+        return true;
     },
 
     // ── Vyřazení hráče ──────────────────────────────────────────────────────

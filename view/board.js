@@ -1955,6 +1955,19 @@ function drawMyArea(ctx) {
         // Zlatá horečka: moje vybavení. Cílit na něj nejde (Panika ani Cat Balou na
         // vybavení nesmí; odhodit ho může jen soupeř zaplacením ceny + 1), zvětšit ano –
         // text karty je na štítku vysázený drobně.
+        // Placené vybavení (fáze 3) se POUŽÍVÁ klikem na kartu, stejně jako zelené karty
+        // Dodge City: Rýžovací pánev a Batoh ve svém tahu, Batoh navíc jako záchrana
+        // posledního života (pak svítí žlutě jako záchranné Pivo). Co je zrovna klikací,
+        // říkají predikáty z core/goldRush.js – tytéž, podle kterých rozhoduje server.
+        const _gearUseFree = !App.blockInput && selectedState.cardIndex === null &&
+            selectedState.sidKetchum === undefined && !selectedState.gearForce;
+        const _rucksackSave = _gearUseFree && gearRucksackSaveOk(state, myIndex);
+        const _gearUseEvent = (g) => {
+            if (!_gearUseFree) return null;
+            if (g.effect === 'ZH_RYZOVACI_PANEV' && gearPanOk(state, myIndex)) return 'gear_pan';
+            if (g.effect === 'ZH_BATOH' && (_rucksackSave || gearRucksackOk(state, myIndex))) return 'gear_rucksack';
+            return null;
+        };
         _myGear.forEach((g, k) => {
             const s2 = boardSlot(myBoardCards.length + _myGrey.length + k, myBand);
             const gx = roleX - (myCardW + L.boardGap) - s2.col * myBand.step;
@@ -1969,6 +1982,30 @@ function drawMyArea(ctx) {
             gSprite.on('pointerover', () => startCardZoom(gTex, gKey));
             gSprite.on('pointerout', scheduleZoomFade);
             reflowCard('mb_' + gKey, gSprite, gx, gy, gTex, scaleMe, 0);
+
+            const useEvent = _gearUseEvent(g);
+            if (!useEvent) return;
+            // Záchrana posledního života svítí trvale (jako Pivo v ruce), použití ve
+            // vlastním tahu jen při najetí myší (jako zelené karty).
+            const saveTint = useEvent === 'gear_rucksack' && _rucksackSave;
+            const baseTint = saveTint ? 0xffff44 : null;
+            if (baseTint != null) gSprite.setTint(baseTint);
+            gSprite.setInteractive({ useHandCursor: true });
+            if (gSprite.input) gSprite.input.cursor = 'pointer';   // setInteractive kurzor nepřepíše
+            gSprite.on('pointerover', (pointer) => {
+                if (pointer?.wasTouch) return;
+                gSprite.setTint(saveTint ? 0xffff88 : 0xddffdd);
+            });
+            gSprite.on('pointerout', () => {
+                if (baseTint != null) gSprite.setTint(baseTint); else gSprite.clearTint();
+            });
+            gSprite.on('pointerdown', () => {
+                if (App.blockInput) return;
+                selectedState = { cardIndex: null, action: null };
+                App.blockInput = true;
+                socket.emit(useEvent, {});
+                renderUI();
+            });
         });
 
         // Fistful – Odražená střela: karta, o kterou právě jde. Ať hráč vidí, co brání
@@ -2635,7 +2672,9 @@ function drawMyArea(ctx) {
                 roseSwapOffer(state, myIndex) != null ||
                 // Zlatá horečka: nákup v obchodě je hratelná akce fáze 2 – dokud si hráč
                 // má za co koupit, „Ukončit tah" blikat nemá.
-                (state.gearRow || []).some((c, i) => c && gearBuyOk(state, myIndex, i));
+                (state.gearRow || []).some((c, i) => c && gearBuyOk(state, myIndex, i)) ||
+                // …a použití placeného vybavení před sebou (Rýžovací pánev, Batoh).
+                gearPanOk(state, myIndex) || gearRucksackOk(state, myIndex);
             const hasPlayable = sidCanHeal || hasPlayableGreen || hasActiveAbility || me.hand.some((card, idx) => {
                 const p = getCardPlayability(card, idx);
                 return p !== false;

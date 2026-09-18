@@ -3,6 +3,7 @@
 // hokynářství). registerGameHandlers(socket, ctx, withRoom) – těla byte-identická.
 const { niResultMs } = require('../core/highNoonAnim.js');
 const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
+const { pendingActor } = require('../core/pending.js');
 
 // Odešla karta z ruky, tedy PROŠLA pravidly? Pravidla (logic/*) odmítnutou akci mlčky
 // ignorují – karta prostě zůstane v ruce. Animace se proto emitují AŽ podle výsledku:
@@ -1159,6 +1160,32 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const card = gs.beerForNugget(idx, cardIdx);
             if (!card) { broadcastRoom(room); return; }
             emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: card.id });
+            broadcastRoom(room);
+        });
+    });
+
+    // Rýžovací pánev: zaplať 1 valoun a lízni si kartu (až 2× za tah). Pravidla otevřou
+    // běžnou fázi lízání, takže karta přiletí až klikem na balíček (draw_card výš) –
+    // žádná vlastní animace.
+    on('gear_pan', () => {
+        withRoom((room, p, gs) => {
+            gs.gearPanUse(gs.currentPlayerIndex);
+            broadcastRoom(room);
+        });
+    });
+
+    // Batoh: zaplať 2 valouny a doplň si 1 život. Ve svém tahu (PLAY), jinak jako
+    // záchrana posledního života – pak je aktérem ten, na koho hra čeká (obránce, oběť
+    // dynamitu / Pravého poledne), ne hráč na tahu. Karta nikam neletí, stav stačí.
+    on('gear_rucksack', () => {
+        withRoom((room, p, gs) => {
+            const idx = gs.phase === 'PLAY' ? gs.currentPlayerIndex : pendingActor(gs)?.idx;
+            if (idx === undefined || idx === null) return;
+            const saving = gs.phase !== 'PLAY';
+            if (!gs.gearRucksackUse(idx)) { broadcastRoom(room); return; }
+            // Záchrana v cizím útoku může dokončit tah, ve kterém zatím visela smrt
+            // (stejně jako respond_with_beer / sid_ketchum_discard_both).
+            if (saving) handleAutoEndTurn(room, gs);
             broadcastRoom(room);
         });
     });

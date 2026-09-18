@@ -3,7 +3,7 @@
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { mkGame, give, board, CardType, Suits } = require('./_helpers.js');
+const { mkGame, mkCard, give, board, CardType, Suits } = require('./_helpers.js');
 const { pendingActor, decideBotAction, roleHostility } = require('../core/botPolicy.js');
 
 before(() => { console.log = () => {}; });
@@ -416,9 +416,29 @@ test('DISCARD: Dostavník se odhazuje až po Bang! (je to karta za dvě)', () =>
 
 test('PLAY: Wells Fargo se zahraje DŘÍV než Bang! (líznuté karty se dají ještě zahrát)', () => {
     const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }], { current: 0 });
+    for (let i = 0; i < 5; i++) g.deck.cards.push(mkCard(CardType.MISSED));   // je co líznout
     give(g, 0, CardType.BANG);
     const wf = give(g, 0, CardType.WELLS_FARGO);
     assert.deepEqual(decideBotAction(g, 0), { event: 'play_card', payload: wf });
+});
+
+// Když karty došly (všechny drží hráči v rukou), lízl by si Wells Fargo zpátky jen sám
+// sebe – a hrál by ho dokola, tah by nikdy neskončil (viz drawableCount v botPolicy).
+test('PLAY: Wells Fargo se nehraje, když v balíčku ani v odhozu nejsou karty', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }], { current: 0 });
+    g.deck.cards = [];
+    give(g, 0, CardType.WELLS_FARGO);
+    assert.deepEqual(decideBotAction(g, 0), { event: 'end_turn' });
+});
+
+test('PLAY: po 15 zahraných kartách v tahu už bot karty za víc karet netočí', () => {
+    const g = mkGame([{ role: 'Outlaw' }, { role: 'Sheriff' }], { current: 0 });
+    for (let i = 0; i < 5; i++) g.deck.cards.push(mkCard(CardType.MISSED));
+    const wf = give(g, 0, CardType.WELLS_FARGO);
+    g.players[0]._playedThisTurn = 14;
+    assert.deepEqual(decideBotAction(g, 0), { event: 'play_card', payload: wf });
+    g.players[0]._playedThisTurn = 15;
+    assert.deepEqual(decideBotAction(g, 0), { event: 'end_turn' });
 });
 
 // ── Slepé cílení: bez informací se nestřílí a palba se rozkládá ──────────────

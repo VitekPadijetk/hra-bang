@@ -26,7 +26,13 @@ Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 
 > (`_checkRevealCount`, Podkova × Lucky Duke).
 > `npm test` = **1448 testů, 0 chyb** (nová sada `test/goldRush.cards.test.js`
 > + zátěžová varianta „plná kapsa valounů" v `test/server.bots.test.js`).
-> Odchylky od plánu jsou popsané u fází 0–2 v §9.
+> **Fáze 3** (2026-09-18) — placené černé vybavení **Rýžovací pánev** a **Batoh**, včetně
+> Batohu jako třetí záchrany posledního života (vedle Piva a Sida), zrcadla
+> `gearPanOk`/`gearRucksackOk`/`gearRucksackSaveOk`, použití klikem na kartu vybavení
+> a větví bota. Zátěž odkryla dvě staré díry při vyčerpaném balíčku (smyčka bota na
+> kartách „lízni N" a Hokynářství bez karet) – opravené, viz odchylky.
+> `npm test` = **1475 testů, 0 chyb** (nová sada `test/goldRush.paid.test.js`).
+> Odchylky od plánu jsou popsané u fází 0–3 v §9.
 
 > **Assety zatím nejsou.** Plán je proto napsaný tak, aby se dal odpracovat celý bez nich
 > (§2.8 říká, co se s chybějícím artem děje) a aby se **jména karet daly doplnit na jednom
@@ -504,7 +510,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 | **0** ✅ | data, mixin, `player.nuggets`, `_afterLifeLost`, zisk valounu, přepínač v lobby, redakce | valouny přibývají a jsou vidět |
 | **1** ✅ | hromádky vybavení, obchod, nákup, doplnění, vynucené odhození, Pivo za valoun + **Panák, Union Pacific** | ekonomika kompletní |
 | **2** ✅ | pasivní černé: **Boty, Talisman, Opasek, Krumpáč, Kalumet, Podkova** | 6 karet |
-| **3** | placené černé: **Rýžovací pánev, Batoh** (vč. záchrany posledního života) | 8 karet |
+| **3** ✅ | placené černé: **Rýžovací pánev, Batoh** (vč. záchrany posledního života) | 8 karet |
 | **4** | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 12 karet |
 | **5** | **Wanted!** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
 | **6** | **8 postav** (`GOLD_RUSH_READY` roste) | rozšíření hotové |
@@ -628,6 +634,44 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
   Valouny se vydělávají pomalu, takže by se dražší černé karty v běžné hře protočily jen
   občas; s doplňovanou kapsou se spolehlivě rozjede nákup, fáze `BOOTS_DRAW` i výběr
   karty pod Podkovou. `pumpToWinner` k tomu dostal volitelný `onTick`.
+
+### Co se ve fázi 3 odchýlilo od plánu (a proč)
+
+- **Rýžovací pánev líže klikem na balíček**, ne rovnou do ruky: `gearPanUse` otevře
+  běžnou fázi lízání mimo začátek tahu (`isStartOfTurn: false`) na jednu kartu, stejně
+  jako Union Pacific. Líznutí jdou v tomhle projektu jedinou cestou i s animací, takže
+  pánev vlastní animaci nepotřebuje – a Krumpáč se jí netýká (není to fáze 1).
+- **Počítadlo pánve je na hráči a klíčované `turnId`** (`p._panTurn` / `p._panUses`), ne
+  `_panUsedThisTurn` na stavu (§2.6). Nic se nemusí nulovat: nový tah (i Vendetin tah
+  navíc) má nové `turnId`. Nuluje se jen v `_setupGearDeck`, protože navazující hra
+  čísluje tahy znovu. Při výměně míst (Lady Růže) cestuje s hráčem.
+- **Batoh je jedna akce `gear_rucksack` se dvěma cestami**: ve fázi PLAY léčí
+  (`gearRucksackUse`), mimo ni je to **`rucksackLastLifeSave`** v `logic/response.js`
+  vedle Piva a Sida – tytéž tři fáze (RESPOND, DYNAMITE_DAMAGE, NOON_DAMAGE) a totéž
+  rozcestí `_advanceAfterLastLifeSave`, jak plán chtěl. Nová fáze nevznikla, takže bot
+  ani `pendingActor` nepotřebovaly novou větev – jen tři řádky do existujících. Batoh
+  **není Pivo**: limit „ve dvou hráčích", Kazatel ani Želízka ho nebrzdí; Belle Star
+  a Laso ano (R10, přes `_gearOn`). Na dynamitu zruší jeden klikaný zásah, takže na
+  1 životě a se třemi zásahy je potřeba tří použití.
+- **Použití klikem na kartu vybavení** v mém pásu (vzor zelených karet Dodge City),
+  ne tlačítkem v okně obchodu: ve vlastním tahu karta reaguje na najetí myší, jako
+  záchrana posledního života svítí žlutě jako záchranné Pivo v ruce.
+- **Bot**: Pánev jako vata na konec tahu (skóre 11 – nákup nového vybavení má přednost)
+  a s Batohem si drží 2 valouny na záchranu; Batoh v tahu jen s ≤ 2 životy, jinak ho
+  šetří na záchranu mimo tah (pořadí záchran: Pivo → Batoh → Sid).
+- **Zátěž odkryla dvě staré díry při vyčerpaném balíčku.** Pánev a Union Pacific
+  s doplňovanou kapsou vysají balíček do rukou, a pak:
+  1. **bot se zacyklil** – Wells Fargo si z prázdných hromádek lízl zpátky sám sebe
+     (případně s Pivem za valoun nebo druhým Dostavníkem) a hrál ho dokola; stall guard
+     to nechytí, stav se pořád mění. Opraveno v `core/botPolicy.js` dvěma brzdami:
+     `drawCardWorth` (karta „lízni N" jen když hromádky dají aspoň N karet) a
+     `RECYCLE_CAP` (po 15 kartách zahraných v tahu už bot karty jen netočí – to je ta,
+     která ukončení tahu zaručuje; počítadlo je `_playedThisTurn` Madam Zuzany);
+  2. **Hokynářství bez karet zaseklo hru** i lidem: `openStore` ukládal `null` za každou
+     chybějící kartu a řada samých `null` byla fáze STORE, ze které si nikdo nevybere.
+     Rozdávají se jen skutečné karty a bez nich Hokynářství vyšumí.
+  Doplňování valounů v zátěži běží jen prvních 60 tahů – s nekonečnou kapsou Batoh
+  léčí bez konce a souboj 1 na 1 by nikdy neskončil (artefakt testu, ne pravidel).
 
 Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `master`.
 

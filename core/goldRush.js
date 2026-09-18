@@ -147,8 +147,59 @@ function beerNuggetOk(state, playerIdx, card) {
     return true;
 }
 
+// ── Placené černé vybavení (fáze 3) ─────────────────────────────────────────
+// Rýžovací pánev: „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za
+// tah." Počítadlo je klíčované `turnId` (zrcadlí GameState._panUsesThisTurn).
+const GEAR_PAN_USES = 2;
+
+function gearPanUsesLeft(state, playerIdx) {
+    const p = state?.players?.[playerIdx];
+    const used = p && p._panTurn === state.turnId ? (p._panUses || 0) : 0;
+    return Math.max(0, GEAR_PAN_USES - used);
+}
+
+// Smí hráč teď rýžovat? Zrcadlí GameState.gearPanUse.
+function gearPanOk(state, playerIdx) {
+    if (!gearShopOpen(state, playerIdx)) return false;
+    if (!gearOnFor(state, playerIdx, 'ZH_RYZOVACI_PANEV')) return false;
+    if (gearPanUsesLeft(state, playerIdx) <= 0) return false;
+    const me = state.players[playerIdx];
+    if ((me.nuggets || 0) < 1) return false;
+    return !lawLocksOther(state, me, playerIdx, null, { draws: 1 });
+}
+
+// Batoh: „Zaplať 2 valouny a doplň si 1 život." Ve svém tahu (fáze PLAY), má-li hráč
+// co doplnit. Zrcadlí větev PLAY v GameState.gearRucksackUse.
+function gearRucksackOk(state, playerIdx) {
+    if (!gearShopOpen(state, playerIdx)) return false;
+    if (!gearOnFor(state, playerIdx, 'ZH_BATOH')) return false;
+    const me = state.players[playerIdx];
+    if ((me.nuggets || 0) < 2 || me.health >= me.maxHealth) return false;
+    return !lawLocksOther(state, me, playerIdx, null, { heal: 1 });
+}
+
+// …a mimo tah (i ve svém tahu mimo fázi PLAY) jako záchrana POSLEDNÍHO života. Stejné
+// tři fáze jako záchrana Pivem, jen bez omezení Piva (dva hráči, Kazatel, Želízka).
+// Zrcadlí GameState.rucksackLastLifeSave (logic/response.js).
+function gearRucksackSaveOk(state, playerIdx) {
+    if (!goldRushOn(state)) return false;
+    const me = state?.players?.[playerIdx];
+    if (!me || me.health !== 1 || (me.nuggets || 0) < 2) return false;
+    if (!gearOnFor(state, playerIdx, 'ZH_BATOH')) return false;
+    switch (state.phase) {
+        case 'DYNAMITE_DAMAGE': return state.pendingDynamiteDamage?.playerIdx === playerIdx;
+        case 'NOON_DAMAGE':     return state.pendingNoonDamage?.playerIdx === playerIdx;
+        case 'RESPOND': {
+            const pr = state.pendingResponse;
+            return !!(pr && pr.active && pr.targetIdx === playerIdx && !pr.ricochet);
+        }
+        default: return false;
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { goldRushOn, gearOf, hasGearFor, gearOnFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
                        gearShopOpen, gearBuyReason, gearBuyOk,
-                       gearForceCost, gearForceOk, gearForceAvailable, beerNuggetOk };
+                       gearForceCost, gearForceOk, gearForceAvailable, beerNuggetOk,
+                       gearPanUsesLeft, gearPanOk, gearRucksackOk, gearRucksackSaveOk };
 }

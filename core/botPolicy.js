@@ -149,6 +149,10 @@ if (typeof require === 'function') {
         globalThis.gearForceOk = __gr.gearForceOk;
         globalThis.gearForceCost = __gr.gearForceCost;
         globalThis.beerNuggetOk = __gr.beerNuggetOk;
+        globalThis.hasGearFor = __gr.hasGearFor;
+        globalThis.gearPanOk = __gr.gearPanOk;
+        globalThis.gearRucksackOk = __gr.gearRucksackOk;
+        globalThis.gearRucksackSaveOk = __gr.gearRucksackSaveOk;
     }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
@@ -186,6 +190,9 @@ const GEAR_VALUE = {
     ZH_KALUMET: 18,        // imunita vůči károvým kartám ostatních
     ZH_TALISMAN: 16,       // valoun za každý ztracený život – měna na další nákupy
     ZH_OPASEK: 12,         // limit 8 karet v ruce
+    // Placené černé vybavení (fáze 3) – další valouny se za ně platí až při použití.
+    ZH_RYZOVACI_PANEV: 20, // až 2 karty za tah, každá za 1 valoun
+    ZH_BATOH: 16,          // život za 2 valouny, i jako záchrana posledního života mimo tah
 };
 
 const HEARTS = '♥️';
@@ -362,6 +369,35 @@ function boardCardValue(card) {
 function _hasWorthTaking(p) {
     return p.hand.length > 0 || (p.weapon && p.weapon.id !== -1)
         || (p.board || []).some(c => boardCardValue(c) > 0);
+}
+
+// ── Karty, které jen „točí" balíček, když karty dojdou ───────────────────────
+// Když karty skoro došly – drží je hráči v rukou –, líže si karta „lízni N" po zahrání
+// zpátky SAMA SEBE a to, co bot právě odhodil (Pivo za valoun, druhý Dostavník; odhoz si
+// navíc při míchání nechává vrchní kartu). Bot by pak tyhle karty hrál pořád dokola
+// a tah by nikdy neskončil: nekonečná smyčka, kterou stall guard nechytí, protože se
+// stav pořád mění. Odkryla ji Zlatá horečka (Rýžovací pánev a Union Pacific vysají
+// balíček do rukou), ale hrozila vždycky. Brzdy jsou dvě:
+//   • drawableCount – kolik karet hromádky vůbec dají (dobírací + odhoz, který se při
+//     docházení zamíchá); karta „lízni N" se hraje, jen když jich je aspoň N,
+//   • RECYCLE_CAP – kolik karet už hráč v tahu zahrál (`_playedThisTurn`, počítadlo
+//     pravidel kvůli Madam Zuzaně). Běžný tah se vejde do pár karet, takže za stropem
+//     bot přestane hrát to, co karty jen točí. Tohle je ta pojistka, která ukončení
+//     tahu ZARUČUJE – první brzda jen odřízne běžný případ dřív.
+const RECYCLE_CAP = 15;
+
+function drawableCount(state) {
+    const d = state?.deck;
+    return ((d?._drawPile || d?.cards || []).length) + ((d?._discardPile || d?.discardPile || []).length);
+}
+
+function recycleOk(me) {
+    return (me?._playedThisTurn || 0) < RECYCLE_CAP;
+}
+
+// Vyplatí se teď karta/akce, která slibuje `gain` karet z balíčku?
+function drawCardWorth(state, me, gain) {
+    return gain > 0 && recycleOk(me) && drawableCount(state) >= gain;
 }
 
 // Kolik karet hráči karta přinese (0 = nic navíc). Jediný zdroj pravdy pro preferenci
@@ -838,8 +874,15 @@ function decidePlay(state, myIndex, beliefs) {
         // Karty za víc karet se hrají PRVNÍ v tahu: co si líznu, můžu ještě ten tah zahrát
         // (klidně další Bang!). Proto přebíjejí i střelbu (50–55) a vyložení zbraně.
         // Hokynářství zůstává nízko – kartu dá i každému soupeři, takže tak výhodné není.
-        if (card.type === T.STAGECOACH || card.type === T.WELLS_FARGO) { consider(64 + cardDrawGain(card), intent); return; }
-        if (card.type === T.STORE) { consider(22, intent); return; }
+        if (card.type === T.STAGECOACH || card.type === T.WELLS_FARGO) {
+            // Bez karet v hromádkách by se do ruky vrátila jen tahle karta (drawableCount).
+            if (drawCardWorth(state, me, cardDrawGain(card))) consider(64 + cardDrawGain(card), intent);
+            return;
+        }
+        // Hokynářství jde do odhozu až PO rozdání, takže s jedinou kartou v hromádkách by
+        // si hráč na tahu vzal zpátky předchozí Hokynářství a dvě by se točila donekonečna.
+        // Od dvou karet výš se hromádky každým zahráním zmenšují (rozdává se i ostatním).
+        if (card.type === T.STORE) { if (drawCardWorth(state, me, 2)) consider(22, intent); return; }
         if (card.type === T.GATLING || card.type === T.INDIANS) {
             const { pos, neg } = aoeBalance();
             if (pos >= 1 && pos > neg) consider(35, intent);
@@ -885,7 +928,7 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
         if (card.activate === 'draw_3') {   // Pony express – tři karty, stejná priorita jako Wells Fargo
-            consider(64 + cardDrawGain(card), { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
+            if (drawCardWorth(state, me, cardDrawGain(card))) consider(64 + cardDrawGain(card), { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
             return;
         }
     });
@@ -1031,8 +1074,11 @@ function decidePlay(state, myIndex, beliefs) {
                 default: {
                     // Efekty bez cíle. Karty za víc karet vrací zaplacený BANG! s úrokem,
                     // léčení má cenu jen se zraněním, hromadný útok jen s převahou nepřátel.
-                    if (_lvk.effect === 'WELLS_FARGO') score = 34;
-                    else if (_lvk.effect === 'STAGECOACH' || _lvk.effect === 'STORE') score = 30;
+                    // Opakované lízání platí kartou BANG!, která jde do odhozu – s prázdnými
+                    // hromádkami by si ji hráč jen lízl zpátky (drawableCount).
+                    if (_lvk.effect === 'WELLS_FARGO') score = drawCardWorth(state, me, 3) ? 34 : 0;
+                    else if (_lvk.effect === 'STAGECOACH') score = drawCardWorth(state, me, 2) ? 30 : 0;
+                    else if (_lvk.effect === 'STORE') score = drawCardWorth(state, me, 2) ? 30 : 0;
                     else if (_lvk.effect === 'brawl') score = 24;
                     else if (_lvk.effect === 'BEER' || _lvk.effect === 'SALOON' || _lvk.effect === 'heal_self_2') {
                         if (me.health < me.maxHealth) score = me.health <= 2 ? 30 : 8;
@@ -1059,13 +1105,15 @@ function decidePlay(state, myIndex, beliefs) {
             let val = GEAR_VALUE[card.effect] || 0;
             // Panák léčí – bez zranění by se za něj zaplatilo a efekt by vyšuměl.
             if (card.effect === 'ZH_PANAK' && me.health >= me.maxHealth) val = 0;
+            // Union Pacific líže – bez karet v balíčku i odhozu by se platilo za nic.
+            if (card.effect === 'ZH_UNION_PACIFIC' && !drawCardWorth(state, me, 4)) val = 0;
             if (val > 0) consider(val, { event: 'gear_buy', payload: { rowIdx } });
         });
         // Pivo za valoun jen s PLNÝM životem: jinak je vyléčení cennější než zlato
         // (a Pivo na plný život stejně nejde zahrát, takže by v ruce jen leželo).
         if (me.health >= me.maxHealth) {
             const bi = me.hand.findIndex(c => c && !c._placeholder && beerNuggetOk(state, myIndex, c));
-            if (bi !== -1) consider(6, { event: 'beer_for_nugget', payload: { cardIdx: bi } });
+            if (bi !== -1 && recycleOk(me)) consider(6, { event: 'beer_for_nugget', payload: { cardIdx: bi } });
         }
         // Donutit odhodit vybavení jen PRAVDĚPODOBNÉHO nepřítele – spojenci by tím bot
         // jen ubližoval a přišel by o valouny.
@@ -1078,6 +1126,19 @@ function decidePlay(state, myIndex, beliefs) {
                 if (val > 0) consider(val, { event: 'gear_force_discard', payload: { targetIdx: i, gearIdx } });
             });
         });
+        // Placené vybavení (fáze 3). Obojí je laciná vata na konec tahu – nákupy nového
+        // vybavení mají přednost, protože se platí jednou a hrají do konce hry.
+        // Rýžovací pánev: karta za valoun. S Batohem si bot drží 2 valouny na záchranu
+        // posledního života – jinak by je prorýžoval a pak umřel s Batohem před sebou.
+        const _keep = hasGearFor(state, myIndex, 'ZH_BATOH') ? 2 : 0;
+        if (gearPanOk(state, myIndex) && (me.nuggets || 0) - 1 >= _keep && drawCardWorth(state, me, 1)) {
+            consider(11, { event: 'gear_pan', payload: {} });
+        }
+        // Batoh ve svém tahu jen s málo životy (léčení jako každé jiné). Jinak si bot
+        // valouny nechá – na nákup, nebo na záchranu posledního života mimo tah.
+        if (gearRucksackOk(state, myIndex) && me.health <= 2) {
+            consider(28, { event: 'gear_rucksack', payload: {} });
+        }
     }
 
     if (hasAbility(me, 'Doc Holyday') && !me._docUsed && me.hand.length >= 3) {
@@ -1167,11 +1228,15 @@ function decideBotAction(state, myIndex, beliefs) {
                 const beerIdx = beerBlockedFor(state) ? -1
                     : me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
                 if (beerIdx !== -1) return { event: 'respond_with_beer', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
+                if (gearRucksackSaveOk(state, myIndex)) return { event: 'gear_rucksack', payload: {} };
                 if (hasAbility(me, 'Sid Ketchum') && me.hand.length >= 2) {
                     const order = me.hand.map((c, i) => i).sort((a, b) => keepScore(me.hand[a]) - keepScore(me.hand[b]));
                     return { event: 'sid_ketchum_discard_both', payload: { playerIdx: myIndex, cardIdx1: order[0], cardIdx2: order[1] } };
                 }
             }
+            // Zlatá horečka – Batoh není Pivo, takže ho limit „ve dvou hráčích" nebrzdí
+            // (a Odraženou střelu vylučuje sám predikát).
+            if (gearRucksackSaveOk(state, myIndex)) return { event: 'gear_rucksack', payload: {} };
             return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null } };
         }
 
@@ -1284,6 +1349,8 @@ function decideBotAction(state, myIndex, beliefs) {
                 const beerIdx = me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
                 if (beerIdx !== -1) return { event: 'beer_dynamite_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
             }
+            // Zlatá horečka – Batoh (bez omezení Piva: dva hráči, Kazatel, Želízka).
+            if (gearRucksackSaveOk(state, myIndex)) return { event: 'gear_rucksack', payload: {} };
             return { event: 'take_dynamite_hit' };
         }
 
@@ -1298,6 +1365,7 @@ function decideBotAction(state, myIndex, beliefs) {
                 const beerIdx = me.hand.findIndex(c => c.type === T.BEER && !suitBlockedFor(state, myIndex, c));
                 if (beerIdx !== -1) return { event: 'beer_noon_save', payload: { playerIdx: myIndex, cardIdx: beerIdx } };
             }
+            if (gearRucksackSaveOk(state, myIndex)) return { event: 'gear_rucksack', payload: {} };   // Zlatá horečka – Batoh
             return { event: 'take_noon_hit' };
         }
 

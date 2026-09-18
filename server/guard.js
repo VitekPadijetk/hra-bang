@@ -35,6 +35,9 @@ module.exports = function installActionGuard(ctx) {
         'claus_give', 'uncle_will', 'flint_westwood', 'lee_van_kliff', 'lady_rose',
         'dorothy_command', 'dorothy_target', 'dorothy_cancel',
         'gear_buy', 'gear_target', 'gear_force_discard', 'beer_for_nugget',
+        // Batoh jde i mimo tah (poslední život), ale i tehdy je jeho majitel ten, na
+        // koho hra čeká (obránce / oběť zásahu) – guard na pendingActor proto sedí.
+        'gear_pan', 'gear_rucksack',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another',
         'activate_green_card',
         'bart_cassidy_draw', 'boots_draw', 'uhyb_draw', 'el_gringo_steal', 'suzy_draw',

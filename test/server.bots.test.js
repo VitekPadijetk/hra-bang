@@ -486,9 +486,9 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
             gs._onEvent = (e) => { if (e && e.ev === 'nuggets' && e.gain) gained = true; };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
             // Do hry jdou jen HOTOVÉ druhy (GEAR_READY, logic/goldRush.js) – fáze 1
-            // Panák 3× a Union Pacific 1×, fáze 2 šest pasivních černých po jednom;
-            // tři z nich hned leží v obchodě.
-            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 10, `${tag}: balíček vybavení`);
+            // Panák 3× a Union Pacific 1×, fáze 2 šest pasivních černých a fáze 3 dvě
+            // placené černé po jednom; tři z nich hned leží v obchodě.
+            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 12, `${tag}: balíček vybavení`);
             assert.equal(gs.gearRow.filter(Boolean).length, 3, `${tag}: obchod je plný`);
             assert.ok(gs.players.every(p => p.nuggets === 0), `${tag}: začíná se bez valounů`);
 
@@ -516,7 +516,7 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
     const origSystem = ctx.glog.system;
     ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
 
-    let bought = 0, bootsSeen = 0, pickSeen = 0;
+    let bought = 0, bootsSeen = 0, pickSeen = 0, panSeen = 0;
     try {
         for (let ci = 0; ci < 6; ci++) {
             const n = 4 + (ci % 4);
@@ -530,12 +530,15 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
             const opts = { expansions: { zlata_horecka: true } };
             const room = { id: `zhrich${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
             ctx.rooms.set(room.id, room);
+            // Rýžovací pánev (fáze 3) se pozná z proudu událostí pravidel.
+            gs._onEvent = (e) => { if (e && e.ev === 'gear' && e.act === 'pan') panSeen++; };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
             gs.players.forEach(p => ctx.createBot(room, p.name));
             const guard = pumpToWinner(ctx, room, () => {
                 // Kapsa se doplňuje průběžně – nákup je akce ve fázi PLAY, takže stačí
-                // hlídat, aby na ni bot vždycky měl.
-                gs.players.forEach(p => { if (p.nuggets < 6) p.nuggets = 6; });
+                // hlídat, aby na ni bot vždycky měl. Jen prvních 60 tahů: s nekonečnou
+                // kapsou léčí Batoh (fáze 3) bez konce a souboj 1 na 1 by nikdy neskončil.
+                if (gs.turnId <= 60) gs.players.forEach(p => { if (p.nuggets < 6) p.nuggets = 6; });
                 if (gs.phase === 'BOOTS_DRAW') bootsSeen++;
                 if (gs.luckyDukeState?.via === 'Podkova') pickSeen++;
                 bought += gs.players.filter(p => (p.gear || []).length).length;
@@ -548,6 +551,11 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
     assert.ok(bought > 0, 'někdo si koupil černé vybavení (leží před ním)');
     assert.ok(bootsSeen > 0, 'Boty aspoň jednou vedly na klikané líznutí');
     assert.ok(pickSeen > 0, 'Podkova aspoň jednou vedla na výběr karty u sejmutí');
+    assert.ok(panSeen > 0, 'někdo aspoň jednou rýžoval (Rýžovací pánev → líznutí)');
+    // Batoh se tu schválně nevynucuje: bot ho bere jen se zraněním a Panák léčí levněji,
+    // takže vyjde 0–9× na šest partií – jako podmínka by test byl flaky. Obě jeho cesty
+    // (v tahu i záchrana) pokrývá deterministicky test/goldRush.paid.test.js; tady jde
+    // o to, že se na něm hra nezasekne.
 });
 
 // Cílená zátěž na fázi 2 Fistfulu: v balíčku jsou JEN Léčka, Laso a Soudce, takže platí

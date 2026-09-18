@@ -129,7 +129,58 @@ const ResponseMixin = {
         return false;
     },
 
-    // ── Pokračuj v RESPOND po záchraně (beer nebo Sid) ────────────────────────
+    // ── BATOH (Zlatá horečka) jako záchrana při posledním životě ───────────────
+    // „Zaplať 2 valouny a doplň si 1 život" + dodatek „může se použít i mimo tah
+    // vlastníka, pokud ztrácí poslední život". Je to TŘETÍ záchrana vedle Piva a Sida,
+    // takže jde přes tytéž tři fáze a totéž rozcestí `_advanceAfterLastLifeSave` –
+    // jinak by se pořadí nabídek rozešlo. Batoh ale NENÍ Pivo: limit „ve dvou hráčích
+    // Pivo nemá efekt", Kazatel ani Želízka se ho netýkají. Neodhazuje se žádná karta,
+    // takže se nebudí ani Suzy Lafayette, ani Molly Stark.
+    rucksackLastLifeSave(playerIdx) {
+        const p = this.players[playerIdx];
+        if (!p || p.health !== 1 || !this._goldRushOn() || !this._rucksackReady(p)) return false;
+        const pay = () => {
+            this._payNuggets(playerIdx, 2);
+            this.logEvent('gear', { act: 'rucksack_save', who: p.name, phase: this.phase });
+        };
+
+        // Dynamit je rozložený na klikané zásahy po 1 – Batoh zruší jeden z nich
+        // (stejně jako Pivo). Na 1 životě a se třemi zásahy je potřeba záchran víc.
+        if (this.phase === "DYNAMITE_DAMAGE") {
+            const pdd = this.pendingDynamiteDamage;
+            if (!pdd || pdd.playerIdx !== playerIdx) return false;
+            pay();
+            pdd.hitsLeft--;
+            if (pdd.hitsLeft <= 0) {
+                this.pendingDynamiteDamage = null;
+                this._afterDamageClicks(pdd.resume, false);   // Ruská ruleta → zpět do startu tahu
+            }
+            return true;
+        }
+
+        // High Noon – Pravé poledne (viz beerLastLifeSave).
+        if (this.phase === "NOON_DAMAGE") {
+            const pnd = this.pendingNoonDamage;
+            if (!pnd || pnd.playerIdx !== playerIdx) return false;
+            pay();
+            this.pendingNoonDamage = null;
+            this._resumeBeginTurn();
+            return true;
+        }
+
+        if (this.phase === "RESPOND") {
+            const pr = this.pendingResponse;
+            // Fistful – Odražená střela ohrožuje kartu na stole, ne život (viz beerLastLifeSave).
+            if (!pr?.active || pr.targetIdx !== playerIdx || pr.ricochet) return false;
+            pay();
+            this._advanceAfterLastLifeSave(playerIdx);
+            return true;
+        }
+
+        return false;
+    },
+
+    // ── Pokračuj v RESPOND po záchraně (Pivo, Sid nebo Batoh) ─────────────────
     _advanceAfterLastLifeSave(playerIdx) {
         const pr = this.pendingResponse;
         if (!pr) return;

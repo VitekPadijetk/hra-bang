@@ -99,3 +99,28 @@ test('Hokynářství vyloží karty (1 na živého hráče) a hráči si berou p
     assert.equal(g.players[1].hand.length, 1);
     assert.equal(g.phase, 'PLAY');
 });
+
+// Balíček i odhoz došly (všechny karty drží hráči v rukou). `draw()` pak vrací null a ta
+// se dřív ukládala do řady jako slot, ze kterého si nikdo nevybere – samé null = fáze
+// STORE, která nikdy neskončí. Rozdávají se jen skutečné karty.
+test('Hokynářství s prázdným balíčkem i odhozem vyšumí a tah pokračuje', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Outlaw' }]);
+    const store = give(g, 0, CardType.STORE, { name: 'Hokynářství' });
+    g.deck.cards = [];
+    g.playCard(store);
+    assert.equal(g.phase, 'PLAY');
+    assert.deepEqual(g.storeCards, []);
+    assert.equal(g.deck.discardTop().name, 'Hokynářství', 'zahraná karta skončí v odhozu');
+});
+
+test('Hokynářství s méně kartami než hráčů: rozdá, co je, a poslední nedostanou nic', () => {
+    const g = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Outlaw' }]);
+    const store = give(g, 0, CardType.STORE, { name: 'Hokynářství' });
+    g.deck.cards = [mkCard(CardType.BANG, { name: 'X' })];
+    g.playCard(store);
+    assert.equal(g.phase, 'STORE');
+    assert.equal(g.storeCards.length, 1, 'žádné prázdné sloty');
+    g.pickFromStore(0);
+    assert.equal(g.players[0].hand.length, 1);
+    assert.equal(g.phase, 'PLAY');
+});
