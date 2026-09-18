@@ -231,8 +231,11 @@ module.exports = function installRoomService(ctx) {
         }, ms);
     }
 
+    // Spolu se seznamem čekajících her jde i seznam běžících: hlavní menu z nich ukazuje
+    // živé počty ("2 hry čekají na hráče" / "1 hra právě běží", view/menuDom.js).
     function broadcastLobbyList() {
         io.emit('lobby_list', getLobbyList());
+        io.emit('game_list', getGameList());
     }
 
     function getLobbyList() {

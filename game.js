@@ -53,7 +53,8 @@ let state = null;
 let selectedState = { cardIndex: null, action: null };
 let myIndex = null;
 let gameScene = null;
-let playerName = null;
+// Jméno přežije F5: ukládá ho okno se jménem (openNameModal, view/menuDom.js).
+let playerName = (() => { try { return localStorage.getItem('bangName') || null; } catch (_) { return null; } })();
 let _myNextGameVote = null;
 let roomState = null;
 
@@ -2804,6 +2805,9 @@ function renderUI() {
     const isSpectator = myIndex === null && !!state;
 
     gameScene.cardsSprites.clear(true, true);
+    // Nové menu v HTML (view/menuDom.js) kreslí jen převedené obrazovky – jinde se schová.
+    // Schovává se JEN tady (ne „schovat vždy, pak ukázat"), jinak by se ztrácel scroll.
+    if (!(!roomState && menuDomHandles(App.menuScreen || 'main'))) hideMenuDom();
     // POZN.: zoom karty tu ZÁMĚRNĚ nerušíme. renderUI běží i při cizí akci a tvrdý
     // stopCardZoom() by resetoval odpočet/zvýraznění karty pod nehybným kurzorem. Zoom je
     // klíčovaný identitou karty (_zoomKey) a uklízí ho _tickCardZoom() z update() smyčky,
@@ -2864,7 +2868,9 @@ function renderUI() {
 
     // ── MENU / LOBBY ──────────────────────────────────────────────────────────
     if (!roomState) {
-        renderMenuScreen(App.menuScreen || 'main');
+        const screen = App.menuScreen || 'main';
+        if (menuDomHandles(screen)) { renderMenuDom(screen); return; }
+        renderMenuScreen(screen);
         return;
     }
 

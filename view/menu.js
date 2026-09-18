@@ -5,66 +5,17 @@
 // view/screens.js (showStats) a view/board.js (showCreativeMode).
 
 let _nameInputShown = false;
+// Okno se jménem je nové HTML okno (openNameModal, view/menuDom.js). Staré obrazovky
+// ho volají tímhle jménem: ptají se při každém renderu, dokud je playerName null, proto
+// příznak _nameInputShown. ✕ vrací do menu – jinak by se okno hned otevřelo znovu.
 function showNameInput(onConfirm) {
     if (playerName !== null) return;
     if (_nameInputShown) return;
     _nameInputShown = true;
-
-    let overlay = document.getElementById('name-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'name-overlay';
-        // max-height + scroll: na telefonu na šířku (390 px) zabere vysunutá klávesnice
-        // půlku obrazovky a tlačítko OK by zůstalo mimo dosah.
-        overlay.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-            background:rgba(30,26,36,0.98);padding:36px 48px;border-radius:16px;
-            z-index:999;text-align:center;border:2px solid #8a6d1f;max-width:92vw;
-            max-height:92dvh;overflow:auto;box-sizing:border-box;
-            box-shadow:0 8px 40px rgba(0,0,0,0.6);font-family:'Oswald',sans-serif;`;
-        overlay.innerHTML = `
-            <p style="color:#e0b23c;font-size:26px;font-weight:600;margin:0 0 18px">Zadej své jméno</p>
-            <input id="pname" maxlength="18" placeholder="Tvoje jméno"
-                style="font-family:'Oswald',sans-serif;font-size:22px;padding:8px 14px;width:220px;border-radius:8px;
-                border:1px solid #3a3242;background:#141118;color:#f2ede4;outline:none;">
-            <p id="pname-err" style="color:#d64545;font-size:16px;margin:8px 0 0;min-height:20px;"></p>
-            <button id="pname-ok" style="font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;padding:8px 28px;
-                background:#4a3a12;color:#e0b23c;border:1px solid #e0b23c;border-radius:8px;cursor:pointer;margin-top:8px;">OK</button>`;
-        document.body.appendChild(overlay);
-
-        const errEl = () => document.getElementById('pname-err');
-
-        const validateName = (val) => {
-            if (!val) return 'Jméno nesmí být prázdné.';
-            const taken = App.allTakenNames || [];
-            const inLobby = App.selectedLobby?.players || [];
-            if (taken.includes(val) || inLobby.includes(val)) return `Jméno "${val}" je již obsazeno.`;
-            return null;
-        };
-
-        const confirm = () => {
-            const val = document.getElementById('pname')?.value.trim();
-            if (!val) return;
-            const err = validateName(val);
-            if (err) { errEl().textContent = err; return; }
-            playerName = val;
-            overlay.remove();
-            _nameInputShown = false;
-            onConfirm(playerName);
-        };
-
-        document.getElementById('pname').oninput = () => {
-            const val = document.getElementById('pname')?.value.trim();
-            const err = validateName(val);
-            errEl().textContent = err || '';
-            socket.emit('get_taken_names');
-        };
-        document.getElementById('pname-ok').onclick = confirm;
-        document.getElementById('pname').onkeydown = (e) => {
-            e.stopPropagation();
-            if (e.key === 'Enter') confirm();
-        };
-        setTimeout(() => document.getElementById('pname')?.focus(), 50);
-    }
+    openNameModal({
+        onConfirm: (name) => { _nameInputShown = false; onConfirm(name); },
+        onCancel: () => { _nameInputShown = false; App.menuScreen = 'main'; renderUI(); },
+    });
 }
 
 function showCreativeMode(playerIdx) {

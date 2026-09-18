@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Oswald:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #2b2118; font-family: 'Oswald', 'Trebuchet MS', sans-serif; }
+  a { color: #c9a24b; text-decoration: none; }
+  a:hover { color: #e0c579; text-decoration: underline; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: rgba(0,0,0,.18); }
+  ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.38); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8a6a2a; }
+  @keyframes rot { 0%,45% { transform: rotate(0deg) } 65%,100% { transform: rotate(-90deg) } }
+  @keyframes pulse { 0%,100% { opacity: .25; transform: translateY(0) } 50% { opacity: 1; transform: translateY(-3px) } }
+  input { font-family: 'Oswald', sans-serif; }
+</style>
+</helmet>
+
+<div style="{{ themeVars }}; min-height:100vh; display:flex; flex-direction:column;">
+
+  <!-- ==== náhledová lišta (jen pro návrh, není součástí hry) ==== -->
+  <div style="flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 14px; background:#1d1710; border-bottom:1px solid #3a2a1c;">
+    <span style="font-size:11px; letter-spacing:.18em; color:#8a7355; text-transform:uppercase; margin-right:6px;">Náhled</span>
+    <sc-for list="{{ navItems }}" as="nav" hint-placeholder-count="9">
+      <button onClick="{{ nav.go }}" style="font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:.06em; padding:6px 11px; border-radius:8px; cursor:pointer; border:1px solid #4a3620; background:#241a12; color:#a8926a;" style-hover="border-color:#c9a24b; color:#ece3d0;">{{ nav.label }}</button>
+    </sc-for>
+    <span style="flex:1"></span>
+    <button onClick="{{ toggleBanner }}" style="font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:.06em; padding:6px 11px; border-radius:8px; cursor:pointer; border:1px solid #4a3620; background:#241a12; color:#a8926a;" style-hover="border-color:#c9a24b; color:#ece3d0;">G1 banner</button>
+    <button onClick="{{ toggleConn }}" style="font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:.06em; padding:6px 11px; border-radius:8px; cursor:pointer; border:1px solid #4a3620; background:#241a12; color:#a8926a;" style-hover="border-color:#c9a24b; color:#ece3d0;">G2 odpojení</button>
+    <button onClick="{{ toggleToast }}" style="font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:.06em; padding:6px 11px; border-radius:8px; cursor:pointer; border:1px solid #4a3620; background:#241a12; color:#a8926a;" style-hover="border-color:#c9a24b; color:#ece3d0;">G3 chyba</button>
+    <button onClick="{{ toggleTheme }}" style="font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:.06em; padding:6px 11px; border-radius:8px; cursor:pointer; border:1px solid #8a6a2a; background:#2e2114; color:#c9a24b;">{{ themeLabel }}</button>
+    <button onClick="{{ toggleViewport }}" style="font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:.06em; padding:6px 11px; border-radius:8px; cursor:pointer; border:1px solid #8a6a2a; background:#2e2114; color:#c9a24b;">{{ viewportLabel }}</button>
+  </div>
+
+  <!-- ==== dřevěný stůl ==== -->
+  <div style="flex:1; min-height:0; display:flex; justify-content:center; align-items:flex-start; padding:clamp(16px,3vw,44px); background-color:var(--wood, #4a2f1c); background-image:radial-gradient(ellipse 85% 70% at 50% 30%, rgba(255,255,255,.05), rgba(0,0,0,.34) 100%), repeating-linear-gradient(88deg, rgba(255,255,255,.03) 0 3px, rgba(0,0,0,.06) 3px 7px, transparent 7px 24px), linear-gradient(180deg, var(--woodA, #5a3a22), var(--woodB, #3a2416));">
+
+    <div style="width:100%; max-width:{{ stageWidth }}; height:{{ stageHeight }}; position:relative; display:flex; flex-direction:column; overflow:hidden; border:3px solid var(--frame, #6b4a2b); border-radius:14px; background:linear-gradient(var(--bg, #1e1610), var(--bg2, #241a12)); box-shadow:0 18px 44px rgba(0,0,0,.5), inset 0 0 0 1px var(--inset, rgba(201,162,75,.25));">
+
+      <div style="position:absolute; top:12px; right:12px; z-index:40;">
+        <div style="padding:7px 13px; border-radius:10px; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--muted, #a8926a); font-size:13px; letter-spacing:.06em; cursor:pointer;" style-hover="border-color:var(--gold, #c9a24b); color:var(--text, #ece3d0);">⛶ Fullscreen</div>
+      </div>
+
+      <!-- ======================= S3 HLAVNÍ MENU ======================= -->
+      <sc-if value="{{ isMain }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="S3 Hlavní menu" style="flex:1; min-height:0; overflow-y:auto; display:block;">
+          <div style="min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(10px,2.4vh,30px); padding:clamp(14px,3vh,44px) 20px;">
+
+            <div style="text-align:center;">
+              <div style="font-family:'Rye',serif; font-size:clamp(34px,6vw,76px); line-height:.95; color:var(--gold, #c9a24b); text-shadow:0 2px 0 var(--logoShadow, #3a2a1c);">BANG!</div>
+              <div style="font-family:'EB Garamond',serif; font-style:italic; font-size:clamp(13px,1.4vw,18px); color:var(--muted, #a8926a); margin-top:4px;">Poslední, kdo stojí, bere vše.</div>
+            </div>
+
+            <div style="width:100%; max-width:780px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap:10px;">
+              <button onClick="{{ goJoinList }}" style="display:flex; align-items:center; gap:14px; text-align:left; padding:clamp(11px,2vh,17px) 17px; border-radius:10px; cursor:pointer; font-family:'Oswald',sans-serif; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0); box-shadow:0 3px 10px rgba(0,0,0,.18);" style-hover="border-color:var(--gold, #c9a24b); background:var(--panelHi, #2b1f14);">
+                <span style="flex:none; width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--slotA, #23301f); border:1px solid var(--line2, #4a3620);">🎮</span>
+                <span style="min-width:0;">
+                  <span style="display:block; font-size:20px; font-weight:600; letter-spacing:.03em;">Připojit se ke hře</span>
+                  <span style="display:block; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">{{ waitingLabel }}</span>
+                </span>
+              </button>
+              <button onClick="{{ goCreate }}" style="display:flex; align-items:center; gap:14px; text-align:left; padding:clamp(11px,2vh,17px) 17px; border-radius:10px; cursor:pointer; font-family:'Oswald',sans-serif; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0); box-shadow:0 3px 10px rgba(0,0,0,.18);" style-hover="border-color:var(--gold, #c9a24b); background:var(--panelHi, #2b1f14);">
+                <span style="flex:none; width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--slotB, #33261a); border:1px solid var(--line2, #4a3620);">✚</span>
+                <span style="min-width:0;">
+                  <span style="display:block; font-size:20px; font-weight:600; letter-spacing:.03em;">Vytvořit novou hru</span>
+                  <span style="display:block; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">3 až 8 hráčů, 5 rozšíření</span>
+                </span>
+              </button>
+              <button onClick="{{ goSpectate }}" style="display:flex; align-items:center; gap:14px; text-align:left; padding:clamp(11px,2vh,17px) 17px; border-radius:10px; cursor:pointer; font-family:'Oswald',sans-serif; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0); box-shadow:0 3px 10px rgba(0,0,0,.18);" style-hover="border-color:var(--gold, #c9a24b); background:var(--panelHi, #2b1f14);">
+                <span style="flex:none; width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--slotC, #1c2334); border:1px solid var(--line2, #4a3620);">👁</span>
+                <span style="min-width:0;">
+                  <span style="display:block; font-size:20px; font-weight:600; letter-spacing:.03em;">Sledovat probíhající hru</span>
+                  <span style="display:block; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">{{ runningLabel }}</span>
+                </span>
+              </button>
+              <button onClick="{{ goBots }}" style="display:flex; align-items:center; gap:14px; text-align:left; padding:clamp(11px,2vh,17px) 17px; border-radius:10px; cursor:pointer; font-family:'Oswald',sans-serif; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0); box-shadow:0 3px 10px rgba(0,0,0,.18);" style-hover="border-color:var(--gold, #c9a24b); background:var(--panelHi, #2b1f14);">
+                <span style="flex:none; width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--slotD, #2c1c34); border:1px solid var(--line2, #4a3620);">🤖</span>
+                <span style="min-width:0;">
+                  <span style="display:block; font-size:20px; font-weight:600; letter-spacing:.03em;">Sledovat hru botů</span>
+                  <span style="display:block; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">Hra bez lidí, rozjede se hned</span>
+                </span>
+              </button>
+            </div>
+
+            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px;">
+              <button onClick="{{ openName }}" style="display:flex; align-items:center; gap:9px; padding:8px 14px; border-radius:9px; cursor:pointer; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0); font-family:'Oswald',sans-serif; font-size:15px;" style-hover="border-color:var(--gold, #c9a24b);">
+                <span style="width:26px; height:26px; flex:none; border-radius:50%; background:linear-gradient(135deg, var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410); font-family:'Rye',serif; font-size:11px; display:flex; align-items:center; justify-content:center;">{{ initials }}</span>
+                <span>{{ nameChipLabel }}</span>
+                <span style="color:var(--muted, #a8926a); font-size:13px;">✎</span>
+              </button>
+              <button onClick="{{ toggleUiMode }}" style="padding:8px 14px; border-radius:9px; cursor:pointer; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--muted, #a8926a); font-family:'Oswald',sans-serif; font-size:15px;" style-hover="border-color:var(--gold, #c9a24b); color:var(--text, #ece3d0);">{{ uiModeLabel }}</button>
+              <button onClick="{{ toggleTheme }}" style="padding:8px 14px; border-radius:9px; cursor:pointer; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--muted, #a8926a); font-family:'Oswald',sans-serif; font-size:15px;" style-hover="border-color:var(--gold, #c9a24b); color:var(--text, #ece3d0);">{{ themeChip }}</button>
+              <button onClick="{{ goDebug }}" style="padding:8px 14px; border-radius:9px; cursor:pointer; border:1px solid var(--line, #3a2a1c); background:transparent; color:var(--muted, #a8926a); font-family:'Oswald',sans-serif; font-size:15px; opacity:.7;" style-hover="border-color:var(--gold, #c9a24b);">⚙ Debug</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= HORNÍ LIŠTA ======================= -->
+      <sc-if value="{{ showTopBar }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none; display:flex; align-items:center; gap:14px; padding:13px 150px 13px 16px; border-bottom:1px solid var(--line, #3a2a1c); background:var(--headerBg, rgba(0,0,0,.28));">
+          <button onClick="{{ back }}" style="flex:none; padding:9px 15px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:15px; letter-spacing:.04em; border:1px solid {{ backBorder }}; background:{{ backBg }}; color:{{ backColor }};" style-hover="border-color:var(--gold, #c9a24b);">{{ backLabel }}</button>
+          <div style="min-width:0; flex:1;">
+            <div style="font-size:clamp(18px,2.2vw,26px); font-weight:600; letter-spacing:.03em; color:var(--gold, #c9a24b); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ screenTitle }}</div>
+            <div style="font-family:'EB Garamond',serif; font-size:14px; color:var(--muted, #a8926a); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ screenSub }}</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S5 VYTVOŘIT HRU ======================= -->
+      <sc-if value="{{ isCreate }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S5 Vytvořit hru" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:16px; display:block;">
+            <div style="width:100%; max-width:880px; margin:0 auto; display:flex; flex-direction:column; gap:15px;">
+
+              <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">
+                <label style="flex:1 1 260px; min-width:0;">
+                  <span style="display:block; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a); margin-bottom:6px;">Název hry</span>
+                  <input value="{{ roomTitle }}" onChange="{{ setRoomTitle }}" style="width:100%; padding:12px 14px; font-size:17px; border-radius:9px; border:1px solid var(--line2, #4a3620); background:var(--inputBg, #140e09); color:var(--text, #ece3d0);">
+                </label>
+                <div style="flex:0 0 auto; padding:12px 14px; border-radius:9px; border:1px dashed var(--line2, #4a3620); color:var(--muted, #a8926a); font-size:15px;">Hráč: <span style="color:var(--text, #ece3d0);">{{ playerName }}</span></div>
+              </div>
+
+              <div>
+                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:7px;">
+                  <span style="font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a);">Počet hráčů</span>
+                  <span style="font-size:13px; color:var(--bad, #c0392b);">{{ countHint }}</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:7px;">
+                  <sc-for list="{{ counts }}" as="c" hint-placeholder-count="6">
+                    <button onClick="{{ c.pick }}" style="padding:13px 0; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:22px; font-weight:600; border:2px solid {{ c.border }}; background:{{ c.bg }}; color:{{ c.color }};" style-hover="border-color:var(--gold, #c9a24b);">{{ c.n }}</button>
+                  </sc-for>
+                </div>
+                <div style="margin-top:7px; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a); line-height:1.45; text-wrap:pretty;">{{ countNote }}</div>
+              </div>
+
+              <div>
+                <div style="font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a); margin-bottom:7px;">Rozšíření <span style="font-family:'EB Garamond',serif; letter-spacing:0; text-transform:none; font-size:15px; opacity:.8;">— libovolná kombinace</span></div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 265px), 1fr)); gap:7px;">
+                  <sc-for list="{{ expansions }}" as="e" hint-placeholder-count="5">
+                    <button onClick="{{ e.toggle }}" style="display:flex; align-items:flex-start; gap:11px; text-align:left; padding:12px 13px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; border:2px solid {{ e.border }}; background:{{ e.bg }};" style-hover="border-color:var(--gold, #c9a24b);">
+                      <span style="flex:none; width:22px; height:22px; margin-top:2px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:13px; border:2px solid {{ e.boxBorder }}; background:{{ e.boxBg }}; color:{{ e.markColor }};">{{ e.mark }}</span>
+                      <span style="min-width:0;">
+                        <span style="display:block; font-size:17px; font-weight:600; letter-spacing:.02em; color:{{ e.titleColor }};">{{ e.label }}</span>
+                        <span style="display:block; font-family:'EB Garamond',serif; font-size:14px; line-height:1.35; color:var(--muted, #a8926a); text-wrap:pretty;">{{ e.hint }}</span>
+                      </span>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="border:1px solid var(--line, #3a2a1c); border-radius:9px; overflow:hidden; flex:none;">
+                <button onClick="{{ toggleAdv }}" style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:13px 15px; cursor:pointer; border:none; background:var(--panel, #241a12); color:var(--text, #ece3d0); font-family:'Oswald',sans-serif; font-size:16px; letter-spacing:.04em; text-align:left;">
+                  <span>Pokročilé možnosti <span style="font-family:'EB Garamond',serif; color:var(--muted, #a8926a); font-size:15px;">{{ advSummary }}</span></span>
+                  <span style="color:var(--gold, #c9a24b);">{{ advCaret }}</span>
+                </button>
+                <sc-if value="{{ advOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:2px; padding:6px; background:var(--bg, #1e1610);">
+                    <sc-for list="{{ advanced }}" as="a" hint-placeholder-count="3">
+                      <button onClick="{{ a.toggle }}" style="display:flex; align-items:center; gap:11px; text-align:left; padding:10px 12px; border-radius:8px; cursor:pointer; font-family:'Oswald',sans-serif; border:none; background:transparent; color:var(--text, #ece3d0);" style-hover="background:var(--panel, #241a12);">
+                        <span style="flex:none; width:20px; height:20px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:12px; border:2px solid {{ a.boxBorder }}; background:{{ a.boxBg }}; color:{{ a.markColor }};">{{ a.mark }}</span>
+                        <span style="min-width:0;">
+                          <span style="display:block; font-size:16px; font-weight:500;">{{ a.label }}</span>
+                          <span style="display:block; font-family:'EB Garamond',serif; font-size:14px; color:var(--muted, #a8926a); line-height:1.35; text-wrap:pretty;">{{ a.hint }}</span>
+                        </span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:13px 16px; border-top:1px solid var(--line, #3a2a1c); background:var(--headerBg, rgba(0,0,0,.28));">
+            <div style="flex:1; min-width:0; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">{{ createSummary }}</div>
+            <button onClick="{{ create }}" style="flex:none; padding:13px 26px; border-radius:9px; cursor:{{ createCursor }}; font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; letter-spacing:.06em; border:none; background:{{ createBg }}; color:{{ createColor }}; box-shadow:0 4px 14px rgba(0,0,0,.2);">VYTVOŘIT HRU</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S6 / S10 SEZNAMY ======================= -->
+      <sc-if value="{{ isList }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S6 Seznam her" style="flex:1; min-height:0; overflow-y:auto; padding:16px; display:block;">
+          <div style="width:100%; max-width:880px; margin:0 auto;">
+            <sc-if value="{{ listEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:9vh; text-align:center; color:var(--muted, #a8926a);">
+                <div style="font-family:'Rye',serif; font-size:34px; opacity:.45;">Prázdno</div>
+                <div style="font-family:'EB Garamond',serif; font-size:18px; margin-top:8px;">{{ emptyText }}</div>
+                <button onClick="{{ goCreate }}" style="margin-top:16px; padding:12px 22px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; border:none; background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">Vytvořit vlastní hru</button>
+              </div>
+            </sc-if>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="5">
+                <button onClick="{{ r.open }}" style="display:flex; flex-wrap:wrap; align-items:center; gap:12px; text-align:left; padding:13px 15px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; border:1px solid var(--line, #3a2a1c); border-left:4px solid {{ r.accent }}; background:var(--panel, #241a12); color:var(--text, #ece3d0); box-shadow:0 2px 6px rgba(0,0,0,.14);" style-hover="border-color:var(--gold, #c9a24b); background:var(--panelHi, #2b1f14);">
+                  <span style="flex:1 1 190px; min-width:0;">
+                    <span style="display:block; font-size:19px; font-weight:600; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
+                    <span style="display:block; font-family:'EB Garamond',serif; font-size:14px; color:var(--muted, #a8926a); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.who }}</span>
+                  </span>
+                  <span style="flex:none; display:flex; align-items:center; gap:9px;">
+                    <span style="display:flex; gap:3px;">
+                      <sc-for list="{{ r.seats }}" as="s" hint-placeholder-count="6">
+                        <span style="width:9px; height:9px; border-radius:50%; background:{{ s.fill }};"></span>
+                      </sc-for>
+                    </span>
+                    <span style="font-size:16px; min-width:54px;">{{ r.count }}</span>
+                  </span>
+                  <span style="flex:none; font-size:13px; letter-spacing:.08em; min-width:86px; color:{{ r.stateColor }};">{{ r.stateText }}</span>
+                  <span style="flex:none; padding:9px 18px; border-radius:7px; font-size:15px; font-weight:600; letter-spacing:.04em; border:1px solid {{ r.ctaBorder }}; background:{{ r.ctaBg }}; color:{{ r.ctaColor }};">{{ r.cta }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S7 / S8 / S9 ======================= -->
+      <sc-if value="{{ isRoom }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S8 Lobby místnosti" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:16px; display:block;">
+            <div style="width:100%; max-width:880px; margin:0 auto; display:flex; flex-direction:column; gap:13px;">
+
+              <sc-if value="{{ roomNotice }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:9px; border:1px solid var(--line2, #4a3620); background:var(--noticeBg, rgba(201,162,75,.08)); color:var(--text, #ece3d0); font-family:'EB Garamond',serif; font-size:16px; line-height:1.4;">
+                  <span style="font-size:17px;">⏳</span><span>{{ roomNotice }}</span>
+                </div>
+              </sc-if>
+
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <sc-for list="{{ seats }}" as="p" hint-placeholder-count="6">
+                  <div style="display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:9px; border:1px solid {{ p.border }}; background:{{ p.bg }};">
+                    <span style="flex:none; width:28px; text-align:center; font-size:15px; color:var(--muted, #a8926a); opacity:.7;">{{ p.idx }}</span>
+                    <span style="flex:none; font-size:18px; width:24px; text-align:center;">{{ p.icon }}</span>
+                    <span style="flex:1; min-width:0; font-size:18px; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:{{ p.color }};">{{ p.name }}</span>
+                    <span style="flex:none; font-family:'EB Garamond',serif; font-size:14px; color:var(--muted, #a8926a);">{{ p.tag }}</span>
+                    <sc-if value="{{ p.action }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ p.onAction }}" style="flex:none; padding:7px 13px; border-radius:7px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:14px; border:1px solid var(--line2, #4a3620); background:transparent; color:var(--muted, #a8926a);" style-hover="border-color:var(--bad, #c0392b); color:var(--text, #ece3d0);">{{ p.action }}</button>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:13px 16px; border-top:1px solid var(--line, #3a2a1c); background:var(--headerBg, rgba(0,0,0,.28));">
+            <sc-if value="{{ isJoinRoom }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ joinRoom }}" style="flex:1 1 240px; padding:14px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; letter-spacing:.05em; border:none; background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">{{ joinLabel }}</button>
+            </sc-if>
+            <sc-if value="{{ leaderControls }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ start }}" style="flex:1 1 240px; padding:14px; border-radius:9px; cursor:{{ startCursor }}; font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; letter-spacing:.05em; border:none; background:{{ startBg }}; color:{{ startColor }};">{{ startLabel }}</button>
+            </sc-if>
+            <sc-if value="{{ leaderControls }}" hint-placeholder-val="{{ false }}">
+              <button style="flex:0 1 170px; padding:14px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; letter-spacing:.05em; border:1px solid var(--badLine, #7a2424); background:transparent; color:var(--bad, #c0392b);" style-hover="background:var(--badBg, rgba(192,57,43,.12));">✕ ZRUŠIT HRU</button>
+            </sc-if>
+            <sc-if value="{{ waitLeader }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1; padding:14px; text-align:center; border-radius:9px; border:1px dashed var(--line2, #4a3620); color:var(--muted, #a8926a); font-family:'EB Garamond',serif; font-size:17px;">{{ waitLeaderText }}</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S12 KONEC HRY ======================= -->
+      <sc-if value="{{ isWinner }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S12 Konec hry" style="flex:1; min-height:0; overflow-y:auto; display:block;">
+          <div style="min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px 20px;">
+            <div style="width:100%; max-width:720px; text-align:center;">
+              <div style="font-size:12px; letter-spacing:.34em; text-transform:uppercase; color:var(--muted, #a8926a);">Konec hry</div>
+              <div style="font-family:'Rye',serif; margin-top:10px; font-size:clamp(30px,5.4vw,60px); line-height:1.05; color:var(--gold, #c9a24b); text-shadow:0 2px 0 var(--logoShadow, #3a2a1c);">Zákon vyhrál!</div>
+              <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:9px; justify-content:center;">
+                <button onClick="{{ openStats }}" style="padding:13px 22px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; letter-spacing:.05em; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--gold, #c9a24b);" style-hover="border-color:var(--gold, #c9a24b);">📊 Statistiky</button>
+                <button onClick="{{ joinNextGame }}" style="padding:13px 22px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; letter-spacing:.05em; border:none; background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">▶ Chci další hru</button>
+                <button onClick="{{ goMain }}" style="padding:13px 22px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:17px; letter-spacing:.05em; border:1px solid var(--line, #3a2a1c); background:transparent; color:var(--muted, #a8926a);" style-hover="color:var(--text, #ece3d0);">✕ Do menu</button>
+              </div>
+              <div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:7px; justify-content:center;">
+                <sc-for list="{{ nextTokens }}" as="v" hint-placeholder-count="5">
+                  <span style="display:flex; align-items:center; gap:7px; padding:6px 12px 6px 7px; border-radius:20px; border:1px solid {{ v.border }}; background:{{ v.bg }};">
+                    <span style="width:24px; height:24px; flex:none; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Rye',serif; font-size:10px; background:{{ v.avatarBg }}; color:{{ v.avatarColor }};">{{ v.initials }}</span>
+                    <span style="font-size:15px; letter-spacing:.02em; color:{{ v.nameColor }};">{{ v.name }}</span>
+                    <span style="font-size:13px; color:{{ v.stateColor }};">{{ v.state }}</span>
+                  </span>
+                </sc-for>
+              </div>
+              <div style="margin-top:10px; font-family:'EB Garamond',serif; font-size:16px; color:var(--muted, #a8926a);">{{ nextCountLabel }}</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S13 HLASOVÁNÍ ======================= -->
+      <sc-if value="{{ isVote }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S13 Hlasování" style="flex:1; min-height:0; overflow-y:auto; padding:20px 16px; display:block;">
+          <div style="width:100%; max-width:620px; margin:0 auto; display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px;">
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:clamp(20px,2.8vw,30px); font-weight:600; letter-spacing:.02em; color:var(--gold, #c9a24b);">{{ tallyHeadline }}</div>
+                <div style="margin-top:3px; font-family:'EB Garamond',serif; font-size:16px; color:var(--muted, #a8926a);">{{ tallySub }}</div>
+              </div>
+              <div style="flex:none; display:flex; align-items:baseline; gap:4px;">
+                <span style="font-family:'Rye',serif; font-size:clamp(30px,4.6vw,46px); line-height:1; color:var(--gold, #c9a24b);">{{ tallyIn }}</span>
+                <span style="font-size:20px; color:var(--muted, #a8926a);">/ {{ tallyTotal }}</span>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:4px; height:12px;">
+              <sc-for list="{{ tallyBar }}" as="b" hint-placeholder-count="5">
+                <span style="flex:1; border-radius:3px; background:{{ b.fill }}; border:1px solid {{ b.line }};"></span>
+              </sc-for>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <sc-for list="{{ voters }}" as="v" hint-placeholder-count="5">
+                <div style="display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:9px; border:1px solid {{ v.border }}; background:{{ v.bg }}; border-left:4px solid {{ v.accent }};">
+                  <span style="flex:none; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Rye',serif; font-size:11px; background:{{ v.avatarBg }}; color:{{ v.avatarColor }};">{{ v.initials }}</span>
+                  <span style="flex:1; min-width:0; font-size:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text, #ece3d0);">{{ v.name }}</span>
+                  <span style="flex:none; font-family:'EB Garamond',serif; font-size:14px; color:var(--muted, #a8926a);">{{ v.tag }}</span>
+                  <span style="flex:none; padding:4px 11px; border-radius:14px; font-size:13px; letter-spacing:.06em; border:1px solid {{ v.chipLine }}; background:{{ v.chipBg }}; color:{{ v.chipColor }};">{{ v.chip }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ meConfirmed }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:13px 15px; border-radius:9px; border:1px solid var(--ok, #5aa04a); background:var(--okBg, rgba(90,160,74,.12));">
+                <span style="flex:1; min-width:0; font-size:17px; letter-spacing:.02em; color:var(--text, #ece3d0);">✅ Jsi v další hře. {{ waitingRest }}</span>
+                <button onClick="{{ leaveNext }}" style="flex:none; padding:8px 14px; border-radius:7px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:15px; border:1px solid var(--line2, #4a3620); background:transparent; color:var(--muted, #a8926a);" style-hover="border-color:var(--bad, #e06a5a); color:var(--bad, #e06a5a);">Odhlásit se</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ meUndecided }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ confirmNext }}" style="padding:14px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; letter-spacing:.05em; border:none; background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">✅ CHCI HRÁT DÁL</button>
+            </sc-if>
+
+            <sc-if value="{{ nextLeaderControls }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ startNext }}" style="padding:14px; border-radius:9px; cursor:{{ nextStartCursor }}; font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; letter-spacing:.05em; border:1px solid {{ nextStartLine }}; background:{{ nextStartBg }}; color:{{ nextStartColor }};">{{ nextStartLabel }}</button>
+            </sc-if>
+
+            <button onClick="{{ goMain }}" style="padding:11px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:16px; border:1px solid var(--line, #3a2a1c); background:transparent; color:var(--muted, #a8926a);" style-hover="color:var(--text, #ece3d0);">Opustit hru</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S11 HRA BOTŮ ======================= -->
+      <sc-if value="{{ isBotGame }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S11 Hra botů" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:16px; display:block;">
+            <div style="width:100%; max-width:880px; margin:0 auto; display:flex; flex-direction:column; gap:15px;">
+
+              <div style="font-family:'EB Garamond',serif; font-size:17px; line-height:1.45; color:var(--muted, #a8926a); text-wrap:pretty;">Spustí hru složenou jen z počítačových hráčů, kterou budeš sledovat. Jméno se nevyžaduje a hra se rozjede hned, bez rozdávání rolí.</div>
+
+              <div>
+                <div style="font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a); margin-bottom:7px;">Počet botů</div>
+                <div style="display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:7px;">
+                  <sc-for list="{{ botCounts }}" as="c" hint-placeholder-count="6">
+                    <button onClick="{{ c.pick }}" style="padding:13px 0; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:22px; font-weight:600; border:2px solid {{ c.border }}; background:{{ c.bg }}; color:{{ c.color }};" style-hover="border-color:var(--gold, #c9a24b);">{{ c.n }}</button>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div>
+                <div style="font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a); margin-bottom:7px;">Rozšíření</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 265px), 1fr)); gap:7px;">
+                  <sc-for list="{{ expansions }}" as="e" hint-placeholder-count="5">
+                    <button onClick="{{ e.toggle }}" style="display:flex; align-items:flex-start; gap:11px; text-align:left; padding:12px 13px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; border:2px solid {{ e.border }}; background:{{ e.bg }};" style-hover="border-color:var(--gold, #c9a24b);">
+                      <span style="flex:none; width:22px; height:22px; margin-top:2px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:13px; border:2px solid {{ e.boxBorder }}; background:{{ e.boxBg }}; color:{{ e.markColor }};">{{ e.mark }}</span>
+                      <span style="min-width:0;">
+                        <span style="display:block; font-size:17px; font-weight:600; letter-spacing:.02em; color:{{ e.titleColor }};">{{ e.label }}</span>
+                        <span style="display:block; font-family:'EB Garamond',serif; font-size:14px; line-height:1.35; color:var(--muted, #a8926a); text-wrap:pretty;">{{ e.hint }}</span>
+                      </span>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+
+              <sc-if value="{{ showHighNoonExtra }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ toggleHighNoonExtra }}" style="display:flex; align-items:center; gap:11px; text-align:left; padding:12px 13px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0);" style-hover="border-color:var(--gold, #c9a24b);">
+                  <span style="flex:none; width:20px; height:20px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:12px; border:2px solid {{ hnBoxBorder }}; background:{{ hnBoxBg }}; color:var(--onGold, #1c1410);">{{ hnMark }}</span>
+                  <span>Přibalené karty <span style="font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">— Nová identita a Želízka z Fistfulu</span></span>
+                </button>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:13px 16px; border-top:1px solid var(--line, #3a2a1c); background:var(--headerBg, rgba(0,0,0,.28));">
+            <div style="flex:1; min-width:0; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">{{ botSummary }}</div>
+            <button onClick="{{ goMain }}" style="flex:none; padding:13px 26px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; letter-spacing:.06em; border:none; background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">▶ SPUSTIT A SLEDOVAT</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S15 VYHOZEN ======================= -->
+      <sc-if value="{{ isKicked }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S15 Vyhozen" style="flex:1; min-height:0; overflow-y:auto; display:block;">
+          <div style="min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; padding:24px 20px;">
+            <div style="text-align:center;">
+              <div style="font-family:'Rye',serif; font-size:clamp(30px,5vw,54px); line-height:.95; color:var(--gold, #c9a24b); text-shadow:0 2px 0 var(--logoShadow, #3a2a1c);">BANG!</div>
+            </div>
+            <div style="width:100%; max-width:520px; padding:20px 22px; border-radius:12px; border:1px solid var(--badLine, #7a2424); background:var(--badBg, rgba(224,106,90,.12)); text-align:center;">
+              <div style="font-size:20px; font-weight:600; letter-spacing:.03em; color:var(--bad, #e06a5a);">Game Leader ukončil hru.</div>
+              <div style="margin-top:6px; font-family:'EB Garamond',serif; font-size:16px; color:var(--muted, #a8926a);">Stůl se rozpustil. Můžeš se přidat k jiné hře nebo založit vlastní.</div>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:9px; justify-content:center;">
+              <button onClick="{{ goMain }}" style="padding:13px 22px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; letter-spacing:.05em; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0);" style-hover="border-color:var(--gold, #c9a24b);">◀ Zpět do menu</button>
+              <button onClick="{{ goJoinList }}" style="padding:13px 22px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; letter-spacing:.05em; border:none; background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">Najít jinou hru</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S2 VOLBA ROZLOŽENÍ ======================= -->
+      <sc-if value="{{ isUiChoice }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S2 Volba rozložení" style="flex:1; min-height:0; overflow-y:auto; display:block;">
+          <div style="min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(12px,2.4vh,26px); padding:clamp(14px,3vh,40px) 20px;">
+            <div style="text-align:center;">
+              <div style="font-family:'Rye',serif; font-size:clamp(26px,4.4vw,44px); color:var(--gold, #c9a24b); text-shadow:0 2px 0 var(--logoShadow, #3a2a1c);">Jaké rozložení?</div>
+              <div style="margin-top:5px; font-family:'EB Garamond',serif; font-size:16px; color:var(--muted, #a8926a); text-wrap:pretty;">Vyber, jak se má kreslit herní stůl. Změnit to jde kdykoli v menu.</div>
+            </div>
+            <div style="width:100%; max-width:740px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap:10px;">
+              <button onClick="{{ pickMobileLayout }}" style="text-align:left; padding:18px; border-radius:10px; cursor:pointer; font-family:'Oswald',sans-serif; border:2px solid {{ layoutMobileBorder }}; background:{{ layoutMobileBg }}; color:var(--text, #ece3d0);" style-hover="border-color:var(--gold, #c9a24b);">
+                <span style="display:block; font-size:30px;">📱</span>
+                <span style="display:block; margin-top:6px; font-size:20px; font-weight:600; letter-spacing:.03em;">Mobilní rozložení</span>
+                <span style="display:block; margin-top:4px; font-family:'EB Garamond',serif; font-size:15px; line-height:1.4; color:var(--muted, #a8926a); text-wrap:pretty;">Větší karty, soupeři v jedné řadě nahoře, ruka přes celou šířku. Pro telefon a tablet.</span>
+                <span style="display:block; margin-top:8px; font-size:13px; letter-spacing:.06em; color:var(--ok, #5aa04a);">{{ layoutMobileTag }}</span>
+              </button>
+              <button onClick="{{ pickDesktopLayout }}" style="text-align:left; padding:18px; border-radius:10px; cursor:pointer; font-family:'Oswald',sans-serif; border:2px solid {{ layoutDesktopBorder }}; background:{{ layoutDesktopBg }}; color:var(--text, #ece3d0);" style-hover="border-color:var(--gold, #c9a24b);">
+                <span style="display:block; font-size:30px;">🖥</span>
+                <span style="display:block; margin-top:6px; font-size:20px; font-weight:600; letter-spacing:.03em;">PC rozložení</span>
+                <span style="display:block; margin-top:4px; font-family:'EB Garamond',serif; font-size:15px; line-height:1.4; color:var(--muted, #a8926a); text-wrap:pretty;">Soupeři v kruhu kolem stolu, menší karty. Pro počítač a velké displeje.</span>
+                <span style="display:block; margin-top:8px; font-size:13px; letter-spacing:.06em; color:var(--ok, #5aa04a);">{{ layoutDesktopTag }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S0 NAČÍTÁNÍ ======================= -->
+      <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S0 Načítání" style="flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:24px;">
+          <div style="width:100%; max-width:460px; text-align:center;">
+            <div style="font-family:'Rye',serif; font-size:clamp(30px,5vw,54px); line-height:.95; color:var(--gold, #c9a24b); text-shadow:0 2px 0 var(--logoShadow, #3a2a1c);">BANG!</div>
+            <div style="margin-top:22px; height:10px; border-radius:6px; overflow:hidden; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12);">
+              <div style="height:100%; width:62%; background:linear-gradient(90deg, var(--gold, #c9a24b), var(--goldHi, #e0c579));"></div>
+            </div>
+            <div style="margin-top:10px; display:flex; justify-content:space-between; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">
+              <span>Načítám karty a postavy…</span><span style="font-family:'Oswald',sans-serif;">62 %</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S1 OTOČ TELEFON ======================= -->
+      <sc-if value="{{ isRotate }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S1 Otoč telefon" style="flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--scrim, rgba(12,8,5,.8));">
+          <div style="width:100%; max-width:420px; text-align:center;">
+            <div style="font-size:44px; animation:rot 2.4s ease-in-out infinite;">📱</div>
+            <div style="margin-top:10px; font-family:'Rye',serif; font-size:24px; color:var(--gold, #c9a24b);">Otoč telefon na šířku</div>
+            <div style="margin-top:6px; font-family:'EB Garamond',serif; font-size:16px; line-height:1.45; color:var(--muted, #a8926a); text-wrap:pretty;">Bang! se hraje na šířku — na výšku je všechno malé a karty se nevejdou.</div>
+            <button onClick="{{ goMain }}" style="margin-top:16px; padding:11px 20px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:16px; border:1px solid var(--line2, #4a3620); background:transparent; color:var(--muted, #a8926a);" style-hover="color:var(--text, #ece3d0); border-color:var(--gold, #c9a24b);">Hrát i tak</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= G1 BANNER NOVÉ VERZE ======================= -->
+      <sc-if value="{{ bannerOn }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; top:0; left:0; right:0; z-index:50; display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--goldHi, #e0c579); background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">
+          <span style="flex:1; min-width:0; font-size:16px; font-weight:500; letter-spacing:.02em;">Vyšla nová verze hry — načti stránku znovu.</span>
+          <button style="flex:none; padding:7px 15px; border-radius:7px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:15px; font-weight:600; border:1px solid rgba(0,0,0,.35); background:rgba(0,0,0,.14); color:var(--onGold, #1c1410);">Načíst znovu</button>
+          <button onClick="{{ hideBanner }}" style="flex:none; padding:7px 11px; border-radius:7px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:15px; border:none; background:transparent; color:var(--onGold, #1c1410); opacity:.7;">✕</button>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S16 DEBUG ======================= -->
+      <sc-if value="{{ isDebug }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S16 Debug" style="flex:1; min-height:0; overflow-y:auto; padding:16px; display:block;">
+          <div style="width:100%; max-width:880px; margin:0 auto; display:flex; flex-direction:column; gap:14px;">
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap:7px;">
+              <sc-for list="{{ debugStats }}" as="d" hint-placeholder-count="4">
+                <div style="padding:12px 14px; border-radius:9px; border:1px solid var(--line, #3a2a1c); background:var(--panel, #241a12);">
+                  <div style="font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a);">{{ d.label }}</div>
+                  <div style="margin-top:3px; font-size:22px; font-weight:600; letter-spacing:.02em; color:{{ d.color }};">{{ d.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div>
+              <div style="font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a); margin-bottom:7px;">Simulovat stav</div>
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap:7px;">
+                <sc-for list="{{ debugActions }}" as="a" hint-placeholder-count="6">
+                  <button onClick="{{ a.run }}" style="text-align:left; padding:11px 13px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:16px; border:1px solid var(--line2, #4a3620); background:var(--panel, #241a12); color:var(--text, #ece3d0);" style-hover="border-color:var(--gold, #c9a24b);">{{ a.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted, #a8926a); margin-bottom:7px;">Poslední zprávy ze serveru</div>
+              <div style="border:1px solid var(--line, #3a2a1c); border-radius:9px; overflow:hidden; background:var(--inputBg, #140e09);">
+                <sc-for list="{{ debugLog }}" as="l" hint-placeholder-count="6">
+                  <div style="display:flex; gap:12px; padding:8px 13px; border-bottom:1px solid var(--line, #3a2a1c); font-family:ui-monospace, monospace; font-size:13px;">
+                    <span style="flex:none; color:var(--dim, #7a6a55);">{{ l.time }}</span>
+                    <span style="flex:none; min-width:52px; color:{{ l.dirColor }};">{{ l.dir }}</span>
+                    <span style="flex:1; min-width:0; color:var(--text, #ece3d0); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ l.msg }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= G2 ODPOJENÍ ======================= -->
+      <sc-if value="{{ connOn }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; inset:0; z-index:70; display:flex; align-items:center; justify-content:center; padding:20px; background:var(--scrim, rgba(12,8,5,.8));">
+          <div style="width:100%; max-width:400px; padding:22px; border-radius:12px; text-align:center; border:1px solid var(--line2, #4a3620); background:linear-gradient(var(--panel, #241a12), var(--bg, #1e1610)); box-shadow:0 24px 60px rgba(0,0,0,.55);">
+            <div style="display:flex; justify-content:center; gap:5px;">
+              <span style="width:9px; height:9px; border-radius:50%; background:var(--gold, #c9a24b); animation:pulse 1.2s ease-in-out infinite;"></span>
+              <span style="width:9px; height:9px; border-radius:50%; background:var(--gold, #c9a24b); animation:pulse 1.2s ease-in-out .2s infinite;"></span>
+              <span style="width:9px; height:9px; border-radius:50%; background:var(--gold, #c9a24b); animation:pulse 1.2s ease-in-out .4s infinite;"></span>
+            </div>
+            <div style="margin-top:14px; font-family:'Rye',serif; font-size:19px; color:var(--gold, #c9a24b);">Ztraceno spojení</div>
+            <div style="margin-top:6px; font-family:'EB Garamond',serif; font-size:16px; line-height:1.45; color:var(--muted, #a8926a); text-wrap:pretty;">Zkouším se připojit znovu. Tvoje místo u stolu zůstává zabrané — nikam nespěchej.</div>
+            <div style="margin-top:12px; font-size:14px; letter-spacing:.06em; color:var(--dim, #7a6a55);">3. pokus · další za 4 s</div>
+            <button onClick="{{ hideConn }}" style="margin-top:14px; padding:10px 18px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:15px; border:1px solid var(--line2, #4a3620); background:transparent; color:var(--muted, #a8926a);" style-hover="border-color:var(--gold, #c9a24b); color:var(--text, #ece3d0);">Načíst stránku znovu</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= G3 CHYBOVÁ HLÁŠKA ======================= -->
+      <sc-if value="{{ toastOn }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; bottom:16px; left:50%; transform:translateX(-50%); z-index:65; width:calc(100% - 32px); max-width:440px; display:flex; align-items:flex-start; gap:11px; padding:13px 15px; border-radius:9px; border:1px solid var(--badLine, #7a2424); background:var(--toastBg, #2a1614); box-shadow:0 14px 34px rgba(0,0,0,.45);">
+          <span style="flex:none; font-size:17px; color:var(--bad, #e06a5a);">⚠</span>
+          <span style="flex:1; min-width:0;">
+            <span style="display:block; font-size:16px; font-weight:500; letter-spacing:.02em; color:var(--text, #ece3d0);">Do hry se nepodařilo připojit</span>
+            <span style="display:block; margin-top:2px; font-family:'EB Garamond',serif; font-size:15px; line-height:1.4; color:var(--muted, #a8926a); text-wrap:pretty;">Stůl se mezitím zaplnil. Vyber si ze seznamu jinou hru.</span>
+          </span>
+          <button onClick="{{ hideToast }}" style="flex:none; padding:3px 9px; border-radius:6px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:15px; border:none; background:transparent; color:var(--muted, #a8926a);" style-hover="color:var(--text, #ece3d0);">✕</button>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S4 OKNO SE JMÉNEM ======================= -->
+      <sc-if value="{{ nameOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; padding:18px; background:var(--scrim, rgba(12,8,5,.8)); overflow-y:auto;">
+          <div style="width:100%; max-width:420px; padding:22px; border-radius:12px; border:1px solid var(--line2, #4a3620); background:linear-gradient(var(--panel, #241a12), var(--bg, #1e1610)); box-shadow:0 24px 60px rgba(0,0,0,.55);">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+              <div style="font-family:'Rye',serif; font-size:20px; color:var(--gold, #c9a24b);">Tvoje jméno</div>
+              <button onClick="{{ closeName }}" style="padding:4px 10px; border-radius:7px; cursor:pointer; border:1px solid var(--line2, #4a3620); background:transparent; color:var(--muted, #a8926a); font-family:'Oswald',sans-serif;">✕</button>
+            </div>
+            <div style="margin-top:4px; font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">Vidí ho ostatní u stolu. Nejvýš 18 znaků.</div>
+            <input value="{{ nameDraft }}" onChange="{{ setNameDraft }}" placeholder="Tvoje jméno" style="width:100%; margin-top:13px; padding:13px 15px; font-size:19px; border-radius:9px; border:1px solid {{ nameBorder }}; background:var(--inputBg, #140e09); color:var(--text, #ece3d0);">
+            <div style="min-height:22px; margin-top:6px; font-size:14px; color:var(--bad, #c0392b);">{{ nameError }}</div>
+            <button onClick="{{ saveName }}" style="width:100%; padding:13px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; letter-spacing:.05em; border:none; background:linear-gradient(var(--goldHi, #e0c579), var(--gold, #c9a24b)); color:var(--onGold, #1c1410);">OK</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ======================= S14 STATISTIKY ======================= -->
+      <sc-if value="{{ statsOpen }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S14 Statistiky" style="position:absolute; inset:0; z-index:55; display:flex; flex-direction:column; background:linear-gradient(var(--bg, #1e1610), var(--bg2, #241a12));">
+          <div style="flex:none; display:flex; align-items:center; gap:12px; padding:13px 16px; border-bottom:1px solid var(--line, #3a2a1c); background:var(--headerBg, rgba(0,0,0,.28));">
+            <div style="flex:1; min-width:0;">
+              <div style="font-family:'Rye',serif; font-size:19px; color:var(--gold, #c9a24b);">Statistiky hry</div>
+              <div style="font-family:'EB Garamond',serif; font-size:14px; color:var(--muted, #a8926a);">Bang!×34 · Zásahy×21 (62 %) · Damage×19 · Líznuto×88 · Odhoz×61</div>
+            </div>
+            <button onClick="{{ closeStats }}" style="flex:none; padding:9px 15px; border-radius:9px; cursor:pointer; font-family:'Oswald',sans-serif; font-size:15px; border:1px solid var(--line2, #4a3620); background:transparent; color:var(--muted, #a8926a);" style-hover="color:var(--text, #ece3d0);">✕ Zavřít</button>
+          </div>
+          <div style="flex:1; min-height:0; overflow:auto; padding:16px;">
+            <div style="min-width:900px; display:flex; flex-direction:column; gap:16px;">
+              <sc-for list="{{ statGroups }}" as="g" hint-placeholder-count="3">
+                <div>
+                  <div style="display:flex; align-items:center; gap:9px; padding:0 4px 7px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:{{ g.color }};"></span>
+                    <span style="font-size:16px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:{{ g.color }};">{{ g.title }}</span>
+                    <span style="font-family:'EB Garamond',serif; font-size:15px; color:var(--muted, #a8926a);">{{ g.summary }}</span>
+                  </div>
+                  <div style="border:1px solid var(--line, #3a2a1c); border-radius:9px; overflow:hidden;">
+                    <div style="display:grid; grid-template-columns:1.4fr 1.2fr .7fr .9fr .7fr .7fr .7fr .7fr .7fr 1.6fr; gap:8px; padding:9px 14px; background:var(--panel, #241a12); font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted, #a8926a);">
+                      <span>Hráč</span><span>Postava</span><span>Bang!</span><span>Trefil</span><span>Udělil</span><span>Utrpěl</span><span>Líznul</span><span>Zahrál</span><span>Odhodil</span><span>Top karty</span>
+                    </div>
+                    <sc-for list="{{ g.rows }}" as="row" hint-placeholder-count="2">
+                      <div style="display:grid; grid-template-columns:1.4fr 1.2fr .7fr .9fr .7fr .7fr .7fr .7fr .7fr 1.6fr; gap:8px; padding:11px 14px; border-top:1px solid var(--line, #3a2a1c); font-size:15px; color:var(--text, #ece3d0); align-items:center;">
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ row.name }}</span>
+                        <span style="color:var(--muted, #a8926a); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ row.character }}</span>
+                        <span>{{ row.bangs }}</span><span>{{ row.hit }}</span><span>{{ row.dealt }}</span><span>{{ row.taken }}</span><span>{{ row.drawn }}</span><span>{{ row.played }}</span><span>{{ row.discarded }}</span>
+                        <span style="font-family:'EB Garamond',serif; color:var(--muted, #a8926a); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ row.top }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const EXPANSIONS = [
+  ['dodge_city', 'Dodge City', '+40 karet a +15 postav; karty se symbolem býka'],
+  ['high_noon', 'High Noon', '13 karet událostí; šerif odkrývá jednu na začátku kola'],
+  ['fistful', 'Fistful', '15 karet událostí a 3 postavy; hraje se i vedle High Noonu'],
+  ['divoky_zapad', 'Divoký západ', '10 karet událostí a 8 postav; otáčí je Dostavník a Wells Fargo'],
+  ['zlata_horecka', 'Zlatá horečka', 'Zlaté valouny za zranění a obchod s 24 kartami vybavení'],
+];
+const ADVANCED = [
+  ['noAdvancedCards', 'Zakázat pokročilé karty', 'Bez Duelu, Hokynářství, Indiánů, Vězení a Dynamitu'],
+  ['singleChar', 'Přiřadit postavu náhodně', 'Hráči si nevybírají ze dvou postav'],
+  ['rotatingSheriff', 'Rotující šerif', 'Šerif se po každé hře posouvá doleva'],
+  ['highNoonExtra', 'High Noon: přibalené karty', '+ Nová identita a Želízka z Fistfulu'],
+];
+const ROOMS = [
+  { id: 'r1', name: 'Hra hráče Calamity', playerCount: 5, maxPlayers: 8, leader: 'Calamity', next: false },
+  { id: 'r2', name: 'Rychlá partie', playerCount: 3, maxPlayers: 4, leader: 'El_Bandido', next: false },
+  { id: 'r3', name: 'Hra hráče Doc', playerCount: 7, maxPlayers: 7, leader: 'Doc', next: false },
+  { id: 'r4', name: 'Kdo přežije', playerCount: 2, maxPlayers: 6, leader: 'Ringo_99', next: true },
+  { id: 'r5', name: 'Město duchů', playerCount: 1, maxPlayers: 3, leader: 'Miss_Kitty', next: false },
+];
+const LOBBY_PLAYERS = ['Honza', 'Calamity', '🤖 Bot 1', 'Ringo_99'];
+const STATS = [
+  { title: 'Zákon', color: 'var(--roleSheriff, #c9a24b)', summary: 'Šerif + Pomocníci · 2 hráči · vyhráli', rows: [
+    { name: 'Honza', character: 'Bart Cassidy', bangs: 9, hit: '6 (67 %)', dealt: 7, taken: 4, drawn: 24, played: 21, discarded: 16, top: 'Bang!×9, Pivo×4, Kolt×2' },
+    { name: 'Calamity', character: 'Jourdonnais', bangs: 7, hit: '5 (71 %)', dealt: 5, taken: 3, drawn: 19, played: 17, discarded: 12, top: 'Bang!×7, Vedle!×5, Barel×1' },
+  ]},
+  { title: 'Bandité', color: 'var(--roleOutlaw, #c0392b)', summary: '2 hráči · prohráli', rows: [
+    { name: '🤖 Bot 1', character: 'Slab the Killer', bangs: 11, hit: '6 (55 %)', dealt: 5, taken: 6, drawn: 22, played: 20, discarded: 15, top: 'Bang!×11, Vedle!×3, Winchester×1' },
+    { name: 'Ringo_99', character: 'Black Jack', bangs: 5, hit: '3 (60 %)', dealt: 2, taken: 5, drawn: 16, played: 13, discarded: 11, top: 'Bang!×5, Dostavník×2' },
+  ]},
+  { title: 'Odpadlík', color: 'var(--roleRenegade, #8e44ad)', summary: '1 hráč · prohrál', rows: [
+    { name: 'Miss_Kitty', character: 'Suzy Lafayette', bangs: 2, hit: '1 (50 %)', dealt: 1, taken: 3, drawn: 9, played: 8, discarded: 7, top: 'Bang!×2, Pivo×2' },
+  ]},
+];
+
+const DARK = {
+  wood: '#4a2f1c', woodA: '#5a3a22', woodB: '#3a2416', frame: '#6b4a2b',
+  inset: 'rgba(201,162,75,.25)', bg: '#1e1610', bg2: '#241a12',
+  panel: '#241a12', panelHi: '#2b1f14', line: '#3a2a1c', line2: '#4a3620',
+  gold: '#c9a24b', goldHi: '#e0c579', onGold: '#1c1410',
+  text: '#ece3d0', muted: '#a8926a', logoShadow: '#3a2a1c',
+  ok: '#5aa04a', okBg: 'rgba(90,160,74,.12)', bad: '#e06a5a', badLine: '#7a2424', badBg: 'rgba(224,106,90,.12)',
+  inputBg: '#140e09', headerBg: 'rgba(0,0,0,.28)', noticeBg: 'rgba(201,162,75,.08)',
+  scrim: 'rgba(12,8,5,.8)', running: '#c98a4b', dim: '#7a6a55', toastBg: '#2a1614',
+  slotA: '#23301f', slotB: '#33261a', slotC: '#1c2334', slotD: '#2c1c34',
+  roleSheriff: '#e0c579', roleOutlaw: '#e0705c', roleRenegade: '#b07ad0',
+};
+const LIGHT = {
+  wood: '#c8a06a', woodA: '#d8b880', woodB: '#c39a62', frame: '#9c6b1e',
+  inset: 'rgba(255,255,255,.35)', bg: '#f3e7cf', bg2: '#efe0c2',
+  panel: '#fbf5e8', panelHi: '#fffaf0', line: '#ddc494', line2: '#cdae72',
+  gold: '#8a5d15', goldHi: '#b8862f', onGold: '#fff8e9',
+  text: '#3a2a18', muted: '#6f5327', logoShadow: 'rgba(255,255,255,.6)',
+  ok: '#2e7a35', okBg: 'rgba(46,122,53,.12)', bad: '#8a2318', badLine: '#c09a90', badBg: 'rgba(138,35,24,.08)',
+  inputBg: '#fffaf0', headerBg: 'rgba(255,255,255,.55)', noticeBg: 'rgba(156,107,30,.10)',
+  scrim: 'rgba(60,40,20,.6)', running: '#9c5b1e', dim: '#9a825a', toastBg: '#fdeee9',
+  slotA: '#e4ecdd', slotB: '#f0e3cd', slotC: '#dde3ef', slotD: '#e9dcef',
+  roleSheriff: '#8a5d15', roleOutlaw: '#9c2f22', roleRenegade: '#6b3a8e',
+};
+
+class Component extends DCLogic {
+  state = {
+    screen: 'main', theme: 'dark', viewport: 'desktop', uiMode: 'normal',
+    name: 'Honza', nameOpen: false, nameDraft: 'Honza', nameError: '',
+    statsOpen: false, roomTitle: 'Hra hráče Honza', maxPlayers: null,
+    exp: {}, adv: {}, advOpen: false, openRoom: ROOMS[0],
+    starting: false, voted: false, isLeader: true,
+    botCount: 4, layout: null, bannerOn: false, connOn: false, toastOn: false,
+  };
+
+  go = (screen) => this.setState({ screen, statsOpen: false });
+
+  renderVals() {
+    const s = this.state;
+    const T = s.theme === 'dark' ? DARK : LIGHT;
+    const themeVars = Object.entries(T).map(([k, v]) => '--' + k + ':' + v).join('; ');
+    const waiting = ROOMS.filter(r => r.playerCount < r.maxPlayers).length;
+
+    const screens = [
+      ['main', 'S3 Menu'], ['create', 'S5 Vytvořit'], ['join_list', 'S6 Seznam'],
+      ['join_room', 'S7 Detail'], ['lobby', 'S8 Lobby'], ['next_lobby', 'S9 Další'],
+      ['spectate_list', 'S10 Sledovat'], ['bot_game', 'S11 Boti'], ['winner', 'S12 Konec'],
+      ['vote', 'S13 Hlasování'], ['kicked', 'S15 Vyhozen'],
+      ['loading', 'S0 Načítání'], ['rotate', 'S1 Otoč'], ['ui_choice', 'S2 Rozložení'],
+      ['debug', 'S16 Debug'],
+    ];
+    const bare = ['loading', 'rotate', 'ui_choice', 'kicked', 'main', 'winner'].includes(s.screen);
+
+    const on = k => !!s.exp[k];
+    const expansions = EXPANSIONS.map(([k, label, hint]) => ({
+      label, hint, mark: on(k) ? '✔' : '',
+      border: on(k) ? 'var(--gold)' : 'var(--line2)',
+      bg: on(k) ? 'var(--noticeBg)' : 'var(--panel)',
+      boxBorder: on(k) ? 'var(--gold)' : 'var(--line2)',
+      boxBg: on(k) ? 'var(--gold)' : 'transparent',
+      markColor: 'var(--onGold)',
+      titleColor: on(k) ? 'var(--gold)' : 'var(--text)',
+      toggle: () => this.setState(p => ({ exp: { ...p.exp, [k]: !p.exp[k] } })),
+    }));
+
+    const advVisible = ADVANCED.filter(([k]) => k !== 'highNoonExtra' || (s.exp.high_noon && !s.exp.fistful));
+    const advanced = advVisible.map(([k, label, hint]) => ({
+      label, hint, mark: s.adv[k] ? '✔' : '',
+      boxBorder: s.adv[k] ? 'var(--gold)' : 'var(--line2)',
+      boxBg: s.adv[k] ? 'var(--gold)' : 'transparent',
+      markColor: 'var(--onGold)',
+      toggle: () => this.setState(p => ({ adv: { ...p.adv, [k]: !p.adv[k] } })),
+    }));
+    const advCount = advVisible.filter(([k]) => s.adv[k]).length;
+
+    const counts = [3, 4, 5, 6, 7, 8].map(n => ({
+      n, pick: () => this.setState({ maxPlayers: n }),
+      border: s.maxPlayers === n ? 'var(--gold)' : 'var(--line2)',
+      bg: s.maxPlayers === n ? 'var(--noticeBg)' : 'var(--panel)',
+      color: s.maxPlayers === n ? 'var(--gold)' : 'var(--text)',
+    }));
+
+    const canCreate = !!s.maxPlayers && s.roomTitle.trim().length > 0;
+    const expNames = EXPANSIONS.filter(([k]) => s.exp[k]).map(([, l]) => l);
+
+    const spectating = s.screen === 'spectate_list';
+    const rooms = (spectating ? ROOMS.filter(r => r.playerCount === r.maxPlayers) : ROOMS).map(r => {
+      const full = r.playerCount >= r.maxPlayers;
+      const running = spectating;
+      return {
+        name: r.name,
+        who: (running ? 'hraje ' : 'zakládá ') + r.leader + (r.next ? ' · navazující hra' : ''),
+        count: r.playerCount + ' / ' + r.maxPlayers,
+        seats: Array.from({ length: r.maxPlayers }, (_, i) => ({ fill: i < r.playerCount ? 'var(--gold)' : 'var(--line2)' })),
+        accent: running ? 'var(--running)' : full ? 'var(--dim)' : 'var(--ok)',
+        stateText: running ? '● PROBÍHÁ' : full ? '● PLNÁ' : '● ČEKÁ',
+        stateColor: running ? 'var(--running)' : full ? 'var(--dim)' : 'var(--ok)',
+        cta: running ? 'DÍVAT SE' : full ? 'PLNÁ' : 'PŘIPOJIT',
+        ctaBorder: full || running ? 'var(--line2)' : 'transparent',
+        ctaBg: full || running ? 'transparent' : 'linear-gradient(var(--goldHi), var(--gold))',
+        ctaColor: full && !running ? 'var(--dim)' : running ? 'var(--gold)' : 'var(--onGold)',
+        open: () => this.setState({ openRoom: r, screen: running ? 'main' : 'join_room' }),
+      };
+    });
+
+    const inLobby = s.screen === 'lobby' || s.screen === 'next_lobby';
+    const room = inLobby ? { name: s.roomTitle, maxPlayers: s.maxPlayers || 5 } : s.openRoom;
+    const names = inLobby
+      ? LOBBY_PLAYERS.slice(0, Math.min(LOBBY_PLAYERS.length, room.maxPlayers))
+      : [s.openRoom.leader, 'Wild_Bill', 'Lucky_Duke', '🤖 Bot 1', 'Sid_Ketchum'].slice(0, s.openRoom.playerCount);
+    const seats = Array.from({ length: room.maxPlayers }, (_, i) => {
+      const n = names[i];
+      const me = n === s.name;
+      const bot = !!n && n.startsWith('🤖');
+      if (!n) return {
+        idx: (i + 1) + '.', icon: '·',
+        name: s.isLeader && inLobby ? 'Přidat bota' : 'Čeká se…',
+        color: 'var(--dim)', tag: '', border: 'var(--line)', bg: 'transparent',
+        action: s.isLeader && inLobby ? '➕ Bot' : '', onAction: () => {},
+      };
+      return {
+        idx: (i + 1) + '.',
+        icon: i === 0 ? '👑' : bot ? '🤖' : '🎩',
+        name: n.replace('🤖 ', ''),
+        color: me ? 'var(--gold)' : 'var(--text)',
+        tag: [me ? '(ty)' : '', i === 0 ? 'Game Leader' : '', s.screen === 'next_lobby' ? 'chce dál ✅' : ''].filter(Boolean).join(' · '),
+        border: me ? 'var(--gold)' : 'var(--line)',
+        bg: me ? 'var(--noticeBg)' : 'var(--panel)',
+        action: s.isLeader && inLobby && bot ? '✕' : '', onAction: () => {},
+      };
+    });
+
+    const full = names.length >= room.maxPlayers;
+
+    // S13: účast v další hře. Já jsem potvrzený, jakmile jsem klikl na S12 nebo tady.
+    const TABLE = ['Honza', 'Calamity', 'Ringo_99', 'Miss_Kitty', '🤖 Bot 1'];
+    const CONFIRMED = ['Calamity', '🤖 Bot 1'];
+    const DECLINED = ['Miss_Kitty'];
+    const statusOf = n => {
+      if (n === s.name) return s.voted ? 'in' : 'wait';
+      if (DECLINED.includes(n)) return 'out';
+      return CONFIRMED.includes(n) ? 'in' : 'wait';
+    };
+    const initialsOf = n => n.replace('🤖 ', '').slice(0, 2).toUpperCase();
+    const STATUS = {
+      in:   { chip: 'HRAJE', chipColor: 'var(--onGold)', chipBg: 'linear-gradient(var(--goldHi), var(--gold))', chipLine: 'transparent', accent: 'var(--ok)' },
+      wait: { chip: 'ČEKÁ SE', chipColor: 'var(--muted)', chipBg: 'transparent', chipLine: 'var(--line2)', accent: 'var(--line2)' },
+      out:  { chip: 'ODEŠEL', chipColor: 'var(--bad)', chipBg: 'var(--badBg)', chipLine: 'var(--badLine)', accent: 'var(--badLine)' },
+    };
+    const voters = TABLE.map((n, i) => {
+      const st = statusOf(n);
+      const me = n === s.name;
+      return {
+        name: n.replace('🤖 ', ''),
+        initials: initialsOf(n),
+        tag: [me ? '(ty)' : '', i === 1 ? 'Game Leader' : '', n.startsWith('🤖') ? 'bot' : ''].filter(Boolean).join(' · '),
+        border: me ? 'var(--gold)' : 'var(--line)',
+        bg: me ? 'var(--noticeBg)' : 'var(--panel)',
+        avatarBg: st === 'in' ? 'linear-gradient(135deg, var(--goldHi), var(--gold))' : 'var(--line2)',
+        avatarColor: st === 'in' ? 'var(--onGold)' : 'var(--muted)',
+        ...STATUS[st],
+      };
+    });
+    const inCount = TABLE.filter(n => statusOf(n) === 'in').length;
+    const pendingCount = TABLE.filter(n => statusOf(n) === 'wait').length;
+    const tallyTotal = TABLE.filter(n => statusOf(n) !== 'out').length;
+    const nextTokens = TABLE.map(n => {
+      const st = statusOf(n);
+      return {
+        name: n.replace('🤖 ', ''), initials: initialsOf(n),
+        state: st === 'in' ? '✅' : st === 'out' ? '✕' : '…',
+        stateColor: st === 'in' ? 'var(--ok)' : st === 'out' ? 'var(--bad)' : 'var(--muted)',
+        nameColor: st === 'out' ? 'var(--dim)' : 'var(--text)',
+        border: st === 'in' ? 'var(--gold)' : 'var(--line)',
+        bg: st === 'in' ? 'var(--noticeBg)' : 'var(--panel)',
+        avatarBg: st === 'in' ? 'linear-gradient(135deg, var(--goldHi), var(--gold))' : 'var(--line2)',
+        avatarColor: st === 'in' ? 'var(--onGold)' : 'var(--muted)',
+      };
+    });
+
+    const titles = {
+      create: ['Vytvořit novou hru', 'Nastavení platí od začátku hry a pak se nemění'],
+      join_list: ['Připojit se ke hře', waiting + ' her čeká na hráče · seznam se obnovuje sám'],
+      spectate_list: ['Sledovat probíhající hru', '1 hra právě běží'],
+      join_room: [s.openRoom.name, s.openRoom.playerCount + ' / ' + s.openRoom.maxPlayers + ' hráčů · zakládá ' + s.openRoom.leader],
+      lobby: [s.roomTitle, names.length + ' / ' + room.maxPlayers + ' hráčů' + (expNames.length ? ' · ' + expNames.join(' · ') : ' · základní hra')],
+      next_lobby: ['Další hra: ' + s.roomTitle, names.length + ' / ' + room.maxPlayers + ' hráčů · čeká se na doplnění'],
+      vote: ['Další hra', s.voted ? 'Jsi přihlášený — čeká se na ostatní' : 'Kdo neodpoví, do další hry nejde'],
+      bot_game: ['Sledovat hru botů', 'Hra bez lidí · rozjede se hned'],
+      debug: ['Debug', 'Jen pro vývoj — do produkce se neukazuje'],
+    };
+    const t = titles[s.screen] || ['', ''];
+    const leaveScreen = inLobby;
+
+    return {
+      themeVars,
+      navItems: screens.map(([k, label]) => ({ label, go: () => this.go(k) })),
+      toggleTheme: () => this.setState(p => ({ theme: p.theme === 'dark' ? 'light' : 'dark' })),
+      themeLabel: s.theme === 'dark' ? '🌙 Tmavá → přepnout' : '☀ Světlá → přepnout',
+      themeChip: s.theme === 'dark' ? '🌙 Tmavý motiv' : '☀ Světlý motiv',
+      toggleViewport: () => this.setState(p => ({ viewport: p.viewport === 'desktop' ? 'mobile' : 'desktop' })),
+      viewportLabel: s.viewport === 'desktop' ? '🖥 Desktop' : '📱 Mobil na šířku',
+      stageWidth: s.viewport === 'desktop' ? '1280px' : '740px',
+      stageHeight: s.viewport === 'desktop' ? 'min(720px, calc(100vh - 130px))' : '360px',
+
+      isMain: s.screen === 'main',
+      isCreate: s.screen === 'create',
+      isList: s.screen === 'join_list' || spectating,
+      isRoom: s.screen === 'join_room' || inLobby,
+      isJoinRoom: s.screen === 'join_room',
+      leaderControls: inLobby && s.isLeader,
+      waitLeader: inLobby && !s.isLeader,
+      isWinner: s.screen === 'winner',
+      isVote: s.screen === 'vote',
+      isBotGame: s.screen === 'bot_game',
+      isKicked: s.screen === 'kicked',
+      isLoading: s.screen === 'loading',
+      isRotate: s.screen === 'rotate',
+      isUiChoice: s.screen === 'ui_choice',
+      showTopBar: !bare,
+      bannerOn: s.bannerOn,
+      hideBanner: () => this.setState({ bannerOn: false }),
+      toggleBanner: () => this.setState(p => ({ bannerOn: !p.bannerOn })),
+      connOn: s.connOn,
+      hideConn: () => this.setState({ connOn: false }),
+      toggleConn: () => this.setState(p => ({ connOn: !p.connOn })),
+      toastOn: s.toastOn,
+      hideToast: () => this.setState({ toastOn: false }),
+      toggleToast: () => this.setState(p => ({ toastOn: !p.toastOn })),
+
+      isDebug: s.screen === 'debug',
+      goDebug: () => this.go('debug'),
+      debugStats: [
+        { label: 'Socket', value: 'připojen', color: 'var(--ok)' },
+        { label: 'Ping', value: '38 ms', color: 'var(--text)' },
+        { label: 'Místností na serveru', value: String(ROOMS.length), color: 'var(--text)' },
+        { label: 'Verze klienta', value: '0.9.4', color: 'var(--muted)' },
+      ],
+      debugActions: [
+        { label: 'Vyvolat chybovou hlášku', run: () => this.setState({ toastOn: true }) },
+        { label: 'Simulovat odpojení', run: () => this.setState({ connOn: true }) },
+        { label: 'Zobrazit banner nové verze', run: () => this.setState({ bannerOn: true }) },
+        { label: 'Vyhodit mě ze hry', run: () => this.go('kicked') },
+        { label: 'Přejít na hlasování o další hře', run: () => this.setState({ screen: 'vote', voted: false }) },
+        { label: 'Zapomenout jméno', run: () => this.setState({ name: '', nameOpen: true, nameDraft: '' }) },
+      ],
+      debugLog: [
+        { time: '14:02:11', dir: '← recv', dirColor: 'var(--ok)', msg: 'rooms:update · 5 místností' },
+        { time: '14:02:09', dir: '→ send', dirColor: 'var(--gold)', msg: 'rooms:subscribe' },
+        { time: '14:02:08', dir: '← recv', dirColor: 'var(--ok)', msg: 'name:accepted · "Honza"' },
+        { time: '14:02:08', dir: '→ send', dirColor: 'var(--gold)', msg: 'name:set · "Honza"' },
+        { time: '14:02:06', dir: '← recv', dirColor: 'var(--ok)', msg: 'hello · verze 0.9.4' },
+        { time: '14:02:05', dir: '···', dirColor: 'var(--dim)', msg: 'socket otevřen' },
+      ],
+
+      botCounts: [3, 4, 5, 6, 7, 8].map(n => ({
+        n, pick: () => this.setState({ botCount: n }),
+        border: s.botCount === n ? 'var(--gold)' : 'var(--line2)',
+        bg: s.botCount === n ? 'var(--noticeBg)' : 'var(--panel)',
+        color: s.botCount === n ? 'var(--gold)' : 'var(--text)',
+      })),
+      botSummary: s.botCount + ' botů · ' + (expNames.length ? expNames.join(' · ') : 'základní hra'),
+      showHighNoonExtra: !!s.exp.high_noon && !s.exp.fistful,
+      hnMark: s.adv.highNoonExtra ? '✔' : '',
+      hnBoxBorder: s.adv.highNoonExtra ? 'var(--gold)' : 'var(--line2)',
+      hnBoxBg: s.adv.highNoonExtra ? 'var(--gold)' : 'transparent',
+      toggleHighNoonExtra: () => this.setState(p => ({ adv: { ...p.adv, highNoonExtra: !p.adv.highNoonExtra } })),
+
+      pickMobileLayout: () => this.setState({ layout: 'big', uiMode: 'big', screen: 'main' }),
+      pickDesktopLayout: () => this.setState({ layout: 'normal', uiMode: 'normal', screen: 'main' }),
+      layoutMobileBorder: s.layout === 'big' ? 'var(--gold)' : 'var(--line2)',
+      layoutMobileBg: s.layout === 'big' ? 'var(--noticeBg)' : 'var(--panel)',
+      layoutDesktopBorder: s.layout === 'normal' ? 'var(--gold)' : 'var(--line2)',
+      layoutDesktopBg: s.layout === 'normal' ? 'var(--noticeBg)' : 'var(--panel)',
+      layoutMobileTag: s.viewport === 'mobile' ? '✓ doporučeno pro tvé zařízení' : '',
+      layoutDesktopTag: s.viewport === 'desktop' ? '✓ doporučeno pro tvé zařízení' : '',
+
+      screenTitle: t[0], screenSub: t[1],
+      backLabel: leaveScreen ? '◀ Opustit hru' : '◀ Zpět',
+      backBorder: leaveScreen ? 'var(--badLine)' : 'var(--line2)',
+      backBg: leaveScreen ? 'var(--badBg)' : 'var(--panel)',
+      backColor: leaveScreen ? 'var(--bad)' : 'var(--text)',
+      back: () => this.go(s.screen === 'join_room' ? 'join_list' : 'main'),
+
+      waitingLabel: waiting + ' her čeká na hráče',
+      runningLabel: '1 hra právě běží',
+      initials: (s.name || '?').slice(0, 2).toUpperCase(),
+      nameChipLabel: s.name || 'Zadat jméno',
+      uiModeLabel: s.uiMode === 'normal' ? '🖥 PC rozložení' : '📱 Mobilní rozložení',
+      toggleUiMode: () => this.setState(p => ({ uiMode: p.uiMode === 'normal' ? 'big' : 'normal' })),
+      goMain: () => this.go('main'), goCreate: () => this.go('create'),
+      goJoinList: () => this.go('join_list'), goSpectate: () => this.go('spectate_list'),
+      goBots: () => this.go('bot_game'),
+
+      playerName: s.name,
+      roomTitle: s.roomTitle,
+      setRoomTitle: e => this.setState({ roomTitle: e.target.value }),
+      counts,
+      countHint: s.maxPlayers ? '' : 'povinné',
+      countNote: s.maxPlayers === 3
+        ? 'Město duchů: bez šerifa, role lícem nahoru, každý loví určeného soupeře.'
+        : s.maxPlayers === 8
+          ? 'Šerif, 2× Pomocník, 3× Bandita, 2× Odpadlík — jediný počet se dvěma odpadlíky.'
+          : 'Hra startuje až s plným stolem. Prázdná místa doplníš boty v lobby.',
+      expansions, advanced, advOpen: s.advOpen,
+      advSummary: advCount ? '· ' + advCount + ' zapnuté' : '· vše výchozí',
+      advCaret: s.advOpen ? '▲' : '▼',
+      toggleAdv: () => this.setState(p => ({ advOpen: !p.advOpen })),
+      createSummary: canCreate
+        ? s.maxPlayers + ' hráčů · ' + (expNames.length ? expNames.join(' · ') : 'základní hra')
+        : 'Vyber počet hráčů a zadej název.',
+      create: () => { if (canCreate) this.go('lobby'); },
+      createCursor: canCreate ? 'pointer' : 'not-allowed',
+      createBg: canCreate ? 'linear-gradient(var(--goldHi), var(--gold))' : 'var(--panel)',
+      createColor: canCreate ? 'var(--onGold)' : 'var(--dim)',
+
+      rooms, listEmpty: rooms.length === 0,
+      emptyText: spectating ? 'Žádná hra právě neprobíhá.' : 'Žádné hry nečekají na hráče.',
+
+      seats,
+      joinLabel: 'PŘIPOJIT SE (jako ' + s.name + ')',
+      joinRoom: () => this.go('lobby'),
+      waitLeaderText: s.screen === 'next_lobby' ? 'Čeká se na doplnění hráčů a Game Leadera…' : 'Čeká se na Game Leadera…',
+      roomNotice: inLobby && !full
+        ? 'Hra začne, až bude stůl plný — chybí ' + (room.maxPlayers - names.length) + ' hráč(ů). Můžeš je doplnit boty.'
+        : s.screen === 'next_lobby' ? 'Přeživší si v další hře mohou nechat svou postavu.' : '',
+      startLabel: s.starting ? 'ZAHAJUJI…' : full ? '▶ ZAHÁJIT HRU' : '▶ ZAHÁJIT HRU (stůl není plný)',
+      startCursor: full ? 'pointer' : 'not-allowed',
+      startBg: full ? 'linear-gradient(var(--goldHi), var(--gold))' : 'var(--panel)',
+      startColor: full ? 'var(--onGold)' : 'var(--dim)',
+      start: () => { if (full) this.setState({ starting: true }); },
+
+      voters, nextTokens,
+      nextCountLabel: inCount >= 3
+        ? inCount + ' hráčů je v další hře' + (pendingCount ? ' · ' + pendingCount + ' se rozhoduje' : '')
+        : 'Na další hru jsou potřeba alespoň 3 hráči',
+      tallyHeadline: inCount >= 3 ? 'Další hra může začít' : 'Chybí hráči do další hry',
+      tallySub: pendingCount
+        ? pendingCount + ' hráč(ů) se ještě rozhoduje · kdo neodpoví, do hry nejde'
+        : 'Všichni se rozhodli.',
+      tallyIn: inCount, tallyTotal,
+      tallyBar: Array.from({ length: Math.max(tallyTotal, 3) }, (_, i) => ({
+        fill: i < inCount ? 'linear-gradient(var(--goldHi), var(--gold))' : 'transparent',
+        line: i < inCount ? 'transparent' : 'var(--line2)',
+      })),
+      meConfirmed: s.voted, meUndecided: !s.voted,
+      waitingRest: pendingCount ? 'Čeká se na ' + pendingCount + ' hráč(ů).' : 'Čeká se na Game Leadera.',
+      confirmNext: () => this.setState({ voted: true }),
+      leaveNext: () => this.setState({ voted: false }),
+      joinNextGame: () => this.setState({ voted: true, screen: 'vote', statsOpen: false }),
+      nextLeaderControls: s.isLeader,
+      nextStartLabel: inCount >= 3
+        ? '▶ ZAHÁJIT DALŠÍ HRU (' + inCount + ' hráčů)'
+        : '▶ ZAHÁJIT DALŠÍ HRU (chybí ' + (3 - inCount) + ')',
+      nextStartCursor: inCount >= 3 ? 'pointer' : 'not-allowed',
+      nextStartBg: inCount >= 3 ? 'var(--panel)' : 'transparent',
+      nextStartLine: inCount >= 3 ? 'var(--gold)' : 'var(--line2)',
+      nextStartColor: inCount >= 3 ? 'var(--gold)' : 'var(--dim)',
+      startNext: () => { if (inCount >= 3) this.go('next_lobby'); },
+
+      nameOpen: s.nameOpen, nameDraft: s.nameDraft, nameError: s.nameError,
+      nameBorder: s.nameError ? 'var(--badLine)' : 'var(--line2)',
+      openName: () => this.setState({ nameOpen: true, nameDraft: s.name, nameError: '' }),
+      closeName: () => this.setState({ nameOpen: false }),
+      setNameDraft: e => {
+        const v = e.target.value.slice(0, 18);
+        this.setState({
+          nameDraft: v,
+          nameError: !v.trim() ? 'Jméno nesmí být prázdné.'
+            : ['Calamity', 'Ringo_99'].includes(v.trim()) ? 'Jméno „' + v.trim() + '“ je již obsazeno.' : '',
+        });
+      },
+      saveName: () => {
+        const v = this.state.nameDraft.trim();
+        if (!v) return this.setState({ nameError: 'Jméno nesmí být prázdné.' });
+        if (['Calamity', 'Ringo_99'].includes(v)) return this.setState({ nameError: 'Jméno „' + v + '“ je již obsazeno.' });
+        this.setState({ name: v, nameOpen: false, roomTitle: 'Hra hráče ' + v });
+      },
+
+      statsOpen: s.statsOpen, statGroups: STATS,
+      openStats: () => this.setState({ statsOpen: true }),
+      closeStats: () => this.setState({ statsOpen: false }),
+    };
+  }
+}
+
+</script>
+</body>
+</html>

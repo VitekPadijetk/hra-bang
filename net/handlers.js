@@ -3299,7 +3299,8 @@ function attemptRejoin() {
     if (_rejoinDone) return;
     const sess = loadBangSession();
     if (!sess || !sess.roomId) return;
-    if (sess.name && !playerName) playerName = sess.name;   // obnov jméno po F5
+    // obnov jméno po F5 – jméno, pod kterým sedím u stolu, přebíjí uložené bangName
+    if (sess.name) playerName = sess.name;
     socket.emit('rejoin', { roomId: sess.roomId, token: bangToken });
 }
 socket.on('connect', () => { _rejoinDone = false; _rejoinTries = 0; _animQ.reset(); attemptRejoin(); });
@@ -3590,7 +3591,8 @@ socket.on('taken_names', (list) => {
 socket.on('game_list', (list) => {
     App.gameList = list || [];
     const focused = document.activeElement;
-    if (gameScene && focused?.tagName !== 'INPUT') renderUI();
+    // Server ho rozesílá spolu s lobby_list všem – u stolu se kvůli němu nepřekresluje.
+    if (gameScene && !roomState && focused?.tagName !== 'INPUT') renderUI();
 });
 
 // ── KONEC SLEDOVÁNÍ HRY ──────────────────────────────────────────────────────

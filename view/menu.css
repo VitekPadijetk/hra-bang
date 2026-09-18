@@ -1,0 +1,244 @@
+/* view/menu.css — nové menu v HTML nad plátnem (view/menuDom.js).
+   Tokeny 1:1 z handoff/tokens.md; žádná barva mimo proměnné. Plán: docs/menu-ui-plan.md. */
+
+.bang-ui[data-theme="dark"] {
+  --wood: #4a2f1c;  --woodA: #5a3a22;  --woodB: #3a2416;  --frame: #6b4a2b;
+  --inset: rgba(201,162,75,.25);
+  --bg: #1e1610;  --bg2: #241a12;
+  --panel: #241a12;  --panelHi: #2b1f14;
+  --line: #3a2a1c;  --line2: #4a3620;
+  --gold: #c9a24b;  --goldHi: #e0c579;  --onGold: #1c1410;
+  --text: #ece3d0;  --muted: #a8926a;  --dim: #7a6a55;
+  --logoShadow: #3a2a1c;
+  --ok: #5aa04a;  --okBg: rgba(90,160,74,.12);
+  --bad: #e06a5a;  --badLine: #7a2424;  --badBg: rgba(224,106,90,.12);
+  --running: #c98a4b;
+  --inputBg: #140e09;  --headerBg: rgba(0,0,0,.28);
+  --noticeBg: rgba(201,162,75,.08);  --toastBg: #2a1614;
+  --scrim: rgba(12,8,5,.8);
+  --slotA: #23301f;  --slotB: #33261a;  --slotC: #1c2334;  --slotD: #2c1c34;
+  --roleSheriff: #e0c579;  --roleOutlaw: #e0705c;  --roleRenegade: #b07ad0;
+  --scrollThumb: rgba(0,0,0,.38);  --scrollTrack: rgba(0,0,0,.18);
+}
+
+.bang-ui[data-theme="light"] {
+  --wood: #c8a06a;  --woodA: #d8b880;  --woodB: #c39a62;  --frame: #9c6b1e;
+  --inset: rgba(255,255,255,.35);
+  --bg: #f3e7cf;  --bg2: #efe0c2;
+  --panel: #fbf5e8;  --panelHi: #fffaf0;
+  --line: #ddc494;  --line2: #cdae72;
+  --gold: #8a5d15;  --goldHi: #b8862f;  --onGold: #fff8e9;
+  --text: #3a2a18;  --muted: #6f5327;  --dim: #9a825a;
+  --logoShadow: rgba(255,255,255,.6);
+  --ok: #2e7a35;  --okBg: rgba(46,122,53,.12);
+  --bad: #8a2318;  --badLine: #c09a90;  --badBg: rgba(138,35,24,.08);
+  --running: #9c5b1e;
+  --inputBg: #fffaf0;  --headerBg: rgba(255,255,255,.55);
+  --noticeBg: rgba(156,107,30,.10);  --toastBg: #fdeee9;
+  --scrim: rgba(60,40,20,.6);
+  --slotA: #e4ecdd;  --slotB: #f0e3cd;  --slotC: #dde3ef;  --slotD: #e9dcef;
+  --roleSheriff: #8a5d15;  --roleOutlaw: #9c2f22;  --roleRenegade: #6b3a8e;
+  --scrollThumb: rgba(0,0,0,.22);  --scrollTrack: rgba(0,0,0,.06);
+}
+
+/* ── Kořen ──────────────────────────────────────────────────────────────── */
+
+.bang-ui {
+  position: fixed; inset: 0; z-index: 800;
+  font-family: 'Oswald', 'Trebuchet MS', sans-serif; color: var(--text);
+  -webkit-user-select: none; user-select: none;
+}
+.bang-ui *, .bang-ui *::before, .bang-ui *::after { box-sizing: border-box; }
+/* :where = nulová specifičnost, ať třídy prvků (.bu-btn…) barvu přebijí. */
+:where(.bang-ui) button { font-family: inherit; color: inherit; font-size: inherit; margin: 0; }
+:where(.bang-ui) input { font-family: 'Oswald', sans-serif; -webkit-user-select: text; user-select: text; }
+.bang-ui ::-webkit-scrollbar { width: 10px; height: 10px; }
+.bang-ui ::-webkit-scrollbar-track { background: var(--scrollTrack); }
+.bang-ui ::-webkit-scrollbar-thumb { background: var(--scrollThumb); border-radius: 6px; }
+.bang-ui ::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
+/* Okno (S4) má vlastní kořen nad vrstvou i nad starými Phaserovými obrazovkami. */
+.bang-ui.bu-modal-root { z-index: 990; }
+
+/* ── Dřevěný stůl a jeviště ─────────────────────────────────────────────── */
+
+.bu-table {
+  position: absolute; inset: 0;
+  display: flex; justify-content: center; align-items: stretch;
+  padding: clamp(16px, 3vw, 44px);
+  padding-left: max(clamp(16px, 3vw, 44px), env(safe-area-inset-left));
+  padding-right: max(clamp(16px, 3vw, 44px), env(safe-area-inset-right));
+  background-color: var(--wood);
+  background-image:
+    radial-gradient(ellipse 85% 70% at 50% 30%, rgba(255,255,255,.05), rgba(0,0,0,.34) 100%),
+    repeating-linear-gradient(88deg, rgba(255,255,255,.03) 0 3px, rgba(0,0,0,.06) 3px 7px, transparent 7px 24px),
+    linear-gradient(180deg, var(--woodA), var(--woodB));
+}
+/* Telefon na šířku: výšky je málo, dřevo kolem jeviště by ukouslo čtvrtinu. */
+@media (max-height: 500px) {
+  .bu-table { padding: 8px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+}
+
+.bu-stage {
+  width: 100%; max-width: 1600px; position: relative;
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 3px solid var(--frame); border-radius: 14px;
+  background: linear-gradient(var(--bg), var(--bg2));
+  box-shadow: 0 18px 44px rgba(0,0,0,.5), inset 0 0 0 1px var(--inset);
+}
+.bu-screen { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Rolující prostředek – min-height: 0 je povinné, jinak flex kolona nepovolí rolování. */
+.bu-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Vystředěná obrazovka (S2, S3). */
+.bu-center {
+  min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(10px, 2.4vh, 30px); padding: clamp(14px, 3vh, 44px) 20px;
+}
+
+.bu-fs {
+  position: absolute; top: 12px; right: 12px; z-index: 40;
+  padding: 7px 13px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line2); background: var(--panel); color: var(--muted);
+  font-size: 13px; letter-spacing: .06em;
+}
+.bu-fs:hover { border-color: var(--gold); color: var(--text); }
+
+/* ── Logo ───────────────────────────────────────────────────────────────── */
+
+.bu-logo-wrap { text-align: center; }
+.bu-logo {
+  font-family: 'Rye', serif; font-size: clamp(34px, 6vw, 76px); line-height: .95;
+  color: var(--gold); text-shadow: 0 2px 0 var(--logoShadow);
+}
+.bu-motto {
+  font-family: 'EB Garamond', serif; font-style: italic; font-size: clamp(13px, 1.4vw, 18px);
+  color: var(--muted); margin-top: 4px;
+}
+.bu-display {
+  font-family: 'Rye', serif; font-size: clamp(26px, 4.4vw, 44px);
+  color: var(--gold); text-shadow: 0 2px 0 var(--logoShadow);
+}
+.bu-lead {
+  margin-top: 5px; font-family: 'EB Garamond', serif; font-size: 16px; color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* ── S3: čtyři akce ─────────────────────────────────────────────────────── */
+
+.bu-menu-grid {
+  width: 100%; max-width: 780px; display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+}
+.bu-menu-btn {
+  display: flex; align-items: center; gap: 14px; text-align: left;
+  padding: clamp(11px, 2vh, 17px) 17px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line2); background: var(--panel); color: var(--text);
+  box-shadow: 0 3px 10px rgba(0,0,0,.18);
+}
+.bu-menu-btn:hover { border-color: var(--gold); background: var(--panelHi); }
+.bu-menu-ico {
+  flex: none; width: 42px; height: 42px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+  border: 1px solid var(--line2);
+}
+.bu-menu-ico.a { background: var(--slotA); }
+.bu-menu-ico.b { background: var(--slotB); }
+.bu-menu-ico.c { background: var(--slotC); }
+.bu-menu-ico.d { background: var(--slotD); }
+.bu-menu-txt { min-width: 0; }
+.bu-menu-name { display: block; font-size: 20px; font-weight: 600; letter-spacing: .03em; }
+.bu-menu-sub { display: block; font-family: 'EB Garamond', serif; font-size: 15px; color: var(--muted); }
+
+/* ── Čipy ───────────────────────────────────────────────────────────────── */
+
+.bu-chips { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.bu-chip {
+  display: flex; align-items: center; gap: 9px; min-height: 44px;
+  padding: 8px 14px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--line2); background: var(--panel); color: var(--muted); font-size: 15px;
+}
+.bu-chip:hover { border-color: var(--gold); color: var(--text); }
+.bu-chip.name { color: var(--text); }
+.bu-chip.quiet { border-color: var(--line); background: transparent; opacity: .7; }
+.bu-chip-edit { color: var(--muted); font-size: 13px; }
+
+.bu-avatar {
+  flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-family: 'Rye', serif; font-size: 11px;
+  background: linear-gradient(135deg, var(--goldHi), var(--gold)); color: var(--onGold);
+  width: 26px; height: 26px;
+}
+.bu-avatar.off { background: var(--line2); color: var(--muted); }
+
+/* ── S2: volba rozložení ────────────────────────────────────────────────── */
+
+.bu-choice-grid {
+  width: 100%; max-width: 740px; display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+.bu-choice {
+  text-align: left; padding: 18px; border-radius: 10px; cursor: pointer;
+  border: 2px solid var(--line2); background: var(--panel); color: var(--text);
+}
+.bu-choice:hover { border-color: var(--gold); }
+.bu-choice.on { border-color: var(--gold); background: var(--noticeBg); }
+.bu-choice-ico { display: block; font-size: 30px; }
+.bu-choice-name { display: block; margin-top: 6px; font-size: 20px; font-weight: 600; letter-spacing: .03em; }
+.bu-choice-desc {
+  display: block; margin-top: 4px; font-family: 'EB Garamond', serif; font-size: 15px;
+  line-height: 1.4; color: var(--muted); text-wrap: pretty;
+}
+.bu-choice-tag { display: block; margin-top: 8px; min-height: 16px; font-size: 13px; letter-spacing: .06em; color: var(--ok); }
+
+/* ── Tlačítka (components.md) ───────────────────────────────────────────── */
+
+.bu-btn {
+  min-height: 44px; padding: 11px 20px; border-radius: 9px; cursor: pointer;
+  font-size: 16px; letter-spacing: .04em; border: 1px solid var(--line2);
+  background: var(--panel); color: var(--text);
+}
+.bu-btn:hover { border-color: var(--gold); }
+.bu-btn.primary {
+  border: none; font-size: 18px; font-weight: 600; letter-spacing: .05em;
+  background: linear-gradient(var(--goldHi), var(--gold)); color: var(--onGold);
+}
+.bu-btn.primary:hover { filter: brightness(1.06); }
+.bu-btn.quiet { background: transparent; border-color: var(--line); color: var(--muted); }
+.bu-btn.quiet:hover { color: var(--text); border-color: var(--gold); }
+.bu-btn.danger { background: transparent; border-color: var(--badLine); color: var(--bad); }
+.bu-btn:disabled, .bu-btn.locked, .bu-btn:disabled:hover, .bu-btn.locked:hover {
+  background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+  cursor: not-allowed; filter: none;
+}
+.bu-btn.block { width: 100%; }
+
+/* ── Okno (S4) ──────────────────────────────────────────────────────────── */
+
+.bu-modal-scrim {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 18px; background: var(--scrim); overflow-y: auto;
+}
+.bu-modal {
+  width: 100%; max-width: 420px; padding: 22px; border-radius: 12px; margin: auto;
+  border: 1px solid var(--line2); background: linear-gradient(var(--panel), var(--bg));
+  box-shadow: 0 24px 60px rgba(0,0,0,.55);
+}
+.bu-modal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.bu-modal-title { font-family: 'Rye', serif; font-size: 20px; color: var(--gold); }
+.bu-modal-x {
+  min-width: 44px; min-height: 36px; padding: 4px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--line2); background: transparent; color: var(--muted);
+}
+.bu-modal-x:hover { border-color: var(--gold); color: var(--text); }
+.bu-modal-lead { margin-top: 4px; font-family: 'EB Garamond', serif; font-size: 15px; color: var(--muted); }
+
+.bu-input {
+  width: 100%; margin-top: 13px; padding: 13px 15px; font-size: 19px; border-radius: 9px;
+  border: 1px solid var(--line2); background: var(--inputBg); color: var(--text); outline: none;
+}
+.bu-input:focus { border-color: var(--gold); }
+.bu-input.err { border-color: var(--badLine); }
+/* Rezervované místo – okno nepodskočí, když se chyba objeví. */
+.bu-form-error { min-height: 22px; margin-top: 6px; font-size: 14px; color: var(--bad); }
