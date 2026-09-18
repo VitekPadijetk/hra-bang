@@ -51,7 +51,7 @@ function shop(g, effects, deckEffects = []) {
 
 test('nákup černé karty ji položí před hráče a zaplatí se cena z karty', () => {
     const g = mkZH();
-    shop(g, ['ZH_PODKOVA', 'ZH_BOTY', 'ZH_OPASEK'], ['ZH_KALUMET']);
+    shop(g, ['ZH_PODKOVA', 'ZH_BOTY', 'ZH_NABOJOVY_PAS'], ['ZH_KALUMET']);
     g.players[0].nuggets = 5;
 
     const bought = g.gearBuy(0, 0);
@@ -65,7 +65,7 @@ test('nákup černé karty ji položí před hráče a zaplatí se cena z karty'
 
 test('koupená karta se doplní OKAMŽITĚ (R7), ne až na konci tahu', () => {
     const g = mkZH();
-    shop(g, ['ZH_PODKOVA', 'ZH_BOTY', 'ZH_OPASEK'], ['ZH_KALUMET']);
+    shop(g, ['ZH_PODKOVA', 'ZH_BOTY', 'ZH_NABOJOVY_PAS'], ['ZH_KALUMET']);
     g.players[0].nuggets = 5;
     g.gearBuy(0, 0);
     assert.equal(g.gearRow.filter(Boolean).length, 3, 'obchod je zase plný');

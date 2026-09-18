@@ -1,12 +1,12 @@
 // Rozšíření Zlatá horečka (Gold Rush) – fáze 2: pasivní vybavení s černým rámem.
 //
 // Šest karet, které jen leží před hráčem a mění pravidla:
-//   BOTY      – „Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku."
-//   TALISMAN  – „Pokaždé, když ztratíš 1 život, vezmi si 1 valoun."
-//   OPASEK    – „Na konci tahu smíš mít v ruce až 8 karet."
-//   KRUMPÁČ   – „Ve fázi 1 svého tahu si lízni o kartu navíc."
-//   KALUMET   – „Karty káry zahrané ostatními na tebe nemají efekt."
-//   PODKOVA   – „Pokaždé, když otáčíš!, odkryj o kartu navíc a vyber výsledek."
+//   BOTY         – „Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku."
+//   TALISMAN     – „Pokaždé, když ztratíš 1 život, vezmi si 1 valoun."
+//   NÁBOJOVÝ PÁS – „Na konci tahu smíš mít v ruce až 8 karet."
+//   KRUMPÁČ      – „Ve fázi 1 svého tahu si lízni o kartu navíc."
+//   KALUMET      – „Karty káry zahrané ostatními na tebe nemají efekt."
+//   PODKOVA      – „Pokaždé, když otáčíš!, odkryj o kartu navíc a vyber výsledek."
 //
 // Podklad: docs/zlata-horecka.md (Karty vybavení + Dodatky ke kartám), plán §2.3/§4
 // a rozhodnutí R5 (trychtýř ztráty života), R8 (Podkova × Lucky Duke se SČÍTAJÍ)
@@ -157,34 +157,34 @@ test('Talisman: platí i na ztrátu bez útočníka (dynamit) a na dobrovolnou (
     assert.equal(h.players[0].nuggets, 1);
 });
 
-// ── OPASEK ───────────────────────────────────────────────────────────────────
+// ── NÁBOJOVÝ PÁS ─────────────────────────────────────────────────────────────
 
-test('Opasek: limit karet v ruce na konci tahu je 8', () => {
+test('Nábojový pás: limit karet v ruce na konci tahu je 8', () => {
     const g = mkZH([{ role: 'Sheriff', maxHealth: 4 }, { role: 'Outlaw' }]);
     assert.equal(g._handLimit(g.players[0]), 4);
-    gear(g, 0, 'ZH_OPASEK');
+    gear(g, 0, 'ZH_NABOJOVY_PAS');
     assert.equal(g._handLimit(g.players[0]), 8);
 });
 
-test('Opasek: bere se to VYŠŠÍ z obojího (Big Spencer 9 životů, Sean Mallory 10)', () => {
+test('Nábojový pás: bere se to VYŠŠÍ z obojího (Big Spencer 9 životů, Sean Mallory 10)', () => {
     const g = mkZH([{ role: 'Sheriff', character: 'Big Spencer', maxHealth: 9 }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_OPASEK');
-    assert.equal(g._handLimit(g.players[0]), 9, 'Opaskem si nesmí pohoršit');
+    gear(g, 0, 'ZH_NABOJOVY_PAS');
+    assert.equal(g._handLimit(g.players[0]), 9, 'Nábojovým pásem si nesmí pohoršit');
 
     const h = mkZH([{ role: 'Sheriff', character: 'Sean Mallory' }, { role: 'Outlaw' }]);
-    gear(h, 0, 'ZH_OPASEK');
+    gear(h, 0, 'ZH_NABOJOVY_PAS');
     assert.equal(h._handLimit(h.players[0]), 10);
 });
 
-test('Opasek: s osmi kartami se tah rovnou ukončí, s devíti se odhazuje', () => {
+test('Nábojový pás: s osmi kartami se tah rovnou ukončí, s devíti se odhazuje', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_OPASEK');
+    gear(g, 0, 'ZH_NABOJOVY_PAS');
     for (let i = 0; i < 8; i++) give(g, 0, CardType.BEER);
     g.tryEndTurn();
     assert.notEqual(g.phase, 'DISCARD');
 
     const h = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(h, 0, 'ZH_OPASEK');
+    gear(h, 0, 'ZH_NABOJOVY_PAS');
     for (let i = 0; i < 9; i++) give(h, 0, CardType.BEER);
     h.tryEndTurn();
     assert.equal(h.phase, 'DISCARD');
@@ -387,7 +387,7 @@ test('Podkova platí i u barelu (sejmutí v cizím tahu)', () => {
 
 test('Laso: „karty na stole nemají efekt" platí i pro vybavení', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_OPASEK');
+    gear(g, 0, 'ZH_NABOJOVY_PAS');
     gear(g, 0, 'ZH_KRUMPAC');
     gear(g, 0, 'ZH_TALISMAN');
     assert.equal(g._handLimit(g.players[0]), 8);
@@ -398,7 +398,7 @@ test('Laso: „karty na stole nemají efekt" platí i pro vybavení', () => {
     g.handleDamage(0, 1);
     assert.equal(g.players[0].nuggets, 0, 'Talisman pod Lasem nedává valoun');
     // Vlastnictví to ale nemění – karta pořád leží před hráčem (a nedá se koupit dvakrát).
-    assert.equal(g._hasGear(0, 'ZH_OPASEK'), true);
+    assert.equal(g._hasGear(0, 'ZH_NABOJOVY_PAS'), true);
 });
 
 test('Belle Star: v jejím tahu nemá efekt CIZÍ vybavení, vlastní ano', () => {
@@ -415,14 +415,14 @@ test('Belle Star: v jejím tahu nemá efekt CIZÍ vybavení, vlastní ano', () =
 
 test('zrcadlo core/goldRush.js odpovídá serverovému _gearOn (klient i bot)', () => {
     const g = mkZH([{ role: 'Outlaw', character: 'Belle Star' }, { role: 'Sheriff' }], { current: 0 });
-    gear(g, 1, 'ZH_OPASEK');
-    assert.equal(gearOnFor(g, 1, 'ZH_OPASEK'), g._gearOn(g.players[1], 'ZH_OPASEK'));
-    assert.equal(gearOnFor(g, 1, 'ZH_OPASEK'), false);
+    gear(g, 1, 'ZH_NABOJOVY_PAS');
+    assert.equal(gearOnFor(g, 1, 'ZH_NABOJOVY_PAS'), g._gearOn(g.players[1], 'ZH_NABOJOVY_PAS'));
+    assert.equal(gearOnFor(g, 1, 'ZH_NABOJOVY_PAS'), false);
 
     const h = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(h, 0, 'ZH_OPASEK');
-    assert.equal(gearOnFor(h, 0, 'ZH_OPASEK'), true);
+    gear(h, 0, 'ZH_NABOJOVY_PAS');
+    assert.equal(gearOnFor(h, 0, 'ZH_NABOJOVY_PAS'), true);
     h.activeFistful = ffData.find(c => c.key === 'LASO');
-    assert.equal(gearOnFor(h, 0, 'ZH_OPASEK'), h._gearOn(h.players[0], 'ZH_OPASEK'));
-    assert.equal(gearOnFor(h, 0, 'ZH_OPASEK'), false);
+    assert.equal(gearOnFor(h, 0, 'ZH_NABOJOVY_PAS'), h._gearOn(h.players[0], 'ZH_NABOJOVY_PAS'));
+    assert.equal(gearOnFor(h, 0, 'ZH_NABOJOVY_PAS'), false);
 });

@@ -312,12 +312,12 @@ class GameState {
     }
 
     // Limit karet v ruce na konci tahu. Normálně = počet životů; Sean Mallory (Dodge City)
-    // drží až 10 karet a Opasek (Zlatá horečka) zvedá limit na 8.
-    // Bere se to VYŠŠÍ z obojího: Big Spencer s 9 životy by si Opaskem jinak pohoršil.
+    // drží až 10 karet a Nábojový pás (Zlatá horečka) zvedá limit na 8.
+    // Bere se to VYŠŠÍ z obojího: Big Spencer s 9 životy by si Nábojovým pásem jinak pohoršil.
     _handLimit(player) {
         if (player && hasAbility(player, "Sean Mallory")) return 10;
         const base = player ? (player.health || 0) : 0;
-        if (player && this._gearOn(player, 'ZH_OPASEK')) return Math.max(base, 8);
+        if (player && this._gearOn(player, 'ZH_NABOJOVY_PAS')) return Math.max(base, 8);
         return base;
     }
 

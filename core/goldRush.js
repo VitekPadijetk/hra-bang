@@ -148,7 +148,7 @@ function beerNuggetOk(state, playerIdx, card) {
 }
 
 // ── Placené černé vybavení (fáze 3) ─────────────────────────────────────────
-// Rýžovací pánev: „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za
+// Rýžovací mísa: „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za
 // tah." Počítadlo je klíčované `turnId` (zrcadlí GameState._panUsesThisTurn).
 const GEAR_PAN_USES = 2;
 
@@ -161,7 +161,7 @@ function gearPanUsesLeft(state, playerIdx) {
 // Smí hráč teď rýžovat? Zrcadlí GameState.gearPanUse.
 function gearPanOk(state, playerIdx) {
     if (!gearShopOpen(state, playerIdx)) return false;
-    if (!gearOnFor(state, playerIdx, 'ZH_RYZOVACI_PANEV')) return false;
+    if (!gearOnFor(state, playerIdx, 'ZH_RYZOVACI_MISA')) return false;
     if (gearPanUsesLeft(state, playerIdx) <= 0) return false;
     const me = state.players[playerIdx];
     if ((me.nuggets || 0) < 1) return false;

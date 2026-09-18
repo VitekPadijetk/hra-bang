@@ -1164,7 +1164,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    // Rýžovací pánev: zaplať 1 valoun a lízni si kartu (až 2× za tah). Pravidla otevřou
+    // Rýžovací mísa: zaplať 1 valoun a lízni si kartu (až 2× za tah). Pravidla otevřou
     // běžnou fázi lízání, takže karta přiletí až klikem na balíček (draw_card výš) –
     // žádná vlastní animace.
     on('gear_pan', () => {

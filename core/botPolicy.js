@@ -189,9 +189,9 @@ const GEAR_VALUE = {
     ZH_PODKOVA: 22,        // výběr ze dvou karet u každého sejmutí (dynamit, vězení, barel)
     ZH_KALUMET: 18,        // imunita vůči károvým kartám ostatních
     ZH_TALISMAN: 16,       // valoun za každý ztracený život – měna na další nákupy
-    ZH_OPASEK: 12,         // limit 8 karet v ruce
+    ZH_NABOJOVY_PAS: 12,   // limit 8 karet v ruce
     // Placené černé vybavení (fáze 3) – další valouny se za ně platí až při použití.
-    ZH_RYZOVACI_PANEV: 20, // až 2 karty za tah, každá za 1 valoun
+    ZH_RYZOVACI_MISA: 20,  // až 2 karty za tah, každá za 1 valoun
     ZH_BATOH: 16,          // život za 2 valouny, i jako záchrana posledního života mimo tah
 };
 
@@ -376,7 +376,7 @@ function _hasWorthTaking(p) {
 // zpátky SAMA SEBE a to, co bot právě odhodil (Pivo za valoun, druhý Dostavník; odhoz si
 // navíc při míchání nechává vrchní kartu). Bot by pak tyhle karty hrál pořád dokola
 // a tah by nikdy neskončil: nekonečná smyčka, kterou stall guard nechytí, protože se
-// stav pořád mění. Odkryla ji Zlatá horečka (Rýžovací pánev a Union Pacific vysají
+// stav pořád mění. Odkryla ji Zlatá horečka (Rýžovací mísa a Union Pacific vysají
 // balíček do rukou), ale hrozila vždycky. Brzdy jsou dvě:
 //   • drawableCount – kolik karet hromádky vůbec dají (dobírací + odhoz, který se při
 //     docházení zamíchá); karta „lízni N" se hraje, jen když jich je aspoň N,
@@ -1128,7 +1128,7 @@ function decidePlay(state, myIndex, beliefs) {
         });
         // Placené vybavení (fáze 3). Obojí je laciná vata na konec tahu – nákupy nového
         // vybavení mají přednost, protože se platí jednou a hrají do konce hry.
-        // Rýžovací pánev: karta za valoun. S Batohem si bot drží 2 valouny na záchranu
+        // Rýžovací mísa: karta za valoun. S Batohem si bot drží 2 valouny na záchranu
         // posledního života – jinak by je prorýžoval a pak umřel s Batohem před sebou.
         const _keep = hasGearFor(state, myIndex, 'ZH_BATOH') ? 2 : 0;
         if (gearPanOk(state, myIndex) && (me.nuggets || 0) - 1 >= _keep && drawCardWorth(state, me, 1)) {

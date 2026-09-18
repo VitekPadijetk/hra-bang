@@ -20,13 +20,13 @@ Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 
 > okno obchodu na klientovi a odhození vybavení při vyřazení hráče.
 > `npm test` = **1414 testů, 0 chyb** (nová sada `test/goldRush.shop.test.js`
 > + invarianty rozložení v `test/positions.test.js`).
-> **Fáze 2** — šest pasivních karet s černým rámem (**Boty, Talisman, Opasek, Krumpáč,
+> **Fáze 2** — šest pasivních karet s černým rámem (**Boty, Talisman, Nábojový pás, Krumpáč,
 > Kalumet, Podkova**), trychtýř „vybavení právě teď platí" (`_gearOn` + zrcadlo
 > `gearOnFor`), klikací fáze `BOOTS_DRAW` a zobecnění sejmutí s výběrem na N karet
 > (`_checkRevealCount`, Podkova × Lucky Duke).
 > `npm test` = **1448 testů, 0 chyb** (nová sada `test/goldRush.cards.test.js`
 > + zátěžová varianta „plná kapsa valounů" v `test/server.bots.test.js`).
-> **Fáze 3** (2026-09-18) — placené černé vybavení **Rýžovací pánev** a **Batoh**, včetně
+> **Fáze 3** (2026-09-18) — placené černé vybavení **Rýžovací mísa** a **Batoh**, včetně
 > Batohu jako třetí záchrany posledního života (vedle Piva a Sida), zrcadla
 > `gearPanOk`/`gearRucksackOk`/`gearRucksackSaveOk`, použití klikem na kartu vybavení
 > a větví bota. Zátěž odkryla dvě staré díry při vyčerpaném balíčku (smyčka bota na
@@ -66,13 +66,13 @@ proto plán začíná infrastrukturou a teprve pak jde karta po kartě.
 | **R6** | Obchod není fáze | Nákup je **akce ve fázi `PLAY`**, ne přechod stavu. | Hokynářství je fáze, protože se čeká na **všechny hráče**. Z obchodu kupuje jen hráč na tahu a kolikrát chce — fáze by zbytečně zamkla `pendingActor` a bot by v ní musel mít větev. |
 | **R7** | Doplňování obchodu | **Okamžitě po nákupu.** | Anglický originál to má jednoznačně a **česká pravidla obsahují obě věty** (viz podklad §Rozpory) — ta o konci tahu je překladatelský artefakt. |
 | **R8** | Podkova × Lucky Duke | **Sčítají se**: každý dává „o kartu navíc". Lucky Duke sám 2, Podkova sama 2, obojí 3. U Rumu 4 / 5 / 6. | Text obou zní „o kartu navíc" a FAQ Q05 tu aritmetiku potvrzuje pro Rum (4 → 5 u Lucky Duka). Nic v podkladu neříká, že se nesčítají. |
-| **R9** | Soudce (Fistful) × nákup | **Blokuje nákup karet, které někomu skončí před ním** (černý rám a Wanted!), hnědé ne. | Soudce říká „hráči nesmí vykládat karty před sebe ani před ostatní hráče". Dnešní `_judgeBlocks` se ptá na kartu Z RUKY jen proto, že jiná cesta na stůl neexistovala. **Snadno se otočí**, kdyby se ukázalo jinak — je to jedna podmínka v `_gearBuy`. |
-| **R10** | Laso (Fistful) a Belle Star × vybavení | **Vypínají i vybavení** (včetně Wanted!). | Obojí je „karta na stole". `_boardDead()` je jediný dotaz na Laso, takže se to ptá na jednom místě; Belle Star potřebuje totéž. |
+| **R9** | Soudce (Fistful) × nákup | **Blokuje nákup karet, které někomu skončí před ním** (černý rám a Wanted), hnědé ne. | Soudce říká „hráči nesmí vykládat karty před sebe ani před ostatní hráče". Dnešní `_judgeBlocks` se ptá na kartu Z RUKY jen proto, že jiná cesta na stůl neexistovala. **Snadno se otočí**, kdyby se ukázalo jinak — je to jedna podmínka v `_gearBuy`. |
+| **R10** | Laso (Fistful) a Belle Star × vybavení | **Vypínají i vybavení** (včetně Wanted). | Obojí je „karta na stole". `_boardDead()` je jediný dotaz na Laso, takže se to ptá na jednom místě; Belle Star potřebuje totéž. |
 | **R11** | Vulture Sam / Greg Digger / Herb Hunter × vybavení | Vybavení **nedostanou**, ani při běžném vyřazení. | Pravidla to říkají výslovně u Vulture Sama; u varianty Stínoví pistolníci to FAQ Q09 rozšiřuje. Z R3 to plyne samo. |
 | **R12** | Jacky Murieta a limit BANG! | Přibude **`player._extraBangs`** (zaplacené výstřely navíc), ne nový parametr `_bangLimit()`. | `_bangLimit()` i zrcadlo `bangLimitFor(state)` jsou dnes bez hráče. Přidat parametr by znamenalo měnit obě strany švu a všechny volající; přičíst zaplacený kredit jsou **dva řádky** ([logic/play.js:161](../logic/play.js#L161), [core/playability.js:561](../core/playability.js#L561)) a je to i sémanticky přesnější. |
 | **R13** | Postavy do ostré hry | Jako u Divokého západu: `GOLD_RUSH_READY` roste s fázemi, v debug hře jdou vybrat všechny. | Osvědčený vzor `WILD_WEST_READY` — dá se hrát dřív, než je hotových všech osm. |
 | **R14** | Stínoví pistolníci | **Vlastní přepínač `options.shadowGunslingers`**, nezávislý na rozšíření, implementovaný **až nakonec** (fáze 7). | Pravidla to výslovně dovolují („můžete použít i bez rozšíření"). Je to zdaleka nejinvazivnější část a nemá cenu jí blokovat zbytek. |
-| **R15** | Wanted! na sobě samém | Smí se zahrát i **na sebe** (FAQ Q07 „před sebe, nebo před jiného hráče"), ale **odhodit si vlastní vybavení zaplacením nejde** (FAQ Q10). | Doslova z FAQ. |
+| **R15** | Wanted na sobě samém | Smí se zahrát i **na sebe** (FAQ Q07 „před sebe, nebo před jiného hráče"), ale **odhodit si vlastní vybavení zaplacením nejde** (FAQ Q10). | Doslova z FAQ. |
 
 ---
 
@@ -198,7 +198,7 @@ Nové pole na `Player` ([logic/entities.js](../logic/entities.js)): `this.gear =
 | místo | co dělá |
 |---|---|
 | `handlePlayerDeath` ([logic/combat.js](../logic/combat.js)) | odhodí gear **na spodek balíčku vybavení**, ne do odhozu; Vulture Samovi ho **nedá** |
-| `_handLimit` ([logic.js:296](../logic.js#L296)) | Opasek → 8 |
+| `_handLimit` ([logic.js:296](../logic.js#L296)) | Nábojový pás → 8 |
 | `startDrawPhase` ([logic/draw.js](../logic/draw.js)) | Krumpáč → +1 karta ve fázi 1 |
 | `startBarrelCheck` / `triggerCheckDraw` / `resolveCheck` (5 míst Lucky Duka) | Podkova (§4) |
 | `_afterLifeLost` | Boty, Talisman |
@@ -332,13 +332,13 @@ Rozšíření je **nezávislé na ostatních** — jde zapnout samo i se všemi 
 | Union Pacific | `gearBuy` → `_setDrawPhase(4)` | `DRAW` (existující) |
 | Zlatá horečka (karta) | `gearBuy` → `_heal(max)` + `_vendettaExtraTurn`-styl | ne |
 | Boty | `_afterLifeLost` → fronta `GEAR_BOOTS_DRAW` | ne |
-| Wanted! | `gearBuy` → volba hráče; `handlePlayerDeath` odměna | `GEAR_TARGET` |
-| Rýžovací pánev | akce `gear_pan` ve fázi PLAY, 2×/tah | ne |
+| Wanted | `gearBuy` → volba hráče; `handlePlayerDeath` odměna | `GEAR_TARGET` |
+| Rýžovací mísa | akce `gear_pan` ve fázi PLAY, 2×/tah | ne |
 | Podkova | 5 míst Lucky Duka | ne |
 | Talisman | `_afterLifeLost` | ne |
 | Batoh | akce `gear_rucksack`, **i mimo tah** u posledního života | větev v `logic/response.js` |
 | Kalumet | `computeCanHit` / vyhodnocení efektu kár | ne |
-| Opasek | `_handLimit` | ne |
+| Nábojový pás | `_handLimit` | ne |
 | Krumpáč | `startDrawPhase` | ne |
 | Don Bell | konec tahu → „otoč!" → tah navíc | ne |
 | Dutch Will | fáze lízání → odhoď 1 ze 2 | `DUTCH_DISCARD` |
@@ -397,7 +397,7 @@ rozešlo (Pivo × Sid × Batoh).
 **`_effSuit`** ([logic/highNoon.js](../logic/highNoon.js)), ne přes `card.suit` — Požehnání
 a Prokletí barvu mění a Kalumet se musí ptát na tu platnou.
 
-**Wanted!.** Odměna se přičítá **k** odměně za banditu (2 + 3 karty, 1 + 1 valoun) a u šerifa
+**Wanted.** Odměna se přičítá **k** odměně za banditu (2 + 3 karty, 1 + 1 valoun) a u šerifa
 zabíjejícího pomocníka **si nejdřív vezme 2 karty a teprve pak odhodí ruku**. To je pořadí
 uvnitř `handlePlayerDeath`, kde už dnes sedí `kill reward` i `šerif × pomocník` — přidat se
 musí **mezi ně**, ne za ně.
@@ -509,10 +509,10 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 |---|---|---|
 | **0** ✅ | data, mixin, `player.nuggets`, `_afterLifeLost`, zisk valounu, přepínač v lobby, redakce | valouny přibývají a jsou vidět |
 | **1** ✅ | hromádky vybavení, obchod, nákup, doplnění, vynucené odhození, Pivo za valoun + **Panák, Union Pacific** | ekonomika kompletní |
-| **2** ✅ | pasivní černé: **Boty, Talisman, Opasek, Krumpáč, Kalumet, Podkova** | 6 karet |
-| **3** ✅ | placené černé: **Rýžovací pánev, Batoh** (vč. záchrany posledního života) | 8 karet |
+| **2** ✅ | pasivní černé: **Boty, Talisman, Nábojový pás, Krumpáč, Kalumet, Podkova** | 6 karet |
+| **3** ✅ | placené černé: **Rýžovací mísa, Batoh** (vč. záchrany posledního života) | 8 karet |
 | **4** | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 12 karet |
-| **5** | **Wanted!** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
+| **5** | **Wanted** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
 | **6** | **8 postav** (`GOLD_RUSH_READY` roste) | rozšíření hotové |
 | **7** | **Stínoví pistolníci** (volitelná varianta) | vše |
 | **8** | bot: nákupní politika + zátěž, layout invarianty | — |
@@ -601,7 +601,7 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
   a pořád se nedá koupit podruhé. Bere hráče jako OBJEKT, ne sedadlo: všech pět háků
   fáze 2 dostává `player`, ne index.
 - **Zrcadlo `gearOnFor` v `core/goldRush.js` vzniklo hned** (plán ho v §2.2 nejmenoval).
-  Potřebuje ho klient na limit karet v ruce (Opasek) – ten dnes rozhoduje, jestli se po
+  Potřebuje ho klient na limit karet v ruce (Nábojový pás) – ten dnes rozhoduje, jestli se po
   odhození přepne na `TRANSITIONING`, a rozejít se se serverem nesmí.
 - **R10 se tím uplatnilo doopravdy**: Laso (Fistful) vypíná vybavení celého stolu a
   Belle Star (Dodge City) ve svém tahu cizí vybavení. Do háků to nepřibylo ani řádkem –
@@ -628,8 +628,8 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
   u hráče, který mezitím odešel ze hry, uvázla. Je to zároveň důvod, proč se čistí právě
   tam: kdo se rozhoduje podle délky fronty, musí po pročištění dostat jen to, co se
   opravdu rozeběhne (viz „Rodina resume příznaků" v CLAUDE.md).
-- **Opasek bere VYŠŠÍ z obojího** (`Math.max(životy, 8)`), ne pevných 8 – Big Spencer
-  (Divoký západ) má 9 životů a Opaskem by si jinak pohoršil.
+- **Nábojový pás bere VYŠŠÍ z obojího** (`Math.max(životy, 8)`), ne pevných 8 – Big Spencer
+  (Divoký západ) má 9 životů a Nábojovým pásem by si jinak pohoršil.
 - **Do zátěže přibyla varianta „plná kapsa valounů"** (`test/server.bots.test.js`).
   Valouny se vydělávají pomalu, takže by se dražší černé karty v běžné hře protočily jen
   občas; s doplňovanou kapsou se spolehlivě rozjede nákup, fáze `BOOTS_DRAW` i výběr
@@ -637,11 +637,11 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
 
 ### Co se ve fázi 3 odchýlilo od plánu (a proč)
 
-- **Rýžovací pánev líže klikem na balíček**, ne rovnou do ruky: `gearPanUse` otevře
+- **Rýžovací mísa líže klikem na balíček**, ne rovnou do ruky: `gearPanUse` otevře
   běžnou fázi lízání mimo začátek tahu (`isStartOfTurn: false`) na jednu kartu, stejně
   jako Union Pacific. Líznutí jdou v tomhle projektu jedinou cestou i s animací, takže
-  pánev vlastní animaci nepotřebuje – a Krumpáč se jí netýká (není to fáze 1).
-- **Počítadlo pánve je na hráči a klíčované `turnId`** (`p._panTurn` / `p._panUses`), ne
+  mísa vlastní animaci nepotřebuje – a Krumpáč se jí netýká (není to fáze 1).
+- **Počítadlo mísy je na hráči a klíčované `turnId`** (`p._panTurn` / `p._panUses`), ne
   `_panUsedThisTurn` na stavu (§2.6). Nic se nemusí nulovat: nový tah (i Vendetin tah
   navíc) má nové `turnId`. Nuluje se jen v `_setupGearDeck`, protože navazující hra
   čísluje tahy znovu. Při výměně míst (Lady Růže) cestuje s hráčem.
@@ -656,10 +656,10 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
 - **Použití klikem na kartu vybavení** v mém pásu (vzor zelených karet Dodge City),
   ne tlačítkem v okně obchodu: ve vlastním tahu karta reaguje na najetí myší, jako
   záchrana posledního života svítí žlutě jako záchranné Pivo v ruce.
-- **Bot**: Pánev jako vata na konec tahu (skóre 11 – nákup nového vybavení má přednost)
+- **Bot**: Mísa jako vata na konec tahu (skóre 11 – nákup nového vybavení má přednost)
   a s Batohem si drží 2 valouny na záchranu; Batoh v tahu jen s ≤ 2 životy, jinak ho
   šetří na záchranu mimo tah (pořadí záchran: Pivo → Batoh → Sid).
-- **Zátěž odkryla dvě staré díry při vyčerpaném balíčku.** Pánev a Union Pacific
+- **Zátěž odkryla dvě staré díry při vyčerpaném balíčku.** Mísa a Union Pacific
   s doplňovanou kapsou vysají balíček do rukou, a pak:
   1. **bot se zacyklil** – Wells Fargo si z prázdných hromádek lízl zpátky sám sebe
      (případně s Pivem za valoun nebo druhým Dostavníkem) a hrál ho dokola; stall guard
@@ -694,9 +694,9 @@ Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `
 
 ## 11. Otevřené otázky pro uživatele
 
-1. **Šest českých názvů karet** (Panák, Rýžovací pánev, Opasek, Krumpáč, Union Pacific,
-   Zlatá horečka) — česká pravidla je neuvádějí. Doplnit z artu, až dorazí; do té doby
-   platí návrhy z podkladu. Pravidla se na jméno neptají (R1), takže to nic neblokuje.
+1. ~~**Šest českých názvů karet**~~ — **vyřešeno z artu (2026-09-18)**: dva návrhy byly
+   špatně, Opasek je na kartě **Nábojový pás** a Rýžovací pánev **Rýžovací mísa**
+   (`ZH_NABOJOVY_PAS`, `ZH_RYZOVACI_MISA`); Wanted je na kartě bez vykřičníku.
 2. **Rozložení obchodu na stole** (§2.7) — vlastní řádek nad pásem balíčků, nebo jinam?
 3. **Sdílet pás vyložených karet mezi `board` a `gear`**, nebo druhý pás?
 4. **R9 (Soudce blokuje nákup černých karet)** — plán volí „ano", ale je to výklad.

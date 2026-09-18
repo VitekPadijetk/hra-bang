@@ -7,12 +7,12 @@
   { "id": 605, "effect": "ZH_ZLATA_HORECKA", "name": "Zlatá horečka", "art": "zlata_horecka", "border": "brown", "cost": 5, "copies": 1, "text": "Tvůj tah končí. Doplň si všechny životy a zahraj další tah." },
 
   { "id": 606, "effect": "ZH_BOTY", "name": "Boty", "art": "boty", "border": "black", "cost": 3, "copies": 1, "text": "Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku." },
-  { "id": 607, "effect": "ZH_WANTED", "name": "Wanted!", "art": "wanted", "border": "black", "cost": 2, "copies": 3, "text": "Zahraj na libovolného hráče. Kdo toho hráče vyřadí, lízne si 2 karty a vezme si 1 valoun." },
-  { "id": 608, "effect": "ZH_RYZOVACI_PANEV", "name": "Rýžovací pánev", "art": "ryzovaci_panev", "border": "black", "cost": 3, "copies": 1, "text": "Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za tah." },
+  { "id": 607, "effect": "ZH_WANTED", "name": "Wanted", "art": "wanted", "border": "black", "cost": 2, "copies": 3, "text": "Zahraj na libovolného hráče. Kdo toho hráče vyřadí, lízne si 2 karty a vezme si 1 valoun." },
+  { "id": 608, "effect": "ZH_RYZOVACI_MISA", "name": "Rýžovací mísa", "art": "ryzovaci_misa", "border": "black", "cost": 3, "copies": 1, "text": "Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za tah." },
   { "id": 609, "effect": "ZH_PODKOVA", "name": "Podkova", "art": "podkova", "border": "black", "cost": 2, "copies": 1, "text": "Pokaždé, když „otáčíš!“, odkryj o kartu navíc a vyber výsledek." },
   { "id": 610, "effect": "ZH_TALISMAN", "name": "Talisman", "art": "talisman", "border": "black", "cost": 3, "copies": 1, "text": "Pokaždé, když ztratíš 1 život, vezmi si 1 valoun." },
   { "id": 611, "effect": "ZH_BATOH", "name": "Batoh", "art": "batoh", "border": "black", "cost": 3, "copies": 1, "text": "Zaplať 2 valouny a doplň si 1 život." },
   { "id": 612, "effect": "ZH_KALUMET", "name": "Kalumet", "art": "kalumet", "border": "black", "cost": 3, "copies": 1, "text": "Karty káry zahrané ostatními na tebe nemají efekt." },
-  { "id": 613, "effect": "ZH_OPASEK", "name": "Opasek", "art": "opasek", "border": "black", "cost": 2, "copies": 1, "text": "Na konci tahu smíš mít v ruce až 8 karet." },
+  { "id": 613, "effect": "ZH_NABOJOVY_PAS", "name": "Nábojový pás", "art": "nabojovy_pas", "border": "black", "cost": 2, "copies": 1, "text": "Na konci tahu smíš mít v ruce až 8 karet." },
   { "id": 614, "effect": "ZH_KRUMPAC", "name": "Krumpáč", "art": "krumpac", "border": "black", "cost": 4, "copies": 1, "text": "Ve fázi 1 svého tahu si lízni o kartu navíc." }
 ]

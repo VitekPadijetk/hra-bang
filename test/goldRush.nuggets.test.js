@@ -57,8 +57,8 @@ test('setup: do balíčku jdou jen HOTOVÉ druhy (GEAR_READY) a obchod se hned n
     // fáze 3: dvě placené černé – všechny černé po jednom kusu). Karta bez efektu by se prodala za valouny a neudělala nic –
     // viz GEAR_READY v logic/goldRush.js.
     const READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
-                   'ZH_BOTY', 'ZH_TALISMAN', 'ZH_OPASEK', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
-                   'ZH_RYZOVACI_PANEV', 'ZH_BATOH'];
+                   'ZH_BOTY', 'ZH_TALISMAN', 'ZH_NABOJOVY_PAS', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
+                   'ZH_RYZOVACI_MISA', 'ZH_BATOH'];
     const all = g.gearDeck.concat(g.gearRow.filter(Boolean));
     assert.equal(all.length, 12);
     assert.equal(new Set(all.map(c => c.id)).size, 12);

@@ -1956,7 +1956,7 @@ function drawMyArea(ctx) {
         // vybavení nesmí; odhodit ho může jen soupeř zaplacením ceny + 1), zvětšit ano –
         // text karty je na štítku vysázený drobně.
         // Placené vybavení (fáze 3) se POUŽÍVÁ klikem na kartu, stejně jako zelené karty
-        // Dodge City: Rýžovací pánev a Batoh ve svém tahu, Batoh navíc jako záchrana
+        // Dodge City: Rýžovací mísa a Batoh ve svém tahu, Batoh navíc jako záchrana
         // posledního života (pak svítí žlutě jako záchranné Pivo). Co je zrovna klikací,
         // říkají predikáty z core/goldRush.js – tytéž, podle kterých rozhoduje server.
         const _gearUseFree = !App.blockInput && selectedState.cardIndex === null &&
@@ -1964,7 +1964,7 @@ function drawMyArea(ctx) {
         const _rucksackSave = _gearUseFree && gearRucksackSaveOk(state, myIndex);
         const _gearUseEvent = (g) => {
             if (!_gearUseFree) return null;
-            if (g.effect === 'ZH_RYZOVACI_PANEV' && gearPanOk(state, myIndex)) return 'gear_pan';
+            if (g.effect === 'ZH_RYZOVACI_MISA' && gearPanOk(state, myIndex)) return 'gear_pan';
             if (g.effect === 'ZH_BATOH' && (_rucksackSave || gearRucksackOk(state, myIndex))) return 'gear_rucksack';
             return null;
         };
@@ -2584,9 +2584,9 @@ function drawMyArea(ctx) {
                             socket.emit('discard_card', intent.index);
                             optimisticRemoveCard(intent.index);
                             // Sean Mallory (Dodge City) drží až 10 karet místo počtu životů,
-                            // Opasek (Zlatá horečka) zvedá limit na 8 – zrcadlo _handLimit (logic.js).
+                            // Nábojový pás (Zlatá horečka) zvedá limit na 8 – zrcadlo _handLimit (logic.js).
                             const _limit = hasAbility(me, "Sean Mallory") ? 10
-                                : (gearOnFor(state, myIndex, 'ZH_OPASEK') ? Math.max(me.health, 8) : me.health);
+                                : (gearOnFor(state, myIndex, 'ZH_NABOJOVY_PAS') ? Math.max(me.health, 8) : me.health);
                             if (me.hand.length <= _limit) {
                                 state.phase = "TRANSITIONING";
                                 App.blockInput = true;
@@ -2673,7 +2673,7 @@ function drawMyArea(ctx) {
                 // Zlatá horečka: nákup v obchodě je hratelná akce fáze 2 – dokud si hráč
                 // má za co koupit, „Ukončit tah" blikat nemá.
                 (state.gearRow || []).some((c, i) => c && gearBuyOk(state, myIndex, i)) ||
-                // …a použití placeného vybavení před sebou (Rýžovací pánev, Batoh).
+                // …a použití placeného vybavení před sebou (Rýžovací mísa, Batoh).
                 gearPanOk(state, myIndex) || gearRucksackOk(state, myIndex);
             const hasPlayable = sidCanHeal || hasPlayableGreen || hasActiveAbility || me.hand.some((card, idx) => {
                 const p = getCardPlayability(card, idx);

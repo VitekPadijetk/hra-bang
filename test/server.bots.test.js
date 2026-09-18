@@ -530,7 +530,7 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
             const opts = { expansions: { zlata_horecka: true } };
             const room = { id: `zhrich${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
             ctx.rooms.set(room.id, room);
-            // Rýžovací pánev (fáze 3) se pozná z proudu událostí pravidel.
+            // Rýžovací mísa (fáze 3) se pozná z proudu událostí pravidel.
             gs._onEvent = (e) => { if (e && e.ev === 'gear' && e.act === 'pan') panSeen++; };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
             gs.players.forEach(p => ctx.createBot(room, p.name));
@@ -551,7 +551,7 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
     assert.ok(bought > 0, 'někdo si koupil černé vybavení (leží před ním)');
     assert.ok(bootsSeen > 0, 'Boty aspoň jednou vedly na klikané líznutí');
     assert.ok(pickSeen > 0, 'Podkova aspoň jednou vedla na výběr karty u sejmutí');
-    assert.ok(panSeen > 0, 'někdo aspoň jednou rýžoval (Rýžovací pánev → líznutí)');
+    assert.ok(panSeen > 0, 'někdo aspoň jednou rýžoval (Rýžovací mísa → líznutí)');
     // Batoh se tu schválně nevynucuje: bot ho bere jen se zraněním a Panák léčí levněji,
     // takže vyjde 0–9× na šest partií – jako podmínka by test byl flaky. Obě jeho cesty
     // (v tahu i záchrana) pokrývá deterministicky test/goldRush.paid.test.js; tady jde

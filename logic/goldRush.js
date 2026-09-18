@@ -46,11 +46,11 @@ function gearPieces(kind) {
 // valouny a nedostal nic. Seznam roste s fázemi plánu (§9); ve fázi 5 bude úplný.
 const GEAR_READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
                     // fáze 2 – pasivní černé vybavení (leží před hráčem a jen mění pravidla)
-                    'ZH_BOTY', 'ZH_TALISMAN', 'ZH_OPASEK', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
+                    'ZH_BOTY', 'ZH_TALISMAN', 'ZH_NABOJOVY_PAS', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
                     // fáze 3 – placené černé vybavení (leží před hráčem a používá se za valouny)
-                    'ZH_RYZOVACI_PANEV', 'ZH_BATOH'];
+                    'ZH_RYZOVACI_MISA', 'ZH_BATOH'];
 
-// Rýžovací pánev: „Použitelné až 2× za tah."
+// Rýžovací mísa: „Použitelné až 2× za tah."
 const PAN_USES_PER_TURN = 2;
 
 const GoldRushMixin = {
@@ -66,7 +66,7 @@ const GoldRushMixin = {
         this.gearPile = [];                  // odhozené: lícem vzhůru POD balíčkem
         this._goldRush = false;
         this.pendingGearTarget = null;
-        // Počítadlo Rýžovací pánve je klíčované `turnId`, který navazující hra čísluje
+        // Počítadlo Rýžovací mísy je klíčované `turnId`, který navazující hra čísluje
         // znovu – starý záznam by jinak mohl sednout na tah nové hry.
         (this.players || []).forEach(p => { p.gear = []; p.nuggets = 0; p._panTurn = null; p._panUses = 0; });
         const on = options.expansions && options.expansions.zlata_horecka;
@@ -363,7 +363,7 @@ const GoldRushMixin = {
         return card;
     },
 
-    // ── Placené černé vybavení (fáze 3): Rýžovací pánev a Batoh ─────────────
+    // ── Placené černé vybavení (fáze 3): Rýžovací mísa a Batoh ─────────────
     // Obě karty leží před hráčem a používají se za valouny. Stejně jako nákup to NENÍ
     // fáze (R6): používá je hráč na tahu ve fázi PLAY a nikdo jiný nečeká. Jedinou
     // výjimkou je Batoh na posledním životě – ten smí i mimo tah (rucksackLastLifeSave,
@@ -376,7 +376,7 @@ const GoldRushMixin = {
         return player && player._panTurn === this.turnId ? (player._panUses || 0) : 0;
     },
 
-    // Rýžovací pánev: „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2×
+    // Rýžovací mísa: „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2×
     // za tah." Líže se KLIKEM na balíček, běžnou fází lízání mimo začátek tahu – stejně
     // jako Union Pacific (líznutí jdou jednou cestou, včetně animace). Vrací true, když
     // se rýžovalo.
@@ -384,7 +384,7 @@ const GoldRushMixin = {
         if (!this._goldRushOn() || this.phase !== "PLAY") return false;
         if (playerIdx !== this.currentPlayerIndex) return false;
         const p = this.players[playerIdx];
-        if (!p || !isInPlay(p) || !this._gearOn(p, 'ZH_RYZOVACI_PANEV')) return false;
+        if (!p || !isInPlay(p) || !this._gearOn(p, 'ZH_RYZOVACI_MISA')) return false;
         const used = this._panUsesThisTurn(p);
         if (used >= PAN_USES_PER_TURN) return false;
         // Fistful – Právo západu: líznutá karta může vynucenou kartu „vypnout" (_lawLocked).

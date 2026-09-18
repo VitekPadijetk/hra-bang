@@ -83,34 +83,35 @@ Počet nákupů ani odhození **není nijak omezený**.
 
 ## Karty vybavení (24 karet v 15 druzích)
 
-Cena je číslo v pravém dolním rohu karty. Sloupec „CZ" je český název: **tučně** = doložený
-z českých pravidel Albi, *kurzívou* = **návrh k ověření z artu** (česká pravidla ten název
-neuvádějí, protože ke kartě nemají dodatek).
+Cena je číslo v pravém dolním rohu karty. Sloupec „CZ" je český název **tak, jak je
+vytištěný na kartě** — ověřeno z artu (`assets/zlata_horecka_cards/`, 2026-09-18). Česká
+pravidla Albi jmenují jen 9 karet, a tam, kde se s artem rozcházejí, platí art (viz
+„Rozpory" bod 2).
 
 ### Hnědý rám — efekt se uplatní hned při nákupu (13 karet)
 
 | CZ | EN / IT | cena | ks | text karty |
 |---|---|---|---|---|
-| *PANÁK* | Shot / Bicchierino | 1 | 3 | Hráč dle tvé volby (i ty) si doplní 1 život. |
+| **PANÁK** | Shot / Bicchierino | 1 | 3 | Hráč dle tvé volby (i ty) si doplní 1 život. |
 | **LÁHEV** | Bottle / Bottiglia | 2 | 3 | Může být zahrána jako Panika!, Pivo nebo BANG! |
 | **KOMPLIC** | Pardner / Complice | 2 | 3 | Může být zahrán jako Hokynářství, Duel nebo Cat Balou. |
 | **RUM** | Rhum / Rum | 3 | 2 | „Otoč!" 4 karty: doplň si 1 život za každou různou barvu. |
-| *UNION PACIFIC* | Union Pacific | 4 | 1 | Lízni si 4 karty z balíčku. |
-| *ZLATÁ HOREČKA* ⚠ | Gold Rush / Corsa all'Oro | 5 | 1 | Tvůj tah končí. Doplň si všechny životy a zahraj další tah. |
+| **UNION PACIFIC** | Union Pacific | 4 | 1 | Lízni si 4 karty z balíčku. |
+| **ZLATÁ HOREČKA** ⚠ | Gold Rush / Corsa all'Oro | 5 | 1 | Tvůj tah končí. Doplň si všechny životy a zahraj další tah. |
 
 ### Černý rám — leží před hráčem (11 karet)
 
 | CZ | EN / IT | cena | ks | text karty |
 |---|---|---|---|---|
 | **BOTY** | Boots / Stivali | 3 | 1 | Pokaždé, když ztratíš 1 život, lízni si 1 kartu z balíčku. |
-| **WANTED!** | Wanted / Ricercato | 2 | 3 | Zahraj na libovolného hráče. Kdo toho hráče vyřadí, lízne si 2 karty a vezme si 1 valoun. |
-| *RÝŽOVACÍ PÁNEV* | Gold Pan / Setaccio | 3 | 1 | Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za tah. |
+| **WANTED** | Wanted / Ricercato | 2 | 3 | Zahraj na libovolného hráče. Kdo toho hráče vyřadí, lízne si 2 karty a vezme si 1 valoun. |
+| **RÝŽOVACÍ MÍSA** | Gold Pan / Setaccio | 3 | 1 | Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za tah. |
 | **PODKOVA** | Horseshoe / Ferro di cavallo | 2 | 1 | Pokaždé, když „otáčíš!", odkryj o kartu navíc a vyber výsledek. |
 | **TALISMAN** | Lucky Charm / Talismano | 3 | 1 | Pokaždé, když ztratíš 1 život, vezmi si 1 valoun. |
 | **BATOH** | Rucksack / Zaino | 3 | 1 | Zaplať 2 valouny a doplň si 1 život. |
 | **KALUMET** | Calumet | 3 | 1 | Karty káry zahrané ostatními na tebe nemají efekt. |
-| *OPASEK* | Gun Belt / Cinturone | 2 | 1 | Na konci tahu smíš mít v ruce až 8 karet. |
-| *KRUMPÁČ* | Pickaxe / Piccone | 4 | 1 | Ve fázi 1 svého tahu si lízni o kartu navíc. |
+| **NÁBOJOVÝ PÁS** | Gun Belt / Cinturone | 2 | 1 | Na konci tahu smíš mít v ruce až 8 karet. |
+| **KRUMPÁČ** | Pickaxe / Piccone | 4 | 1 | Ve fázi 1 svého tahu si lízni o kartu navíc. |
 
 ⚠ **Kolize jmen:** karta vybavení *Gold Rush* by se česky jmenovala **Zlatá horečka** —
 tedy stejně jako **celé rozšíření** a zároveň stejně jako **existující karta událostí High
@@ -128,9 +129,9 @@ Noonu** (`ZLATA_HORECKA`, id 305, „hra probíhá proti směru hodinových ruč
 - **RUM:** příklad z pravidel — otočíš 4 karty a doplníš si tolik životů, kolik padlo
   **různých barev** (příklad v pravidlech dává 3). Všechny otočené karty se poté odhodí.
 - **BATOH:** může se použít **i mimo tah vlastníka**, pokud ztrácí **poslední život**.
-- **WANTED!:** líznuté 2 karty a 1 valoun se **přičítají** k jiným efektům — vyřadíš-li
-  banditu s Wanted!, vezmeš si 2 + 3 = **5 karet** a 1 + 1 = **2 valouny**. Pokud šerif
-  vyřadí pomocníka s Wanted!, **nejprve si vezme 2 karty** a teprve pak odhodí celou ruku,
+- **WANTED:** líznuté 2 karty a 1 valoun se **přičítají** k jiným efektům — vyřadíš-li
+  banditu s Wanted, vezmeš si 2 + 3 = **5 karet** a 1 + 1 = **2 valouny**. Pokud šerif
+  vyřadí pomocníka s Wanted, **nejprve si vezme 2 karty** a teprve pak odhodí celou ruku,
   ale **zlato si ponechá**.
 
 ---
@@ -206,7 +207,7 @@ role Odpadlík se **nikdy nevrací**. Karta *Stínový odpadlík* se do počít�
 | Q04 | Zabije-li šerif pomocníka, odhazuje i vybavení? | **Ano**, i vybavení. |
 | Q05 | Lucky Duke × Rum? | Otočí **5 karet místo 4**. |
 | Q06 | Může Don Bell použít schopnost ve Vězení? | **Ne.** |
-| Q07 | Kdy se hraje koupené *Wanted!*? | **Okamžitě** — před sebe, nebo před jiného hráče. |
+| Q07 | Kdy se hraje koupené *Wanted*? | **Okamžitě** — před sebe, nebo před jiného hráče. |
 | Q08 | Josh McCloud jako stínový pistolník? | Na konci tahu odhodí ruku i vše před sebou (má 0 životů). Pak může hrát další tah (lízne 2 nové karty a hraje normálně). |
 | Q09 | Vyřazen a stanu se stínovým pistolníkem — dostane Vulture Sam mé karty? | **Ano, při prvním vyřazení** („platí všechna pravidla pro vyřazení"). Při **odchodu ze stínového tahu už ne.** |
 | Q10 | Můžu zaplatit za odhození **vlastního** vybavení? | **Ne** — jen vybavení **jiného** hráče. |
@@ -224,10 +225,11 @@ role Odpadlík se **nikdy nevrací**. Karta *Stínový odpadlík* se do počít�
    doplňte karty vybavení (obchod) tak, aby ležely 3 lícem vzhůru*" **i** „*Ve chvíli, kdy
    si někdo z obchodu koupí nějaké vybavení, se tato karta okamžitě nahradí novou kartou*".
    Anglický originál zná **jen okamžité doplnění**. → plán bere **okamžité**.
-2. **Šest českých názvů karet chybí.** Česká pravidla jmenují jen 9 karet vybavení (ty,
-   ke kterým mají dodatek). Panák, Rýžovací pánev, Opasek, Krumpáč, Union Pacific a Zlatá
-   horečka v nich **nejsou** — jsou jen na kartách. Návrhy v tabulce výš se musí ověřit
-   z artu, až dorazí.
+2. **Šest českých názvů karet chybělo** — česká pravidla jmenují jen 9 karet vybavení (ty,
+   ke kterým mají dodatek). **Vyřešeno z artu (2026-09-18):** Panák, Union Pacific, Krumpáč
+   a Zlatá horečka seděly, dva návrhy ne — Gun Belt je **Nábojový pás** (ne Opasek) a Gold
+   Pan **Rýžovací mísa** (ne pánev). Pravidla píšou **„WANTED!"**, na kartě je **„WANTED"**
+   bez vykřičníku; hra se drží karty.
 3. **Rum a počet životů.** Text karty říká „1 život za každou **různou barvu**" ze 4
    otočených karet, tedy 1–4. Příklad v pravidlech dává 3.
 4. **Podkova × Lucky Duke.** FAQ Q05 řeší jen Rum. Kolik karet se otáčí, když má hráč

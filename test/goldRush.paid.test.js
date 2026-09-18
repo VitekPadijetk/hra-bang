@@ -1,7 +1,7 @@
 // Rozšíření Zlatá horečka (Gold Rush) – fáze 3: placené vybavení s černým rámem.
 //
 // Dvě karty, které leží před hráčem a používají se za valouny:
-//   RÝŽOVACÍ PÁNEV – „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za tah."
+//   RÝŽOVACÍ MÍSA – „Zaplať 1 valoun a lízni si 1 kartu z balíčku. Použitelné až 2× za tah."
 //   BATOH          – „Zaplať 2 valouny a doplň si 1 život."
 //                    Dodatek: „Může se použít i mimo tah vlastníka, pokud ztrácí poslední život."
 //
@@ -54,11 +54,11 @@ function shootAt1(g) {
     assert.equal(g.pendingResponse.targetIdx, 1);
 }
 
-// ── RÝŽOVACÍ PÁNEV ───────────────────────────────────────────────────────────
+// ── RÝŽOVACÍ MÍSA ───────────────────────────────────────────────────────────
 
-test('Pánev: zaplať 1 valoun → fáze lízání na 1 kartu, klik na balíček a zpět do tahu', () => {
+test('Mísa: zaplať 1 valoun → fáze lízání na 1 kartu, klik na balíček a zpět do tahu', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_RYZOVACI_PANEV');
+    gear(g, 0, 'ZH_RYZOVACI_MISA');
     g.players[0].nuggets = 3;
     topDeck(g, Suits.HEARTS, '9');
 
@@ -74,9 +74,9 @@ test('Pánev: zaplať 1 valoun → fáze lízání na 1 kartu, klik na balíček
     assert.equal(g.phase, 'PLAY');
 });
 
-test('Pánev: nejvýš 2× za tah; nový tah (nové turnId) počítá znovu od nuly', () => {
+test('Mísa: nejvýš 2× za tah; nový tah (nové turnId) počítá znovu od nuly', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_RYZOVACI_PANEV');
+    gear(g, 0, 'ZH_RYZOVACI_MISA');
     g.players[0].nuggets = 5;
     for (let i = 0; i < 5; i++) topDeck(g, Suits.CLUBS);
 
@@ -95,9 +95,9 @@ test('Pánev: nejvýš 2× za tah; nový tah (nové turnId) počítá znovu od n
     assert.equal(g.gearPanUse(0), true);
 });
 
-test('Pánev: jen ve svém tahu ve fázi PLAY, s valounem a když platí', () => {
+test('Mísa: jen ve svém tahu ve fázi PLAY, s valounem a když platí', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 1, 'ZH_RYZOVACI_PANEV');
+    gear(g, 1, 'ZH_RYZOVACI_MISA');
     g.players[1].nuggets = 2;
     assert.equal(g.gearPanUse(1), false, 'cizí tah');
 
@@ -115,9 +115,9 @@ test('Pánev: jen ve svém tahu ve fázi PLAY, s valounem a když platí', () =>
     assert.equal(g.players[1].nuggets, 2);
 });
 
-test('Pánev: Krumpáč se jí netýká – líže se přesně 1 karta (není to fáze 1)', () => {
+test('Mísa: Krumpáč se jí netýká – líže se přesně 1 karta (není to fáze 1)', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_RYZOVACI_PANEV');
+    gear(g, 0, 'ZH_RYZOVACI_MISA');
     gear(g, 0, 'ZH_KRUMPAC');
     g.players[0].nuggets = 1;
     topDeck(g, Suits.CLUBS); topDeck(g, Suits.CLUBS);
@@ -125,7 +125,7 @@ test('Pánev: Krumpáč se jí netýká – líže se přesně 1 karta (není to
     assert.equal(g.drawPhaseState.cardsNeeded, 1);
 });
 
-test('Pánev: zrcadlo gearPanOk odpovídá serveru', () => {
+test('Mísa: zrcadlo gearPanOk odpovídá serveru', () => {
     const cases = [
         (g) => {},
         (g) => { g.players[0].nuggets = 0; },
@@ -137,7 +137,7 @@ test('Pánev: zrcadlo gearPanOk odpovídá serveru', () => {
     ];
     cases.forEach((mut, k) => {
         const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-        gear(g, 0, 'ZH_RYZOVACI_PANEV');
+        gear(g, 0, 'ZH_RYZOVACI_MISA');
         g.players[0].nuggets = 2;
         topDeck(g, Suits.CLUBS);
         mut(g);
@@ -368,18 +368,18 @@ test('bot: na dynamitu i u Pravého poledne sáhne po Batohu dřív, než schyt�
     assert.deepEqual(decideBotAction(g, 0), { event: 'take_dynamite_hit' });
 });
 
-test('bot: s volným valounem a Pánví si ve svém tahu lízne', () => {
+test('bot: s volným valounem a Mísou si ve svém tahu lízne', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_RYZOVACI_PANEV');
+    gear(g, 0, 'ZH_RYZOVACI_MISA');
     g.players[0].nuggets = 1;
     g.gearRow = [null, null, null];   // v obchodě není nic, na co by valoun šel dřív
     topDeck(g, Suits.CLUBS);          // je co líznout (jinak by rýžování bylo za nic)
     assert.deepEqual(decideBotAction(g, 0), { event: 'gear_pan', payload: {} });
 });
 
-test('bot: s Batohem si na Pánev nesáhne, když by mu nezbyly 2 valouny na záchranu', () => {
+test('bot: s Batohem si na Mísu nesáhne, když by mu nezbyly 2 valouny na záchranu', () => {
     const g = mkZH([{ role: 'Sheriff' }, { role: 'Outlaw' }]);
-    gear(g, 0, 'ZH_RYZOVACI_PANEV');
+    gear(g, 0, 'ZH_RYZOVACI_MISA');
     gear(g, 0, 'ZH_BATOH');
     g.players[0].nuggets = 2;
     g.gearRow = [null, null, null];
