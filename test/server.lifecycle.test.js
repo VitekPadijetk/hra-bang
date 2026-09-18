@@ -138,6 +138,7 @@ test('startGame v singleChar módu rozdá postavy a přeskočí intro', () => {
     assert.equal(room.gameState.players.length, 3);
     assert.ok(room.gameState.players.every(p => p.character));
     assert.equal(room.phase, 'playing'); // všichni vybráni → hra běží, ne char_select
+    assert.equal(room.gameNo, 1, 'první hra místnosti – v seznamu her není navazující');
 });
 
 // Bug 33: High Noon – Město duchů. Duch je „ve hře" jen po dobu svého tahu, pořád je
@@ -164,6 +165,7 @@ test('startNextGame: duch (Město duchů) není přeživší, postavu si nenech�
     assert.equal(np[2]._survivorChar, undefined);
     assert.equal(np[3]._survivorChar, undefined);
     assert.equal(np.filter(p => p._awaitingKeepChoice).length, 1, 'na volbu čeká jen skutečně živý');
+    assert.equal(room.gameNo, 1, 'počítadlo her místnosti (tady bez startGame) přibude');
 });
 
 // ── Rozšíření High Noon: odkrytí karty události ──────────────────────────────

@@ -397,3 +397,84 @@
   border: 1px solid var(--line2); background: var(--panel); color: var(--text); font-size: 16px;
 }
 .bu-extra:hover { border-color: var(--gold); }
+
+.bu-bar-sum.bad { color: var(--bad); }
+
+/* ── Seznamy her (S6, S10) ──────────────────────────────────────────────── */
+
+.bu-list {
+  width: 100%; max-width: 880px; margin: 0 auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+/* Řádek místnosti: levý okraj v barvě stavu, celý řádek je jedno tlačítko. */
+.bu-room {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; text-align: left;
+  padding: 13px 15px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--line); border-left: 4px solid var(--ok);
+  background: var(--panel); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,.14);
+}
+.bu-room.full { border-left-color: var(--dim); }
+.bu-room.running { border-left-color: var(--running); }
+.bu-room:hover { border-color: var(--gold); background: var(--panelHi); }
+.bu-room-main { flex: 1 1 190px; min-width: 0; }
+.bu-room-name, .bu-room-who { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bu-room-name { font-size: 19px; font-weight: 600; letter-spacing: .02em; }
+.bu-room-who { font-family: 'EB Garamond', serif; font-size: 14px; color: var(--muted); }
+.bu-room-seats { flex: none; display: flex; align-items: center; gap: 9px; }
+/* Tečka na místo: plný stůl je poznat bez čtení čísla. */
+.bu-dots { display: flex; gap: 3px; }
+.bu-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line2); }
+.bu-dot.on { background: var(--gold); }
+/* Pevné šířky – řádky pod sebou nepodskakují. */
+.bu-room-count { font-size: 16px; min-width: 54px; }
+.bu-room-state { flex: none; min-width: 86px; font-size: 13px; letter-spacing: .08em; color: var(--ok); }
+.bu-room.full .bu-room-state { color: var(--dim); }
+.bu-room.running .bu-room-state { color: var(--running); }
+.bu-room-cta {
+  flex: none; padding: 9px 18px; border-radius: 7px;
+  font-size: 15px; font-weight: 600; letter-spacing: .04em;
+  border: 1px solid transparent; background: linear-gradient(var(--goldHi), var(--gold)); color: var(--onGold);
+}
+.bu-room.full .bu-room-cta { border-color: var(--line2); background: transparent; color: var(--dim); }
+.bu-room.running .bu-room-cta { border-color: var(--line2); background: transparent; color: var(--gold); }
+@media (max-height: 500px) {
+  .bu-list { padding: 10px 12px; gap: 6px; }
+  .bu-room { padding: 9px 12px; gap: 6px 12px; }
+  .bu-room-cta { padding: 7px 14px; }
+}
+
+/* Prázdný seznam – vždy s tlačítkem, kam dál. */
+.bu-empty { margin-top: 9vh; padding: 0 16px 16px; text-align: center; color: var(--muted); }
+.bu-empty-title { font-family: 'Rye', serif; font-size: 34px; opacity: .45; }
+.bu-empty-text { margin-top: 8px; font-family: 'EB Garamond', serif; font-size: 18px; }
+.bu-empty .bu-btn { margin-top: 16px; padding: 12px 22px; font-size: 16px; }
+
+/* ── Sedačky (S7; S8 a S9 ve fázi 4) ────────────────────────────────────── */
+
+.bu-seats { display: flex; flex-direction: column; gap: 6px; }
+.bu-seat {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--panel);
+}
+.bu-seat.me { border-color: var(--gold); background: var(--noticeBg); }
+.bu-seat.empty { background: transparent; }
+.bu-seat-idx { flex: none; width: 28px; text-align: center; font-size: 15px; color: var(--muted); opacity: .7; }
+.bu-seat-ico { flex: none; width: 24px; text-align: center; font-size: 18px; }
+.bu-seat-name {
+  flex: 1; min-width: 0; font-size: 18px; letter-spacing: .02em; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bu-seat.me .bu-seat-name { color: var(--gold); }
+.bu-seat.empty .bu-seat-name { color: var(--dim); }
+.bu-seat-tag { flex: none; font-family: 'EB Garamond', serif; font-size: 14px; color: var(--muted); }
+@media (max-height: 500px) { .bu-seat { padding: 7px 12px; } }
+
+/* Poznámka nad obsahem (⏳ čekání, ⚠ problém). */
+.bu-notice {
+  display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 9px;
+  border: 1px solid var(--line2); background: var(--noticeBg); color: var(--text);
+  font-family: 'EB Garamond', serif; font-size: 16px; line-height: 1.4; text-wrap: pretty;
+}
+.bu-notice.bad { border-color: var(--badLine); background: var(--badBg); }
+.bu-notice-ico { flex: none; font-size: 17px; }
+.bu-notice.bad .bu-notice-ico { color: var(--bad); }

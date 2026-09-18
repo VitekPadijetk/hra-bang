@@ -15,7 +15,7 @@
 // a na mobilu zaklapl klávesnici. Psaní zapíše hodnotu přes MENU_FIELDS a vymění jen
 // oblasti označené data-live (souhrn a tlačítko v liště), viz _patchMenuLive.
 
-const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game']);
+const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game', 'join_list', 'join_room', 'spectate_list']);
 
 function menuDomHandles(screen) {
     return MENU_DOM_SCREENS.has(screen);
@@ -85,11 +85,12 @@ function _menuEnsureRoot() {
     return _menuRoot;
 }
 
+let _menuScreenName = null;
+
 function hideMenuDom() {
     if (_menuRoot) _menuRoot.style.display = 'none';
+    _menuScreenName = null;   // návrat na tutéž obrazovku (třeba po sledování) je nový vstup
 }
-
-let _menuScreenName = null;
 
 function renderMenuDom(screen) {
     const root = _menuEnsureRoot();
@@ -99,9 +100,26 @@ function renderMenuDom(screen) {
     const build = MENU_SCREENS[screen];
     if (!build) return;
     // Jiná obrazovka začíná nahoře – scroll se drží jen v rámci jedné.
-    if (screen !== _menuScreenName) { _menuScreenName = screen; _menuLastHtml = null; _menuScreenEl.innerHTML = ''; }
+    if (screen !== _menuScreenName) {
+        _menuScreenName = screen;
+        _menuLastHtml = null;
+        _menuScreenEl.innerHTML = '';
+        if (MENU_ENTER[screen]) MENU_ENTER[screen]();
+    }
     _mountMenuHtml(build());
 }
+
+// Jednou při vstupu na obrazovku (odkudkoli – z menu, zpět z detailu, po konci sledování).
+const MENU_ENTER = {
+    // Jméno se na S7 kontroluje proti obsazeným na serveru; stará chyba ze serveru patří
+    // minulému pokusu.
+    join_room() {
+        App.joinError = null;
+        socket.emit('get_taken_names');
+    },
+    // game_list chodí sám při každé změně, tohle je jen pojistka čerstvosti po návratu.
+    spectate_list() { socket.emit('get_game_list'); },
+};
 
 // Vymění obsah jen při změně a podrží pozici rolující části (když se změní jen
 // číslo v seznamu, nesmí seznam odskočit nahoru) i fokus (klávesnicí ovládané
@@ -158,8 +176,56 @@ function _menuHead(title, sub, { act = 'go', arg = 'main', leave = false } = {})
 
 // Neposuvná lišta akcí: vlevo souhrn (co hráč potřebuje vědět, než klikne), vpravo akce.
 // data-live – při psaní do pole se vyměňuje jen tahle část (_patchMenuLive).
-function _menuBar(summary, actionHtml) {
-    return `<div class="bu-bar" data-live="bar"><div class="bu-bar-sum">${summary}</div>${actionHtml}</div>`;
+// `bad` = souhrn je chyba (obsazené jméno, odmítnutí ze serveru).
+function _menuBar(summary, actionHtml, { bad = false } = {}) {
+    return `<div class="bu-bar" data-live="bar"><div class="bu-bar-sum${bad ? ' bad' : ''}">${summary}</div>${actionHtml}</div>`;
+}
+
+// Řádek místnosti (S6, S10): název + kdo, tečky sedaček, počet, stav, akce.
+// Celý řádek je jedno tlačítko – „akce" vpravo je jen jeho popisek (vnořený <button> nejde).
+function _menuRoomRow(item, running, act) {
+    const v = roomRowView(item, running);
+    const dots = v.seats.map(on => `<span class="bu-dot${on ? ' on' : ''}"></span>`).join('');
+    return `<button class="bu-room ${v.state}" data-act="${act}" data-arg="${esc(item.id)}">` +
+        `<span class="bu-room-main"><span class="bu-room-name">${esc(item.name)}</span>` +
+        `<span class="bu-room-who">${esc(v.who)}</span></span>` +
+        `<span class="bu-room-seats"><span class="bu-dots">${dots}</span>` +
+        `<span class="bu-room-count">${v.count}</span></span>` +
+        `<span class="bu-room-state">${v.stateText}</span>` +
+        `<span class="bu-room-cta">${v.cta}</span></button>`;
+}
+
+// Prázdný seznam: slepá ulička se mění na rozcestí – vždy s akcí, kam dál.
+function _menuEmpty(text, btnLabel, screen) {
+    return `<div class="bu-empty"><div class="bu-empty-title">Prázdno</div>` +
+        `<div class="bu-empty-text">${text}</div>` +
+        `<button class="bu-btn primary" data-act="go" data-arg="${screen}">${btnLabel}</button></div>`;
+}
+
+// Řádky sedaček (S7; ve fázi 4 i lobby S8/S9) – data z seatRows (core/menuModel.js).
+function _menuSeats(rows) {
+    return '<div class="bu-seats">' + rows.map(r => r.empty
+        ? `<div class="bu-seat empty"><span class="bu-seat-idx">${r.idx}.</span>` +
+          `<span class="bu-seat-ico">·</span><span class="bu-seat-name">Čeká se…</span></div>`
+        : `<div class="bu-seat${r.me ? ' me' : ''}"><span class="bu-seat-idx">${r.idx}.</span>` +
+          `<span class="bu-seat-ico">${r.icon}</span><span class="bu-seat-name">${esc(r.name)}</span>` +
+          `<span class="bu-seat-tag">${r.tag}</span></div>`
+    ).join('') + '</div>';
+}
+
+// Poznámka nad obsahem (⏳ čekání, ⚠ problém).
+function _menuNotice(ico, html, { bad = false } = {}) {
+    return `<div class="bu-notice${bad ? ' bad' : ''}"><span class="bu-notice-ico">${ico}</span><span>${html}</span></div>`;
+}
+
+// Položka seznamu, kterou má S7 otevřenou – vždy ČERSTVÁ z lobby_list (seznam chodí sám
+// při každé změně), takže se počet i jména v detailu mění živě. null = hra v seznamu
+// už není (začala, nebo ji zakladatel zrušil).
+function _menuOpenLobby() {
+    const id = App.selectedLobby && App.selectedLobby.id;
+    const fresh = (App.lobbyList || []).find(r => r.id === id) || null;
+    if (fresh) App.selectedLobby = fresh;   // okno se jménem z něj bere obsazená jména
+    return fresh;
 }
 
 // Řada 3–8 (počet hráčů / botů) – vždy šest tlačítek, i na mobilu.
@@ -334,6 +400,60 @@ ${_menuHead('Sledovat hru botů', 'Hra bez lidí · rozjede se hned')}
 ${_menuBar(esc(botGameSummary(count, exps)),
     '<button class="bu-btn primary bar" data-act="startBotGame">▶ SPUSTIT A SLEDOVAT</button>')}`;
     },
+
+    // S6 — připojit se (seznam her, které čekají na hráče; i plné a navazující)
+    join_list() {
+        const list = App.lobbyList || [];
+        const body = list.length
+            ? `<div class="bu-list">${list.map(r => _menuRoomRow(r, false, 'openRoom')).join('')}</div>`
+            : _menuEmpty('Žádné hry nečekají na hráče.', 'Vytvořit vlastní hru', 'create');
+        return `
+${_menuHead('Připojit se ke hře', esc(joinListSubtitle(list)))}
+<div class="bu-scroll">${body}</div>`;
+    },
+
+    // S7 — detail hry před připojením (zpět vede na S6, ne do menu)
+    join_room() {
+        const item = _menuOpenLobby();
+        const last = App.selectedLobby || {};
+        const block = joinRoomBlocker(item, playerName, App.allTakenNames);
+        const head = _menuHead(esc(last.name || 'Hra'), item ? esc(joinRoomSubtitle(item)) : 'už není v seznamu',
+            { arg: 'join_list' });
+        if (!item) {
+            return `${head}
+<div class="bu-scroll"><div class="bu-form">${_menuNotice('⚠', esc(block.text), { bad: true })}</div></div>
+${_menuBar('', '<button class="bu-btn bar" data-act="go" data-arg="join_list">◀ ZPĚT NA SEZNAM</button>')}`;
+        }
+        const seats = _menuSeats(seatRows(item.players, item.maxPlayers, { leader: item.leader }));
+        let bar;
+        if (block && block.kind === 'full') {
+            bar = _menuBar(esc(block.text), '<button class="bu-btn primary bar" disabled>▶ STŮL JE PLNÝ</button>');
+        } else if (block && block.kind === 'name') {
+            bar = _menuBar(esc(block.text), '<button class="bu-btn primary bar" data-act="name">ZADAT JMÉNO</button>');
+        } else if (block && block.kind === 'taken') {
+            bar = _menuBar(esc(block.text), '<button class="bu-btn primary bar" data-act="name">ZMĚNIT JMÉNO</button>', { bad: true });
+        } else {
+            // Chyba ze serveru (plno / obsazené jméno těsně před námi) platí do dalšího pokusu.
+            const sum = App.joinError || `Hraje se: ${expansionsLabel(expansionsFromKeys(item.expansions))}`;
+            bar = _menuBar(esc(sum),
+                `<button class="bu-btn primary bar" data-act="joinRoom">PŘIPOJIT SE (jako ${esc(playerName)})</button>`,
+                { bad: !!App.joinError });
+        }
+        return `${head}
+<div class="bu-scroll"><div class="bu-form">${seats}</div></div>
+${bar}`;
+    },
+
+    // S10 — sledovat probíhající hru (sledování není hlavní cesta → akce je sekundární)
+    spectate_list() {
+        const list = App.gameList || [];
+        const body = list.length
+            ? `<div class="bu-list">${list.map(g => _menuRoomRow(g, true, 'spectate')).join('')}</div>`
+            : _menuEmpty('Žádná hra právě neprobíhá.', 'Sledovat hru botů', 'bot_game');
+        return `
+${_menuHead('Sledovat probíhající hru', esc(spectateListSubtitle(list)))}
+<div class="bu-scroll">${body}</div>`;
+    },
 };
 
 // ── Textová pole (data-field) ──────────────────────────────────────────────
@@ -356,7 +476,6 @@ const MENU_ACTIONS = {
             openNameModal({ onConfirm: () => { App.menuScreen = 'create'; renderUI(); } });
             return;
         }
-        if (screen === 'join_list') App.joinListFetched = false;
         App.menuScreen = screen;
         renderUI();
     },
@@ -397,6 +516,29 @@ const MENU_ACTIONS = {
             count: App.botGameCount || 4,
             options: botGameOptions(App.botGameExpansions, App.botGameHighNoonExtra),
         });
+    },
+
+    // S6 → S7
+    openRoom(id) {
+        const item = (App.lobbyList || []).find(r => r.id === id);
+        if (!item) return;
+        App.selectedLobby = item;
+        App.menuScreen = 'join_room';
+        renderUI();
+    },
+    // S7 – server odpoví room_joined (→ lobby), nebo join_error (→ souhrn v liště).
+    joinRoom() {
+        const item = _menuOpenLobby();
+        if (joinRoomBlocker(item, playerName, App.allTakenNames)) return;
+        App.joinError = null;
+        socket.emit('join_room', { roomId: item.id, playerName, token: bangToken });
+    },
+
+    // S10
+    spectate(id) {
+        App.ignoreRoomId = null;   // sledujeme znovu (klidně i tu samou hru)
+        App.spectating = true;
+        socket.emit('spectate', { roomId: id });
     },
 };
 

@@ -78,7 +78,7 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 |---|---|---|---|
 | 1 | Kostra (`view/menu.css`, `view/menuDom.js`, `core/menuModel.js`, fonty Rye + EB Garamond, přepínání vrstvy v `renderUI`), motiv, `bangName`; **S3, S2, S4** | `game_list` se rozesílá spolu s `lobby_list` (živý počet běžících her v S3) | ✅ |
 | 2 | **S5 + S11** (sdílené: řada počtu hráčů, karty rozšíření, pokročilé), souhrn a zamčení v `menuModel` | – | ✅ |
-| 3 | **S6, S7, S10** + prázdné stavy | položky seznamu: lídr, `next` (navazující), rozšíření; `game_list` i při výhře | ☐ |
+| 3 | **S6, S7, S10** + prázdné stavy | položky seznamu: lídr, `next` (navazující), rozšíření; `game_list` i při výhře | ✅ |
 | 4 | **S8, S9** lobby (sedačky, ➕ Bot, ✕ bot, varovné „Opustit hru") | – | ☐ |
 | 5 | **S12, S14, S15** (statistiky už jsou HTML v `showStats` → nový vzhled + seskupení podle rolí) | – | ☐ |
 | 6 | **S13** účast in / wait / out (D8) | `next_join` / `next_leave`, stav na hráče v `roomPayload`, ruční start lídrem, pryč `nextGameTimer`; testy `test/server.*` | ☐ |
@@ -123,3 +123,35 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
   v názvu escapované); založení místnosti i hry botů proti běžícímu serveru.
 - Mimo menu nalezeno: divák hry botů padá v `renderCharacterSelectScreen` (`state.players[null]`,
   view/screens.js), dokud si boti nevyberou postavy – chyba existovala už se starou obrazovkou.
+
+### Fáze 3 (hotovo)
+
+- `MENU_DOM_SCREENS` += `join_list` (S6), `join_room` (S7), `spectate_list` (S10). Nové sdílené prvky
+  ve `view/menuDom.js`: `_menuRoomRow` (řádek místnosti – celý řádek je jedno tlačítko, „akce" vpravo
+  je jen jeho popisek), `_menuEmpty` (prázdný stav vždy s tlačítkem, kam dál: S6 → Vytvořit hru,
+  S10 → Hra botů), `_menuSeats` (řádky sedaček – připravené i pro S8/S9 ve fázi 4), `_menuNotice`
+  a `_menuBar(…, { bad })` (souhrn jako chyba).
+- **`MENU_ENTER`** = hák jednou při vstupu na obrazovku, odkudkoli (z menu, zpět z detailu, po konci
+  sledování – `hideMenuDom` proto nuluje `_menuScreenName`). S7 si při vstupu vyžádá `taken_names`
+  a zahodí starou `joinError`, S10 pošle `get_game_list`. Příznaky `joinListFetched` /
+  `spectateListFetched` nové obrazovky nepoužívají (odejdou ve fázi 8 se starým kódem).
+- **S7 je živý**: položku si při každém renderu bere čerstvou z `lobby_list` podle id
+  (`_menuOpenLobby`), takže se počty i jména mění samy. Zmizí-li hra ze seznamu (začala / zrušená),
+  ukáže „⚠ Hra mezitím začala…" a tlačítko zpět na seznam. `taken_names` už překresluje i na S7
+  (net/handlers.js).
+- Co brání připojení, říká `joinRoomBlocker` (core/menuModel.js) v pořadí zmizelá → plná → bez jména
+  → obsazené jméno; tlačítko říká, co chybí („▶ STŮL JE PLNÝ", „ZADAT JMÉNO", „ZMĚNIT JMÉNO").
+  Chyba ze serveru (`join_error`) zůstává v liště do dalšího pokusu, ne jen na jeden render jako dřív.
+- `core/menuModel.js`: `roomRowView`, `roomWhoLine`, `seatRows`, `joinRoomBlocker`, podtitulky seznamů,
+  `isBotName`/`plainName` (bot = prefix „🤖"), `expansionsFromKeys`.
+- Server (`server/rooms.js`): položky obou seznamů staví jedna `listItem` – navíc `leader` (jméno),
+  `next` (`next_lobby`, nebo `room.gameNo > 1` – počítadlo her místnosti v `server/lifecycle.js`),
+  `expansions` (klíče zapnutých) a `botGame`. `broadcastRoom` rozešle `game_list` při výhře, jednou
+  za hru (klíčované objektem `gameState`, navazující hra má nový).
+- **Oprava mimo plán:** po odchodu lídra z lobby se lídrem mohl stát bot (`players[0]`) a místnost
+  bez lidí pak navždy visela v S6 („zakládá Bot 1"), protože ji nikdo nespustí. `leaveRoom` teď
+  předá vedení prvnímu člověku a bez lidí místnost rozpustí.
+- Ověřeno snímky: S6 1280×720 (čeká / plná / dlouhý název / HTML v názvu), S6 prázdný 740×360,
+  S7 1280×720 (běžný, bez jména, zmizelá hra), plný ve světlém motivu, obsazené jméno 740×360,
+  S10 1280×720, 740×360 světlý a prázdný. Kliky proti běžícímu serveru: S6 → S7 → připojení do
+  lobby, S10 → sledování (vrstva menu zmizí).

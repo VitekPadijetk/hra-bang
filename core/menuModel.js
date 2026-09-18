@@ -150,6 +150,113 @@ function botGameOptions(exps, hnExtra) {
     return { expansions, highNoonExtra: expansions.high_noon && !!hnExtra };
 }
 
+// ── Seznamy her (S6 Připojit se, S10 Sledovat) a detail hry (S7) ──────────
+// Položka seznamu přichází ze serveru (listItem v server/rooms.js):
+// { id, name, maxPlayers, playerCount, players, leader, next, expansions: [klíč], botGame }.
+
+// Bot se pozná podle prefixu jména (server/bots.js dává „🤖 Bot 1"); ikonu kreslí řádek sám.
+function isBotName(name) {
+    return /^🤖/.test(String(name || ''));
+}
+
+function plainName(name) {
+    return String(name || '').replace(/^🤖\s*/, '');
+}
+
+// Rozšíření ze seznamu klíčů (tak je posílá server) – neznámé klíče se přeskočí.
+function expansionsFromKeys(keys) {
+    const out = emptyExpansions();
+    for (const k of keys || []) if (k in out) out[k] = true;
+    return out;
+}
+
+// Druhý řádek položky seznamu: kdo hru vede, jestli je navazující, co se hraje.
+function roomWhoLine(item, running) {
+    const who = item.botGame ? 'hra jen botů'
+        : item.leader ? `${running ? 'hraje' : 'zakládá'} ${plainName(item.leader)}` : '';
+    return [who, item.next ? 'navazující hra' : '', expansionsLabel(expansionsFromKeys(item.expansions))]
+        .filter(Boolean).join(' · ');
+}
+
+const ROOM_ROW_STATES = {
+    wait: { text: '● ČEKÁ', cta: 'PŘIPOJIT' },
+    full: { text: '● PLNÁ', cta: 'PLNÁ' },
+    running: { text: '● PROBÍHÁ', cta: 'DÍVAT SE' },
+};
+
+// Pohled na řádek seznamu (components.md „Řádek místnosti"): stav, texty a obsazená místa.
+// Plný stůl v seznamu zůstává – hráč vidí, že hra existuje, a může počkat.
+function roomRowView(item, running) {
+    const max = item.maxPlayers || 0;
+    const taken = Math.min(item.playerCount || 0, max);
+    const state = running ? 'running' : taken >= max ? 'full' : 'wait';
+    return {
+        state,
+        who: roomWhoLine(item, running),
+        count: `${item.playerCount || 0} / ${max}`,
+        seats: Array.from({ length: max }, (_, i) => i < taken),
+        stateText: ROOM_ROW_STATES[state].text,
+        cta: ROOM_ROW_STATES[state].cta,
+    };
+}
+
+function joinListSubtitle(lobbyList) {
+    return `${waitingGamesLabel(waitingGamesCount(lobbyList))} · seznam se obnovuje sám`;
+}
+
+function spectateListSubtitle(gameList) {
+    return `${runningGamesLabel((gameList || []).length)} · seznam se obnovuje sám`;
+}
+
+// Podtitulek S7: „5 / 8 hráčů · zakládá Calamity · navazující hra".
+function joinRoomSubtitle(item) {
+    return [
+        `${item.playerCount || 0} / ${item.maxPlayers || 0} hráčů`,
+        item.leader ? `zakládá ${plainName(item.leader)}` : '',
+        item.next ? 'navazující hra' : '',
+    ].filter(Boolean).join(' · ');
+}
+
+// Řádky sedaček (components.md „Řádek sedačky"; S7, ve fázi 4 i lobby S8/S9): obsazená
+// místa v pořadí u stolu, pak prázdná. `me` = moje jméno (zvýrazněný řádek s „(ty)"),
+// `leader` = jméno Game Leadera.
+function seatRows(names, maxPlayers, { leader = null, me = null } = {}) {
+    const list = names || [];
+    const rows = [];
+    for (let i = 0; i < Math.max(maxPlayers || 0, list.length); i++) {
+        const name = list[i];
+        if (name == null) { rows.push({ idx: i + 1, empty: true }); continue; }
+        const bot = isBotName(name);
+        const isLeader = leader != null && name === leader;
+        const isMe = me != null && name === me;
+        rows.push({
+            idx: i + 1, empty: false, bot, leader: isLeader, me: isMe,
+            icon: isLeader ? '👑' : bot ? '🤖' : '🎩',
+            name: plainName(name),
+            tag: [isMe ? '(ty)' : '', isLeader ? 'Game Leader' : '', bot ? 'bot' : ''].filter(Boolean).join(' · '),
+        });
+    }
+    return rows;
+}
+
+// Co brání připojit se v S7, nebo null. Pořadí = co hráč řeší první: zmizelou nebo plnou
+// hru jménem nespraví. `taken` = jména obsazená na serveru (taken_names).
+//   gone  – hra v seznamu už není (mezitím začala nebo ji lídr zrušil)
+//   full  – stůl je plný
+//   name  – hráč ještě nemá jméno
+//   taken – jméno už u stolu (nebo jinde na serveru) někdo má
+function joinRoomBlocker(item, playerName, taken) {
+    if (!item) return { kind: 'gone', text: 'Hra mezitím začala nebo ji zakladatel zrušil. Vyber si ze seznamu jinou.' };
+    if ((item.playerCount || 0) >= (item.maxPlayers || 0)) {
+        return { kind: 'full', text: 'Stůl je plný. Počkej, až se místo uvolní, nebo si vyber jinou hru.' };
+    }
+    if (!playerName) return { kind: 'name', text: 'Nejdřív si zadej jméno, pod kterým budeš hrát.' };
+    if ((item.players || []).includes(playerName) || (taken || []).includes(playerName)) {
+        return { kind: 'taken', text: `Jméno »${playerName}« už někdo používá. Zvol si jiné.` };
+    }
+    return null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         esc, czPlural, waitingGamesLabel, runningGamesLabel, waitingGamesCount,
@@ -158,5 +265,7 @@ if (typeof module !== 'undefined' && module.exports) {
         advancedSummary, playerCountNote, playersLabel, botsLabel, expansionsLabel,
         ROOM_NAME_MAX, defaultRoomName, createGameBlocker, createGameSummary,
         botGameSummary, botGameOptions,
+        isBotName, plainName, expansionsFromKeys, roomWhoLine, roomRowView,
+        joinListSubtitle, spectateListSubtitle, joinRoomSubtitle, seatRows, joinRoomBlocker,
     };
 }

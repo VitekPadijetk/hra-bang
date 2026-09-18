@@ -72,6 +72,58 @@ test('getGameList vrací běžící hry bez vítěze', () => {
     assert.equal(list[0].name, 'A');
 });
 
+test('položka seznamu nese lídra, navazující hru a zapnutá rozšíření', () => {
+    const { ctx, addSocket } = setup();
+    addSocket('s1'); addSocket('s2');
+    const a = ctx.makeRoom('A', 4, 's1', 'Alice', { expansions: { dodge_city: true, high_noon: false, fistful: true } });
+    a.players.push({ socketId: 's2', playerIdx: 1, name: 'Bob' });
+    const [it] = ctx.getLobbyList();
+    assert.equal(it.leader, 'Alice');
+    assert.equal(it.next, false);
+    assert.deepEqual(it.expansions, ['dodge_city', 'fistful']);
+    assert.equal(it.botGame, false);
+    assert.deepEqual(it.players, ['Alice', 'Bob']);
+
+    a.leaderSocketId = 's2';
+    a.phase = 'next_lobby';
+    const [it2] = ctx.getLobbyList();
+    assert.equal(it2.leader, 'Bob');
+    assert.equal(it2.next, true);
+});
+
+test('běžící navazující hra je v seznamu označená, hra botů nemá lídra mezi hráči', () => {
+    const { ctx, addSocket } = setup();
+    addSocket('s1'); addSocket('w');
+    const a = ctx.makeRoom('A', 4, 's1', 'Alice', {}); a.phase = 'playing'; a.gameNo = 2;
+    const b = ctx.makeRoom('Boti', 3, 'w', 'Pozorovatel', { botGame: true }); b.phase = 'playing';
+    b.players = [{ socketId: 'bot:1', playerIdx: 0, name: '🤖 Bot 1', isBot: true }];
+    const [ga, gb] = ctx.getGameList();
+    assert.equal(ga.next, true);
+    assert.equal(ga.leader, 'Alice');
+    assert.equal(gb.botGame, true);
+    assert.equal(gb.leader, null);
+    assert.deepEqual(gb.expansions, []);
+});
+
+test('výhra rozešle game_list všem – jednou za hru', () => {
+    const { ctx, addSocket, emits } = setup();
+    addSocket('s1');
+    const a = ctx.makeRoom('A', 4, 's1', 'Alice', {}); a.phase = 'playing';
+    const lists = () => emits.filter(e => e.scope === 'io' && e.ev === 'game_list');
+    ctx.broadcastRoom(a);
+    assert.equal(lists().length, 0);
+    a.gameState.winner = 'Zákon vyhrál!';
+    ctx.broadcastRoom(a);
+    ctx.broadcastRoom(a);
+    assert.equal(lists().length, 1);
+    assert.deepEqual(lists()[0].payload, []);
+    // Navazující hra = nový gameState → její výhra se ohlásí znovu.
+    a.gameState = new GameState();
+    a.gameState.winner = 'Bandité vyhráli!';
+    ctx.broadcastRoom(a);
+    assert.equal(lists().length, 2);
+});
+
 test('findRoomBySocket najde místnost podle socketId hráče', () => {
     const { ctx, addSocket } = setup();
     addSocket('s1');
@@ -131,6 +183,28 @@ test('leaveRoom přepíše lídra při odchodu lídra (zůstávají hráči)', (
     assert.equal(room.players.length, 1);
     assert.equal(room.leaderSocketId, 's2');
     assert.equal(room.players[0].playerIdx, 0);
+});
+
+test('leaveRoom: lídrem se po odchodu stane první ČLOVĚK, ne bot', () => {
+    const { ctx, addSocket } = setup();
+    const s1 = addSocket('s1'); addSocket('s2');
+    const room = ctx.makeRoom('A', 5, 's1', 'Alice', {});
+    room.players.push({ socketId: 'bot:1', playerIdx: 1, name: '🤖 Bot 1', isBot: true });
+    room.players.push({ socketId: 's2', playerIdx: 2, name: 'Bob' });
+    ctx.leaveRoom(s1, room);
+    assert.equal(room.leaderSocketId, 's2');
+    assert.equal(ctx.getLobbyList()[0].leader, 'Bob');
+});
+
+test('leaveRoom: když u stolu zbydou jen boti, místnost se rozpustí', () => {
+    const { ctx, addSocket, emits } = setup();
+    const s1 = addSocket('s1');
+    const room = ctx.makeRoom('A', 4, 's1', 'Alice', {});
+    room.players.push({ socketId: 'bot:1', playerIdx: 1, name: '🤖 Bot 1', isBot: true });
+    ctx.leaveRoom(s1, room);
+    assert.equal(ctx.rooms.size, 0);
+    const last = emits.filter(e => e.ev === 'lobby_list').pop();
+    assert.deepEqual(last.payload, []);
 });
 
 // ── Redakce stavu (skryté informace) ───────────────────────────────────────────

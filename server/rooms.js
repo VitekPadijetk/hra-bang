@@ -216,6 +216,14 @@ module.exports = function installRoomService(ctx) {
         // hra jen botů: není komu podvádět a smysl sledování je vidět, co boti drží.
         io.to(room.id + '_spectators').emit('room_update',
             { ...roomPayload(room, null, !!room.options?.botGame), myIndex: null });
+        // Výhra hru vyřadí ze seznamu běžících (getGameList), fáze místnosti se ale nemění,
+        // takže by se o tom seznam „Sledovat" i počítadlo v menu dozvěděly až při změně
+        // jiné místnosti. Jednou za hru (nová hra = nový gameState).
+        const gs = room.gameState;
+        if (gs && gs.winner && room._winListed !== gs) {
+            room._winListed = gs;
+            io.emit('game_list', getGameList());
+        }
         // Egress: kompaktní snapshot stavu do logu hry (dedup uvnitř – delayed broadcast nezdvojí).
         ctx.glog.snapshot(room);
         // Hook pro driver botů: po každém ustálení stavu se může probudit bot (server/bots.js).
@@ -238,24 +246,34 @@ module.exports = function installRoomService(ctx) {
         io.emit('game_list', getGameList());
     }
 
+    // Položka seznamu her (S6 Připojit se, S10 Sledovat – view/menuDom.js). Kromě počtů nese
+    // to, co hráč potřebuje vědět, NEŽ klikne: kdo hru vede, jestli je navazující a jaká
+    // rozšíření se hrají (klíče z options.expansions – popisky zná klient, MENU_EXPANSIONS).
+    // Hra botů lídra mezi hráči nemá (tvůrce jen kouká), proto `botGame`.
+    function listItem(r) {
+        const leader = r.players.find(p => p.socketId === r.leaderSocketId);
+        const exps = (r.options && r.options.expansions) || {};
+        return {
+            id: r.id, name: r.name, maxPlayers: r.maxPlayers,
+            playerCount: r.players.length,
+            players: r.players.map(p => p.name),
+            leader: leader ? leader.name : null,
+            next: r.phase === 'next_lobby' || (r.gameNo || 0) > 1,
+            expansions: Object.keys(exps).filter(k => exps[k]),
+            botGame: !!(r.options && r.options.botGame),
+        };
+    }
+
     function getLobbyList() {
         return Array.from(rooms.values())
             .filter(r => r.phase === 'lobby' || r.phase === 'next_lobby')
-            .map(r => ({
-                id: r.id, name: r.name, maxPlayers: r.maxPlayers,
-                playerCount: r.players.length,
-                players: r.players.map(p => p.name),
-            }));
+            .map(listItem);
     }
 
     function getGameList() {
         return Array.from(rooms.values())
             .filter(r => (r.phase === 'playing' || r.phase === 'char_select') && !r.gameState.winner)
-            .map(r => ({
-                id: r.id, name: r.name, maxPlayers: r.maxPlayers,
-                playerCount: r.players.length,
-                players: r.players.map(p => p.name),
-            }));
+            .map(listItem);
     }
 
     function findRoomBySocket(socketId) {
@@ -322,9 +340,17 @@ module.exports = function installRoomService(ctx) {
             return;
         }
 
+        // Lídr musí být člověk: bot hru nezahájí, takže by místnost jen visela v seznamu
+        // her („zakládá Bot 1") a nikdo by ji nespustil. Bez lidí se rozpouští celá.
+        const humans = room.players.filter(p => !p.isBot);
+        if (humans.length === 0) {
+            closeRoom(room);
+            broadcastLobbyList();
+            return;
+        }
         if (wasLeader) {
-            room.leaderSocketId = room.players[0].socketId;
-            ctx.glog.system(`Nový lídr: ${room.players[0].name}`);
+            room.leaderSocketId = humans[0].socketId;
+            ctx.glog.system(`Nový lídr: ${humans[0].name}`);
         }
         broadcastRoom(room);
         broadcastLobbyList();

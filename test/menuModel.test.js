@@ -130,3 +130,81 @@ test('botGameOptions: všechna rozšíření jako boolean, přibalené karty jen
     assert.equal(M.botGameOptions({}, true).highNoonExtra, false);
     assert.equal(M.botGameOptions(undefined, false).expansions.dodge_city, false);
 });
+
+// ── Seznamy her (S6, S10) a detail hry (S7) ───────────────────────────────
+
+const item = (over = {}) => ({
+    id: 'game1', name: 'Stůl', maxPlayers: 5, playerCount: 2, players: ['Calamity', '🤖 Bot 1'],
+    leader: 'Calamity', next: false, expansions: [], botGame: false, ...over,
+});
+
+test('isBotName / plainName: bot se pozná podle prefixu, ikonu kreslí řádek sám', () => {
+    assert.equal(M.isBotName('🤖 Bot 1'), true);
+    assert.equal(M.isBotName('Bota'), false);
+    assert.equal(M.plainName('🤖 Bot 1'), 'Bot 1');
+    assert.equal(M.plainName('Calamity'), 'Calamity');
+});
+
+test('expansionsFromKeys: klíče ze serveru → příznaky, neznámé se přeskočí', () => {
+    const e = M.expansionsFromKeys(['high_noon', 'neznamé']);
+    assert.equal(e.high_noon, true);
+    assert.equal(e.dodge_city, false);
+    assert.equal('neznamé' in e, false);
+    assert.equal(M.expansionsLabel(M.expansionsFromKeys(undefined)), 'základní hra');
+});
+
+test('roomRowView: čeká / plná / probíhá, tečky podle obsazených míst', () => {
+    const wait = M.roomRowView(item(), false);
+    assert.equal(wait.state, 'wait');
+    assert.equal(wait.stateText, '● ČEKÁ');
+    assert.equal(wait.cta, 'PŘIPOJIT');
+    assert.equal(wait.count, '2 / 5');
+    assert.deepEqual(wait.seats, [true, true, false, false, false]);
+
+    const full = M.roomRowView(item({ playerCount: 5 }), false);
+    assert.equal(full.state, 'full');
+    assert.equal(full.cta, 'PLNÁ');
+
+    const run = M.roomRowView(item({ playerCount: 5 }), true);
+    assert.equal(run.state, 'running');
+    assert.equal(run.stateText, '● PROBÍHÁ');
+    assert.equal(run.cta, 'DÍVAT SE');
+});
+
+test('roomWhoLine: kdo vede, navazující hra, rozšíření (nebo základní hra)', () => {
+    assert.equal(M.roomWhoLine(item(), false), 'zakládá Calamity · základní hra');
+    assert.equal(M.roomWhoLine(item({ next: true, expansions: ['dodge_city', 'high_noon'] }), true),
+        'hraje Calamity · navazující hra · Dodge City · High Noon');
+    assert.equal(M.roomWhoLine(item({ leader: null, botGame: true }), true), 'hra jen botů · základní hra');
+});
+
+test('podtitulky seznamů: počet čekajících (bez plných) a běžících', () => {
+    assert.equal(M.joinListSubtitle([item(), item({ playerCount: 5 })]), '1 hra čeká na hráče · seznam se obnovuje sám');
+    assert.equal(M.joinListSubtitle([]), 'Žádné hry nečekají na hráče · seznam se obnovuje sám');
+    assert.equal(M.spectateListSubtitle([item(), item()]), '2 hry právě běží · seznam se obnovuje sám');
+    assert.equal(M.joinRoomSubtitle(item({ next: true })), '2 / 5 hráčů · zakládá Calamity · navazující hra');
+});
+
+test('seatRows: obsazená místa v pořadí, pak prázdná; lídr, bot a já', () => {
+    const rows = M.seatRows(['Calamity', '🤖 Bot 1', 'Honza'], 4, { leader: 'Calamity', me: 'Honza' });
+    assert.equal(rows.length, 4);
+    assert.deepEqual(rows.map(r => r.idx), [1, 2, 3, 4]);
+    assert.equal(rows[0].icon, '👑');
+    assert.equal(rows[0].tag, 'Game Leader');
+    assert.equal(rows[1].icon, '🤖');
+    assert.equal(rows[1].name, 'Bot 1');
+    assert.equal(rows[1].tag, 'bot');
+    assert.equal(rows[2].icon, '🎩');
+    assert.equal(rows[2].me, true);
+    assert.equal(rows[2].tag, '(ty)');
+    assert.equal(rows[3].empty, true);
+});
+
+test('joinRoomBlocker: zmizelá a plná hra přebijí jméno, pak jméno, pak obsazené jméno', () => {
+    assert.equal(M.joinRoomBlocker(null, 'Honza', []).kind, 'gone');
+    assert.equal(M.joinRoomBlocker(item({ playerCount: 5 }), null, []).kind, 'full');
+    assert.equal(M.joinRoomBlocker(item(), null, []).kind, 'name');
+    assert.equal(M.joinRoomBlocker(item(), 'Calamity', []).kind, 'taken');
+    assert.equal(M.joinRoomBlocker(item(), 'Honza', ['Honza']).kind, 'taken');
+    assert.equal(M.joinRoomBlocker(item(), 'Honza', ['Doc']), null);
+});

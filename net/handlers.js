@@ -3584,8 +3584,8 @@ socket.on('lobby_list', (list) => {
 socket.on('taken_names', (list) => {
     App.allTakenNames = list || [];
     const focused = document.activeElement;
-    const onJoinRoom = App.menuScreen === 'join_room';
-    if (gameScene && !onJoinRoom && focused?.tagName !== 'INPUT') renderUI();
+    // Detail hry (S7, view/menuDom.js) podle nich hlásí obsazené jméno – překresluje se taky.
+    if (gameScene && focused?.tagName !== 'INPUT') renderUI();
 });
 
 socket.on('game_list', (list) => {

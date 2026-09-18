@@ -79,6 +79,7 @@ module.exports = function installLifecycle(ctx) {
             deck: gs.deck.cards.map(c => c.name),
         });
         ctx.initLedger?.(room);   // nová hra → čistý ledger chování (dedukce rolí boty)
+        room.gameNo = (room.gameNo || 0) + 1;   // seznam her: 2. a další = „navazující hra“
         room.phase = 'char_select';
         // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
         room._botStartupSettle = true;
@@ -184,6 +185,7 @@ module.exports = function installLifecycle(ctx) {
         room.nextGameVotes = {};
         room.survivorKeepVotes = {};
         room.players.forEach(p => { p.wantsNext = null; p.wasOriginalSurvivor = false; });
+        room.gameNo = (room.gameNo || 0) + 1;
         room.phase = 'char_select';
         // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
         room._botStartupSettle = true;
