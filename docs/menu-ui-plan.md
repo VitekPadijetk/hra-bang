@@ -77,7 +77,7 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 | # | Obsah | Server | Stav |
 |---|---|---|---|
 | 1 | Kostra (`view/menu.css`, `view/menuDom.js`, `core/menuModel.js`, fonty Rye + EB Garamond, přepínání vrstvy v `renderUI`), motiv, `bangName`; **S3, S2, S4** | `game_list` se rozesílá spolu s `lobby_list` (živý počet běžících her v S3) | ✅ |
-| 2 | **S5 + S11** (sdílené: řada počtu hráčů, karty rozšíření, pokročilé), souhrn a zamčení v `menuModel` | – | ☐ |
+| 2 | **S5 + S11** (sdílené: řada počtu hráčů, karty rozšíření, pokročilé), souhrn a zamčení v `menuModel` | – | ✅ |
 | 3 | **S6, S7, S10** + prázdné stavy | položky seznamu: lídr, `next` (navazující), rozšíření; `game_list` i při výhře | ☐ |
 | 4 | **S8, S9** lobby (sedačky, ➕ Bot, ✕ bot, varovné „Opustit hru") | – | ☐ |
 | 5 | **S12, S14, S15** (statistiky už jsou HTML v `showStats` → nový vzhled + seskupení podle rolí) | – | ☐ |
@@ -99,3 +99,27 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 - `broadcastLobbyList` (server/rooms.js) posílá i `game_list`; klient kvůli němu překresluje
   jen v menu (`!roomState`).
 - Ověřeno snímky: S3 1280×720 a 740×360, S4 ve světlém motivu s chybou, S2 740×360.
+
+### Fáze 2 (hotovo)
+
+- `MENU_DOM_SCREENS = main, ui_choice, create, bot_game`. Sdílené prvky ve `view/menuDom.js`:
+  `_menuHead` (hlavička, umí i varovné „Opustit hru" pro fázi 4), `_menuBar` (lišta akcí),
+  `_menuCountRow` (3–8), `_menuCheck` (karta rozšíření / řádek volby), `_menuExpansionGrid`.
+- **Textová pole se při psaní nepřekreslují.** Pole nese `data-field` (zápis přes `MENU_FIELDS`),
+  psaní vymění jen oblasti `data-live` (`_patchMenuLive`) – nový `<input>` by vzal fokus
+  a na mobilu zaklapl klávesnici. `data-submit` = akce na Enter. Klávesy z polí neprobublají
+  do Phaseru. Při ostatních změnách `_mountMenuHtml` vrací fokus prvku se stejným
+  `data-act`/`data-arg` (ovládání klávesnicí).
+- `core/menuModel.js`: `MENU_EXPANSIONS` (jediný výčet – `emptyExpansions()` se přestěhovala
+  z `view/menu.js` a bere ji i `state.js`), `ADVANCED_OPTIONS`, `hnExtraVisible`,
+  `advancedSummary` (počítá jen viditelné volby), `playerCountNote`, `createGameBlocker`
+  („Vyber počet hráčů." / „Zadej název hry." …), `createGameSummary`, `botGameSummary`,
+  `botGameOptions` (payload `create_bot_game`).
+- Bez jména vede „Vytvořit novou hru" nejdřív do okna se jménem (S4), na S5 až po „OK".
+- Název hry má limit `ROOM_NAME_MAX` = 40 znaků (dřív žádný).
+- HN_EXTRA_AUTO (zapnutí High Noonu zaškrtne přibalené karty) zůstává v obou obrazovkách.
+- Ověřeno snímky: S5 1280×720 (prázdné, vyplněné, pokročilé rozbalené), 740×360 tmavý i světlý;
+  S11 1280×720 a 740×360; psaní do názvu (týž `<input>`, fokus drží, zámek se přepíná, HTML
+  v názvu escapované); založení místnosti i hry botů proti běžícímu serveru.
+- Mimo menu nalezeno: divák hry botů padá v `renderCharacterSelectScreen` (`state.players[null]`,
+  view/screens.js), dokud si boti nevyberou postavy – chyba existovala už se starou obrazovkou.

@@ -242,3 +242,158 @@
 .bu-input.err { border-color: var(--badLine); }
 /* Rezervované místo – okno nepodskočí, když se chyba objeví. */
 .bu-form-error { min-height: 22px; margin-top: 6px; font-size: 14px; color: var(--bad); }
+
+/* Klávesnice: kde je fokus, musí být vidět (myš ho nekreslí – :focus-visible). */
+.bang-ui :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.bang-ui .bu-input:focus-visible { outline: none; }
+
+/* ── Hlavička obrazovky (components.md) ─────────────────────────────────── */
+
+/* Vpravo 150 px volno na rohové „⛶ Fullscreen". */
+.bu-head {
+  flex: none; display: flex; align-items: center; gap: 14px;
+  padding: 13px 150px 13px 16px;
+  border-bottom: 1px solid var(--line); background: var(--headerBg);
+}
+.bu-back {
+  flex: none; padding: 9px 15px; border-radius: 9px; cursor: pointer;
+  font-size: 15px; letter-spacing: .04em;
+  border: 1px solid var(--line2); background: var(--panel); color: var(--text);
+}
+.bu-back:hover { border-color: var(--gold); }
+.bu-back.leave { border-color: var(--badLine); background: var(--badBg); color: var(--bad); }
+.bu-back.leave:hover { border-color: var(--bad); }
+.bu-head-txt { min-width: 0; flex: 1; }
+.bu-title {
+  font-size: clamp(18px, 2.2vw, 26px); font-weight: 600; letter-spacing: .03em; color: var(--gold);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bu-sub {
+  font-family: 'EB Garamond', serif; font-size: 14px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Lišta akcí ─────────────────────────────────────────────────────────── */
+
+.bu-bar {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 13px 16px; border-top: 1px solid var(--line); background: var(--headerBg);
+}
+.bu-bar-sum { flex: 1; min-width: 0; font-family: 'EB Garamond', serif; font-size: 15px; color: var(--muted); }
+.bu-btn.bar { flex: none; padding: 13px 26px; letter-spacing: .06em; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+.bu-btn.bar:disabled { box-shadow: none; }
+
+/* Telefon na šířku: rolující prostředek potřebuje každý řádek výšky. */
+@media (max-height: 500px) {
+  .bu-head { padding-top: 8px; padding-bottom: 8px; }
+  .bu-back { padding: 7px 13px; }
+  .bu-bar { padding: 8px 12px; }
+  .bu-btn.bar { padding: 10px 22px; min-height: 40px; }
+}
+
+/* ── Formulář (S5, S11) ─────────────────────────────────────────────────── */
+
+/* Odsazení na vnitřním prvku, ne na .bu-scroll – spodní padding rolujícího prvku
+   prohlížeče při přetečení zahazují. */
+.bu-form {
+  width: 100%; max-width: 880px; margin: 0 auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 15px;
+}
+.bu-intro {
+  font-family: 'EB Garamond', serif; font-size: 17px; line-height: 1.45; color: var(--muted);
+  text-wrap: pretty;
+}
+
+.bu-label {
+  display: block; margin-bottom: 7px;
+  font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+}
+.bu-label-aside {
+  font-family: 'EB Garamond', serif; font-size: 15px; letter-spacing: 0; text-transform: none;
+  color: var(--muted); opacity: .8;
+}
+.bu-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.bu-required { font-size: 13px; color: var(--bad); margin-bottom: 7px; }
+/* Schovat, ne vynechat – jinak se po volbě počtu řada o pár px posune. */
+.bu-required.off { visibility: hidden; }
+
+.bu-field-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.bu-field { flex: 1 1 260px; min-width: 0; }
+.bu-field .bu-label { margin-bottom: 6px; }
+.bu-input.compact { margin-top: 0; padding: 12px 14px; font-size: 17px; }
+.bu-owner {
+  flex: 0 0 auto; max-width: 100%; padding: 12px 14px; border-radius: 9px;
+  border: 1px dashed var(--line2); color: var(--muted); font-size: 15px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bu-owner span { color: var(--text); }
+
+/* Řada 3–8: vždy šest sloupců, i na mobilu. */
+.bu-counts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
+.bu-count {
+  padding: 13px 0; border-radius: 9px; cursor: pointer;
+  font-size: 22px; font-weight: 600;
+  border: 2px solid var(--line2); background: var(--panel); color: var(--text);
+}
+.bu-count:hover { border-color: var(--gold); }
+.bu-count.on { border-color: var(--gold); background: var(--noticeBg); color: var(--gold); }
+@media (max-height: 500px) { .bu-count { padding: 8px 0; font-size: 20px; } }
+.bu-note {
+  margin-top: 7px; font-family: 'EB Garamond', serif; font-size: 15px; line-height: 1.45;
+  color: var(--muted); text-wrap: pretty;
+}
+
+/* ── Zaškrtávací karty a řádky ──────────────────────────────────────────── */
+
+.bu-checks { display: grid; gap: 7px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 265px), 1fr)); }
+.bu-check {
+  display: flex; align-items: flex-start; gap: 11px; text-align: left;
+  padding: 12px 13px; border-radius: 9px; cursor: pointer;
+  border: 2px solid var(--line2); background: var(--panel);
+}
+.bu-check:hover { border-color: var(--gold); }
+.bu-check.on { border-color: var(--gold); background: var(--noticeBg); }
+
+.bu-box {
+  flex: none; width: 22px; height: 22px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center; font-size: 13px;
+  border: 2px solid var(--line2); background: transparent; color: var(--onGold);
+}
+.bu-check .bu-box { margin-top: 2px; }
+.on > .bu-box { border-color: var(--gold); background: var(--gold); }
+
+.bu-check-txt { min-width: 0; }
+.bu-check-name { display: block; font-size: 17px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
+.bu-check.on .bu-check-name { color: var(--gold); }
+.bu-check-hint {
+  display: block; font-family: 'EB Garamond', serif; font-size: 14px; line-height: 1.35;
+  color: var(--muted); text-wrap: pretty;
+}
+
+/* Pokročilé možnosti – sbalené, v hlavičce souhrn. */
+.bu-adv { flex: none; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.bu-adv-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 13px 15px; cursor: pointer; border: none; text-align: left;
+  background: var(--panel); color: var(--text); font-size: 16px; letter-spacing: .04em;
+}
+.bu-adv-head:hover { background: var(--panelHi); }
+.bu-adv-sum { font-family: 'EB Garamond', serif; font-size: 15px; letter-spacing: 0; color: var(--muted); }
+.bu-adv-caret { color: var(--gold); }
+.bu-adv-body { display: flex; flex-direction: column; gap: 2px; padding: 6px; background: var(--bg); }
+.bu-opt {
+  display: flex; align-items: center; gap: 11px; text-align: left;
+  padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  border: none; background: transparent; color: var(--text);
+}
+.bu-opt:hover { background: var(--panel); }
+.bu-opt .bu-box, .bu-extra .bu-box { width: 20px; height: 20px; font-size: 12px; }
+.bu-opt .bu-check-name { font-size: 16px; font-weight: 500; letter-spacing: 0; }
+
+/* S11: jediný řádek „přibalené karty" (jen High Noon bez Fistfulu). */
+.bu-extra {
+  display: flex; align-items: center; gap: 11px; text-align: left;
+  padding: 12px 13px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--line2); background: var(--panel); color: var(--text); font-size: 16px;
+}
+.bu-extra:hover { border-color: var(--gold); }

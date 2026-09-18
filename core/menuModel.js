@@ -1,6 +1,6 @@
 // core/menuModel.js — čistá logika nového menu v HTML (view/menuDom.js), bez DOM.
 // Texty a rozhodnutí, která se dají otestovat v Node: skloňování počtů, iniciály,
-// jméno hráče, escapování. Plán: docs/menu-ui-plan.md.
+// jméno hráče, escapování, nastavení nové hry. Plán: docs/menu-ui-plan.md.
 
 // Každý text od hráče (jméno, název hry) jde do innerHTML jen přes esc() –
 // název místnosti vidí všichni v seznamu her, takže by jinak byl XSS pro celý server.
@@ -57,9 +57,106 @@ function nameError(value, taken) {
     return null;
 }
 
+// ── Nastavení hry (S5 Vytvořit hru, S11 Hra botů) ─────────────────────────
+
+// Rozšíření v pořadí karet na obrazovce. JEDINÝ výčet – emptyExpansions() i souhrn v liště
+// se staví z něj, takže přibývající rozšíření se nedá zapomenout dopsat do jedné z kopií
+// (checkbox pak nešel zaškrtnout).
+const MENU_EXPANSIONS = [
+    { key: 'dodge_city', label: 'Dodge City', hint: '+40 karet a +15 postav; karty se symbolem býka' },
+    { key: 'high_noon', label: 'High Noon', hint: '13 karet událostí; šerif odkrývá jednu na začátku kola' },
+    { key: 'fistful', label: 'Fistful', hint: '15 karet událostí a 3 postavy; hraje se i vedle High Noonu' },
+    { key: 'divoky_zapad', label: 'Divoký západ', hint: '10 karet událostí a 8 postav; otáčí je Dostavník a Wells Fargo' },
+    { key: 'zlata_horecka', label: 'Zlatá horečka', hint: 'Zlaté valouny za zranění a obchod s 24 kartami vybavení' },
+];
+
+// Výchozí (všechna vypnutá) sada příznaků rozšíření – pro všechny obrazovky i reset po založení.
+function emptyExpansions() {
+    const out = {};
+    for (const e of MENU_EXPANSIONS) out[e.key] = false;
+    return out;
+}
+
+const ADVANCED_OPTIONS = [
+    { key: 'noAdvancedCards', label: 'Zakázat pokročilé karty', hint: 'Bez Duelu, Hokynářství, Indiánů, Vězení a Dynamitu' },
+    { key: 'singleChar', label: 'Přiřadit postavu náhodně', hint: 'Hráči si nevybírají ze dvou postav' },
+    { key: 'rotatingSheriff', label: 'Rotující šerif', hint: 'Šerif se po každé hře posouvá doleva' },
+    { key: 'highNoonExtra', label: 'High Noon: přibalené karty', hint: '+ Nová identita a Želízka z Fistfulu' },
+];
+
+// „Přibalené karty" (Nová identita, Želízka) mají smysl jen s High Noonem BEZ Fistfulu –
+// obě karty jsou z Fistfulu, takže s ním jdou do balíčku samy (_hnExtraOn v logic/highNoon.js).
+function hnExtraVisible(exps) {
+    return !!(exps && exps.high_noon && !exps.fistful);
+}
+
+function visibleAdvancedOptions(exps) {
+    return ADVANCED_OPTIONS.filter(o => o.key !== 'highNoonExtra' || hnExtraVisible(exps));
+}
+
+// Souhrn v hlavičce sbalených pokročilých možností. Počítá jen VIDITELNÉ volby –
+// schované „přibalené karty" by jinak hlásily zapnutou volbu, kterou hráč nevidí.
+function advancedSummary(opts, exps) {
+    const n = visibleAdvancedOptions(exps).filter(o => opts && opts[o.key]).length;
+    return n ? `· ${n} ${czPlural(n, 'zapnutá', 'zapnuté', 'zapnutých')}` : '· vše výchozí';
+}
+
+// Poznámka pod řadou počtu hráčů – mění se podle volby (3 a 8 mají jiná pravidla).
+function playerCountNote(n) {
+    if (n === 3) return 'Město duchů: bez šerifa, role lícem nahoru, každý loví určeného soupeře.';
+    if (n === 8) return 'Šerif, 2× Pomocník, 3× Bandita, 2× Odpadlík — jediný počet se dvěma odpadlíky.';
+    return 'Hra startuje až s plným stolem. Prázdná místa doplníš boty v lobby.';
+}
+
+function playersLabel(n) { return `${n} ${czPlural(n, 'hráč', 'hráči', 'hráčů')}`; }
+function botsLabel(n) { return `${n} ${czPlural(n, 'bot', 'boti', 'botů')}`; }
+
+// „Dodge City · High Noon", nebo „základní hra".
+function expansionsLabel(exps) {
+    const names = MENU_EXPANSIONS.filter(e => exps && exps[e.key]).map(e => e.label);
+    return names.length ? names.join(' · ') : 'základní hra';
+}
+
+const ROOM_NAME_MAX = 40;
+
+function defaultRoomName(playerName) {
+    return `Hra hráče ${playerName}`;
+}
+
+// Proč nejde hru založit (věta do lišty akcí), nebo null. Zamčené tlačítko hráči říká,
+// co chybí, místo aby jen zešedlo.
+function createGameBlocker({ count, title, playerName }) {
+    if (!playerName) return 'Nejdřív si v menu zadej jméno.';
+    const noCount = !count, noTitle = !String(title || '').trim();
+    if (noCount && noTitle) return 'Vyber počet hráčů a zadej název.';
+    if (noCount) return 'Vyber počet hráčů.';
+    if (noTitle) return 'Zadej název hry.';
+    return null;
+}
+
+// Levá strana lišty akcí na S5: důvod zamčení, nebo „5 hráčů · Dodge City".
+function createGameSummary(args) {
+    return createGameBlocker(args) || `${playersLabel(args.count)} · ${expansionsLabel(args.exps)}`;
+}
+
+function botGameSummary(count, exps) {
+    return `${botsLabel(count)} · ${expansionsLabel(exps)}`;
+}
+
+// Volby pro create_bot_game: všechna rozšíření jako boolean, přibalené karty jen s High Noonem.
+function botGameOptions(exps, hnExtra) {
+    const expansions = emptyExpansions();
+    for (const k of Object.keys(expansions)) expansions[k] = !!(exps && exps[k]);
+    return { expansions, highNoonExtra: expansions.high_noon && !!hnExtra };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         esc, czPlural, waitingGamesLabel, runningGamesLabel, waitingGamesCount,
         initialsOf, NAME_MAX, clampName, nameError,
+        MENU_EXPANSIONS, emptyExpansions, ADVANCED_OPTIONS, hnExtraVisible, visibleAdvancedOptions,
+        advancedSummary, playerCountNote, playersLabel, botsLabel, expansionsLabel,
+        ROOM_NAME_MAX, defaultRoomName, createGameBlocker, createGameSummary,
+        botGameSummary, botGameOptions,
     };
 }

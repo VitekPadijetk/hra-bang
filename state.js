@@ -59,7 +59,7 @@ const App = {
     createGameName: null,
     createGameNameOwner: null,
     createPlayerCount: null,
-    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: { dodge_city: false, high_noon: false, fistful: false, divoky_zapad: false, zlata_horecka: false } },
+    createOptions: { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: emptyExpansions() },
     botGameCount: 4,
     // ID karet, které právě letí do MOJÍ ruky (animace líznutí/krádeže). Dokud je
     // karta tady, board.js ji v ruce nevykreslí – slot je rezervovaný a karta se

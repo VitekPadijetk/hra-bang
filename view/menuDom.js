@@ -1,7 +1,7 @@
 // view/menuDom.js — nové menu v HTML nad plátnem (plán: docs/menu-ui-plan.md).
 // Načítá se PO game.js a view/menu.js (sdílené globály: App, socket, playerName,
-// roomState, renderUI, setUiMode, uiModeStored, requestGameFullscreen) a po
-// core/menuModel.js (esc, initialsOf, …).
+// bangToken, gameScene, roomState, renderUI, setUiMode, uiModeStored,
+// requestGameFullscreen, loadExpansionAssets) a po core/menuModel.js (esc, initialsOf, …).
 //
 // Převádí se po obrazovkách: které už kreslí DOM, říká MENU_DOM_SCREENS, zbytek kreslí
 // dál Phaser (renderMenuScreen ve view/menu.js). renderUI se na začátku zeptá
@@ -10,8 +10,12 @@
 // Render = HTML řetězec obrazovky; do DOM jde jen při změně (renderUI běží i při každém
 // lobby_list, takže by jinak skákal scroll). Kliky nesou data-act a obsluhuje je jedna
 // tabulka MENU_ACTIONS. Text od hráče (jméno, název hry) vždy přes esc().
+//
+// Textová pole (data-field) se při psaní NEPŘEKRESLUJÍ – nový <input> by vzal fokus
+// a na mobilu zaklapl klávesnici. Psaní zapíše hodnotu přes MENU_FIELDS a vymění jen
+// oblasti označené data-live (souhrn a tlačítko v liště), viz _patchMenuLive.
 
-const MENU_DOM_SCREENS = new Set(['main', 'ui_choice']);
+const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game']);
 
 function menuDomHandles(screen) {
     return MENU_DOM_SCREENS.has(screen);
@@ -56,12 +60,36 @@ function _menuEnsureRoot() {
         const fn = MENU_ACTIONS[el.dataset.act];
         if (fn) fn(el.dataset.arg, el);
     });
+    _menuRoot.addEventListener('input', (e) => {
+        const field = e.target.dataset && e.target.dataset.field;
+        if (!field || !MENU_FIELDS[field]) return;
+        MENU_FIELDS[field](e.target.value, e.target);
+        _patchMenuLive();
+    });
+    // Phaser poslouchá klávesnici na window – psaní do pole k němu nesmí probublat.
+    const isField = (t) => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+    ['keydown', 'keyup', 'keypress'].forEach(type => _menuRoot.addEventListener(type, (e) => {
+        if (!isField(e.target)) return;
+        e.stopPropagation();
+        if (type === 'keydown' && e.key === 'Enter') {
+            const submit = e.target.dataset.submit;
+            e.target.blur();
+            if (submit && MENU_ACTIONS[submit]) MENU_ACTIONS[submit]();
+        }
+    }));
+    // Mobil: klepnutí mimo pole schová klávesnici (iOS ji jinak nechá překrývat lištu akcí).
+    _menuRoot.addEventListener('pointerdown', (e) => {
+        const a = document.activeElement;
+        if (isField(a) && _menuRoot.contains(a) && e.target !== a) a.blur();
+    });
     return _menuRoot;
 }
 
 function hideMenuDom() {
     if (_menuRoot) _menuRoot.style.display = 'none';
 }
+
+let _menuScreenName = null;
 
 function renderMenuDom(screen) {
     const root = _menuEnsureRoot();
@@ -70,19 +98,101 @@ function renderMenuDom(screen) {
     _menuFsEl.style.display = document.fullscreenElement ? 'none' : '';
     const build = MENU_SCREENS[screen];
     if (!build) return;
+    // Jiná obrazovka začíná nahoře – scroll se drží jen v rámci jedné.
+    if (screen !== _menuScreenName) { _menuScreenName = screen; _menuLastHtml = null; _menuScreenEl.innerHTML = ''; }
     _mountMenuHtml(build());
 }
 
 // Vymění obsah jen při změně a podrží pozici rolující části (když se změní jen
-// číslo v seznamu, nesmí seznam odskočit nahoru).
+// číslo v seznamu, nesmí seznam odskočit nahoru) i fokus (klávesnicí ovládané
+// menu by po každém přepnutí volby skočilo na začátek stránky).
 function _mountMenuHtml(html) {
     if (html === _menuLastHtml) return;
     const scroller = _menuScreenEl.querySelector('.bu-scroll');
     const keep = scroller ? scroller.scrollTop : 0;
+    const focusSel = _menuFocusSelector(document.activeElement);
     _menuScreenEl.innerHTML = html;
     _menuLastHtml = html;
     const next = _menuScreenEl.querySelector('.bu-scroll');
     if (next && keep) next.scrollTop = keep;
+    if (focusSel) {
+        const el = _menuScreenEl.querySelector(focusSel);
+        if (el) el.focus({ preventScroll: true });
+    }
+}
+
+// Selektor, podle kterého se prvek s fokusem najde i v novém HTML (nebo null).
+function _menuFocusSelector(el) {
+    if (!el || !_menuScreenEl.contains(el) || !el.dataset) return null;
+    const q = (v) => `"${String(v).replace(/["\\]/g, '\\$&')}"`;
+    if (el.dataset.field) return `[data-field=${q(el.dataset.field)}]`;
+    if (!el.dataset.act) return null;
+    return `[data-act=${q(el.dataset.act)}]` + (el.dataset.arg != null ? `[data-arg=${q(el.dataset.arg)}]` : '');
+}
+
+// Po psaní do pole: vymění jen oblasti data-live, pole samo zůstane (i s fokusem).
+// _menuLastHtml se srovná s novým stavem, takže další renderUI nic nepřestaví.
+function _patchMenuLive() {
+    const build = MENU_SCREENS[_menuScreenName];
+    if (!build) return;
+    const html = build();
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    _menuScreenEl.querySelectorAll('[data-live]').forEach(el => {
+        const fresh = tpl.content.querySelector(`[data-live="${el.dataset.live}"]`);
+        if (fresh) el.replaceWith(fresh);
+    });
+    _menuLastHtml = html;
+}
+
+// ── Sdílené prvky (handoff/components.md) ──────────────────────────────────
+
+// Neposuvná hlavička: zpět + nadpis a podtitulek. Text od hráče předává volající už
+// escapovaný. `leave` = varovná podoba „Opustit hru" (odchod ruší místo v lobby).
+function _menuHead(title, sub, { act = 'go', arg = 'main', leave = false } = {}) {
+    return `<div class="bu-head">` +
+        `<button class="bu-back${leave ? ' leave' : ''}" data-act="${act}"${arg != null ? ` data-arg="${arg}"` : ''}>` +
+        `${leave ? '◀ Opustit hru' : '◀ Zpět'}</button>` +
+        `<div class="bu-head-txt"><div class="bu-title">${title}</div><div class="bu-sub">${sub}</div></div></div>`;
+}
+
+// Neposuvná lišta akcí: vlevo souhrn (co hráč potřebuje vědět, než klikne), vpravo akce.
+// data-live – při psaní do pole se vyměňuje jen tahle část (_patchMenuLive).
+function _menuBar(summary, actionHtml) {
+    return `<div class="bu-bar" data-live="bar"><div class="bu-bar-sum">${summary}</div>${actionHtml}</div>`;
+}
+
+// Řada 3–8 (počet hráčů / botů) – vždy šest tlačítek, i na mobilu.
+function _menuCountRow(act, current) {
+    return '<div class="bu-counts">' + [3, 4, 5, 6, 7, 8].map(n => {
+        const on = current === n;
+        return `<button class="bu-count${on ? ' on' : ''}" data-act="${act}" data-arg="${n}" aria-pressed="${on}">${n}</button>`;
+    }).join('') + '</div>';
+}
+
+// Zaškrtávací karta (rozšíření) nebo řádek (pokročilá volba, cls 'bu-opt').
+function _menuCheck(cls, act, key, label, hint, on) {
+    return `<button class="${cls}${on ? ' on' : ''}" data-act="${act}" data-arg="${key}" aria-pressed="${on}">` +
+        `<span class="bu-box">${on ? '✔' : ''}</span>` +
+        `<span class="bu-check-txt"><span class="bu-check-name">${label}</span>` +
+        `<span class="bu-check-hint">${hint}</span></span></button>`;
+}
+
+function _menuExpansionGrid(act, exps) {
+    return '<div class="bu-checks">' +
+        MENU_EXPANSIONS.map(e => _menuCheck('bu-check', act, e.key, e.label, e.hint, !!exps[e.key])).join('') +
+        '</div>';
+}
+
+// Zapnutí rozšíření rovnou dotáhne jeho art (v preloadu se nestahuje).
+// HN_EXTRA_AUTO (view/menu.js) — DOČASNÉ: zapnutí High Noon zaškrtne i přibalené karty.
+function _menuToggleExpansion(exps, key, onHighNoon) {
+    exps[key] = !exps[key];
+    if (exps[key]) {
+        loadExpansionAssets(gameScene, key);
+        if (key === 'high_noon') onHighNoon();
+    }
+    renderUI();
 }
 
 // ── Obrazovky ──────────────────────────────────────────────────────────────
@@ -147,6 +257,93 @@ const MENU_SCREENS = {
   </div>
 </div></div>`;
     },
+
+    // S5 — vytvořit hru
+    create() {
+        // Výchozí název patří jménu: po přejmenování v menu se nabídne nový.
+        if (App.createGameNameOwner !== playerName) {
+            App.createGameName = playerName ? defaultRoomName(playerName) : '';
+            App.createGameNameOwner = playerName;
+        }
+        const opts = App.createOptions;
+        if (!opts.expansions) opts.expansions = emptyExpansions();
+        const exps = opts.expansions;
+        const count = App.createPlayerCount;
+        const args = { count, title: App.createGameName, playerName, exps };
+        const blocked = !!createGameBlocker(args);
+        const open = !!App.createAdvanced;
+        const advRows = visibleAdvancedOptions(exps)
+            .map(o => _menuCheck('bu-opt', 'createAdv', o.key, o.label, o.hint, !!opts[o.key])).join('');
+        return `
+${_menuHead('Vytvořit novou hru', 'Nastavení platí od začátku hry a pak se nemění')}
+<div class="bu-scroll"><div class="bu-form">
+  <div class="bu-field-row">
+    <label class="bu-field">
+      <span class="bu-label">Název hry</span>
+      <input class="bu-input compact" data-field="roomName" data-submit="createGame" maxlength="${ROOM_NAME_MAX}"
+        value="${esc(App.createGameName)}" autocomplete="off" enterkeyhint="go">
+    </label>
+    <div class="bu-owner">Hráč: <span>${playerName ? esc(playerName) : '—'}</span></div>
+  </div>
+  <div>
+    <div class="bu-label-row"><span class="bu-label">Počet hráčů</span><span class="bu-required${count ? ' off' : ''}">povinné</span></div>
+    ${_menuCountRow('createCount', count)}
+    <div class="bu-note">${playerCountNote(count)}</div>
+  </div>
+  <div>
+    <div class="bu-label">Rozšíření <span class="bu-label-aside">— libovolná kombinace</span></div>
+    ${_menuExpansionGrid('createExp', exps)}
+  </div>
+  <div class="bu-adv">
+    <button class="bu-adv-head" data-act="createAdvOpen" aria-expanded="${open}">
+      <span>Pokročilé možnosti <span class="bu-adv-sum">${advancedSummary(opts, exps)}</span></span>
+      <span class="bu-adv-caret">${open ? '▲' : '▼'}</span>
+    </button>
+    ${open ? `<div class="bu-adv-body">${advRows}</div>` : ''}
+  </div>
+</div></div>
+${_menuBar(esc(createGameSummary(args)),
+    `<button class="bu-btn primary bar" data-act="createGame"${blocked ? ' disabled' : ''}>VYTVOŘIT HRU</button>`)}`;
+    },
+
+    // S11 — hra botů
+    bot_game() {
+        if (!App.botGameExpansions) App.botGameExpansions = emptyExpansions();
+        const exps = App.botGameExpansions;
+        const count = App.botGameCount || 4;
+        const extraOn = !!App.botGameHighNoonExtra;
+        const extra = !hnExtraVisible(exps) ? '' :
+            `<button class="bu-extra${extraOn ? ' on' : ''}" data-act="botHnExtra" aria-pressed="${extraOn}">` +
+            `<span class="bu-box">${extraOn ? '✔' : ''}</span>` +
+            `<span>Přibalené karty <span class="bu-label-aside">— Nová identita a Želízka z Fistfulu</span></span></button>`;
+        return `
+${_menuHead('Sledovat hru botů', 'Hra bez lidí · rozjede se hned')}
+<div class="bu-scroll"><div class="bu-form">
+  <div class="bu-intro">Spustí hru složenou jen z počítačových hráčů, kterou budeš sledovat.
+    Jméno se nevyžaduje a hra se rozjede hned, bez rozdávání rolí.</div>
+  <div>
+    <div class="bu-label">Počet botů</div>
+    ${_menuCountRow('botCount', count)}
+  </div>
+  <div>
+    <div class="bu-label">Rozšíření</div>
+    ${_menuExpansionGrid('botExp', exps)}
+  </div>
+  ${extra}
+</div></div>
+${_menuBar(esc(botGameSummary(count, exps)),
+    '<button class="bu-btn primary bar" data-act="startBotGame">▶ SPUSTIT A SLEDOVAT</button>')}`;
+    },
+};
+
+// ── Textová pole (data-field) ──────────────────────────────────────────────
+// Zapíšou hodnotu do stavu; překreslí se jen data-live oblasti (_patchMenuLive).
+
+const MENU_FIELDS = {
+    roomName(value) {
+        App.createGameName = value;
+        App.createGameNameOwner = playerName;
+    },
 };
 
 // ── Akce ───────────────────────────────────────────────────────────────────
@@ -154,6 +351,11 @@ const MENU_SCREENS = {
 const MENU_ACTIONS = {
     fullscreen() { requestGameFullscreen(); },
     go(screen) {
+        // Zakládá se pod jménem – bez něj se nejdřív zeptej, na S5 se jde až po „OK".
+        if (screen === 'create' && !playerName) {
+            openNameModal({ onConfirm: () => { App.menuScreen = 'create'; renderUI(); } });
+            return;
+        }
         if (screen === 'join_list') App.joinListFetched = false;
         App.menuScreen = screen;
         renderUI();
@@ -164,6 +366,37 @@ const MENU_ACTIONS = {
     pickLayout(mode) {
         App.menuScreen = 'main';
         setUiMode(mode);
+    },
+
+    // S5
+    createCount(n) { App.createPlayerCount = Number(n); renderUI(); },
+    createExp(key) {
+        _menuToggleExpansion(App.createOptions.expansions, key, () => { App.createOptions.highNoonExtra = true; });
+    },
+    createAdvOpen() { App.createAdvanced = !App.createAdvanced; renderUI(); },
+    createAdv(key) { App.createOptions[key] = !App.createOptions[key]; renderUI(); },
+    createGame() {
+        const name = (App.createGameName || '').trim();
+        if (createGameBlocker({ count: App.createPlayerCount, title: name, playerName })) return;
+        socket.emit('create_room', { name, maxPlayers: App.createPlayerCount, playerName, options: App.createOptions || {}, token: bangToken });
+        App.createPlayerCount = null;
+        App.createGameName = null;
+        App.createGameNameOwner = null;
+        App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: emptyExpansions() };
+    },
+
+    // S11
+    botCount(n) { App.botGameCount = Number(n); renderUI(); },
+    botExp(key) {
+        _menuToggleExpansion(App.botGameExpansions, key, () => { App.botGameHighNoonExtra = true; });
+    },
+    botHnExtra() { App.botGameHighNoonExtra = !App.botGameHighNoonExtra; renderUI(); },
+    startBotGame() {
+        App.ignoreRoomId = null;   // vstupujeme do hry (jako u sledování) – filtr už nemá co blokovat
+        socket.emit('create_bot_game', {
+            count: App.botGameCount || 4,
+            options: botGameOptions(App.botGameExpansions, App.botGameHighNoonExtra),
+        });
     },
 };
 

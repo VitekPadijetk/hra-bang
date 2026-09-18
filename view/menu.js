@@ -176,15 +176,11 @@ function menuRow(x, y, w, h, onClick) {
 // HN_EXTRA_AUTO — DOČASNÉ (testování, na požádání zase pryč): zapnutí High Noon rovnou
 // zaškrtne i „přibalené karty" (Nová identita + Želízka). Nastavuje se JEN v okamžiku
 // zapnutí High Noon, takže v pokročilých možnostech je vidět jako zapnuté a jde ručně
-// vypnout. Tři místa (založení hry, hra botů, debug) hledej podle „HN_EXTRA_AUTO".
+// vypnout. Tři místa (založení hry a hra botů ve view/menuDom.js, debug tady) hledej
+// podle „HN_EXTRA_AUTO".
 
-// Výchozí (všechna vypnutá) sada příznaků rozšíření. Jedno místo pro všechny tři
-// obrazovky i pro reset po založení hry – přibývající rozšíření se jinak zapomene
-// dopsat do jednoho ze čtyř ručních výčtů a checkbox pak nejde zaškrtnout.
-function emptyExpansions() {
-    return { dodge_city: false, high_noon: false, fistful: false,
-             divoky_zapad: false, zlata_horecka: false };
-}
+// emptyExpansions() – výchozí sada příznaků rozšíření – je v core/menuModel.js
+// (staví se z MENU_EXPANSIONS, jediného výčtu rozšíření).
 
 // Jeden řádek zaškrtávátka rozšíření (zakládání hry i hra botů kreslí totéž).
 // `exps` je objekt s příznaky rozšíření, který se rovnou přepíná; `onToggle` slouží
