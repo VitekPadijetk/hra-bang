@@ -3,9 +3,10 @@
 // bangToken, gameScene, roomState, renderUI, setUiMode, uiModeStored,
 // requestGameFullscreen, loadExpansionAssets) a po core/menuModel.js (esc, initialsOf, …).
 //
-// Převádí se po obrazovkách: které už kreslí DOM, říká MENU_DOM_SCREENS, zbytek kreslí
-// dál Phaser (renderMenuScreen ve view/menu.js). renderUI se na začátku zeptá
-// menuDomHandles() a vrstvu schová, když ji aktuální pohled nepoužívá.
+// Převádí se po obrazovkách: které už kreslí DOM, říká MENU_DOM_SCREENS (menu mimo
+// místnost) a MENU_DOM_ROOM_PHASES (lobby místnosti), zbytek kreslí dál Phaser
+// (renderMenuScreen ve view/menu.js). renderUI se na začátku zeptá menuDomScreen()
+// a vrstvu schová, když ji aktuální pohled nepoužívá.
 //
 // Render = HTML řetězec obrazovky; do DOM jde jen při změně (renderUI běží i při každém
 // lobby_list, takže by jinak skákal scroll). Kliky nesou data-act a obsluhuje je jedna
@@ -17,8 +18,17 @@
 
 const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game', 'join_list', 'join_room', 'spectate_list']);
 
-function menuDomHandles(screen) {
-    return MENU_DOM_SCREENS.has(screen);
+// Fáze místnosti, které kreslí vrstva: lobby = S8, next_lobby = S9 (jméno obrazovky = fáze).
+const MENU_DOM_ROOM_PHASES = new Set(['lobby', 'next_lobby']);
+
+// Kterou obrazovku má vrstva právě kreslit, nebo null (pak ji renderUI schová).
+// Mimo místnost rozhoduje App.menuScreen, v místnosti její fáze.
+function menuDomScreen() {
+    if (!roomState) {
+        const screen = App.menuScreen || 'main';
+        return MENU_DOM_SCREENS.has(screen) ? screen : null;
+    }
+    return MENU_DOM_ROOM_PHASES.has(roomState.roomPhase) ? roomState.roomPhase : null;
 }
 
 // ── Motiv ──────────────────────────────────────────────────────────────────
@@ -176,9 +186,11 @@ function _menuHead(title, sub, { act = 'go', arg = 'main', leave = false } = {})
 
 // Neposuvná lišta akcí: vlevo souhrn (co hráč potřebuje vědět, než klikne), vpravo akce.
 // data-live – při psaní do pole se vyměňuje jen tahle část (_patchMenuLive).
-// `bad` = souhrn je chyba (obsazené jméno, odmítnutí ze serveru).
+// `bad` = souhrn je chyba (obsazené jméno, odmítnutí ze serveru); summary null = lišta
+// bez souhrnu (lobby – akce se roztáhnou přes celou šířku).
 function _menuBar(summary, actionHtml, { bad = false } = {}) {
-    return `<div class="bu-bar" data-live="bar"><div class="bu-bar-sum${bad ? ' bad' : ''}">${summary}</div>${actionHtml}</div>`;
+    const sum = summary == null ? '' : `<div class="bu-bar-sum${bad ? ' bad' : ''}">${summary}</div>`;
+    return `<div class="bu-bar" data-live="bar">${sum}${actionHtml}</div>`;
 }
 
 // Řádek místnosti (S6, S10): název + kdo, tečky sedaček, počet, stav, akce.
@@ -202,15 +214,31 @@ function _menuEmpty(text, btnLabel, screen) {
         `<button class="bu-btn primary" data-act="go" data-arg="${screen}">${btnLabel}</button></div>`;
 }
 
-// Řádky sedaček (S7; ve fázi 4 i lobby S8/S9) – data z seatRows (core/menuModel.js).
+// Řádky sedaček (S7, S8, S9) – data ze seatRows / lobbySeatRows (core/menuModel.js).
+// Lídrovi v lobby je prázdné místo celé jedním tlačítkem „➕ Bot" (addBot) – větší cíl pro
+// prst než malé tlačítko v řádku – a u bota má „✕" na odebrání (removeId). Prázdná místa
+// schválně nenesou data-arg: fokus pak po přidání bota skočí na další volné místo
+// (_menuFocusSelector), takže se stůl dá klávesnicí doplnit opakovaným Enterem.
 function _menuSeats(rows) {
-    return '<div class="bu-seats">' + rows.map(r => r.empty
-        ? `<div class="bu-seat empty"><span class="bu-seat-idx">${r.idx}.</span>` +
-          `<span class="bu-seat-ico">·</span><span class="bu-seat-name">Čeká se…</span></div>`
-        : `<div class="bu-seat${r.me ? ' me' : ''}"><span class="bu-seat-idx">${r.idx}.</span>` +
-          `<span class="bu-seat-ico">${r.icon}</span><span class="bu-seat-name">${esc(r.name)}</span>` +
-          `<span class="bu-seat-tag">${r.tag}</span></div>`
-    ).join('') + '</div>';
+    const idx = (r) => `<span class="bu-seat-idx">${r.idx}.</span>`;
+    return '<div class="bu-seats">' + rows.map(r => {
+        if (r.empty && r.addBot) {
+            return `<button class="bu-seat empty add" data-act="addBot">${idx(r)}` +
+                `<span class="bu-seat-ico">·</span><span class="bu-seat-name">Přidat bota</span>` +
+                `<span class="bu-seat-act">➕ Bot</span></button>`;
+        }
+        if (r.empty) {
+            return `<div class="bu-seat empty">${idx(r)}` +
+                `<span class="bu-seat-ico">·</span><span class="bu-seat-name">Čeká se…</span></div>`;
+        }
+        const rm = r.removeId
+            ? `<button class="bu-seat-act rm" data-act="removeBot" data-arg="${esc(r.removeId)}"` +
+              ` aria-label="Odebrat ${esc(r.name)}" title="Odebrat bota">✕</button>`
+            : '';
+        return `<div class="bu-seat${r.me ? ' me' : ''}">${idx(r)}` +
+            `<span class="bu-seat-ico">${r.icon}</span><span class="bu-seat-name">${esc(r.name)}</span>` +
+            `<span class="bu-seat-tag">${r.tag}</span>${rm}</div>`;
+    }).join('') + '</div>';
 }
 
 // Poznámka nad obsahem (⏳ čekání, ⚠ problém).
@@ -444,6 +472,10 @@ ${_menuBar('', '<button class="bu-btn bar" data-act="go" data-arg="join_list">�
 ${bar}`;
     },
 
+    // S8 — lobby místnosti, S9 — lobby další hry (roomPhase; data z room_update)
+    lobby() { return _menuLobby(); },
+    next_lobby() { return _menuLobby(); },
+
     // S10 — sledovat probíhající hru (sledování není hlavní cesta → akce je sekundární)
     spectate_list() {
         const list = App.gameList || [];
@@ -455,6 +487,33 @@ ${_menuHead('Sledovat probíhající hru', esc(spectateListSubtitle(list)))}
 <div class="bu-scroll">${body}</div>`;
     },
 };
+
+// S8 / S9. Zpět je varovné „Opustit hru" – odchod tu ruší místo u stolu (components.md).
+// Lídr zahajuje a ruší, ostatní čekají; prázdná místa lídr doplňuje boty.
+function _menuLobby() {
+    const room = roomState;
+    const isLeader = room.leaderSocketId === socket.id;
+    const note = lobbyNotice(room, isLeader);
+    // Pokročilé volby nad sedačkami – pod nimi by je při 8 místech nikdo neviděl.
+    const rules = roomRulesLabel(room.options);
+    const rulesLine = rules ? `<div class="bu-rules">Pravidla: <span>${esc(rules)}</span></div>` : '';
+    let actions;
+    if (isLeader) {
+        const start = lobbyStartButton(room, App.startPressed);
+        actions = `<button class="bu-btn primary bar grow" data-act="startGame"${start.can ? '' : ' disabled'}>${start.label}</button>` +
+            '<button class="bu-btn danger bar" data-act="cancelGame">✕ ZRUŠIT HRU</button>';
+    } else {
+        actions = `<div class="bu-wait">${esc(lobbyWaitText(room))}</div>`;
+    }
+    return `
+${_menuHead(esc(lobbyTitle(room)), esc(lobbySubtitle(room)), { act: 'leaveRoom', arg: null, leave: true })}
+<div class="bu-scroll"><div class="bu-form">
+  ${note ? _menuNotice(note.ico, esc(note.text)) : ''}
+  ${rulesLine}
+  ${_menuSeats(lobbySeatRows(room, socket.id))}
+</div></div>
+${_menuBar(null, actions)}`;
+}
 
 // ── Textová pole (data-field) ──────────────────────────────────────────────
 // Zapíšou hodnotu do stavu; překreslí se jen data-live oblasti (_patchMenuLive).
@@ -532,6 +591,21 @@ const MENU_ACTIONS = {
         if (joinRoomBlocker(item, playerName, App.allTakenNames)) return;
         App.joinError = null;
         socket.emit('join_room', { roomId: item.id, playerName, token: bangToken });
+    },
+
+    // S8 / S9 – odpovědi chodí jako room_update (sedačky), go_to_menu (odchod, zrušení)
+    // a u ostatních kicked_from_game (S15).
+    leaveRoom() { socket.emit('leave_room'); },
+    cancelGame() { socket.emit('cancel_game'); },
+    addBot() { socket.emit('add_bot'); },
+    removeBot(socketId) { socket.emit('remove_bot', { socketId }); },
+    // Zahájení jde zmáčknout jen jednou: App.startPressed zamkne tlačítko hned z kliknutí
+    // (odpověď serveru přijde až za sítí); odemkne ho room_update (net/handlers.js).
+    startGame() {
+        if (!roomState || !lobbyStartButton(roomState, App.startPressed).can) return;
+        App.startPressed = true;
+        socket.emit(lobbyStartEvent(roomState));
+        renderUI();
     },
 
     // S10

@@ -2840,7 +2840,8 @@ function renderUI() {
     gameScene.cardsSprites.clear(true, true);
     // Nové menu v HTML (view/menuDom.js) kreslí jen převedené obrazovky – jinde se schová.
     // Schovává se JEN tady (ne „schovat vždy, pak ukázat"), jinak by se ztrácel scroll.
-    if (!(!roomState && menuDomHandles(App.menuScreen || 'main'))) hideMenuDom();
+    const domScreen = menuDomScreen();
+    if (!domScreen) hideMenuDom();
     // POZN.: zoom karty tu ZÁMĚRNĚ nerušíme. renderUI běží i při cizí akci a tvrdý
     // stopCardZoom() by resetoval odpočet/zvýraznění karty pod nehybným kurzorem. Zoom je
     // klíčovaný identitou karty (_zoomKey) a uklízí ho _tickCardZoom() z update() smyčky,
@@ -2901,16 +2902,15 @@ function renderUI() {
 
     // ── MENU / LOBBY ──────────────────────────────────────────────────────────
     if (!roomState) {
-        const screen = App.menuScreen || 'main';
-        if (menuDomHandles(screen)) { renderMenuDom(screen); return; }
-        renderMenuScreen(screen);
+        if (domScreen) { renderMenuDom(domScreen); return; }
+        renderMenuScreen(App.menuScreen || 'main');
         return;
     }
 
     const rPhase = roomState.roomPhase;
     if (rPhase === 'lobby' || rPhase === 'next_lobby') {
         cleanupTextInputs?.();
-        renderLobbyScreen();
+        renderMenuDom(domScreen);   // S8 / S9 (view/menuDom.js)
         return;
     }
 

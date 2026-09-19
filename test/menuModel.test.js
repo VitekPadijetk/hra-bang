@@ -208,3 +208,85 @@ test('joinRoomBlocker: zmizelá a plná hra přebijí jméno, pak jméno, pak ob
     assert.equal(M.joinRoomBlocker(item(), 'Honza', ['Honza']).kind, 'taken');
     assert.equal(M.joinRoomBlocker(item(), 'Honza', ['Doc']), null);
 });
+
+// ── Lobby (S8, S9) ─────────────────────────────────────────────────────────
+
+const lobby = (over = {}) => Object.assign({
+    roomName: 'Saloon', roomPhase: 'lobby', leaderSocketId: 'L', maxPlayers: 5,
+    players: [
+        { socketId: 'L', name: 'Calamity' },
+        { socketId: 'b1', name: '🤖 Bot 1', isBot: true },
+        { socketId: 'H', name: 'Honza', wasOriginalSurvivor: true },
+    ],
+    options: { expansions: { dodge_city: true, high_noon: true } },
+    assetsWaiting: false,
+}, over);
+
+test('lobbyTitle / lobbySubtitle: počet a rozšíření, další hra má vlastní nadpis', () => {
+    assert.equal(M.lobbyTitle(lobby()), 'Saloon');
+    assert.equal(M.lobbyTitle(lobby({ roomPhase: 'next_lobby' })), 'Další hra: Saloon');
+    assert.equal(M.lobbySubtitle(lobby()), '3 / 5 hráčů · Dodge City · High Noon');
+    assert.equal(M.lobbySubtitle(lobby({ options: {} })), '3 / 5 hráčů · základní hra');
+});
+
+test('lobbySeatRows: lídr a já podle socketId, lídr spravuje boty a prázdná místa', () => {
+    const asLeader = M.lobbySeatRows(lobby(), 'L');
+    assert.equal(asLeader.length, 5);
+    assert.equal(asLeader[0].icon, '👑');
+    assert.equal(asLeader[0].me, true);
+    assert.equal(asLeader[0].tag, '(ty) · Game Leader');
+    assert.equal(asLeader[1].removeId, 'b1');
+    assert.equal(asLeader[2].removeId, null);
+    assert.deepEqual(asLeader.slice(3).map(r => [r.empty, r.addBot]), [[true, true], [true, true]]);
+
+    const asGuest = M.lobbySeatRows(lobby(), 'H');
+    assert.equal(asGuest[2].me, true);
+    assert.equal(asGuest[1].removeId, null, 'bota odebírá jen lídr');
+    assert.equal(asGuest[3].addBot, false, 'bota přidává jen lídr');
+    assert.equal(asGuest[2].tag, '(ty)', 'v první hře se „chce dál" neukazuje');
+});
+
+test('lobbySeatRows: v lobby další hry „chce dál ✅" u toho, kdo přešel z minulé hry', () => {
+    const rows = M.lobbySeatRows(lobby({ roomPhase: 'next_lobby' }), 'L');
+    assert.equal(rows[2].tag, 'chce dál ✅');
+    assert.equal(rows[0].tag, '(ty) · Game Leader');
+});
+
+test('lobbyNotice: volné místo skloňuje a boty nabízí jen lídrovi', () => {
+    assert.equal(M.lobbyNotice(lobby(), true).text,
+        'Hra začne, až bude stůl plný — chybí 2 hráči. Můžeš je doplnit boty.');
+    assert.equal(M.lobbyNotice(lobby({ maxPlayers: 4 }), false).text,
+        'Hra začne, až bude stůl plný — chybí 1 hráč. Game Leader ho může doplnit botem.');
+    assert.match(M.lobbyNotice(lobby({ maxPlayers: 8 }), true).text, /chybí 5 hráčů/);
+    assert.equal(M.lobbyNotice(lobby({ maxPlayers: 3 }), true), null);
+});
+
+test('lobbyNotice: vždy jedna – art rozšíření > volné místo > přeživší v další hře', () => {
+    const next = { roomPhase: 'next_lobby' };
+    assert.match(M.lobbyNotice(lobby({ ...next, maxPlayers: 3, assetsWaiting: true }), true).text, /karty rozšíření/);
+    assert.match(M.lobbyNotice(lobby(next), true).text, /chybí 2 hráči/);
+    assert.equal(M.lobbyNotice(lobby({ ...next, maxPlayers: 3 }), true).ico, '🎭');
+});
+
+test('lobbyStartButton: zamčené říká proč; klik a čekání na art zamykají', () => {
+    assert.deepEqual(M.lobbyStartButton(lobby(), false), { label: '▶ ZAHÁJIT HRU (stůl není plný)', can: false });
+    assert.deepEqual(M.lobbyStartButton(lobby({ maxPlayers: 3 }), false), { label: '▶ ZAHÁJIT HRU', can: true });
+    assert.equal(M.lobbyStartButton(lobby({ maxPlayers: 3 }), true).can, false);
+    assert.equal(M.lobbyStartButton(lobby({ maxPlayers: 3, assetsWaiting: true }), false).label, 'ZAHAJUJI…');
+    assert.equal(M.lobbyStartEvent(lobby()), 'start_game');
+    assert.equal(M.lobbyStartEvent(lobby({ roomPhase: 'next_lobby' })), 'check_start_next');
+});
+
+test('lobbyWaitText: čekání na art > plný stůl > doplnění', () => {
+    assert.equal(M.lobbyWaitText(lobby()), 'Čeká se na Game Leadera…');
+    assert.equal(M.lobbyWaitText(lobby({ roomPhase: 'next_lobby' })), 'Čeká se na doplnění hráčů a Game Leadera…');
+    assert.match(M.lobbyWaitText(lobby({ maxPlayers: 3 })), /^Stůl je plný/);
+    assert.match(M.lobbyWaitText(lobby({ maxPlayers: 3, assetsWaiting: true })), /karty rozšíření/);
+});
+
+test('roomRulesLabel: zapnuté pokročilé volby, přibalené karty jen s High Noonem bez Fistfulu', () => {
+    assert.equal(M.roomRulesLabel({}), '');
+    assert.equal(M.roomRulesLabel({ rotatingSheriff: true, singleChar: true }), 'postavy náhodně · rotující šerif');
+    assert.equal(M.roomRulesLabel({ highNoonExtra: true, expansions: { high_noon: true } }), 'přibalené karty High Noonu');
+    assert.equal(M.roomRulesLabel({ highNoonExtra: true, expansions: { high_noon: true, fistful: true } }), '');
+});

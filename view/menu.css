@@ -208,6 +208,7 @@
 .bu-btn.quiet { background: transparent; border-color: var(--line); color: var(--muted); }
 .bu-btn.quiet:hover { color: var(--text); border-color: var(--gold); }
 .bu-btn.danger { background: transparent; border-color: var(--badLine); color: var(--bad); }
+.bu-btn.danger:hover { background: var(--badBg); border-color: var(--bad); }
 .bu-btn:disabled, .bu-btn.locked, .bu-btn:disabled:hover, .bu-btn.locked:hover {
   background: var(--panel); border: 1px solid var(--line); color: var(--dim);
   cursor: not-allowed; filter: none;
@@ -449,7 +450,7 @@
 .bu-empty-text { margin-top: 8px; font-family: 'EB Garamond', serif; font-size: 18px; }
 .bu-empty .bu-btn { margin-top: 16px; padding: 12px 22px; font-size: 16px; }
 
-/* ── Sedačky (S7; S8 a S9 ve fázi 4) ────────────────────────────────────── */
+/* ── Sedačky (S7, S8, S9) ───────────────────────────────────────────────── */
 
 .bu-seats { display: flex; flex-direction: column; gap: 6px; }
 .bu-seat {
@@ -467,7 +468,31 @@
 .bu-seat.me .bu-seat-name { color: var(--gold); }
 .bu-seat.empty .bu-seat-name { color: var(--dim); }
 .bu-seat-tag { flex: none; font-family: 'EB Garamond', serif; font-size: 14px; color: var(--muted); }
-@media (max-height: 500px) { .bu-seat { padding: 7px 12px; } }
+/* Akce v řádku: „➕ Bot" (popisek tlačítka, kterým je celé prázdné místo) a „✕" u bota. */
+.bu-seat-act {
+  flex: none; min-width: 40px; padding: 7px 13px; border-radius: 7px; text-align: center;
+  font-size: 14px; border: 1px solid var(--line2); background: transparent; color: var(--muted);
+}
+button.bu-seat { width: 100%; text-align: left; cursor: pointer; }
+.bu-seat.add:hover { border-color: var(--gold); }
+.bu-seat.add:hover .bu-seat-act { border-color: var(--gold); color: var(--text); }
+.bu-seat-act.rm { cursor: pointer; }
+.bu-seat-act.rm:hover { border-color: var(--bad); color: var(--text); }
+@media (max-height: 500px) { .bu-seat { padding: 7px 12px; } .bu-seat-act { padding: 5px 11px; } }
+
+/* Zapnuté pokročilé volby místnosti nad sedačkami (S8, S9). */
+.bu-rules { padding: 0 4px; font-family: 'EB Garamond', serif; font-size: 15px; color: var(--muted); }
+.bu-rules span { color: var(--text); }
+
+/* Lišta lobby: lídr má ZAHÁJIT přes celou šířku a ZRUŠIT vedle, ostatní rámeček čekání. */
+.bu-btn.bar.grow { flex: 1 1 240px; }
+.bu-btn.danger.bar { flex: 0 1 170px; font-size: 16px; font-weight: 600; box-shadow: none; }
+.bu-wait {
+  flex: 1; padding: 13px 14px; border-radius: 9px; text-align: center;
+  border: 1px dashed var(--line2); color: var(--muted);
+  font-family: 'EB Garamond', serif; font-size: 17px;
+}
+@media (max-height: 500px) { .bu-wait { padding: 9px 12px; font-size: 16px; } }
 
 /* Poznámka nad obsahem (⏳ čekání, ⚠ problém). */
 .bu-notice {
@@ -478,3 +503,4 @@
 .bu-notice.bad { border-color: var(--badLine); background: var(--badBg); }
 .bu-notice-ico { flex: none; font-size: 17px; }
 .bu-notice.bad .bu-notice-ico { color: var(--bad); }
+@media (max-height: 500px) { .bu-notice { padding: 7px 12px; font-size: 15px; } }

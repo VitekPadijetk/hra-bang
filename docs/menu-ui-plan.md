@@ -17,10 +17,10 @@ hledej `socket.emit` / `App.` v jejím bloku (`screen === '…'`).
 ## Rozhodnutí
 
 - **D1 – hybrid po obrazovkách.** Obrazovky mimo stůl jsou DOM vrstva `#bang-ui` nad plátnem.
-  Které už jsou převedené, říká `MENU_DOM_SCREENS` ve `view/menuDom.js`; ostatní kreslí dál
-  Phaser (`renderMenuScreen`). `renderUI` (game.js) se na začátku zeptá `menuDomHandles(…)`
-  a vrstvu skryje, když ji aktuální pohled nepoužívá – schovává se jen tam, žádné blikání
-  a zachovaný scroll.
+  Které už jsou převedené, říká `MENU_DOM_SCREENS` (menu mimo místnost, podle `App.menuScreen`)
+  a `MENU_DOM_ROOM_PHASES` (místnost, podle `roomPhase`) ve `view/menuDom.js`; ostatní kreslí dál
+  Phaser (`renderMenuScreen`). `renderUI` (game.js) se na začátku zeptá `menuDomScreen()`
+  a vrstvu skryje, když vrátí null – schovává se jen tam, žádné blikání a zachovaný scroll.
 - **D2 – render = HTML řetězec + delegace klikání.** Obrazovka vrátí HTML, `_mountMenuHtml` ho
   vymění jen při změně (renderUI běží při každém `lobby_list`, jinak by se ztrácel scroll
   i focus). Kliky nesou `data-act="…"`, obsluha je jedna tabulka akcí. **Každý text od
@@ -79,7 +79,7 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 | 1 | Kostra (`view/menu.css`, `view/menuDom.js`, `core/menuModel.js`, fonty Rye + EB Garamond, přepínání vrstvy v `renderUI`), motiv, `bangName`; **S3, S2, S4** | `game_list` se rozesílá spolu s `lobby_list` (živý počet běžících her v S3) | ✅ |
 | 2 | **S5 + S11** (sdílené: řada počtu hráčů, karty rozšíření, pokročilé), souhrn a zamčení v `menuModel` | – | ✅ |
 | 3 | **S6, S7, S10** + prázdné stavy | položky seznamu: lídr, `next` (navazující), rozšíření; `game_list` i při výhře | ✅ |
-| 4 | **S8, S9** lobby (sedačky, ➕ Bot, ✕ bot, varovné „Opustit hru") | – | ☐ |
+| 4 | **S8, S9** lobby (sedačky, ➕ Bot, ✕ bot, varovné „Opustit hru") | `start_game` jen s plným stolem | ✅ |
 | 5 | **S12, S14, S15** (statistiky už jsou HTML v `showStats` → nový vzhled + seskupení podle rolí) | – | ☐ |
 | 6 | **S13** účast in / wait / out (D8) | `next_join` / `next_leave`, stav na hráče v `roomPayload`, ruční start lídrem, pryč `nextGameTimer`; testy `test/server.*` | ☐ |
 | 7 | **G1, G2, G3, S0, S1, S16** (D7) | `join_error` → `{ title, hint }` | ☐ |
@@ -155,3 +155,34 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
   S7 1280×720 (běžný, bez jména, zmizelá hra), plný ve světlém motivu, obsazené jméno 740×360,
   S10 1280×720, 740×360 světlý a prázdný. Kliky proti běžícímu serveru: S6 → S7 → připojení do
   lobby, S10 → sledování (vrstva menu zmizí).
+
+### Fáze 4 (hotovo)
+
+- Lobby nejsou obrazovky menu, ale **fáze místnosti** – vrstva je kreslí podle `roomState.roomPhase`
+  (`MENU_DOM_ROOM_PHASES = lobby, next_lobby`, jméno obrazovky = fáze). Kterou obrazovku vrstva
+  právě kreslí, říká `menuDomScreen()` (nahradila `menuDomHandles`); `renderUI` podle ní schovává
+  vrstvu i volá `renderMenuDom` pro lobby místo `renderLobbyScreen` (ten zůstává ve `view/menu.js`
+  mrtvý do fáze 8).
+- S8 i S9 staví jedna `_menuLobby()`. Kdo je „já" a kdo lídr, se pozná podle `socketId` (jméno se
+  po návratu může lišit). Podtitulek: počet a rozšíření (`lobbySubtitle`); nad sedačkami řádek
+  „Pravidla: …" se zapnutými pokročilými volbami (`roomRulesLabel`, nové pole `short`
+  v `ADVANCED_OPTIONS`) – dosud je znal jen zakladatel.
+- **Poznámka nad sedačkami je vždy jedna** (`lobbyNotice`): čekání na art rozšíření → chybějící
+  hráči (boty nabízí jen lídrovi, česky skloňované) → v S9 „Přeživší si … mohou nechat postavu".
+  Dvě poznámky pod sebou na telefonu na šířku zabraly skoro celou výšku.
+- Sedačky (`lobbySeatRows`, sdílený řádek `_seatRow` se `seatRows` z S7): lídrovi je prázdné místo
+  celé jedním tlačítkem „➕ Bot" (bez `data-arg`, takže fokus po přidání skočí na další volné
+  místo), u bota „✕" (`remove_bot` se `socketId`). V S9 „chce dál ✅" u každého, kdo přešel
+  z minulé hry – server mu nechává `wasOriginalSurvivor` (hlasy `wantsNext` se při otevření nulují,
+  takže podle nich to nejde).
+- Lišta: lídr „▶ ZAHÁJIT HRU" (zamčené říká proč: „(stůl není plný)", „ZAHAJUJI…") + „✕ ZRUŠIT HRU";
+  ostatní přerušovaný rámeček (`lobbyWaitText`). Start S9 jde přes `check_start_next`
+  (`lobbyStartEvent`). `_menuBar(null, …)` = lišta bez souhrnu.
+- `App.startPressed` pouští i `room_update` s neplným stolem (net/handlers.js) – když někdo odešel
+  těsně před klikem, tlačítko by zůstalo navždy na „ZAHAJUJI…".
+- **Server:** `start_game` nově startuje jen s plným stolem (dosud to hlídal jen klient;
+  `check_start_next` to uměl). Test v `test/server.integration.test.js`.
+- Ověřeno snímky: S8 lídr 1280×720 (skutečná místnost, dva boti), S8 host 1280×720 (8 míst, HTML
+  v názvu, pravidla), S9 lídr 740×360 a 1280×720 světlý (chce dál ✅, ✕ u bota), host 740×360 světlý
+  při čekání na art. Kliky proti běžícímu serveru: ➕ Bot ×2 → ✕ → ➕ Bot (plný stůl, START
+  odemčený), START → vrstva zmizí a běží intro, „Opustit hru" → hlavní menu.

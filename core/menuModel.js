@@ -77,11 +77,12 @@ function emptyExpansions() {
     return out;
 }
 
+// `short` = jak se volba jmenuje v lobby (S8/S9), kde ji vidí i ti, kdo ji nezapínali.
 const ADVANCED_OPTIONS = [
-    { key: 'noAdvancedCards', label: 'Zakázat pokročilé karty', hint: 'Bez Duelu, Hokynářství, Indiánů, Vězení a Dynamitu' },
-    { key: 'singleChar', label: 'Přiřadit postavu náhodně', hint: 'Hráči si nevybírají ze dvou postav' },
-    { key: 'rotatingSheriff', label: 'Rotující šerif', hint: 'Šerif se po každé hře posouvá doleva' },
-    { key: 'highNoonExtra', label: 'High Noon: přibalené karty', hint: '+ Nová identita a Želízka z Fistfulu' },
+    { key: 'noAdvancedCards', label: 'Zakázat pokročilé karty', hint: 'Bez Duelu, Hokynářství, Indiánů, Vězení a Dynamitu', short: 'bez pokročilých karet' },
+    { key: 'singleChar', label: 'Přiřadit postavu náhodně', hint: 'Hráči si nevybírají ze dvou postav', short: 'postavy náhodně' },
+    { key: 'rotatingSheriff', label: 'Rotující šerif', hint: 'Šerif se po každé hře posouvá doleva', short: 'rotující šerif' },
+    { key: 'highNoonExtra', label: 'High Noon: přibalené karty', hint: '+ Nová identita a Želízka z Fistfulu', short: 'přibalené karty High Noonu' },
 ];
 
 // „Přibalené karty" (Nová identita, Želízka) mají smysl jen s High Noonem BEZ Fistfulu –
@@ -217,8 +218,19 @@ function joinRoomSubtitle(item) {
     ].filter(Boolean).join(' · ');
 }
 
-// Řádky sedaček (components.md „Řádek sedačky"; S7, ve fázi 4 i lobby S8/S9): obsazená
-// místa v pořadí u stolu, pak prázdná. `me` = moje jméno (zvýrazněný řádek s „(ty)"),
+// Jeden obsazený řádek sedačky (components.md „Řádek sedačky"). `extra` = přívlastek navíc
+// („chce dál ✅" v lobby další hry).
+function _seatRow(i, name, { isLeader, isMe, bot, extra = '' }) {
+    return {
+        idx: i + 1, empty: false, bot, leader: isLeader, me: isMe,
+        icon: isLeader ? '👑' : bot ? '🤖' : '🎩',
+        name: plainName(name),
+        tag: [isMe ? '(ty)' : '', isLeader ? 'Game Leader' : '', bot ? 'bot' : '', extra].filter(Boolean).join(' · '),
+    };
+}
+
+// Řádky sedaček v detailu hry (S7): obsazená místa v pořadí u stolu, pak prázdná.
+// Seznam her nese jen jména – `me` = moje jméno (zvýrazněný řádek s „(ty)"),
 // `leader` = jméno Game Leadera.
 function seatRows(names, maxPlayers, { leader = null, me = null } = {}) {
     const list = names || [];
@@ -226,15 +238,11 @@ function seatRows(names, maxPlayers, { leader = null, me = null } = {}) {
     for (let i = 0; i < Math.max(maxPlayers || 0, list.length); i++) {
         const name = list[i];
         if (name == null) { rows.push({ idx: i + 1, empty: true }); continue; }
-        const bot = isBotName(name);
-        const isLeader = leader != null && name === leader;
-        const isMe = me != null && name === me;
-        rows.push({
-            idx: i + 1, empty: false, bot, leader: isLeader, me: isMe,
-            icon: isLeader ? '👑' : bot ? '🤖' : '🎩',
-            name: plainName(name),
-            tag: [isMe ? '(ty)' : '', isLeader ? 'Game Leader' : '', bot ? 'bot' : ''].filter(Boolean).join(' · '),
-        });
+        rows.push(_seatRow(i, name, {
+            isLeader: leader != null && name === leader,
+            isMe: me != null && name === me,
+            bot: isBotName(name),
+        }));
     }
     return rows;
 }
@@ -257,6 +265,99 @@ function joinRoomBlocker(item, playerName, taken) {
     return null;
 }
 
+// ── Lobby místnosti (S8) a lobby další hry (S9) ───────────────────────────
+// `room` = room_update (roomPayload v server/rooms.js): { roomName, roomPhase ('lobby' |
+// 'next_lobby'), leaderSocketId, maxPlayers, players: [{ socketId, name, isBot,
+// wasOriginalSurvivor }], options: { expansions: {klíč: bool}, …}, assetsWaiting }.
+// Kdo je „já" a kdo lídr, se pozná podle socketId, ne podle jména.
+
+function lobbyIsNext(room) { return !!room && room.roomPhase === 'next_lobby'; }
+
+function lobbyMissing(room) {
+    return Math.max(0, (room.maxPlayers || 0) - (room.players || []).length);
+}
+
+function lobbyTitle(room) {
+    return lobbyIsNext(room) ? `Další hra: ${room.roomName}` : room.roomName;
+}
+
+// „4 / 5 hráčů · Dodge City · High Noon" – kdo se připojil, vidí, do čeho jde.
+function lobbySubtitle(room) {
+    const exps = (room.options && room.options.expansions) || {};
+    return `${(room.players || []).length} / ${room.maxPlayers || 0} hráčů · ${expansionsLabel(exps)}`;
+}
+
+// Zapnuté pokročilé volby místnosti („rotující šerif · postavy náhodně"), nebo ''.
+// Přibalené karty jen tam, kde platí (High Noon bez Fistfulu) – jinak je server ignoruje.
+function roomRulesLabel(options) {
+    const opts = options || {};
+    return visibleAdvancedOptions(opts.expansions || {})
+        .filter(o => opts[o.key]).map(o => o.short).join(' · ');
+}
+
+// Řádky sedaček v lobby. Lídr (`manage`) vidí na prázdném místě „➕ Bot" (addBot)
+// a u bota „✕" (removeId = socketId bota). V lobby další hry má přívlastek „chce dál ✅"
+// každý, kdo do ní přešel z minulé hry (server mu nechal wasOriginalSurvivor).
+function lobbySeatRows(room, mySocketId) {
+    const players = room.players || [];
+    const manage = room.leaderSocketId != null && room.leaderSocketId === mySocketId;
+    const next = lobbyIsNext(room);
+    const rows = [];
+    for (let i = 0; i < Math.max(room.maxPlayers || 0, players.length); i++) {
+        const p = players[i];
+        if (!p) { rows.push({ idx: i + 1, empty: true, addBot: manage }); continue; }
+        const row = _seatRow(i, p.name, {
+            isLeader: p.socketId === room.leaderSocketId,
+            isMe: p.socketId === mySocketId,
+            bot: !!p.isBot || isBotName(p.name),
+            extra: next && p.wasOriginalSurvivor ? 'chce dál ✅' : '',
+        });
+        row.removeId = manage && row.bot ? p.socketId : null;
+        rows.push(row);
+    }
+    return rows;
+}
+
+// Poznámka nad sedačkami: { ico, text }, nebo null. Vždy JEDNA (na telefonu na šířku by
+// dvě zabraly skoro celou výšku), v pořadí důležitosti:
+//   1. po kliknutí na START se čeká na art zapnutého rozšíření (stahuje se líně) – bez
+//      hlášky by to vypadalo, že se nic neděje;
+//   2. stůl není plný (doplnit boty umí jen lídr);
+//   3. v lobby další hry pravidlo o přeživších.
+function lobbyNotice(room, isLeader) {
+    if (room.assetsWaiting) return { ico: '⏳', text: 'Načítám karty rozšíření u všech hráčů…' };
+    const n = lobbyMissing(room);
+    if (n) {
+        const who = n === 1
+            ? (isLeader ? 'Můžeš ho doplnit botem.' : 'Game Leader ho může doplnit botem.')
+            : (isLeader ? 'Můžeš je doplnit boty.' : 'Game Leader je může doplnit boty.');
+        return { ico: '⏳', text: `Hra začne, až bude stůl plný — chybí ${n} ${czPlural(n, 'hráč', 'hráči', 'hráčů')}. ${who}` };
+    }
+    if (lobbyIsNext(room)) return { ico: '🎭', text: 'Přeživší si v další hře mohou nechat svou postavu.' };
+    return null;
+}
+
+// Tlačítko lídra. `pressed` = klik už odešel (App.startPressed) – zamyká hned, odpověď
+// serveru přijde až za sítí; assetsWaiting ho drží po dobu čekání na art rozšíření.
+// Zamčené tlačítko říká, co chybí (components.md).
+function lobbyStartButton(room, pressed) {
+    if (pressed || room.assetsWaiting) return { label: 'ZAHAJUJI…', can: false };
+    if (lobbyMissing(room)) return { label: '▶ ZAHÁJIT HRU (stůl není plný)', can: false };
+    return { label: '▶ ZAHÁJIT HRU', can: true };
+}
+
+// Start navazující hry má na serveru vlastní událost.
+function lobbyStartEvent(room) {
+    return lobbyIsNext(room) ? 'check_start_next' : 'start_game';
+}
+
+// Rámeček v liště místo tlačítek (všichni kromě lídra).
+function lobbyWaitText(room) {
+    if (room.assetsWaiting) return 'Game Leader zahájil hru — čeká se na karty rozšíření…';
+    if (!lobbyMissing(room)) return 'Stůl je plný — čeká se, až Game Leader zahájí hru…';
+    return lobbyIsNext(room) ? 'Čeká se na doplnění hráčů a Game Leadera…' : 'Čeká se na Game Leadera…';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         esc, czPlural, waitingGamesLabel, runningGamesLabel, waitingGamesCount,
@@ -267,5 +368,7 @@ if (typeof module !== 'undefined' && module.exports) {
         botGameSummary, botGameOptions,
         isBotName, plainName, expansionsFromKeys, roomWhoLine, roomRowView,
         joinListSubtitle, spectateListSubtitle, joinRoomSubtitle, seatRows, joinRoomBlocker,
+        lobbyIsNext, lobbyMissing, lobbyTitle, lobbySubtitle, roomRulesLabel, lobbySeatRows,
+        lobbyNotice, lobbyStartButton, lobbyStartEvent, lobbyWaitText,
     };
 }

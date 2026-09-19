@@ -3382,9 +3382,12 @@ function _applyRoomUpdate(payload) {
     // Jakmile intro dorazilo, zrus flag
     if (_introActive()) App.introExpected = false;
     if (!payload.gameState?.winner && roomState?.gameState?.winner) _myNextGameVote = null;
-    // Zámek tlačítka „Zahájit hru" (view/menu.js) platí jen do odchodu z lobby – jakmile
-    // se místnost pohne dál (hra běží / nová sestava), tlačítko je zase klikatelné.
+    // Zámek tlačítka „Zahájit hru" (view/menuDom.js) platí jen do odchodu z lobby – jakmile
+    // se místnost pohne dál (hra běží / nová sestava), tlačítko je zase klikatelné. Uvolní ho
+    // i neplný stůl: když někdo odešel těsně před klikem, server start zahodil a tlačítko
+    // by jinak zůstalo navždy na „ZAHAJUJI…".
     if (payload.roomPhase !== 'lobby' && payload.roomPhase !== 'next_lobby') App.startPressed = false;
+    else if (!payload.assetsWaiting && (payload.players || []).length < payload.maxPlayers) App.startPressed = false;
     roomState = payload;
     state = payload.gameState;
     registerCardTexAliases(state);   // creative karty: id -> id upečené textury

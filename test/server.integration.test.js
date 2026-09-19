@@ -289,6 +289,22 @@ test('start_game: pořadí se losuje až po assetech a druhý klik se zahodí', 
     clearTimeout(room._assetWaitTimer);
 });
 
+// Lobby tlačítko je bez plného stolu zamčené, ale klik mohl odejít těsně předtím, než
+// někdo odešel – server proto start sám nepustí (stejně jako check_start_next).
+test('start_game: neplný stůl hru nespustí', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s1 = mkSocket('s1');
+    s1.fire('create_room', { name: 'X', maxPlayers: 4, playerName: 'A', options: { singleChar: true } });
+    const room = [...ctx.rooms.values()][0];
+    mkSocket('s2').fire('join_room', { roomId: room.id, playerName: 'B' });
+    mkSocket('s3').fire('join_room', { roomId: room.id, playerName: 'C' });
+    s1.fire('start_game');
+    assert.equal(room.phase, 'lobby');
+    mkSocket('s4').fire('join_room', { roomId: room.id, playerName: 'D' });
+    s1.fire('start_game');
+    assert.equal(room.gameState.players.length, 4, 's plným stolem už startuje');
+});
+
 // Lucky Duke: obě odkryté karty musí do odhozu doletět PŘED výsledkem checku (vězení/
 // dynamit), jinak výsledná karta dosedne na hromádku první a ty dvě se přes ni přehrají.
 // Server proto posílá vlastní animaci `lucky_duke_result` (nese, která karta byla vybraná)

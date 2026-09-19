@@ -122,6 +122,9 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         // téhle podmínky přepsal `_assetWaitCb` a zůstal viset druhý timer – hra by
         // se po vypršení limitu nastartovala DVAKRÁT.
         if (room.phase !== 'lobby' || room.assetsWaiting) return;
+        // Hra startuje jen s plným stolem (lobby tlačítko zamyká taky, ale klik mohl
+        // odejít těsně předtím, než někdo místnost opustil) – stejně jako check_start_next.
+        if (room.players.length < room.maxPlayers) return;
         // Se zapnutým rozšířením se počká, až budou mít všichni jeho klíčové textury
         // (art se stahuje líně) – jinak by prvním hráčům problikly placeholdery.
         ctx.whenAssetsReady(room, () => {
