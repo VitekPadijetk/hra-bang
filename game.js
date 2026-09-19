@@ -2968,7 +2968,13 @@ function renderUI() {
         cancelBtn.setDepth(500);
     }
 
-    if (state?.winner) { renderWinnerScreen(); return; }
+    // Konec hry (S12) a statistiky (S14) kreslí HTML vrstva; hlasování o další hře
+    // (roomPhase 'finished', S13) zatím Phaser (renderWinnerScreen, view/screens.js).
+    if (state?.winner) {
+        if (domScreen) renderMenuDom(domScreen);
+        else renderWinnerScreen();
+        return;
+    }
 
     if (state.phase === "CHARACTER_SELECT") { renderCharacterSelectScreen(); return; }
 

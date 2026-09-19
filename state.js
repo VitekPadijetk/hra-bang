@@ -33,6 +33,10 @@ const App = {
     joinError: null,
     notifyMsg: null,
     kickedMsg: null,
+    // Vyhodilo mě to ze sledování (ne od stolu) – S15 pak nabízí jinou hru ke sledování.
+    kickedSpectator: false,
+    // Otevřené statistiky hry (S14) přes konec hry; zavírají se samy s výsledkem (menuDomScreen).
+    statsOpen: false,
     // Lídr zmáčkl „Zahájit hru" – zamkne tlačítko, než dorazí odpověď serveru
     // (start může chvíli čekat na assety rozšíření). Viz view/menu.js.
     startPressed: false,

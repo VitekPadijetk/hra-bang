@@ -290,3 +290,116 @@ test('roomRulesLabel: zapnuté pokročilé volby, přibalené karty jen s High N
     assert.equal(M.roomRulesLabel({ highNoonExtra: true, expansions: { high_noon: true } }), 'přibalené karty High Noonu');
     assert.equal(M.roomRulesLabel({ highNoonExtra: true, expansions: { high_noon: true, fistful: true } }), '');
 });
+
+// ── Konec hry (S12), statistiky (S14), vyhození (S15) ──
+
+const pl = (name, role, extra = {}) => ({ name, role, health: 2, character: 'Bart Cassidy', stats: {
+    cardsUsed: {}, bangsFired: 0, bangsHit: 0, damageDealt: 0, damageTaken: 0,
+    weaponsCycled: 0, cardsDrawn: 0, cardsPlayed: 0, cardsDiscarded: 0 }, ...extra });
+
+test('playerWon: strana vyhrává i s mrtvými, odpadlík jen jako poslední živý', () => {
+    const table = [pl('A', 'Sheriff'), pl('B', 'Deputy', { health: 0 }), pl('C', 'Outlaw', { health: 0 }),
+        pl('D', 'Renegade', { health: 0 }), pl('E', 'Renegade')];
+    assert.deepEqual(table.map(p => M.playerWon(p, 'Zákon vyhrál!', table)), [true, true, false, false, false]);
+    assert.deepEqual(table.map(p => M.playerWon(p, 'Bandité vyhráli!', table)), [false, false, true, false, false]);
+    assert.deepEqual(table.map(p => M.playerWon(p, 'Odpadlík vyhrál!', table)), [false, false, false, false, true]);
+});
+
+test('playerWon: hra pro 3 podle role, Divoký západ podle jména', () => {
+    const three = [pl('A', 'Deputy'), pl('B', 'Outlaw'), pl('C', 'Renegade')];
+    assert.deepEqual(three.map(p => M.playerWon(p, 'Bandita vyhrál!', three)), [false, true, false]);
+    const table = [pl('A', 'Sheriff'), pl('B', 'Outlaw'), pl('C', 'Outlaw')];
+    assert.deepEqual(table.map(p => M.playerWon(p, 'C vyhrál!', table)), [false, false, true]);
+    assert.equal(M.playerWon(table[0], null, table), false);
+});
+
+test('nextGameChips: kdo odešel z místnosti, zůstává čipem s ✕', () => {
+    const game = [pl('Honza', 'Sheriff'), pl('🤖 Bot 1', 'Outlaw'), pl('Kitty', 'Renegade'), pl('Ringo', 'Outlaw')];
+    const room = [{ name: 'Honza', wantsNext: true }, { name: '🤖 Bot 1', wantsNext: true }, { name: 'Ringo', wantsNext: null }];
+    assert.deepEqual(M.nextGameChips(game, room), [
+        { name: 'Honza', initials: 'HO', status: 'in' },
+        { name: 'Bot 1', initials: 'BO', status: 'in' },
+        { name: 'Kitty', initials: 'KI', status: 'out' },
+        { name: 'Ringo', initials: 'RI', status: 'wait' },
+    ]);
+});
+
+test('nextGameSummary: skloňuje a vynechá nuly', () => {
+    const c = (...st) => st.map(status => ({ status }));
+    assert.equal(M.nextGameSummary(c('in', 'in', 'in', 'wait', 'out')), '3 hráči chtějí hrát dál · 1 se rozhoduje · 1 odešel');
+    assert.equal(M.nextGameSummary(c('in', 'wait', 'wait')), '1 hráč chce hrát dál · 2 se rozhodují');
+    assert.equal(M.nextGameSummary(c('in', 'in', 'in', 'in', 'in')), '5 hráčů chce hrát dál');
+    assert.equal(M.nextGameSummary(c('wait', 'wait', 'out', 'out')), 'Další hru zatím nikdo nepotvrdil · 2 se rozhodují · 2 odešli');
+});
+
+test('endGameView: lídr otevírá hlasování a ruší hru, hráč hlasuje, divák odchází', () => {
+    const leader = M.endGameView({ leader: true });
+    assert.equal(leader.primary.act, 'nextStart');
+    assert.deepEqual(leader.exit, { label: '✕ Zrušit hru', act: 'cancelGame', danger: true });
+    assert.equal(M.endGameView({}).primary.act, 'nextVote');
+    assert.equal(M.endGameView({}).exit.act, 'toMenu');
+    const voted = M.endGameView({ voted: true });
+    assert.equal(voted.primary, null);
+    assert.match(voted.done, /hrát dál/);
+    const spec = M.endGameView({ spectator: true, leader: true });
+    assert.equal(spec.primary.act, 'toMenu');
+    assert.equal(spec.exit, null);
+});
+
+test('statsRow + topCardsLabel: přesnost v procentech, tři nejčastější karty', () => {
+    const p = pl('Honza', 'Sheriff');
+    Object.assign(p.stats, { bangsFired: 9, bangsHit: 6, cardsUsed: { 'Bang!': 9, Pivo: 4, Barel: 1, Kolt: 2 } });
+    const r = M.statsRow(p);
+    assert.equal(r.hit, '6 (67 %)');
+    assert.equal(r.top, 'Bang!×9, Pivo×4, Kolt×2');
+    assert.equal(r.sheriff, true);
+    assert.equal(M.statsRow(pl('X', 'Outlaw', { character: null })).hit, '0');
+    assert.equal(M.statsRow(pl('X', 'Outlaw', { character: null })).character, '–');
+    assert.equal(M.topCardsLabel({}), '–');
+});
+
+test('statsTotalsLabel: součty přes všechny hráče', () => {
+    const a = pl('A', 'Sheriff'), b = pl('B', 'Outlaw');
+    Object.assign(a.stats, { bangsFired: 3, bangsHit: 2, damageDealt: 2, cardsDrawn: 10, cardsDiscarded: 4 });
+    Object.assign(b.stats, { bangsFired: 1, bangsHit: 1, damageDealt: 1, cardsDrawn: 5, cardsDiscarded: 1 });
+    assert.equal(M.statsTotalsLabel([a, b]), 'Bang!×4 · Zásahy×3 (75 %) · Zranění×3 · Líznuto×15 · Odhoz×5');
+    assert.equal(M.statsTotalsLabel([]), 'Bang!×0 · Zásahy×0 (0 %) · Zranění×0 · Líznuto×0 · Odhoz×0');
+});
+
+test('statsGroups: strany v pořadí Zákon / Bandité / Odpadlík, souhrn s výsledkem', () => {
+    const table = [pl('Ringo', 'Outlaw'), pl('Honza', 'Sheriff'), pl('Kitty', 'Renegade', { health: 0 }),
+        pl('Cal', 'Deputy', { health: 0 }), pl('Bot', 'Outlaw')];
+    const g = M.statsGroups(table, 'Zákon vyhrál!', 1);
+    assert.deepEqual(g.map(x => x.title), ['Zákon', 'Bandité', 'Odpadlík']);
+    assert.deepEqual(g.map(x => x.color), ['sheriff', 'outlaw', 'renegade']);
+    assert.equal(g[0].summary, 'Šerif + Pomocníci · 2 hráči · vyhráli');
+    assert.equal(g[1].summary, '2 hráči · prohráli');
+    assert.equal(g[2].summary, '1 hráč · prohrál');
+    assert.deepEqual(g[0].rows.map(r => [r.name, r.me]), [['Honza', true], ['Cal', false]]);
+});
+
+test('statsGroups: dva odpadlíci – vyhrát může jen jeden; hra pro 3 po rolích', () => {
+    const eight = [pl('S', 'Sheriff', { health: 0 }), pl('R1', 'Renegade', { health: 0 }), pl('R2', 'Renegade')];
+    const ren = M.statsGroups(eight, 'Odpadlík vyhrál!').find(x => x.color === 'renegade');
+    assert.equal(ren.title, 'Odpadlíci');
+    assert.equal(ren.summary, '2 hráči · vyhrál R2');
+    const three = [pl('A', 'Deputy'), pl('B', 'Outlaw'), pl('C', 'Renegade')];
+    const g = M.statsGroups(three, 'Pomocník vyhrál!');
+    assert.deepEqual(g.map(x => `${x.title}: ${x.summary}`),
+        ['Pomocník: 1 hráč · vyhrál', 'Bandita: 1 hráč · prohrál', 'Odpadlík: 1 hráč · prohrál']);
+});
+
+test('statsGroups: hráč s neznámou rolí nezmizí', () => {
+    const g = M.statsGroups([pl('A', 'Sheriff'), pl('B', undefined)], 'Zákon vyhrál!');
+    assert.deepEqual(g.map(x => x.title), ['Zákon', 'Ostatní']);
+});
+
+test('kickedView: druhý řádek radí, hlavní akce vede k hraní (divák ke sledování)', () => {
+    const v = M.kickedView('Game leader ukončil hru.');
+    assert.equal(v.title, 'Game Leader ukončil hru.');
+    assert.match(v.hint, /^Stůl se rozpustil\. Můžeš se přidat/);
+    assert.deepEqual(v.next, { label: 'Najít jinou hru', screen: 'join_list' });
+    assert.match(M.kickedView('Game leader opustil hru.').hint, /^Bez něj/);
+    assert.equal(M.kickedView(null, { spectator: true }).next.screen, 'spectate_list');
+    assert.equal(M.kickedView(null).title, 'Game Leader ukončil hru.');
+});

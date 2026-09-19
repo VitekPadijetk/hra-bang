@@ -1028,109 +1028,11 @@ function renderLobbyScreen() {
     }
 }
 
-function showStats(players) {
-    const existing = document.getElementById('stats-overlay');
-    if (existing) { existing.remove(); return; }
-
-    // Hra pro 3 (Město duchů): žádné strany – každá role hraje sama za sebe (cíle jsou
-    // v kruhu), takže se seskupuje po jedné roli.
-    const is3p = players.length === 3 && !players.some(p => p.role === 'Sheriff');
-    const groups = is3p
-        ? {
-            'Pomocník': players.filter(p => p.role === 'Deputy'),
-            'Bandita': players.filter(p => p.role === 'Outlaw'),
-            'Odpadlík': players.filter(p => p.role === 'Renegade'),
-        }
-        : {
-            'Zákon (Šerif + Pomocníci)': players.filter(p => p.role === 'Sheriff' || p.role === 'Deputy'),
-            'Bandité': players.filter(p => p.role === 'Outlaw'),
-            'Odpadlíci': players.filter(p => p.role === 'Renegade'),
-        };
-
-    const renderPlayer = (p) => {
-        const s = p.stats;
-        const topCards = Object.entries(s.cardsUsed)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([t, n]) => `${t}×${n}`)
-            .join(', ') || '–';
-        const accuracy = s.bangsFired > 0 ? Math.round(s.bangsHit / s.bangsFired * 100) : 0;
-        return `
-        <tr style="border-bottom:1px solid #333">
-            <td style="padding:6px 12px;color:#ffcc00">${p.name}</td>
-            <td style="padding:6px;color:#aaa">${roleNameCz(p.role)}</td>
-            <td style="padding:6px;color:#f88">${p.character || '–'}</td>
-            <td style="padding:6px;text-align:center">${s.bangsFired}</td>
-            <td style="padding:6px;text-align:center">${s.bangsHit} (${accuracy}%)</td>
-            <td style="padding:6px;text-align:center">${s.damageDealt}</td>
-            <td style="padding:6px;text-align:center;color:#f88">${s.damageTaken}</td>
-            <td style="padding:6px;text-align:center">${s.cardsDrawn}</td>
-            <td style="padding:6px;text-align:center">${s.cardsPlayed}</td>
-            <td style="padding:6px;text-align:center">${s.cardsDiscarded}</td>
-            <td style="padding:6px;text-align:center">${s.weaponsCycled}</td>
-            <td style="padding:6px;font-size:12px;color:#888">${topCards}</td>
-        </tr>`;
-    };
-
-    const renderGroup = (title, pArr) => {
-        if (!pArr.length) return '';
-        const gs = pArr.reduce((acc, p) => {
-            Object.keys(p.stats).forEach(k => {
-                if (typeof p.stats[k] === 'number') acc[k] = (acc[k] || 0) + p.stats[k];
-            });
-            return acc;
-        }, {});
-        const acc = gs.bangsFired > 0 ? Math.round(gs.bangsHit / gs.bangsFired * 100) : 0;
-        return `
-        <tr style="background:#1a1a2e"><td colspan="12" style="padding:8px 12px;color:#4af;font-weight:bold;font-size:15px">
-            ${title} – Bang: ${gs.bangsFired}, Zásahy: ${gs.bangsHit} (${acc}%), Damage: ${gs.damageDealt}, Utrpěno: ${gs.damageTaken}
-        </td></tr>
-        ${pArr.map(renderPlayer).join('')}`;
-    };
-
-    const allStats = players.reduce((acc, p) => {
-        Object.keys(p.stats).forEach(k => {
-            if (typeof p.stats[k] === 'number') acc[k] = (acc[k] || 0) + p.stats[k];
-        });
-        return acc;
-    }, {});
-    const totalAcc = allStats.bangsFired > 0 ? Math.round(allStats.bangsHit / allStats.bangsFired * 100) : 0;
-
-    const div = document.createElement('div');
-    div.id = 'stats-overlay';
-    div.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;
-        background:rgba(0,0,0,0.92);z-index:1000;overflow-y:auto;padding:20px;box-sizing:border-box;
-        padding-bottom:calc(20px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch;`;
-    // Tabulka má 12 sloupců – na mobilu se nezmenšuje (byla by nečitelná), ale posouvá
-    // se vodorovně ve vlastním kontejneru, aby stránka sama neujížděla do stran.
-    div.innerHTML = `
-        <div style="max-width:1200px;margin:0 auto">
-        <h2 style="color:#ffcc00;text-align:center;margin-bottom:8px">📊 STATISTIKY HRY</h2>
-        <p style="color:#888;text-align:center;margin-bottom:16px">
-            Celkem: Bang!×${allStats.bangsFired}, Zásahy×${allStats.bangsHit} (${totalAcc}%),
-            Damage×${allStats.damageDealt}, Líznuto×${allStats.cardsDrawn}, Odhoz×${allStats.cardsDiscarded}
-        </p>
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-        <table style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px;color:#eee">
-            <thead><tr style="background:#2a2a2a;color:#aaa;font-size:12px">
-                <th style="padding:8px;text-align:left">Hráč</th>
-                <th>Role</th><th>Postava</th>
-                <th>Bang!</th><th>Trefil</th>
-                <th>Udělil</th><th>Utrpěl</th>
-                <th>Líznul</th><th>Zahrál</th><th>Odhodil</th>
-                <th>Zbraně</th><th>Top karty</th>
-            </tr></thead>
-            <tbody>
-                ${Object.entries(groups).map(([t, p]) => renderGroup(t, p)).join('')}
-            </tbody>
-        </table>
-        </div>
-        <div style="text-align:center;margin-top:20px">
-            <button onclick="document.getElementById('stats-overlay').remove()"
-                style="padding:14px 36px;background:#800;color:#fff;border:none;
-                border-radius:6px;font-size:18px;cursor:pointer">✕ Zavřít</button>
-        </div></div>`;
-    document.body.appendChild(div);
+// Statistiky hry (S14) kreslí nová HTML vrstva (view/menuDom.js). Tudy je otevírá už jen
+// Phaserové hlasování o další hře (renderWinnerScreen ve view/screens.js, do fáze 6 plánu menu).
+function showStats() {
+    App.statsOpen = true;
+    renderUI();
 }
 
 // ── Výzva k načtení stránky po nasazení nové verze ───────────────────────────

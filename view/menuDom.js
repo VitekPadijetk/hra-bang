@@ -16,19 +16,28 @@
 // a na mobilu zaklapl klávesnici. Psaní zapíše hodnotu přes MENU_FIELDS a vymění jen
 // oblasti označené data-live (souhrn a tlačítko v liště), viz _patchMenuLive.
 
-const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game', 'join_list', 'join_room', 'spectate_list']);
+const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game', 'join_list', 'join_room', 'spectate_list', 'kicked']);
 
 // Fáze místnosti, které kreslí vrstva: lobby = S8, next_lobby = S9 (jméno obrazovky = fáze).
 const MENU_DOM_ROOM_PHASES = new Set(['lobby', 'next_lobby']);
 
 // Kterou obrazovku má vrstva právě kreslit, nebo null (pak ji renderUI schová).
-// Mimo místnost rozhoduje App.menuScreen, v místnosti její fáze.
+// Mimo místnost rozhoduje App.menuScreen, v místnosti její fáze; po výhře (state.winner)
+// konec hry (S12) a přes něj statistiky (S14).
 function menuDomScreen() {
+    // Statistiky patří k výsledku hry – odchodem nebo další hrou se zavřou samy.
+    if (!state || !state.winner) App.statsOpen = false;
     if (!roomState) {
         const screen = App.menuScreen || 'main';
         return MENU_DOM_SCREENS.has(screen) ? screen : null;
     }
-    return MENU_DOM_ROOM_PHASES.has(roomState.roomPhase) ? roomState.roomPhase : null;
+    if (MENU_DOM_ROOM_PHASES.has(roomState.roomPhase)) return roomState.roomPhase;
+    if (state && state.winner) {
+        if (App.statsOpen) return 'stats';
+        // Hlasování o další hře (roomPhase 'finished', S13) kreslí do fáze 6 plánu ještě Phaser.
+        if (roomState.roomPhase !== 'finished') return 'winner';
+    }
+    return null;
 }
 
 // ── Motiv ──────────────────────────────────────────────────────────────────
@@ -106,7 +115,8 @@ function renderMenuDom(screen) {
     const root = _menuEnsureRoot();
     root.style.display = '';
     root.dataset.theme = menuTheme();
-    _menuFsEl.style.display = document.fullscreenElement ? 'none' : '';
+    // Statistiky jsou přes celou obrazovku (i přes rohové ovládání) a vpravo mají „✕ Zavřít".
+    _menuFsEl.style.display = document.fullscreenElement || screen === 'stats' ? 'none' : '';
     const build = MENU_SCREENS[screen];
     if (!build) return;
     // Jiná obrazovka začíná nahoře – scroll se drží jen v rámci jedné.
@@ -486,6 +496,84 @@ ${bar}`;
 ${_menuHead('Sledovat probíhající hru', esc(spectateListSubtitle(list)))}
 <div class="bu-scroll">${body}</div>`;
     },
+
+    // S12 — konec hry (state.winner, roomPhase 'playing'). Stav po výhře chodí bez redakce.
+    // Kdo je „já" a kdo lídr, se pozná podle socketId; divák v room.players není.
+    winner() {
+        const room = roomState;
+        const me = (room.players || []).find(p => p.socketId === socket.id) || null;
+        const v = endGameView({
+            spectator: !me,
+            leader: !!me && room.leaderSocketId === socket.id,
+            voted: !!me && me.wantsNext === true,
+        });
+        const chips = nextGameChips(state.players, room.players);
+        const mark = { in: '✅', wait: '…', out: '✕' };
+        const tokens = chips.map(c =>
+            `<span class="bu-token ${c.status}"><span class="bu-avatar${c.status === 'in' ? '' : ' off'}">${esc(c.initials)}</span>` +
+            `<span class="bu-token-name">${esc(c.name)}</span><span class="bu-token-state">${mark[c.status]}</span></span>`).join('');
+        const primary = v.primary
+            ? `<button class="bu-btn primary" data-act="${v.primary.act}">${v.primary.label}</button>`
+            : `<span class="bu-done">${v.done}</span>`;
+        const exit = v.exit
+            ? `<button class="bu-btn ${v.exit.danger ? 'danger' : 'quiet'}" data-act="${v.exit.act}">${v.exit.label}</button>`
+            : '';
+        return `
+<div class="bu-scroll"><div class="bu-center"><div class="bu-end">
+  <div class="bu-kicker">Konec hry</div>
+  <div class="bu-result">${esc(state.winner)}</div>
+  <div class="bu-actions">
+    <button class="bu-btn gold" data-act="stats">📊 Statistiky</button>
+    ${primary}
+    ${exit}
+  </div>
+  <div class="bu-tokens">${tokens}</div>
+  <div class="bu-end-sum">${esc(nextGameSummary(chips))}</div>
+  ${v.note ? `<div class="bu-end-note">${esc(v.note)}</div>` : ''}
+</div></div></div>`;
+    },
+
+    // S14 — statistiky hry přes celou obrazovku (z S12, i ze staré Phaserové S13 přes showStats).
+    // Tabulka má pevnou minimální šířku a na úzkém displeji roluje vodorovně.
+    stats() {
+        const players = state.players || [];
+        const cols = ['Hráč', 'Postava', 'Bang!', 'Trefil', 'Udělil', 'Utrpěl', 'Líznul', 'Zahrál', 'Odhodil', 'Top karty'];
+        const head = `<div class="bu-srow head">${cols.map(c => `<span>${c}</span>`).join('')}</div>`;
+        const row = (r) => `<div class="bu-srow${r.me ? ' me' : ''}">` +
+            `<span class="name">${r.sheriff ? '⭐ ' : ''}${esc(r.name)}</span><span class="char">${esc(r.character)}</span>` +
+            [r.bangs, r.hit, r.dealt, r.taken, r.drawn, r.played, r.discarded].map(x => `<span>${esc(x)}</span>`).join('') +
+            `<span class="top">${esc(r.top)}</span></div>`;
+        const groups = statsGroups(players, state.winner, myIndex).map(g => `
+  <div>
+    <div class="bu-sgroup ${g.color}"><span class="bu-sgroup-dot"></span>` +
+            `<span class="bu-sgroup-title">${esc(g.title)}</span><span class="bu-sgroup-sum">${esc(g.summary)}</span></div>
+    <div class="bu-stable">${head}${g.rows.map(row).join('')}</div>
+  </div>`).join('');
+        return `
+<div class="bu-stats-head">
+  <div class="bu-head-txt"><div class="bu-stats-title">Statistiky hry</div>` +
+            `<div class="bu-sub">${esc(statsTotalsLabel(players))}</div></div>
+  <button class="bu-btn quiet bu-stats-x" data-act="statsClose">✕ Zavřít</button>
+</div>
+<div class="bu-scroll bu-stats-body"><div class="bu-stats-grid">${groups}</div></div>`;
+    },
+
+    // S15 — vyhozen (lídr hru zrušil nebo opustil). Hlavní akce vede k hraní, ne do menu.
+    kicked() {
+        const v = kickedView(App.kickedMsg, { spectator: !!App.kickedSpectator });
+        return `
+<div class="bu-scroll"><div class="bu-center">
+  <div class="bu-logo-wrap"><div class="bu-logo small">BANG!</div></div>
+  <div class="bu-kick" role="alert">
+    <div class="bu-kick-title">${esc(v.title)}</div>
+    <div class="bu-kick-hint">${esc(v.hint)}</div>
+  </div>
+  <div class="bu-actions">
+    <button class="bu-btn" data-act="go" data-arg="main">◀ Zpět do menu</button>
+    <button class="bu-btn primary" data-act="go" data-arg="${v.next.screen}">${v.next.label}</button>
+  </div>
+</div></div>`;
+    },
 };
 
 // S8 / S9. Zpět je varovné „Opustit hru" – odchod tu ruší místo u stolu (components.md).
@@ -607,6 +695,18 @@ const MENU_ACTIONS = {
         socket.emit(lobbyStartEvent(roomState));
         renderUI();
     },
+
+    // S12 / S14. Hlasování jede ještě po staru (endGameView v core/menuModel.js).
+    stats() { App.statsOpen = true; renderUI(); },
+    statsClose() { App.statsOpen = false; renderUI(); },
+    nextVote() { socket.emit('vote_next_game', true); },
+    // Druhý klik lídra by hlasování spustil znovu a vynuloval hlasy, které mezitím přišly –
+    // tlačítko se proto zamkne hned; stav (fáze 'finished') ho vzápětí stejně vystřídá.
+    nextStart(_, el) {
+        if (el) el.disabled = true;
+        socket.emit('leader_start_next');
+    },
+    toMenu() { socket.emit('go_to_menu'); },
 
     // S10
     spectate(id) {

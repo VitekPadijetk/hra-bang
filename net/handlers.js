@@ -3642,6 +3642,7 @@ socket.on('go_to_menu', () => {
 
 socket.on('kicked_from_game', (msg) => {
     App.kickedMsg = msg || 'Game leader ukončil hru.';
+    App.kickedSpectator = !!App.spectating;   // _leaveToMenu příznak sledování shodí
     _leaveToMenu('kicked');
 });
 

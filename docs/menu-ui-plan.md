@@ -80,10 +80,10 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 | 2 | **S5 + S11** (sdílené: řada počtu hráčů, karty rozšíření, pokročilé), souhrn a zamčení v `menuModel` | – | ✅ |
 | 3 | **S6, S7, S10** + prázdné stavy | položky seznamu: lídr, `next` (navazující), rozšíření; `game_list` i při výhře | ✅ |
 | 4 | **S8, S9** lobby (sedačky, ➕ Bot, ✕ bot, varovné „Opustit hru") | `start_game` jen s plným stolem | ✅ |
-| 5 | **S12, S14, S15** (statistiky už jsou HTML v `showStats` → nový vzhled + seskupení podle rolí) | – | ☐ |
+| 5 | **S12, S14, S15** (statistiky už jsou HTML v `showStats` → nový vzhled + seskupení podle rolí) | – | ✅ |
 | 6 | **S13** účast in / wait / out (D8) | `next_join` / `next_leave`, stav na hráče v `roomPayload`, ruční start lídrem, pryč `nextGameTimer`; testy `test/server.*` | ☐ |
 | 7 | **G1, G2, G3, S0, S1, S16** (D7) | `join_error` → `{ title, hint }` | ☐ |
-| 8 | Úklid: smazat Phaserové obrazovky z `view/menu.js`, `ui_choice` v game.js, starý `#rotate-overlay`; řádek do CLAUDE.md + `docs/pravidla/menu-ui.md` | – | ☐ |
+| 8 | Úklid: smazat Phaserové obrazovky z `view/menu.js`, `renderWinnerScreen` (view/screens.js), `ui_choice` v game.js, starý `#rotate-overlay`; řádek do CLAUDE.md + `docs/pravidla/menu-ui.md` | – | ☐ |
 
 ## Stav po fázích
 
@@ -186,3 +186,36 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
   v názvu, pravidla), S9 lídr 740×360 a 1280×720 světlý (chce dál ✅, ✕ u bota), host 740×360 světlý
   při čekání na art. Kliky proti běžícímu serveru: ➕ Bot ×2 → ✕ → ➕ Bot (plný stůl, START
   odemčený), START → vrstva zmizí a běží intro, „Opustit hru" → hlavní menu.
+
+### Fáze 5 (hotovo)
+
+- Konec hry není obrazovka menu ani fáze místnosti: `menuDomScreen()` vrací **`winner`** (S12), když
+  má stav `winner` a místnost je pořád ve fázi `playing`, a **`stats`** (S14), když jsou navíc otevřené
+  statistiky (`App.statsOpen`). Ve fázi `finished` (hlasování s odpočtem = S13) vrací null a kreslí
+  dál Phaser (`renderWinnerScreen`) – do fáze 6. `renderUI` se na výsledek ptá ve větvi `state.winner`.
+- `App.statsOpen` shazuje sám `menuDomScreen()`, jakmile stav výsledek nemá (odchod, další hra) –
+  jinak by se statistiky samy otevřely na konci příští hry.
+- **S12 jede na starém serveru** (`endGameView` v core/menuModel.js): lídr „▶ Chci další hru" →
+  `leader_start_next` (otevře hlasování, tlačítko se hned zamkne – druhý klik by vynuloval hlasy),
+  ostatní → `vote_next_game` a místo tlačítka potvrzení „✅ Chceš hrát dál". **Lídr má místo
+  „Do menu" „✕ Zrušit hru"** (`cancel_game`) – jeho odchod stejně ruší hru všem, tlačítko to má říct.
+  Divák má jen „◀ Zpět do menu". Pod čipy věta, co klik způsobí („ostatní dostanou 20 s…") – odejde
+  s fází 6.
+- Čipy (`nextGameChips`) staví soupisku ze STAVU hry a páruje ji s `room.players` podle jména: kdo
+  z místnosti odešel, v `room.players` už není, a zůstává čipem s ✕ (playerIdx se po odchodu
+  přečísluje, proto jméno). Souhrn `nextGameSummary` říká „chce hrát dál", ne „je v další hře" –
+  hlas z S12 zatím účast nezaručuje (přijde s D8).
+- **S14** je obrazovka vrstvy přes celé jeviště (rohové ⛶ se schová, vpravo je „✕ Zavřít").
+  `showStats` (view/menu.js) už jen otevře vrstvu – tudy ji otevírá Phaserová S13. Skupiny
+  `statsGroups`: Zákon (Šerif + Pomocníci) / Bandité / Odpadlík(ci), ve hře pro 3 po rolích; souhrn
+  skupiny nese výsledek (`playerWon` čte větu vítěze: strana vyhrává i s mrtvými, odpadlík jen živý,
+  pod Divokým západem jednotlivec). Šerif má ⭐, můj řádek je zvýrazněný. Sloupce podle návrhu
+  (bez Role a Zbraní); v souhrnu je „Zranění" místo anglického „Damage".
+- **S15** (`kicked` v `MENU_DOM_SCREENS`): `kickedView` k větě ze serveru přidá druhý řádek, co dál.
+  Hlavní akce „Najít jinou hru" (S6); kdo jen sledoval (`App.kickedSpectator`, nastaví
+  `kicked_from_game`), dostane „Sledovat jinou hru" (S10).
+- Ověřeno snímky s podstrčeným stavem: S12 lídr 1280×720, hráč 740×360, po hlasování 1280×720
+  světlý, divák s dlouhou větou vítěze 740×360 světlý; S14 1280×720 a 740×360 světlý (roluje do
+  strany); S15 1280×720 a divák 740×360 světlý. Přechody: S12 → S14 → S12, S14 nad Phaserovou S13 →
+  zavřít (vrátí se plátno), S13 → `showStats()` → S14. Skutečná hra 3 botů ze S11 doběhla do S12
+  (divák, boti ✅).

@@ -2,6 +2,12 @@
 // Texty a rozhodnutí, která se dají otestovat v Node: skloňování počtů, iniciály,
 // jméno hráče, escapování, nastavení nové hry. Plán: docs/menu-ui-plan.md.
 
+// Konec hry (S12, S14) potřebuje české názvy rolí a poznat hru pro 3 (core/roles.js).
+if (typeof require === 'function') {
+    if (typeof roleNameCz === 'undefined') globalThis.roleNameCz = require('./roles.js').roleNameCz;
+    if (typeof isThreePlayerMode === 'undefined') globalThis.isThreePlayerMode = require('./roles.js').isThreePlayerMode;
+}
+
 // Každý text od hráče (jméno, název hry) jde do innerHTML jen přes esc() –
 // název místnosti vidí všichni v seznamu her, takže by jinak byl XSS pro celý server.
 function esc(value) {
@@ -358,6 +364,161 @@ function lobbyWaitText(room) {
     return lobbyIsNext(room) ? 'Čeká se na doplnění hráčů a Game Leadera…' : 'Čeká se na Game Leadera…';
 }
 
+// ── Konec hry (S12), statistiky (S14), vyhození (S15) ────────────────────
+// Stav hry po výhře chodí celý, bez redakce (redactState v server/rooms.js), takže role
+// i statistiky všech hráčů jsou veřejné. `state.winner` je rovnou věta vítěze
+// (core/winCondition.js): „Zákon vyhrál!", ve hře pro 3 „Pomocník vyhrál!", pod kartou
+// Divoký západ „{jméno} vyhrál!".
+
+// Vyhrál tenhle hráč? Podle věty vítěze, ne podle toho, kdo žije: pomocníci i bandité
+// vyhrávají se svou stranou i mrtví, odpadlík jen jako poslední živý (při 8 hráčích jsou
+// dva a vyhrát může nejvýš jeden).
+function playerWon(p, winner, players) {
+    if (!p || !winner) return false;
+    if (winner === `${p.name} vyhrál!`) return true;   // Divoký západ: vyhrává jednotlivec
+    if (isThreePlayerMode(players)) return winner === `${roleNameCz(p.role)} vyhrál!`;
+    if (winner === 'Zákon vyhrál!') return p.role === 'Sheriff' || p.role === 'Deputy';
+    if (winner === 'Bandité vyhráli!') return p.role === 'Outlaw';
+    if (winner === 'Odpadlík vyhrál!') return p.role === 'Renegade' && p.health > 0;
+    return false;
+}
+
+// Čipy pod výsledkem (S12): jeden na hráče skončené hry, v pořadí u stolu.
+//   in   – chce hrát dál (wantsNext), wait – ještě se nerozhodl,
+//   out  – odešel: v místnosti (room.players) už není, zůstává jen ve stavu hry.
+// Páruje se podle jména – playerIdx v místnosti se po odchodu přečísluje, jména jsou
+// u stolu unikátní.
+function nextGameChips(gamePlayers, roomPlayers) {
+    const room = roomPlayers || [];
+    return (gamePlayers || []).map(gp => {
+        const rp = room.find(r => r.name === gp.name);
+        const status = !rp || rp.wantsNext === false ? 'out' : rp.wantsNext === true ? 'in' : 'wait';
+        return { name: plainName(gp.name), initials: initialsOf(gp.name), status };
+    });
+}
+
+// Řádek pod čipy: „3 hráči chtějí hrát dál · 1 se rozhoduje · 1 odešel".
+function nextGameSummary(chips) {
+    const count = (st) => (chips || []).filter(c => c.status === st).length;
+    const inN = count('in'), waitN = count('wait'), outN = count('out');
+    const parts = [inN
+        ? `${inN} ${czPlural(inN, 'hráč chce', 'hráči chtějí', 'hráčů chce')} hrát dál`
+        : 'Další hru zatím nikdo nepotvrdil'];
+    if (waitN) parts.push(`${waitN} ${czPlural(waitN, 'se rozhoduje', 'se rozhodují', 'se rozhoduje')}`);
+    if (outN) parts.push(`${outN} ${czPlural(outN, 'odešel', 'odešli', 'odešlo')}`);
+    return parts.join(' · ');
+}
+
+// Tlačítka S12 podle toho, kdo se dívá. { primary, done, exit, note }:
+//   primary – hlavní akce ({ label, act }), done – místo ní potvrzení (už chce hrát dál),
+//   exit – odchod ({ label, act, danger }), note – co klik způsobí.
+// Server zatím hlasuje po staru: lídrův klik otevře hlasování s odpočtem (leader_start_next →
+// S13), ostatní jen dávají najevo zájem (vote_next_game). Odchod lídra ruší hru všem – proto
+// u něj „Zrušit hru", ne nevinně vypadající „Do menu". Divák nehlasuje, jen odchází.
+function endGameView({ spectator = false, leader = false, voted = false } = {}) {
+    if (spectator) return { primary: { label: '◀ Zpět do menu', act: 'toMenu' }, done: null, exit: null, note: null };
+    if (leader) {
+        return {
+            primary: { label: '▶ Chci další hru', act: 'nextStart' }, done: null,
+            exit: { label: '✕ Zrušit hru', act: 'cancelGame', danger: true },
+            note: 'Po kliknutí dostanou ostatní 20 s na potvrzení, že hrají dál.',
+        };
+    }
+    const exit = { label: '✕ Do menu', act: 'toMenu', danger: false };
+    if (voted) return { primary: null, done: '✅ Chceš hrát dál', exit, note: 'Další hru otevře Game Leader.' };
+    return { primary: { label: '▶ Chci další hru', act: 'nextVote' }, done: null, exit, note: null };
+}
+
+function _pct(part, whole) {
+    return whole > 0 ? Math.round(part / whole * 100) : 0;
+}
+
+function _sumStats(players) {
+    const acc = {};
+    for (const p of players || []) {
+        for (const [k, v] of Object.entries((p && p.stats) || {})) {
+            if (typeof v === 'number') acc[k] = (acc[k] || 0) + v;
+        }
+    }
+    return acc;
+}
+
+// Souhrnná řádka v hlavičce S14: „Bang!×34 · Zásahy×21 (62 %) · Zranění×19 · Líznuto×88 · Odhoz×61".
+function statsTotalsLabel(players) {
+    const s = _sumStats(players);
+    const fired = s.bangsFired || 0, hit = s.bangsHit || 0;
+    return `Bang!×${fired} · Zásahy×${hit} (${_pct(hit, fired)} %) · Zranění×${s.damageDealt || 0}` +
+        ` · Líznuto×${s.cardsDrawn || 0} · Odhoz×${s.cardsDiscarded || 0}`;
+}
+
+// Tři nejpoužívanější karty: „Bang!×9, Pivo×4, Kolt×2" (klíč = typ karty, _trackCard v logic.js).
+function topCardsLabel(cardsUsed) {
+    const top = Object.entries(cardsUsed || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return top.length ? top.map(([t, n]) => `${t}×${n}`).join(', ') : '–';
+}
+
+// Řádek tabulky S14 (sloupce podle handoff/screens.md).
+function statsRow(p) {
+    const s = (p && p.stats) || {};
+    const fired = s.bangsFired || 0, hit = s.bangsHit || 0;
+    return {
+        name: p.name, character: p.character || '–', sheriff: p.role === 'Sheriff',
+        bangs: fired, hit: fired ? `${hit} (${_pct(hit, fired)} %)` : '0',
+        dealt: s.damageDealt || 0, taken: s.damageTaken || 0, drawn: s.cardsDrawn || 0,
+        played: s.cardsPlayed || 0, discarded: s.cardsDiscarded || 0, top: topCardsLabel(s.cardsUsed),
+    };
+}
+
+// Strany v tabulce statistik. `color` = třída barvy role (--roleSheriff / --roleOutlaw /
+// --roleRenegade). Ve hře pro 3 (Město duchů) strany nejsou – každá role hraje sama za sebe.
+const STATS_SIDES = [
+    { roles: ['Sheriff', 'Deputy'], title: 'Zákon', lead: 'Šerif + Pomocníci', color: 'sheriff' },
+    { roles: ['Outlaw'], title: 'Bandité', color: 'outlaw' },
+    { roles: ['Renegade'], title: 'Odpadlík', titleMany: 'Odpadlíci', color: 'renegade' },
+];
+const STATS_SIDES_3P = [
+    { roles: ['Deputy'], title: 'Pomocník', color: 'sheriff' },
+    { roles: ['Outlaw'], title: 'Bandita', color: 'outlaw' },
+    { roles: ['Renegade'], title: 'Odpadlík', color: 'renegade' },
+];
+
+// Hráči seskupení podle stran (S14): [{ title, color, summary, rows }]. Prázdná strana
+// se vynechá; hráč s neznámou rolí nezmizí, spadne do „Ostatní". `meIdx` = můj index
+// ve hře (řádek se zvýrazní), divák null.
+function statsGroups(players, winner, meIdx = null) {
+    const list = players || [];
+    const sides = isThreePlayerMode(list) ? STATS_SIDES_3P : STATS_SIDES;
+    const known = new Set(sides.flatMap(s => s.roles));
+    const groups = sides.map(s => ({ side: s, members: list.filter(p => p && s.roles.includes(p.role)) }));
+    groups.push({ side: { title: 'Ostatní', color: 'other' }, members: list.filter(p => p && !known.has(p.role)) });
+    return groups.filter(g => g.members.length).map(({ side, members }) => {
+        const n = members.length;
+        const won = members.filter(p => playerWon(p, winner, list));
+        const result = won.length === n ? (n === 1 ? 'vyhrál' : 'vyhráli')
+            : !won.length ? (n === 1 ? 'prohrál' : 'prohráli')
+            : `vyhrál ${won.map(p => plainName(p.name)).join(', ')}`;
+        return {
+            title: n > 1 && side.titleMany ? side.titleMany : side.title,
+            color: side.color,
+            summary: [side.lead, playersLabel(n), result].filter(Boolean).join(' · '),
+            rows: members.map(p => Object.assign(statsRow(p), { me: meIdx != null && list.indexOf(p) === meIdx })),
+        };
+    });
+}
+
+// S15: server posílá jedinou větu („Game leader ukončil hru." / „… opustil hru.").
+// Druhý řádek říká, co dál (components.md – hláška bez rady hráči nic neřekne), a hlavní
+// akce vede k hraní: hráči „Najít jinou hru" (S6), divákovi „Sledovat jinou hru" (S10).
+function kickedView(msg, { spectator = false } = {}) {
+    const title = String(msg || 'Game leader ukončil hru.').replace(/^Game leader\b/, 'Game Leader');
+    const lead = /opustil/.test(title) ? 'Bez něj hra nemůže pokračovat, stůl se rozpustil.' : 'Stůl se rozpustil.';
+    return spectator
+        ? { title, hint: `${lead} Můžeš sledovat jinou hru nebo si pustit hru botů.`,
+            next: { label: 'Sledovat jinou hru', screen: 'spectate_list' } }
+        : { title, hint: `${lead} Můžeš se přidat k jiné hře nebo založit vlastní.`,
+            next: { label: 'Najít jinou hru', screen: 'join_list' } };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         esc, czPlural, waitingGamesLabel, runningGamesLabel, waitingGamesCount,
@@ -370,5 +531,7 @@ if (typeof module !== 'undefined' && module.exports) {
         joinListSubtitle, spectateListSubtitle, joinRoomSubtitle, seatRows, joinRoomBlocker,
         lobbyIsNext, lobbyMissing, lobbyTitle, lobbySubtitle, roomRulesLabel, lobbySeatRows,
         lobbyNotice, lobbyStartButton, lobbyStartEvent, lobbyWaitText,
+        playerWon, nextGameChips, nextGameSummary, endGameView,
+        statsTotalsLabel, topCardsLabel, statsRow, statsGroups, kickedView,
     };
 }
