@@ -385,7 +385,7 @@ socket.on('intro_phase', (data) => {
         if (gameScene) {
             _animateIntroShuffle(
                 INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y,
-                'card_back', 0.30,
+                'zh_back', 0.30,
                 Math.max(1, data.gearCount || 0), true,
                 null,
                 () => { if (_introState) { _introState.shuffleAnimDone = true; renderUI(); } }
@@ -621,7 +621,7 @@ socket.on('intro_phase', (data) => {
                         evMovers('hn', INTRO_HN_DECK, _introState.hnCount, 'hn_back');
                         evMovers('ff', INTRO_FF_DECK, _introState.ffCount, 'ff_back');
                         evMovers('wws', INTRO_WWS_DECK, _introState.wwsCount, 'wws_back');
-                        evMovers('gear', INTRO_GEAR_DECK, _introState.gearCount, 'card_back');
+                        evMovers('gear', INTRO_GEAR_DECK, _introState.gearCount, 'zh_back');
                         renderUI(); // skryje statický intro balíček
                         gameScene.tweens.add({
                             targets: movers, x: DECK_X,

@@ -480,10 +480,9 @@ rozšíření.
 Pravidlový podklad je [docs/zlata-horecka.md](docs/zlata-horecka.md) (texty všech 24 karet
 s cenami, 8 postav, oficiální FAQ Q01–Q15, sken karet dV Giochi), implementační plán
 [docs/zlata-horecka-plan.md](docs/zlata-horecka-plan.md) — karta po kartě, s háky, pořadím
-prací (§9) a rozhodnutími R1–R15. **Art všech 15 karet vybavení a rub balíčku už v repu
-leží** (`assets/zlata_horecka_cards/<art>.webp`, `assets/other_cards/zlata_horecka/zlata_horecka_back.webp`,
-jména karet v datech jsou podle nich), **ale hra ho zatím nenačítá** – viz loader níže.
-Portréty 8 postav chybí dál (§2.8).
+prací (§9) a rozhodnutími R1–R15. **Art všech 15 karet vybavení a rub balíčku je ve hře**
+(`assets/zlata_horecka_cards/<art>.webp`, `assets/other_cards/zlata_horecka/zlata_horecka_back.webp`;
+jména karet v datech jsou podle něj). Portréty 8 postav chybí dál (§2.8).
 
 **Hotová je fáze 0 (měna), fáze 1 (obchod), fáze 2 (pasivní černé vybavení) a fáze 3
 (placené černé vybavení).**
@@ -515,15 +514,15 @@ ve fázích 4–6.
 - **Redakce**: `gearDeck` se skrývá (jeho pořadí je příští nabídka obchodu), `gearRow`,
   `gearPile`, `player.gear` i `player.nuggets` jsou VEŘEJNÉ — pravidla říkají „pokládejte
   viditelně před sebe".
-- **Loader assetů** (`EXPANSION_LOADERS.zlata_horecka` v [game.js](game.js)) zatím nic
-  nestahuje, ale zaregistrovaný být MUSÍ: start hry čeká na `expansion_ready` každého
-  zapnutého rozšíření ([server/lifecycle.js](server/lifecycle.js)), takže by hra bez
-  loaderu 12 s visela na timeoutu. Prázdné `critical` hlásí připravenost hned.
-- **Art karet vybavení se zatím nenačítá**, takže se každý druh vysází jako čitelný ŠTÍTEK
-  (rám podle `border`, jméno, text a cena v rohu) do textury `zh_<effect>` —
-  `buildGearTextures` v [game.js](game.js), volaná z `create()`. Až art dorazí, načte se
-  pod stejný klíč a funkce jen přestane kreslit. Ze stejného důvodu **nemá nákup zatím
-  žádnou animaci letu**: z obchodu by letěl neidentifikovatelný rub.
+- **Loader assetů** (`EXPANSION_LOADERS.zlata_horecka` v [game.js](game.js)) stahuje rub
+  balíčku (`zh_back`, jediný `critical` – je vidět hned v intru) a líce karet pod klíčem
+  **`zh_art_<art>`**, NE `zh_<effect>`: ten od `create()` drží RenderTextura se štítkem
+  a duplicitní klíč by Phaser přeskočil. Líc karty se tedy kreslí DO RenderTextury
+  `zh_<effect>` (`buildGearTextures`): s artem v cache art, jinak čitelný ŠTÍTEK z dat
+  (rám podle `border`, jméno, text, cena). Volá se z `create()` a znovu po dotažení artu –
+  přemaluje tutéž RT (jako Požehnání/Prokletí u hracích karet), takže sprity vzniklé dřív
+  ukážou art samy. Rub se kreslí přes `gearBackTex()` (do dotažení rub hrací karty).
+  **Nákup zatím nemá animaci letu** (z obchodu do ruky/před hráče).
 - **Obchod se na desku nevešel.** Po zapnutí tří balíčků událostí zabírá vodorovné pásmo
   balíčků x 420–1330 a nad ním leží druhá řada karet horních soupeřů; 3 karty lícem vzhůru
   + rub tam místo nemají. Na stole proto leží jen **rub balíčku vybavení**

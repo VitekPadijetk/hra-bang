@@ -2301,14 +2301,25 @@ const EXPANSION_LOADERS = {
     },
 
     // Zlatá horečka (Gold Rush): NENÍ to balíček událostí – jsou to karty vybavení,
-    // obchod a portréty postav (042–049). Art zatím CELÝ chybí (plán §2.8), takže
-    // loader zatím nic nestahuje. Zaregistrovaný ale být MUSÍ: start hry čeká na
-    // `expansion_ready` každého zapnutého rozšíření (server/lifecycle.js) a bez loaderu
-    // by `loadExpansionAssets` mlčky nic neudělal a hra by 12 s visela na timeoutu.
-    // Prázdné `critical` proto hlásí připravenost hned. Až art dorazí, přibude sem
-    // stahování `zh_*` textur, rub balíčku a `normalizeCharTextures(scene, 42, 49)`.
+    // obchod a portréty postav (042–049). Art karet se nenačítá pod klíč `zh_<effect>`:
+    // ten už od create() drží RenderTextura se štítkem (buildGearTextures) a Phaser
+    // duplicitní klíč přeskočí. Stahuje se proto pod `zh_art_<art>` a done() ho do
+    // STEJNÉ RenderTextury přemaluje – sprity, které ji už drží, se překreslí samy.
+    // Portréty postav zatím chybí (přibude `normalizeCharTextures(scene, 42, 49)`).
     zlata_horecka(scene) {
-        return { critical: [], done: () => {} };
+        const data = scene.cache.json.get('cards_zlata_horecka_data') || [];
+        // Rub je vidět hned v intru (míchání balíčku vybavení), takže jde první.
+        loadAsset(scene, 'image', 'zh_back', 'assets/other_cards/zlata_horecka/zlata_horecka_back.webp');
+        data.forEach(c => { if (c.art) loadAsset(scene, 'image', gearArtKey(c), `assets/zlata_horecka_cards/${c.art}.webp`); });
+        return {
+            // Líce kritické nejsou – do dotažení za ně stojí štítek.
+            critical: ['zh_back'],
+            done: () => {
+                // Dodané ve 2× (650×1000) → srovnat na 325×500 jako ostatní karty.
+                normalizeTexture(scene, 'zh_back');
+                buildGearTextures(scene);
+            },
+        };
     },
 };
 
@@ -2437,14 +2448,23 @@ function paintCardTexture(scene, rt, card, sKey) {
     }
 }
 
-// ── Zlatá horečka: náhradní art karet vybavení ───────────────────────────────
-// Art rozšíření zatím CELÝ chybí (plán §2.8) a karty vybavení nejsou karty hracího
-// balíčku – nemají barvu ani hodnotu, takže se nedají upéct přes buildCardTextures.
-// Do doby, než art dorazí, se z dat vysází čitelný štítek: rám podle `border`
-// (hnědý = efekt hned, černý = leží před hráčem), jméno, cena v rohu a text karty.
-// Klíč textury je `zh_<effect>` – identita karty je `effect`, nikdy jméno (R1).
-// Až art dorazí, tahle funkce jen přestane kreslit a načtou se obrázky pod stejný klíč.
+// ── Zlatá horečka: textury karet vybavení ───────────────────────────────────
+// Karty vybavení nejsou karty hracího balíčku – nemají barvu ani hodnotu, takže se
+// nepečou přes buildCardTextures. Klíč textury je `zh_<effect>` – identita karty je
+// `effect`, nikdy jméno (R1) – a drží ho RenderTextura, do které se kreslí:
+//   • art karty (`zh_art_<art>`, dotahuje ho loader rozšíření), jakmile je v cache,
+//   • do té doby čitelný štítek z dat: rám podle `border` (hnědý = efekt hned,
+//     černý = leží před hráčem), jméno, cena v rohu a text karty.
+// Volá se dvakrát: z create() (art ještě není → štítky) a po dotažení artu (přemalování
+// do STEJNÉ RenderTextury, jako Požehnání/Prokletí u buildCardTextures – textura se
+// neruší, takže sprity vzniklé dřív ukážou art samy od sebe).
 function gearTexKey(card) { return card && card.effect ? 'zh_' + card.effect : null; }
+function gearArtKey(card) { return card && card.art ? 'zh_art_' + card.art : null; }
+
+// Rub balíčku vybavení; než se dotáhne, zastoupí ho rub hrací karty.
+function gearBackTex() {
+    return gameScene && gameScene.textures.exists('zh_back') ? 'zh_back' : 'card_back';
+}
 
 function buildGearTextures(scene) {
     const data = scene.cache.json.get('cards_zlata_horecka_data');
@@ -2453,11 +2473,24 @@ function buildGearTextures(scene) {
     scene._gearRTs = scene._gearRTs || {};
     data.forEach(kind => {
         const key = gearTexKey(kind);
-        if (!key || scene.textures.exists(key)) return;
+        if (!key) return;
+        let rt = scene._gearRTs[kind.effect];
+        if (rt) rt.clear();
+        else {
+            // Klíč bez vlastní RT (neměl by nastat) – ať saveTexture nekoliduje.
+            if (scene.textures.exists(key)) scene.textures.remove(key);
+            rt = scene.make.renderTexture({ width: W, height: H }, false);
+            scene._gearRTs[kind.effect] = rt;      // RT drží texturu → nedestruovat
+            rt.saveTexture(key);
+        }
+        const aKey = gearArtKey(kind);
+        if (aKey && scene.textures.exists(aKey)) {
+            const art = scene.make.image({ key: aKey, add: false }).setOrigin(0, 0);
+            art.setDisplaySize(W, H);
+            rt.draw(art, 0, 0); art.destroy();
+            return;
+        }
         const brown = kind.border !== 'black';
-        const rt = scene.make.renderTexture({ width: W, height: H }, false);
-        scene._gearRTs[kind.effect] = rt;      // RT drží texturu → nedestruovat
-        rt.saveTexture(key);
         // Papír + rám v barvě podle typu karty.
         const paper = scene.make.graphics({ add: false });
         paper.fillStyle(0xe8dcc0, 1).fillRoundedRect(0, 0, W, H, 26);
@@ -2634,7 +2667,7 @@ function createScene() {
     normalizeCharTextures(this);
     normalizeRoleTextures(this);
     buildCardTextures(this);
-    buildGearTextures(this);   // Zlatá horečka: náhradní art karet vybavení (chybí, plán §2.8)
+    buildGearTextures(this);   // Zlatá horečka: štítky, art je přemaluje po dotažení (loader rozšíření)
 
     // Pozadí i závoj se roztahují přes CELÉ jeviště (tedy i přes pruhy po stranách,
     // které při širším poměru stran přibyly) – jinak by z nich prosvítala holá výplň

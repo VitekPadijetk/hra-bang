@@ -3695,12 +3695,13 @@ function drawEventPile(ctx, which) {
 // překryvné okno (renderGearShopOverlay, view/screens.js) a na stole zůstává jen
 // hromádka s počtem karet.
 //
-// Rub vybavení vlastní texturu nemá (art rozšíření zatím celý chybí, plán §2.8), takže
-// se kreslí rubem hrací karty; odliší ho zlatý štítek s počtem.
+// Rub vybavení (`zh_back`) dotahuje loader rozšíření; do té doby ho zastoupí rub
+// hrací karty (gearBackTex v game.js).
 function drawGearPile(ctx) {
     const { scaleDeck } = ctx;
     if (!state || !goldRushOn(state)) return;
     const slot = gearDeckSlot();
+    const backTex = gearBackTex();
     // Do hromádky se počítají i odhozené karty – leží lícem vzhůru POD balíčkem
     // a zamíchají se do něj, jakmile se na vrch dostanou (viz _gearDraw).
     const left = (state.gearDeck?.length || 0) + (state.gearPile?.length || 0);
@@ -3709,7 +3710,7 @@ function drawGearPile(ctx) {
     const topY = slot.y - (layers - 1) * pxPerCard / 2;
     let top = null;
     for (let k = layers - 1; k >= 0; k--) {
-        const img = gameScene.add.image(slot.x, topY + k * pxPerCard, 'card_back').setScale(scaleDeck);
+        const img = gameScene.add.image(slot.x, topY + k * pxPerCard, backTex).setScale(scaleDeck);
         if (!left) img.setAlpha(0.35);
         gameScene.cardsSprites.add(img);
         if (k === 0) top = img;

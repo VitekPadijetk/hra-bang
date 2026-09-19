@@ -78,7 +78,7 @@ const INTRO_WWS_DECK   = { x: INTRO_FF_DECK.x - 160, y: 540 };
 const INTRO_WWS_ASIDE  = { x: INTRO_WWS_DECK.x, y: 350 };
 // Balíček vybavení Zlaté horečky leží o krok napravo od High Noonu (rozteč stejná) –
 // zrcadlově k Divokému západu, na herní pozici (gearDeckSlot) sjede na konci intra.
-// Vlastní rub zatím nemá (art rozšíření chybí), takže je to rub hrací karty jako na desce.
+// Rub `zh_back` (_drawIntroStack/_animateIntroShuffle bez něj spadnou na rub hrací karty).
 const INTRO_GEAR_DECK  = { x: INTRO_HN_DECK.x + 160, y: 540 };
 
 // Popis balíčku událostí pro intro. Beaty všech tří rozšíření jsou identické – liší se
@@ -1204,7 +1204,7 @@ function renderIntroScene() {
     });
     // Balíček vybavení (Zlatá horečka) – jen rub, odloženou kartu nemá.
     if (s.gearCount > 0 && !shuffling('shuffle_gear') && !s.gearMoving)
-        _drawIntroStack(INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y, 'card_back', s.gearCount, 0.30);
+        _drawIntroStack(INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y, 'zh_back', s.gearCount, 0.30);
 
     // Umístěné karty (role, lives, char) + jmenovky - persistují přes všechny fáze
     if (s.placedCards) s.placedCards.forEach(_drawPlacedCard);
@@ -1329,7 +1329,7 @@ function _renderIntroCharSelect() {
         if (s[w + 'Count'] > 0) _drawIntroStack(C.deck.x, C.deck.y, C.back, s[w + 'Count'], 0.30);
     });
     if (s.gearCount > 0)
-        _drawIntroStack(INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y, 'card_back', s.gearCount, 0.30);
+        _drawIntroStack(INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y, 'zh_back', s.gearCount, 0.30);
 
     // Umístěné karty (role atd.) + jmenovky
     if (s.placedCards) s.placedCards.forEach(_drawPlacedCard);
