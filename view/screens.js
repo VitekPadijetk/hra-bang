@@ -4,9 +4,9 @@
 // roomState, socket, App, myIndex, …) a volají renderUI()/showStats() za běhu.
 // Načítá se v index.html až ZA game.js.
 
-// Volá se už jen při hlasování o další hře (roomPhase 'finished', S13). Konec hry (S12)
-// a statistiky (S14) kreslí HTML vrstva (view/menuDom.js); větev níž pro 'playing' je mrtvá
-// a smaže se spolu s celou funkcí (docs/menu-ui-plan.md, fáze 6 a 8).
+// MRTVÁ – nic ji nevolá: konec hry (S12), účast v další hře (S13) i statistiky (S14) kreslí
+// HTML vrstva (view/menuDom.js) a eventy, které posílá, server od fáze 6 nezná. Smaže se
+// ve fázi 8 (docs/menu-ui-plan.md).
 function renderWinnerScreen() {
         const isLeader = roomState?.leaderSocketId === socket.id;
         const myP = roomState?.players?.find(p => p.socketId === socket.id);

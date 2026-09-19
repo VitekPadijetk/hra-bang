@@ -120,16 +120,6 @@ module.exports = function installLifecycle(ctx) {
     }
 
     function startNextGame(room) {
-        // Zruš případný běžící „další hra" odpočet z leader_start_next. Když leader
-        // spustí hru přes check_start_next, startNextGame vynuluje wantsNext – kdyby
-        // interval běžel dál, po vypršení by viděl, že nikdo nemá wantsNext===true,
-        // a poslal by go_to_menu VŠEM (vyhodil by celou rozjetou hru).
-        if (room._nextGameTimerInterval) {
-            clearInterval(room._nextGameTimerInterval);
-            room._nextGameTimerInterval = null;
-        }
-        room.nextGameTimer = null;
-
         const gs = room.gameState;
         const playerNames = room.players.map(p => p.name);
         const prevSurvivorChars = {};
@@ -182,11 +172,12 @@ module.exports = function installLifecycle(ctx) {
             deck: room.gameState.deck.cards.map(c => c.name),
         });
         ctx.initLedger?.(room);   // další hra → čistý ledger chování
-        room.nextGameVotes = {};
         room.survivorKeepVotes = {};
         room.players.forEach(p => { p.wantsNext = null; p.wasOriginalSurvivor = false; });
         room.gameNo = (room.gameNo || 0) + 1;
         room.phase = 'char_select';
+        // Místnost odchází ze seznamu S6 (lobby další hry) a hra přibývá do S10.
+        broadcastLobbyList();
         // Boti po startu hry chvíli počkají; intro flag řídí, kdy smí začít hrát (viz server/bots.js).
         room._botStartupSettle = true;
         room._introPlaying = false;

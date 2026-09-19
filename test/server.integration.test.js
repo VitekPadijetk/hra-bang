@@ -453,3 +453,96 @@ test('poslední líznutí Dostavníku nese majiteli i data karty (stageCard)', (
     assert.equal(draws[1].stageCard.id, draws[1].cardId);
     assert.ok(me.hand.some(c => c.id === draws[1].stageCard.id), 'a je to opravdu karta v jeho ruce');
 });
+
+// ── Další hra: účast (S12 / S13, docs/menu-ui-plan.md D8) ──────────────────────
+// Místnost po konci hry: čtyři hráči přes skutečné handlery, stav hry s vítězem.
+// Emity socketů se zaznamenávají (`emits[id]`), ať jde poznat, kdo šel do menu.
+function endedRoom(options = {}) {
+    const env = mkEnv();
+    const socks = ['s1', 's2', 's3', 's4'].map(id => env.mkSocket(id));
+    socks[0].fire('create_room', { name: 'Stůl', maxPlayers: 4, playerName: 'Alice', options, token: 'tok-Alice' });
+    const room = [...env.ctx.rooms.values()][0];
+    ['Bob', 'Cyril', 'Dana'].forEach((n, i) =>
+        socks[i + 1].fire('join_room', { roomId: room.id, playerName: n, token: 'tok-' + n }));
+    room.phase = 'playing';
+    room.gameState = { winner: 'Zákon vyhrál!', players: room.players.map((p, i) => (
+        { name: p.name, role: i ? 'Outlaw' : 'Sheriff', character: 'Bart Cassidy', health: i === 1 ? 0 : 2 })) };
+    const emits = {};
+    socks.forEach(s => { emits[s.id] = []; s.emit = (ev, payload) => emits[s.id].push({ ev, payload }); });
+    const who = (id) => room.players.find(p => p.socketId === id);
+    return { ...env, room, socks, emits, who };
+}
+
+test('next_join / next_leave: přihlášení jedním kliknutím, lídr se odhlásit nemůže', () => {
+    const { room, socks: [s1, s2], who, emits } = endedRoom();
+    s2.fire('next_join');
+    assert.equal(who('s2').wantsNext, true);
+    assert.ok(emits.s3.some(e => e.ev === 'room_update'), 'ostatní se to dozví hned');
+    s2.fire('next_leave');
+    assert.equal(who('s2').wantsNext, null, 'odhlášený je zase mezi rozhodujícími se');
+    s1.fire('next_join');
+    s1.fire('next_leave');
+    assert.equal(who('s1').wantsNext, true, 'lídr hru zahájí, nebo zruší – neodhlašuje se');
+    // Lobby další hry: stav hry je pořád ten vyhraný, přihlašovat se tam ale už nejde.
+    room.phase = 'next_lobby';
+    s2.fire('next_join');
+    assert.equal(who('s2').wantsNext, null);
+});
+
+test('next_start: bez tří přihlášených nic; pak kdo se nepřihlásil, jde do menu a zbytek do lobby další hry', () => {
+    const { ctx, room, socks: [s1, s2, s3, s4], emits } = endedRoom();
+    s2.fire('next_join');
+    s1.fire('next_start');   // lídr + Bob = 2
+    assert.equal(room.phase, 'playing', 'málo přihlášených → start neprojde');
+    assert.equal(room.players.length, 4);
+
+    s3.fire('next_join');
+    s3.fire('next_start');   // start smí jen lídr
+    assert.equal(room.phase, 'playing');
+
+    s1.fire('next_start');   // lídr (i nepřihlášený – startem hraje) + Bob + Cyril = 3
+    assert.equal(room.phase, 'next_lobby');
+    assert.deepEqual(room.players.map(p => p.name), ['Alice', 'Bob', 'Cyril']);
+    assert.deepEqual(room.players.map(p => p.playerIdx), [0, 1, 2]);
+    assert.ok(room.players.every(p => p.wasOriginalSurvivor), 'S9: „chce dál ✅"');
+    assert.ok(room.players.every(p => p.wantsNext === null));
+    assert.ok(emits.s4.some(e => e.ev === 'go_to_menu'), 'Dana se nerozhodla → menu');
+    assert.equal(s4.rooms.has(room.id), false, 'a opustila kanál místnosti');
+    assert.equal(ctx.findRoomBySocket('s4'), null);
+    assert.ok(!emits.s2.some(e => e.ev === 'go_to_menu'));
+    assert.ok(ctx.getLobbyList().some(r => r.id === room.id), 'místnost je znovu v seznamu S6');
+});
+
+test('next_start s plným stolem rovnou startuje navazující hru', () => {
+    const { room, socks: [s1, s2, s3, s4] } = endedRoom({ singleChar: true });
+    [s2, s3, s4].forEach(s => s.fire('next_join'));
+    const before = room.gameState;
+    s1.fire('next_start');
+    assert.notEqual(room.gameState, before, 'nová hra');
+    assert.ok(['char_select', 'playing'].includes(room.phase));
+    assert.equal(room.gameState.players.length, 4);
+    assert.ok(!room.gameState.winner);
+    assert.ok(room.players.every(p => p.wantsNext === null && !p.wasOriginalSurvivor), 'stav účasti se po startu nuluje');
+    s1.fire('next_start');   // opožděný druhý klik – už není konec hry
+    assert.equal(room.gameState.players.length, 4);
+});
+
+test('check_start_next startuje jen z lobby další hry s plným stolem', () => {
+    const { room, socks: [s1, s2, s3] } = endedRoom({ singleChar: true });
+    s1.fire('check_start_next');
+    assert.equal(room.phase, 'playing', 'z konce hry ne – tam je next_start');
+    [s2, s3].forEach(s => s.fire('next_join'));
+    s1.fire('next_start');
+    assert.equal(room.phase, 'next_lobby');
+    s1.fire('check_start_next');
+    assert.equal(room.phase, 'next_lobby', 'neplný stůl');
+});
+
+// Token je klíč k místu po výpadku (rejoin) – kdo by znal cizí, převzal by ho.
+test('room_update neposílá tokeny hráčů', () => {
+    const { ctx, room } = endedRoom();
+    assert.ok(room.players.every(p => p.token), 'server je drží');
+    const sent = ctx.roomPayload(room, 0).players;
+    assert.ok(sent.every(p => !('token' in p)));
+    assert.deepEqual(sent.map(p => p.name), ['Alice', 'Bob', 'Cyril', 'Dana']);
+});

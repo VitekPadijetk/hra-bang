@@ -184,6 +184,8 @@ function escHtml(s) {
 function showOrHideChat(inGame) {
     const btn = document.getElementById('chat-toggle-btn');
     const panel = document.getElementById('chat-root');
+    // Bublina leží přes pravý dolní roh – lišta akcí HTML menu (S9, S13) jí tam uhne.
+    document.body.classList.toggle('chat-on', !!inGame);
     if (inGame) {
         if (!document.getElementById('chat-root')) initChat();
         if (btn) btn.style.display = 'flex';

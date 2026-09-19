@@ -383,50 +383,128 @@ function playerWon(p, winner, players) {
     return false;
 }
 
-// Čipy pod výsledkem (S12): jeden na hráče skončené hry, v pořadí u stolu.
-//   in   – chce hrát dál (wantsNext), wait – ještě se nerozhodl,
-//   out  – odešel: v místnosti (room.players) už není, zůstává jen ve stavu hry.
-// Páruje se podle jména – playerIdx v místnosti se po odchodu přečísluje, jména jsou
-// u stolu unikátní.
-function nextGameChips(gamePlayers, roomPlayers) {
+// ── Další hra: účast (S12 čipy, S13) – docs/menu-ui-plan.md D8 ───────────
+// Po konci hry se každý přihlásí jedním kliknutím (server next_join, odhlášení
+// next_leave) a nikdo nic nepotvrzuje podruhé. Odpočet není: hru zahájí lídr ručně
+// (next_start), jakmile je přihlášených aspoň NEXT_MIN_PLAYERS. Kdo se do té doby
+// nepřihlásí, do hry nejde. Server se ptá téže konstanty (server/handlers.nextgame.js).
+const NEXT_MIN_PLAYERS = 3;
+
+// Soupiska skončené hry: jeden řádek na hráče, v pořadí u stolu.
+//   status – in: přihlášený (wantsNext), wait: ještě se nerozhodl,
+//            out: odešel – v místnosti (room.players) už není, zůstává jen ve stavu hry.
+// Páruje se podle jména: playerIdx v místnosti se po odchodu přečísluje a jména jsou
+// u stolu unikátní. Lídra a mě pozná podle socketId.
+function nextRoster(gamePlayers, roomPlayers, { leaderSocketId = null, mySocketId = null } = {}) {
     const room = roomPlayers || [];
     return (gamePlayers || []).map(gp => {
-        const rp = room.find(r => r.name === gp.name);
-        const status = !rp || rp.wantsNext === false ? 'out' : rp.wantsNext === true ? 'in' : 'wait';
-        return { name: plainName(gp.name), initials: initialsOf(gp.name), status };
+        const rp = room.find(r => r.name === gp.name) || null;
+        return {
+            name: plainName(gp.name), initials: initialsOf(gp.name),
+            status: !rp ? 'out' : rp.wantsNext === true ? 'in' : 'wait',
+            bot: !!(rp && rp.isBot) || isBotName(gp.name),
+            leader: !!rp && leaderSocketId != null && rp.socketId === leaderSocketId,
+            me: !!rp && mySocketId != null && rp.socketId === mySocketId,
+            away: !!(rp && rp.disconnected),
+        };
     });
 }
 
-// Řádek pod čipy: „3 hráči chtějí hrát dál · 1 se rozhoduje · 1 odešel".
-function nextGameSummary(chips) {
-    const count = (st) => (chips || []).filter(c => c.status === st).length;
+// Součty soupisky. total = kdo ještě může hrát (bez těch, co odešli).
+function nextTally(roster) {
+    const count = (st) => (roster || []).filter(r => r.status === st).length;
     const inN = count('in'), waitN = count('wait'), outN = count('out');
-    const parts = [inN
-        ? `${inN} ${czPlural(inN, 'hráč chce', 'hráči chtějí', 'hráčů chce')} hrát dál`
-        : 'Další hru zatím nikdo nepotvrdil'];
-    if (waitN) parts.push(`${waitN} ${czPlural(waitN, 'se rozhoduje', 'se rozhodují', 'se rozhoduje')}`);
-    if (outN) parts.push(`${outN} ${czPlural(outN, 'odešel', 'odešli', 'odešlo')}`);
-    return parts.join(' · ');
+    return {
+        in: inN, wait: waitN, out: outN, total: inN + waitN,
+        missing: Math.max(0, NEXT_MIN_PLAYERS - inN), canStart: inN >= NEXT_MIN_PLAYERS,
+    };
 }
 
-// Tlačítka S12 podle toho, kdo se dívá. { primary, done, exit, note }:
-//   primary – hlavní akce ({ label, act }), done – místo ní potvrzení (už chce hrát dál),
-//   exit – odchod ({ label, act, danger }), note – co klik způsobí.
-// Server zatím hlasuje po staru: lídrův klik otevře hlasování s odpočtem (leader_start_next →
-// S13), ostatní jen dávají najevo zájem (vote_next_game). Odchod lídra ruší hru všem – proto
-// u něj „Zrušit hru", ne nevinně vypadající „Do menu". Divák nehlasuje, jen odchází.
-function endGameView({ spectator = false, leader = false, voted = false } = {}) {
-    if (spectator) return { primary: { label: '◀ Zpět do menu', act: 'toMenu' }, done: null, exit: null, note: null };
+function _nextRestParts(t) {
+    const parts = [];
+    if (t.wait) parts.push(`${t.wait} ${czPlural(t.wait, 'se rozhoduje', 'se rozhodují', 'se rozhoduje')}`);
+    if (t.out) parts.push(`${t.out} ${czPlural(t.out, 'odešel', 'odešli', 'odešlo')}`);
+    return parts;
+}
+
+// Řádek pod čipy (S12): „3 hráči jsou v další hře · 1 se rozhoduje · 1 odešel", a dokud
+// jich je málo, kolik je potřeba.
+function nextGameSummary(roster) {
+    const t = nextTally(roster);
+    const head = t.canStart
+        ? `${t.in} ${czPlural(t.in, 'hráč je', 'hráči jsou', 'hráčů je')} v další hře`
+        : `Na další hru jsou potřeba alespoň ${NEXT_MIN_PLAYERS} hráči · ` +
+          (t.in ? `zatím ${t.in} ${czPlural(t.in, 'přihlášený', 'přihlášení', 'přihlášených')}` : 'zatím nikdo');
+    return [head, ..._nextRestParts(t)].join(' · ');
+}
+
+// Tlačítka S12 podle toho, kdo se dívá: { primary, exit } (akce { label, act, danger }).
+// „Chci další hru" rovnou přihlašuje a kdo klikne, přejde na S13 sám (menuDomScreen).
+// `joined` = už je přihlášený a na S12 se vrátil (◀ Zpět ze S13) – hlavní akce ho vrací
+// na S13. Odchod lídra ruší hru všem, proto u něj „Zrušit hru", ne nevinně vypadající
+// „Do menu". Divák se nepřihlašuje, jen odchází.
+function endGameView({ spectator = false, leader = false, joined = false } = {}) {
+    if (spectator) return { primary: { label: '◀ Zpět do menu', act: 'toMenu' }, exit: null };
+    return {
+        primary: joined
+            ? { label: '✅ Jsi v další hře ›', act: 'nextOpen' }
+            : { label: '▶ Chci další hru', act: 'nextJoin' },
+        exit: leader
+            ? { label: '✕ Zrušit hru', act: 'cancelGame', danger: true }
+            : { label: '✕ Do menu', act: 'toMenu', danger: false },
+    };
+}
+
+// S13 – účast v další hře. `roster` z nextRoster (s mySocketId), `maxPlayers` = stůl
+// místnosti, `starting` = lídr už klikl na start (odpověď serveru přijde až za sítí).
+//   bar      – segment na hráče (true = přihlášený), aspoň NEXT_MIN_PLAYERS
+//   headSub  – podtitulek hlavičky
+//   joined   – jsem přihlášený → zelený pruh (joinedText) místo tlačítka „Chci hrát dál"
+//   canLeave – „Odhlásit se" (lídr ne: hru buď zahájí, nebo zruší)
+//   start    – jen lídr: { label, can }, note = co start udělá, když stůl nebude plný
+function nextGameView(roster, { leader = false, maxPlayers = 0, starting = false } = {}) {
+    const t = nextTally(roster);
+    const me = (roster || []).find(r => r.me) || null;
+    const joined = !!me && me.status === 'in';
+    let rest;
+    if (t.wait) rest = `Čeká se na ${t.wait} ${czPlural(t.wait, 'hráče', 'hráče', 'hráčů')}.`;
+    else if (!t.canStart) rest = `Na další hru jsou potřeba alespoň ${NEXT_MIN_PLAYERS} hráči.`;
+    else rest = leader ? 'Všichni se rozhodli — můžeš zahájit.' : 'Čeká se na Game Leadera.';
+    let start = null, note = null;
     if (leader) {
-        return {
-            primary: { label: '▶ Chci další hru', act: 'nextStart' }, done: null,
-            exit: { label: '✕ Zrušit hru', act: 'cancelGame', danger: true },
-            note: 'Po kliknutí dostanou ostatní 20 s na potvrzení, že hrají dál.',
-        };
+        const label = starting ? 'ZAHAJUJI…'
+            : t.canStart ? `▶ ZAHÁJIT DALŠÍ HRU (${t.in} ${czPlural(t.in, 'hráč', 'hráči', 'hráčů')})`
+            : `▶ ZAHÁJIT DALŠÍ HRU (chybí ${t.missing})`;
+        start = { label, can: t.canStart && !starting };
+        const free = Math.max(0, (maxPlayers || 0) - t.in);
+        if (t.canStart && free) {
+            note = free === 1 ? 'Volné místo u stolu doplníš v lobby další hry.'
+                : `Volná místa u stolu (${free}) doplníš v lobby další hry.`;
+        }
     }
-    const exit = { label: '✕ Do menu', act: 'toMenu', danger: false };
-    if (voted) return { primary: null, done: '✅ Chceš hrát dál', exit, note: 'Další hru otevře Game Leader.' };
-    return { primary: { label: '▶ Chci další hru', act: 'nextVote' }, done: null, exit, note: null };
+    return {
+        headSub: !joined ? 'Zatím nejsi přihlášený'
+            : leader && t.canStart ? 'Jsi přihlášený — hru zahajuješ ty'
+            : 'Jsi přihlášený — čeká se na ostatní',
+        headline: t.canStart ? 'Další hra může začít' : 'Chybí hráči do další hry',
+        sub: t.wait
+            ? `${t.wait} ${czPlural(t.wait, 'hráč se ještě rozhoduje', 'hráči se ještě rozhodují', 'hráčů se ještě rozhoduje')} · kdo neodpoví, do hry nejde`
+            : 'Všichni se rozhodli.',
+        count: t.in, total: t.total,
+        bar: Array.from({ length: Math.max(t.total, NEXT_MIN_PLAYERS) }, (_, i) => i < t.in),
+        joined, joinedText: `✅ Jsi v další hře. ${rest}`,
+        canLeave: joined && !leader,
+        start, note,
+        exit: leader
+            ? { label: '✕ Zrušit hru', act: 'cancelGame', danger: true }
+            : { label: 'Opustit hru', act: 'toMenu', danger: false },
+    };
+}
+
+// Přívlastek řádku S13: „(ty) · Game Leader · bot · odpojen".
+function nextRowTag(row) {
+    return [row.me ? '(ty)' : '', row.leader ? 'Game Leader' : '', row.bot ? 'bot' : '',
+        row.away ? 'odpojen' : ''].filter(Boolean).join(' · ');
 }
 
 function _pct(part, whole) {
@@ -531,7 +609,8 @@ if (typeof module !== 'undefined' && module.exports) {
         joinListSubtitle, spectateListSubtitle, joinRoomSubtitle, seatRows, joinRoomBlocker,
         lobbyIsNext, lobbyMissing, lobbyTitle, lobbySubtitle, roomRulesLabel, lobbySeatRows,
         lobbyNotice, lobbyStartButton, lobbyStartEvent, lobbyWaitText,
-        playerWon, nextGameChips, nextGameSummary, endGameView,
+        playerWon, NEXT_MIN_PLAYERS, nextRoster, nextTally, nextGameSummary, endGameView,
+        nextGameView, nextRowTag,
         statsTotalsLabel, topCardsLabel, statsRow, statsGroups, kickedView,
     };
 }

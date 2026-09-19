@@ -23,10 +23,10 @@ const MENU_DOM_ROOM_PHASES = new Set(['lobby', 'next_lobby']);
 
 // Kterou obrazovku má vrstva právě kreslit, nebo null (pak ji renderUI schová).
 // Mimo místnost rozhoduje App.menuScreen, v místnosti její fáze; po výhře (state.winner)
-// konec hry (S12) a přes něj statistiky (S14).
+// konec hry (S12), účast v další hře (S13) a přes obojí statistiky (S14).
 function menuDomScreen() {
-    // Statistiky patří k výsledku hry – odchodem nebo další hrou se zavřou samy.
-    if (!state || !state.winner) App.statsOpen = false;
+    // Statistiky i S13 patří k výsledku hry – odchodem nebo další hrou se zavřou samy.
+    if (!state || !state.winner) { App.statsOpen = false; App.nextOpen = false; App.nextWasIn = false; }
     if (!roomState) {
         const screen = App.menuScreen || 'main';
         return MENU_DOM_SCREENS.has(screen) ? screen : null;
@@ -34,8 +34,13 @@ function menuDomScreen() {
     if (MENU_DOM_ROOM_PHASES.has(roomState.roomPhase)) return roomState.roomPhase;
     if (state && state.winner) {
         if (App.statsOpen) return 'stats';
-        // Hlasování o další hře (roomPhase 'finished', S13) kreslí do fáze 6 plánu ještě Phaser.
-        if (roomState.roomPhase !== 'finished') return 'winner';
+        // Kdo se právě přihlásil do další hry, přejde na S13 sám (i po F5 – přihlášení drží
+        // server). Po „Odhlásit se" na ní zůstává, zpátky na S12 vede jen ◀ Zpět (nextBack).
+        const me = _menuMe();
+        const isIn = !!me && me.wantsNext === true;
+        if (isIn && !App.nextWasIn) App.nextOpen = true;
+        App.nextWasIn = isIn;
+        return me && App.nextOpen ? 'next_game' : 'winner';
     }
     return null;
 }
@@ -254,6 +259,17 @@ function _menuSeats(rows) {
 // Poznámka nad obsahem (⏳ čekání, ⚠ problém).
 function _menuNotice(ico, html, { bad = false } = {}) {
     return `<div class="bu-notice${bad ? ' bad' : ''}"><span class="bu-notice-ico">${ico}</span><span>${html}</span></div>`;
+}
+
+// Můj řádek v místnosti (null = divák). Podle socketId – jméno se po návratu může lišit.
+function _menuMe() {
+    return ((roomState && roomState.players) || []).find(p => p.socketId === socket.id) || null;
+}
+
+// Soupiska skončené hry pro S12 a S13 (stav hry po výhře chodí bez redakce).
+function _menuRoster() {
+    return nextRoster(state.players, roomState.players,
+        { leaderSocketId: roomState.leaderSocketId, mySocketId: socket.id });
 }
 
 // Položka seznamu, kterou má S7 otevřenou – vždy ČERSTVÁ z lobby_list (seznam chodí sám
@@ -501,20 +517,18 @@ ${_menuHead('Sledovat probíhající hru', esc(spectateListSubtitle(list)))}
     // Kdo je „já" a kdo lídr, se pozná podle socketId; divák v room.players není.
     winner() {
         const room = roomState;
-        const me = (room.players || []).find(p => p.socketId === socket.id) || null;
+        const me = _menuMe();
         const v = endGameView({
             spectator: !me,
             leader: !!me && room.leaderSocketId === socket.id,
-            voted: !!me && me.wantsNext === true,
+            joined: !!me && me.wantsNext === true,
         });
-        const chips = nextGameChips(state.players, room.players);
+        const roster = _menuRoster();
         const mark = { in: '✅', wait: '…', out: '✕' };
-        const tokens = chips.map(c =>
+        const tokens = roster.map(c =>
             `<span class="bu-token ${c.status}"><span class="bu-avatar${c.status === 'in' ? '' : ' off'}">${esc(c.initials)}</span>` +
             `<span class="bu-token-name">${esc(c.name)}</span><span class="bu-token-state">${mark[c.status]}</span></span>`).join('');
-        const primary = v.primary
-            ? `<button class="bu-btn primary" data-act="${v.primary.act}">${v.primary.label}</button>`
-            : `<span class="bu-done">${v.done}</span>`;
+        const primary = `<button class="bu-btn primary" data-act="${v.primary.act}">${v.primary.label}</button>`;
         const exit = v.exit
             ? `<button class="bu-btn ${v.exit.danger ? 'danger' : 'quiet'}" data-act="${v.exit.act}">${v.exit.label}</button>`
             : '';
@@ -528,12 +542,55 @@ ${_menuHead('Sledovat probíhající hru', esc(spectateListSubtitle(list)))}
     ${exit}
   </div>
   <div class="bu-tokens">${tokens}</div>
-  <div class="bu-end-sum">${esc(nextGameSummary(chips))}</div>
-  ${v.note ? `<div class="bu-end-note">${esc(v.note)}</div>` : ''}
+  <div class="bu-end-sum">${esc(nextGameSummary(roster))}</div>
 </div></div></div>`;
     },
 
-    // S14 — statistiky hry přes celou obrazovku (z S12, i ze staré Phaserové S13 přes showStats).
+    // S13 — účast v další hře (docs/menu-ui-plan.md D8). Stav (kolik, kdo) roluje, hlavní
+    // akce je v pevné liště jako v lobby – na telefonu na šířku by jinak skončila pod okrajem.
+    // Kdo neodpoví, do hry nejde; lídr zahajuje ručně, jakmile jsou aspoň NEXT_MIN_PLAYERS.
+    next_game() {
+        const room = roomState;
+        const leader = room.leaderSocketId === socket.id;
+        const roster = _menuRoster();
+        const v = nextGameView(roster, { leader, maxPlayers: room.maxPlayers, starting: !!App.startPressed });
+        const badge = { in: 'HRAJE', wait: 'ČEKÁ SE', out: 'ODEŠEL' };
+        const rows = roster.map(r =>
+            `<div class="bu-voter ${r.status}${r.me ? ' me' : ''}">` +
+            `<span class="bu-avatar${r.status === 'in' ? '' : ' off'}">${esc(r.initials)}</span>` +
+            `<span class="bu-voter-name">${esc(r.name)}</span>` +
+            `<span class="bu-voter-tag">${esc(nextRowTag(r))}</span>` +
+            `<span class="bu-badge ${r.status}">${badge[r.status]}</span></div>`).join('');
+        const segs = v.bar.map(on => `<span class="bu-seg${on ? ' on' : ''}"></span>`).join('');
+        let actions;
+        if (v.start) {
+            actions = `<button class="bu-btn primary bar grow" data-act="nextStart"${v.start.can ? '' : ' disabled'}>${v.start.label}</button>` +
+                `<button class="bu-btn danger bar" data-act="${v.exit.act}">${v.exit.label.toUpperCase()}</button>`;
+        } else if (v.joined) {
+            actions = `<div class="bu-joined">${esc(v.joinedText)}</div>` +
+                (v.canLeave ? '<button class="bu-btn quiet bar" data-act="nextLeave">Odhlásit se</button>' : '');
+        } else {
+            actions = '<button class="bu-btn primary bar grow" data-act="nextJoin">✅ CHCI HRÁT DÁL</button>';
+        }
+        // Lídr ruší hru z lišty (vedle startu), ostatní odcházejí nenápadným tlačítkem dole.
+        const exit = v.start ? '' :
+            `<button class="bu-btn quiet block" data-act="${v.exit.act}">${v.exit.label}</button>`;
+        return `
+${_menuHead(esc(`Další hra: ${room.roomName}`), esc(v.headSub), { act: 'nextBack', arg: null })}
+<div class="bu-scroll"><div class="bu-form bu-next">
+  <div class="bu-tally">
+    <div class="bu-tally-txt"><div class="bu-tally-head">${esc(v.headline)}</div><div class="bu-tally-sub">${esc(v.sub)}</div></div>
+    <div class="bu-tally-count"><span>${v.count}</span> / ${v.total}</div>
+  </div>
+  <div class="bu-segs" aria-hidden="true">${segs}</div>
+  <div class="bu-voters">${rows}</div>
+  ${v.note ? _menuNotice('🪑', esc(v.note)) : ''}
+  ${exit}
+</div></div>
+${_menuBar(null, actions)}`;
+    },
+
+    // S14 — statistiky hry přes celou obrazovku (z S12).
     // Tabulka má pevnou minimální šířku a na úzkém displeji roluje vodorovně.
     stats() {
         const players = state.players || [];
@@ -696,15 +753,20 @@ const MENU_ACTIONS = {
         renderUI();
     },
 
-    // S12 / S14. Hlasování jede ještě po staru (endGameView v core/menuModel.js).
+    // S12 / S13 / S14. Přihlášení do další hry je jedno kliknutí (D8); na S13 se přejde samo,
+    // jakmile ho server potvrdí (menuDomScreen). Tlačítko se zamkne hned z kliknutí.
     stats() { App.statsOpen = true; renderUI(); },
     statsClose() { App.statsOpen = false; renderUI(); },
-    nextVote() { socket.emit('vote_next_game', true); },
-    // Druhý klik lídra by hlasování spustil znovu a vynuloval hlasy, které mezitím přišly –
-    // tlačítko se proto zamkne hned; stav (fáze 'finished') ho vzápětí stejně vystřídá.
-    nextStart(_, el) {
-        if (el) el.disabled = true;
-        socket.emit('leader_start_next');
+    nextJoin(_, el) { if (el) el.disabled = true; socket.emit('next_join'); },
+    nextLeave(_, el) { if (el) el.disabled = true; socket.emit('next_leave'); },
+    nextOpen() { App.nextOpen = true; renderUI(); },
+    nextBack() { App.nextOpen = false; renderUI(); },
+    // Start jde zmáčknout jen jednou – App.startPressed jako v lobby (odemkne ho room_update).
+    nextStart() {
+        if (App.startPressed) return;
+        App.startPressed = true;
+        socket.emit('next_start');
+        renderUI();
     },
     toMenu() { socket.emit('go_to_menu'); },
 

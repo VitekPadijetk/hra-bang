@@ -28,7 +28,6 @@ module.exports = function installRoomService(ctx) {
             leaderSocketId,
             players: [{ socketId: leaderSocketId, playerIdx: 0, name: leaderName, ready: false, wantsNext: null, token: leaderToken }],
             gameState: new GameState(),
-            nextGameVotes: {},
             survivorKeepVotes: {},
             options: options,          // noAdvancedCards, singleChar, rotatingSheriff
             lastSheriffName: null,     // pro rotující šerif
@@ -127,7 +126,10 @@ module.exports = function installRoomService(ctx) {
         return {
             roomId: room.id, roomName: room.name, roomPhase: room.phase,
             leaderSocketId: room.leaderSocketId, maxPlayers: room.maxPlayers,
-            players: room.players,
+            // Stav hráče místnosti jde všem (kdo je bot, kdo je odpojený, kdo chce hrát další
+            // hru – `wantsNext`, S12/S13). Kromě tokenu: podle něj se po výpadku vrací na
+            // místo (rejoin), takže kdo by ho znal, převzal by cizí místo, jakmile se odpojí.
+            players: room.players.map(({ token, ...p }) => p),
             // Nastavení místnosti (rozšíření…) chodí už z lobby: klient podle něj dotahuje
             // art rozšíření, který se v preloadu nestahuje. gs.options existuje až po setupu.
             options: room.options || {},
@@ -140,7 +142,7 @@ module.exports = function installRoomService(ctx) {
 
     // ── Konec místnosti ─────────────────────────────────────────────────────────
     // Rozpuštění NENÍ jen `rooms.delete`: intro sekvence (server/intro.js), odložený
-    // broadcast, tick botů, čekání na assety i odpočet navazující hry jsou naplánované
+    // broadcast, tick botů a čekání na assety jsou naplánované
     // timeouty, které si drží referenci na `room` a emitují do socketů dál. Po pouhém
     // smazání z registru tak hráči, kteří jsou už zpátky v menu, dostávali `intro_phase`
     // / `room_update` zrušené hry a klient je z menu překlopil zpátky do ní – „jsem ve
@@ -154,7 +156,6 @@ module.exports = function installRoomService(ctx) {
         if (room._assetWaitTimer) { clearTimeout(room._assetWaitTimer); room._assetWaitTimer = null; }
         if (room._rolePeekCap) { clearTimeout(room._rolePeekCap); room._rolePeekCap = null; }
         room._rolePeekConfirm = null;
-        if (room._nextGameTimerInterval) { clearInterval(room._nextGameTimerInterval); room._nextGameTimerInterval = null; }
         room._assetWaitCb = null;
         room.assetsWaiting = false;
         room._introPlaying = false;
@@ -328,8 +329,9 @@ module.exports = function installRoomService(ctx) {
             return;
         }
 
-        // Pokud leader odchází z probíhající hry, ostatní dostanou kicked obrazovku
-        if (wasLeader && (room.phase === 'playing' || room.phase === 'char_select' || room.phase === 'finished')) {
+        // Pokud leader odchází z probíhající hry (i z obrazovky konce hry, S12/S13), ostatní
+        // dostanou kicked obrazovku – další hru bez něj nemá kdo zahájit.
+        if (wasLeader && (room.phase === 'playing' || room.phase === 'char_select')) {
             room.players.forEach(p => {
                 const s = io.sockets.sockets.get(p.socketId);
                 if (s) { s.leave(room.id); s.emit('kicked_from_game', 'Game leader opustil hru.'); }

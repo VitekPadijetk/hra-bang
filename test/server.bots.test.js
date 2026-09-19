@@ -156,15 +156,28 @@ test('createBot čísluje boty podle počtu, ne podle místa; číslo se po odeb
     assert.equal(c.name, '🤖 Bot 1');   // uvolněné číslo se znovu použije
 });
 
-test('po konci hry bot automaticky chce další hru (vote_next_game)', () => {
+test('po konci hry se bot sám přihlásí do další hry (next_join)', () => {
     const ctx = buildCtx();
     const gs = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Renegade' }], { phase: 'PLAY' });
     gs.winner = 'Zákon vyhrál!';
-    const room = { id: 'g1', players: [], gameState: gs, maxPlayers: 3 };
+    const room = { id: 'g1', phase: 'playing', players: [], gameState: gs, maxPlayers: 3 };
     ctx.rooms.set('g1', room);
     gs.players.forEach(p => ctx.createBot(room, p.name));
     ctx.runBotTickOnce(room);
-    assert.ok(room.players.every(p => p.wantsNext === true), 'všichni boti hlasovali ANO');
+    assert.ok(room.players.every(p => p.wantsNext === true), 'všichni boti jsou přihlášení');
+});
+
+// V lobby další hry leží v gameState pořád stará vyhraná hra – bot přidaný lídrem tam
+// nemá co potvrzovat (přihlašuje se jen na obrazovce konce hry).
+test('v lobby další hry se bot nepřihlašuje', () => {
+    const ctx = buildCtx();
+    const gs = mkGame([{ role: 'Sheriff' }, { role: 'Outlaw' }, { role: 'Renegade' }], { phase: 'PLAY' });
+    gs.winner = 'Zákon vyhrál!';
+    const room = { id: 'g1', phase: 'next_lobby', players: [], gameState: gs, maxPlayers: 3 };
+    ctx.rooms.set('g1', room);
+    ctx.createBot(room);
+    ctx.runBotTickOnce(room);
+    assert.equal(room.players[0].wantsNext, null);
 });
 
 // ── Driver: runBotTickOnce ─────────────────────────────────────────────────────

@@ -283,6 +283,9 @@
 .bu-bar-sum { flex: 1; min-width: 0; font-family: 'EB Garamond', serif; font-size: 15px; color: var(--muted); }
 .bu-btn.bar { flex: none; padding: 13px 26px; letter-spacing: .06em; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
 .bu-btn.bar:disabled { box-shadow: none; }
+/* Bublina chatu (chat.js) leží přes pravý dolní roh – po konci hry je vidět i nad menu
+   (S9, S13), tak jí lišta nechá místo. */
+body.chat-on .bu-bar { padding-right: 90px; }
 
 /* Telefon na šířku: rolující prostředek potřebuje každý řádek výšky. */
 @media (max-height: 500px) {
@@ -518,12 +521,6 @@ button.bu-seat { width: 100%; text-align: left; cursor: pointer; }
 .bu-end .bu-actions { margin-top: 20px; }
 .bu-actions .bu-btn { padding: 13px 22px; font-size: 17px; font-weight: 600; letter-spacing: .05em; }
 .bu-btn.gold { color: var(--gold); }
-/* Místo hlavního tlačítka, když už hráč klikl – potvrzení, ne zamčené tlačítko. */
-.bu-done {
-  display: flex; align-items: center; min-height: 44px; padding: 11px 20px; border-radius: 9px;
-  border: 1px solid var(--ok); background: var(--okBg); color: var(--ok);
-  font-size: 17px; font-weight: 600; letter-spacing: .05em;
-}
 
 /* Čipy hráčů: kdo hraje dál, má zlatý avatar a rám. */
 .bu-tokens { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; }
@@ -540,17 +537,67 @@ button.bu-seat { width: 100%; text-align: left; cursor: pointer; }
 }
 .bu-token.out .bu-token-name { color: var(--dim); }
 .bu-token-state { flex: none; font-size: 13px; color: var(--muted); }
+.bu-token.in .bu-token-state { color: var(--ok); }
 .bu-token.out .bu-token-state { color: var(--bad); }
 .bu-end-sum { margin-top: 10px; font-family: 'EB Garamond', serif; font-size: 16px; color: var(--muted); }
-.bu-end-note {
-  margin-top: 4px; font-family: 'EB Garamond', serif; font-style: italic; font-size: 15px;
-  color: var(--muted); opacity: .85; text-wrap: pretty;
-}
 @media (max-height: 500px) {
   .bu-end .bu-actions { margin-top: 12px; }
   .bu-actions .bu-btn { padding: 10px 18px; }
   .bu-tokens { margin-top: 10px; }
 }
+
+/* ── Účast v další hře (S13) ────────────────────────────────────────────── */
+
+.bu-form.bu-next { max-width: 620px; gap: 14px; }
+/* Nahoře souhrn slovy vlevo a velké „3 / 4" vpravo. */
+.bu-tally { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.bu-tally-txt { flex: 1; min-width: 0; }
+.bu-tally-head { font-size: clamp(20px, 2.8vw, 30px); font-weight: 600; letter-spacing: .02em; color: var(--gold); }
+.bu-tally-sub { margin-top: 3px; font-family: 'EB Garamond', serif; font-size: 16px; color: var(--muted); text-wrap: pretty; }
+.bu-tally-count { flex: none; font-size: 20px; color: var(--muted); white-space: nowrap; }
+.bu-tally-count span { font-family: 'Rye', serif; font-size: clamp(30px, 4.6vw, 46px); line-height: 1; color: var(--gold); }
+/* Segment na hráče: kolik lidí chybí, je vidět bez čtení. */
+.bu-segs { display: flex; gap: 4px; height: 12px; }
+.bu-seg { flex: 1; border-radius: 3px; border: 1px solid var(--line2); }
+.bu-seg.on { border-color: transparent; background: linear-gradient(var(--goldHi), var(--gold)); }
+/* Řádky hráčů: levý okraj v barvě stavu. */
+.bu-voters { display: flex; flex-direction: column; gap: 6px; }
+.bu-voter {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 9px;
+  border: 1px solid var(--line); border-left: 4px solid var(--line2); background: var(--panel);
+}
+.bu-voter.in { border-left-color: var(--ok); }
+.bu-voter.out { border-left-color: var(--badLine); }
+.bu-voter.me { border-color: var(--gold); background: var(--noticeBg); }
+.bu-voter.me.in { border-left-color: var(--ok); }
+.bu-voter .bu-avatar { width: 30px; height: 30px; }
+.bu-voter-name {
+  flex: 1; min-width: 0; font-size: 18px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bu-voter.out .bu-voter-name { color: var(--dim); }
+.bu-voter-tag { flex: none; font-family: 'EB Garamond', serif; font-size: 14px; color: var(--muted); }
+.bu-badge {
+  flex: none; padding: 4px 11px; border-radius: 14px; font-size: 13px; letter-spacing: .06em;
+  border: 1px solid var(--line2); color: var(--muted);
+}
+.bu-badge.in { border-color: transparent; background: linear-gradient(var(--goldHi), var(--gold)); color: var(--onGold); }
+.bu-badge.out { border-color: var(--badLine); background: var(--badBg); color: var(--bad); }
+/* Lišta přihlášeného: zelený pruh místo tlačítka (nic se nepotvrzuje podruhé). */
+.bu-joined {
+  flex: 1 1 260px; min-width: 0; padding: 12px 15px; border-radius: 9px;
+  border: 1px solid var(--ok); background: var(--okBg); color: var(--text);
+  font-size: 17px; letter-spacing: .02em;
+}
+.bu-btn.quiet.bar { box-shadow: none; font-size: 15px; }
+@media (max-height: 500px) {
+  .bu-form.bu-next { gap: 10px; }
+  .bu-voter { padding: 6px 12px; }
+  .bu-voter .bu-avatar { width: 26px; height: 26px; }
+  .bu-joined { padding: 9px 12px; font-size: 16px; }
+}
+/* Úzký displej: přívlastek („(ty) · Game Leader") by jméno zmáčkl na pár písmen. */
+@media (max-width: 560px) { .bu-voter-tag { display: none; } }
 
 /* ── Statistiky (S14) – přes celou obrazovku ────────────────────────────── */
 

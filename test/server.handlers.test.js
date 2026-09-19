@@ -32,8 +32,8 @@ const GROUPS = {
         'add_bot', 'remove_bot', 'create_bot_game', 'expansion_ready',
     ] },
     nextgame: { reg: registerNextGame, events: [
-        'select_character', 'intro_role_ok', 'keep_character', 'vote_next_game',
-        'leader_start_next', 'confirm_next_game', 'check_start_next', 'open_next_lobby',
+        'select_character', 'intro_role_ok', 'keep_character',
+        'next_join', 'next_leave', 'next_start', 'check_start_next',
     ] },
     game: { reg: registerGame, events: [
         'draw_card', 'play_card', 'play_bang', 'play_special', 'select_target_card',
@@ -70,15 +70,15 @@ for (const [name, { reg, events }] of Object.entries(GROUPS)) {
     });
 }
 
-test('všechny moduly dohromady pokrývají 95 unikátních eventů', () => {
+test('všechny moduly dohromady pokrývají 94 unikátních eventů', () => {
     const all = [];
     for (const { reg } of Object.values(GROUPS)) {
         const socket = mkSocket();
         reg(socket, mkCtx(), () => {});
         all.push(...socket._events);
     }
-    assert.equal(all.length, 95);
-    assert.equal(new Set(all).size, 95, 'žádný event se nesmí registrovat dvakrát');
+    assert.equal(all.length, 94);
+    assert.equal(new Set(all).size, 94, 'žádný event se nesmí registrovat dvakrát');
 });
 
 // Druhá polovina invariantu „bot se nikdy nezasekne" (první je v test/botPolicy.test.js):

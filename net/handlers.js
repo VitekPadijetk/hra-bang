@@ -3369,14 +3369,14 @@ function _applyRoomUpdate(payload) {
         App.debugSelectFor = null;
     }
     // Pokud roomPhase prechazi z lobby -> char_select, intro brzy dorazi.
-    // Navazující hra startuje z 'finished' / 'next_lobby' – i tam se čeká na intro,
-    // jinak by na 50 ms probliklo staré okno výběru postavy.
+    // Navazující hra startuje z 'next_lobby' (S9), nebo rovnou z konce hry (S13, plný
+    // stůl) – i tam se čeká na intro, jinak by na 50 ms probliklo staré okno výběru postavy.
     // Režimy, kde server intro přeskakuje (lifecycle.js), musí zůstat bez flagu –
     // jinak by klient čekal na cinematiku, která nikdy nepřijde.
     const _introSkipped = !!(payload.gameState?.isDebug
         || payload.gameState?.options?.singleChar || payload.gameState?.options?.botGame);
     if (payload.roomPhase === 'char_select' && !_introActive() && !_introSkipped &&
-        ['lobby', 'next_lobby', 'finished'].includes(roomState?.roomPhase)) {
+        (['lobby', 'next_lobby'].includes(roomState?.roomPhase) || !!roomState?.gameState?.winner)) {
         App.introExpected = true;
     }
     // Jakmile intro dorazilo, zrus flag
@@ -3385,7 +3385,8 @@ function _applyRoomUpdate(payload) {
     // Zámek tlačítka „Zahájit hru" (view/menuDom.js) platí jen do odchodu z lobby – jakmile
     // se místnost pohne dál (hra běží / nová sestava), tlačítko je zase klikatelné. Uvolní ho
     // i neplný stůl: když někdo odešel těsně před klikem, server start zahodil a tlačítko
-    // by jinak zůstalo navždy na „ZAHAJUJI…".
+    // by jinak zůstalo navždy na „ZAHAJUJI…". Na konci hry (S13 – „Zahájit další hru")
+    // ho uvolní kterýkoli další stav: start buď proběhl (fáze se změnila), nebo neprošel.
     if (payload.roomPhase !== 'lobby' && payload.roomPhase !== 'next_lobby') App.startPressed = false;
     else if (!payload.assetsWaiting && (payload.players || []).length < payload.maxPlayers) App.startPressed = false;
     roomState = payload;

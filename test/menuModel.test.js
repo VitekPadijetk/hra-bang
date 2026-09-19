@@ -313,37 +313,112 @@ test('playerWon: hra pro 3 podle role, Divoký západ podle jména', () => {
     assert.equal(M.playerWon(table[0], null, table), false);
 });
 
-test('nextGameChips: kdo odešel z místnosti, zůstává čipem s ✕', () => {
+// ── Další hra: účast (S12 čipy, S13) – D8 ──
+
+const roomPl = (name, socketId, wantsNext = null, extra = {}) => ({ name, socketId, wantsNext, ...extra });
+
+test('nextRoster: páruje podle jména, kdo odešel z místnosti, je out; lídr a já podle socketId', () => {
     const game = [pl('Honza', 'Sheriff'), pl('🤖 Bot 1', 'Outlaw'), pl('Kitty', 'Renegade'), pl('Ringo', 'Outlaw')];
-    const room = [{ name: 'Honza', wantsNext: true }, { name: '🤖 Bot 1', wantsNext: true }, { name: 'Ringo', wantsNext: null }];
-    assert.deepEqual(M.nextGameChips(game, room), [
-        { name: 'Honza', initials: 'HO', status: 'in' },
-        { name: 'Bot 1', initials: 'BO', status: 'in' },
-        { name: 'Kitty', initials: 'KI', status: 'out' },
-        { name: 'Ringo', initials: 'RI', status: 'wait' },
+    const room = [roomPl('Honza', 'H', true), roomPl('🤖 Bot 1', 'B1', true, { isBot: true }),
+        roomPl('Ringo', 'R', null, { disconnected: true })];
+    const r = M.nextRoster(game, room, { leaderSocketId: 'H', mySocketId: 'R' });
+    assert.deepEqual(r.map(x => [x.name, x.initials, x.status]), [
+        ['Honza', 'HO', 'in'], ['Bot 1', 'BO', 'in'], ['Kitty', 'KI', 'out'], ['Ringo', 'RI', 'wait'],
     ]);
+    assert.deepEqual(r.map(x => x.leader), [true, false, false, false]);
+    assert.deepEqual(r.map(x => x.me), [false, false, false, true]);
+    assert.deepEqual(r.map(x => x.bot), [false, true, false, false]);
+    assert.equal(r[3].away, true, 'odpojený (hraje za něj bot)');
+    assert.equal(r[2].leader, false, 'kdo odešel, není ničím – ani „já" bez socketId');
+    assert.equal(M.nextRowTag(r[0]), 'Game Leader');
+    assert.equal(M.nextRowTag(r[3]), '(ty) · odpojen');
+    assert.equal(M.nextRowTag(r[1]), 'bot');
 });
 
-test('nextGameSummary: skloňuje a vynechá nuly', () => {
-    const c = (...st) => st.map(status => ({ status }));
-    assert.equal(M.nextGameSummary(c('in', 'in', 'in', 'wait', 'out')), '3 hráči chtějí hrát dál · 1 se rozhoduje · 1 odešel');
-    assert.equal(M.nextGameSummary(c('in', 'wait', 'wait')), '1 hráč chce hrát dál · 2 se rozhodují');
-    assert.equal(M.nextGameSummary(c('in', 'in', 'in', 'in', 'in')), '5 hráčů chce hrát dál');
-    assert.equal(M.nextGameSummary(c('wait', 'wait', 'out', 'out')), 'Další hru zatím nikdo nepotvrdil · 2 se rozhodují · 2 odešli');
+const roster = (...st) => st.map((status, i) => ({ status, me: false, name: 'P' + i }));
+
+test('nextTally: total bez odešlých, start od NEXT_MIN_PLAYERS přihlášených', () => {
+    assert.equal(M.NEXT_MIN_PLAYERS, 3);
+    assert.deepEqual(M.nextTally(roster('in', 'in', 'wait', 'out')),
+        { in: 2, wait: 1, out: 1, total: 3, missing: 1, canStart: false });
+    assert.equal(M.nextTally(roster('in', 'in', 'in')).canStart, true);
+    assert.equal(M.nextTally(roster('in', 'in', 'in')).missing, 0);
 });
 
-test('endGameView: lídr otevírá hlasování a ruší hru, hráč hlasuje, divák odchází', () => {
+test('nextGameSummary: kolik je v další hře, a dokud je málo, kolik je potřeba', () => {
+    assert.equal(M.nextGameSummary(roster('in', 'in', 'in', 'wait', 'out')), '3 hráči jsou v další hře · 1 se rozhoduje · 1 odešel');
+    assert.equal(M.nextGameSummary(roster('in', 'in', 'in', 'in', 'in')), '5 hráčů je v další hře');
+    assert.equal(M.nextGameSummary(roster('in', 'wait', 'wait')),
+        'Na další hru jsou potřeba alespoň 3 hráči · zatím 1 přihlášený · 2 se rozhodují');
+    assert.equal(M.nextGameSummary(roster('wait', 'wait', 'out', 'out')),
+        'Na další hru jsou potřeba alespoň 3 hráči · zatím nikdo · 2 se rozhodují · 2 odešli');
+});
+
+test('endGameView: „Chci další hru" rovnou přihlašuje; lídr ruší hru, divák jen odchází', () => {
     const leader = M.endGameView({ leader: true });
-    assert.equal(leader.primary.act, 'nextStart');
+    assert.equal(leader.primary.act, 'nextJoin');
     assert.deepEqual(leader.exit, { label: '✕ Zrušit hru', act: 'cancelGame', danger: true });
-    assert.equal(M.endGameView({}).primary.act, 'nextVote');
+    assert.equal(M.endGameView({}).primary.act, 'nextJoin');
     assert.equal(M.endGameView({}).exit.act, 'toMenu');
-    const voted = M.endGameView({ voted: true });
-    assert.equal(voted.primary, null);
-    assert.match(voted.done, /hrát dál/);
+    // Přihlášený, který se vrátil ze S13 (◀ Zpět), jde hlavní akcí zpátky na S13.
+    assert.equal(M.endGameView({ joined: true }).primary.act, 'nextOpen');
     const spec = M.endGameView({ spectator: true, leader: true });
     assert.equal(spec.primary.act, 'toMenu');
     assert.equal(spec.exit, null);
+});
+
+test('nextGameView: přihlášený hráč – zelený pruh, odhlásit se, bez startu', () => {
+    const r = roster('in', 'in', 'wait', 'out');
+    r[1].me = true;
+    const v = M.nextGameView(r, { maxPlayers: 4 });
+    assert.equal(v.headline, 'Chybí hráči do další hry');
+    assert.equal(v.sub, '1 hráč se ještě rozhoduje · kdo neodpoví, do hry nejde');
+    assert.equal(v.count, 2);
+    assert.equal(v.total, 3);
+    assert.deepEqual(v.bar, [true, true, false]);
+    assert.equal(v.joined, true);
+    assert.equal(v.joinedText, '✅ Jsi v další hře. Čeká se na 1 hráče.');
+    assert.equal(v.canLeave, true);
+    assert.equal(v.start, null);
+    assert.deepEqual(v.exit, { label: 'Opustit hru', act: 'toMenu', danger: false });
+    assert.equal(v.headSub, 'Jsi přihlášený — čeká se na ostatní');
+});
+
+test('nextGameView: nepřihlášený hráč dostane „Chci hrát dál"', () => {
+    const r = roster('in', 'wait', 'wait');
+    r[2].me = true;
+    const v = M.nextGameView(r, { maxPlayers: 3 });
+    assert.equal(v.joined, false);
+    assert.equal(v.canLeave, false);
+    assert.equal(v.headSub, 'Zatím nejsi přihlášený');
+    assert.equal(v.sub, '2 hráči se ještě rozhodují · kdo neodpoví, do hry nejde');
+    assert.equal(v.bar.length, 3, 'segmentů aspoň tolik, kolik je potřeba');
+});
+
+test('nextGameView: lídr – start zamčený, dokud nejsou tři; pak s poznámkou o volných místech', () => {
+    const few = roster('in', 'in', 'wait');
+    few[0].me = true;
+    const a = M.nextGameView(few, { leader: true, maxPlayers: 4 });
+    assert.deepEqual(a.start, { label: '▶ ZAHÁJIT DALŠÍ HRU (chybí 1)', can: false });
+    assert.equal(a.canLeave, false, 'lídr se neodhlašuje – hru zahájí, nebo zruší');
+    assert.deepEqual(a.exit, { label: '✕ Zrušit hru', act: 'cancelGame', danger: true });
+    assert.equal(a.note, null);
+
+    const ok = roster('in', 'in', 'in', 'out');
+    ok[0].me = true;
+    const b = M.nextGameView(ok, { leader: true, maxPlayers: 4 });
+    assert.deepEqual(b.start, { label: '▶ ZAHÁJIT DALŠÍ HRU (3 hráči)', can: true });
+    assert.equal(b.headline, 'Další hra může začít');
+    assert.equal(b.sub, 'Všichni se rozhodli.');
+    assert.equal(b.joinedText, '✅ Jsi v další hře. Všichni se rozhodli — můžeš zahájit.');
+    assert.equal(b.headSub, 'Jsi přihlášený — hru zahajuješ ty');
+    assert.equal(b.note, 'Volné místo u stolu doplníš v lobby další hry.');
+
+    const full = roster('in', 'in', 'in', 'in', 'in');
+    full[0].me = true;
+    assert.equal(M.nextGameView(full, { leader: true, maxPlayers: 5 }).note, null, 'plný stůl startuje rovnou');
+    assert.deepEqual(M.nextGameView(full, { leader: true, maxPlayers: 5, starting: true }).start,
+        { label: 'ZAHAJUJI…', can: false });
 });
 
 test('statsRow + topCardsLabel: přesnost v procentech, tři nejčastější karty', () => {

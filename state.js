@@ -37,8 +37,12 @@ const App = {
     kickedSpectator: false,
     // Otevřené statistiky hry (S14) přes konec hry; zavírají se samy s výsledkem (menuDomScreen).
     statsOpen: false,
-    // Lídr zmáčkl „Zahájit hru" – zamkne tlačítko, než dorazí odpověď serveru
-    // (start může chvíli čekat na assety rozšíření). Viz view/menu.js.
+    // Účast v další hře (S13) místo konce hry (S12). Otevře se sama, jakmile server potvrdí
+    // přihlášení (nextWasIn = byl jsem přihlášený při minulém renderu) – viz menuDomScreen.
+    nextOpen: false,
+    nextWasIn: false,
+    // Lídr zmáčkl „Zahájit hru" (S8/S9) nebo „Zahájit další hru" (S13) – zamkne tlačítko,
+    // než dorazí odpověď serveru (start může chvíli čekat na assety rozšíření).
     startPressed: false,
     introRoleOkSent: false,
     introExpected: false,

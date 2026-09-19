@@ -81,7 +81,7 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 | 3 | **S6, S7, S10** + prázdné stavy | položky seznamu: lídr, `next` (navazující), rozšíření; `game_list` i při výhře | ✅ |
 | 4 | **S8, S9** lobby (sedačky, ➕ Bot, ✕ bot, varovné „Opustit hru") | `start_game` jen s plným stolem | ✅ |
 | 5 | **S12, S14, S15** (statistiky už jsou HTML v `showStats` → nový vzhled + seskupení podle rolí) | – | ✅ |
-| 6 | **S13** účast in / wait / out (D8) | `next_join` / `next_leave`, stav na hráče v `roomPayload`, ruční start lídrem, pryč `nextGameTimer`; testy `test/server.*` | ☐ |
+| 6 | **S13** účast in / wait / out (D8) | `next_join` / `next_leave`, stav na hráče v `roomPayload`, ruční start lídrem, pryč `nextGameTimer`; testy `test/server.*` | ✅ |
 | 7 | **G1, G2, G3, S0, S1, S16** (D7) | `join_error` → `{ title, hint }` | ☐ |
 | 8 | Úklid: smazat Phaserové obrazovky z `view/menu.js`, `renderWinnerScreen` (view/screens.js), `ui_choice` v game.js, starý `#rotate-overlay`; řádek do CLAUDE.md + `docs/pravidla/menu-ui.md` | – | ☐ |
 
@@ -219,3 +219,35 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
   strany); S15 1280×720 a divák 740×360 světlý. Přechody: S12 → S14 → S12, S14 nad Phaserovou S13 →
   zavřít (vrátí se plátno), S13 → `showStats()` → S14. Skutečná hra 3 botů ze S11 doběhla do S12
   (divák, boti ✅).
+
+### Fáze 6 (hotovo)
+
+- **Hlasování s odpočtem je pryč** (D8). Server: `next_join` (přihlásit), `next_leave` (odhlásit –
+  zpátky mezi rozhodující se; lídr nesmí), `next_start` (jen lídr, aspoň `NEXT_MIN_PLAYERS` = 3
+  přihlášených, lídr se startem přihlásí sám). Kdo se nepřihlásil, dostane `go_to_menu` a opustí kanál
+  místnosti (odpojený, za kterého hrál bot, se uvolní přes `botRelease`). **Plný stůl startuje rovnou
+  navazující hru**, jinak se otevře S9 (`next_lobby`) a volná místa se doplní tam. `check_start_next`
+  zůstal jen pro S9. Zmizely `vote_next_game`, `leader_start_next`, `confirm_next_game`,
+  `open_next_lobby`, fáze místnosti `'finished'`, `nextGameTimer` i `nextGameVotes`.
+- Přihlašovat se jde jen na obrazovce konce hry (`atEndScreen`): v `next_lobby` leží v `room.gameState`
+  pořád stará vyhraná hra. Proto se tam nepřihlašují ani boti (`runBotTickOnce`).
+- Stav na hráče = `wantsNext` (`true` / `null`) v `room.players` v `room_update`; kdo odešel, v místnosti
+  není a klient ho páruje se soupiskou skončené hry podle jména (`nextRoster` v core/menuModel.js –
+  nahradil `nextGameChips`). **`roomPayload` už neposílá tokeny hráčů** – podle tokenu se po výpadku
+  vrací na místo, takže kdo ho znal, mohl převzít cizí místo, jakmile se odpojil.
+- `startNextGame` nově volá `broadcastLobbyList` – místnost startovaná ze S9 jinak visela v S6.
+- Klient: `menuDomScreen()` vrací **`next_game`** (S13), když je hráč přihlášený – přejde tam sám, jakmile
+  server přihlášení potvrdí (`App.nextWasIn` hlídá přechod, takže to funguje i po F5). Po „Odhlásit se“
+  na S13 zůstává („✅ CHCI HRÁT DÁL“), „◀ Zpět“ vede na S12 (`App.nextOpen = false`), kde je hlavní akcí
+  „✅ Jsi v další hře ›“. Divák S13 nevidí.
+- S13 (`nextGameView`, `nextRowTag` v core/menuModel.js): souhrn a velké „3 / 4“, segmentový pruh,
+  řádky HRAJE / ČEKÁ SE / ODEŠEL (přívlastek „(ty) · Game Leader · bot · odpojen“). **Odchylka od návrhu:**
+  hlavní akce jsou v pevné liště dole jako v S8/S9 (na telefonu na šířku by v rolující ploše skončily
+  pod okrajem) – lídr „▶ ZAHÁJIT DALŠÍ HRU (3 hráči)“ / „(chybí 1)“ + „✕ ZRUŠIT HRU“, přihlášený zelený pruh
+  „✅ Jsi v další hře. Čeká se na 1 hráče.“ + „Odhlásit se“, nepřihlášený „✅ CHCI HRÁT DÁL“. Když stůl po
+  startu nebude plný, poznámka říká, že volná místa se doplní v lobby další hry.
+- Bublina chatu leží po konci hry i v S9 přes pravý dolní roh: `showOrHideChat` (chat.js) dává `<body>`
+  třídu `chat-on` a lišta akcí si vpravo nechá místo.
+- `renderWinnerScreen` (view/screens.js) je teď mrtvý kód – smaže se ve fázi 8.
+- Otevřené: při stole pro 3 a jednom odchodu se na 3 přihlášené už nedá dojít (nikdo nový do S13
+  nepřijde), lídr pak může jen zrušit hru.

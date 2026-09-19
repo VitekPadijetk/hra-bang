@@ -330,12 +330,14 @@ module.exports = function installBotService(ctx) {
         if (!gs) return;
 
 
-        // Po konci hry: boti automaticky chtějí navazující hru (lidský leader ji
+        // Po konci hry: boti se rovnou přihlásí do navazující hry (lidský leader ji
         // pak může spustit; u hry jen botů je to neškodné – divák stejně jen odejde).
+        // V lobby další hry leží v gameState pořád stará vyhraná hra – tam už nic.
         if (gs.winner) {
+            if (room.phase === 'next_lobby') return;
             for (const rp of room.players) {
                 if (rp.isBot && rp.wantsNext !== true) {
-                    botSockets.get(rp.socketId)?._fire('vote_next_game', true);
+                    botSockets.get(rp.socketId)?._fire('next_join');
                 }
             }
             return;

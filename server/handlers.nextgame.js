@@ -1,9 +1,10 @@
 // server/handlers.nextgame.js — socket handlery pro výběr postav, potvrzení intro
-// rolí, a tok „další hry" (hlasování, časovač, next_lobby).
-// registerNextGameHandlers(socket, ctx, withRoom) – těla byte-identická.
+// rolí a tok „další hry" (přihlášení, start lídrem, next_lobby).
+// registerNextGameHandlers(socket, ctx, withRoom).
+const { NEXT_MIN_PLAYERS } = require('../core/menuModel.js');
 module.exports = function registerNextGameHandlers(socket, ctx, withRoom) {
-    const { rooms, broadcastRoom, broadcastLobbyList, findRoomBySocket,
-            startNextGame, introStartDeckPhase, io } = ctx;
+    const { broadcastRoom, broadcastLobbyList, findRoomBySocket,
+            startNextGame, introStartDeckPhase, io, botSockets } = ctx;
 
     // ── CHAR SELECT ─────────────────────────────────────────────────────────
     socket.on('select_character', (charName) => {
@@ -60,94 +61,73 @@ module.exports = function registerNextGameHandlers(socket, ctx, withRoom) {
         broadcastRoom(room);
     });
 
-    // ── END GAME / NEXT GAME ─────────────────────────────────────────────────
-    socket.on('vote_next_game', (vote) => {
+    // ── DALŠÍ HRA: ÚČAST (S12 / S13, docs/menu-ui-plan.md D8) ─────────────────
+    // Po konci hry se každý přihlásí jedním kliknutím („Chci další hru") a nikdo nic
+    // nepotvrzuje podruhé. Odpočet není: hru zahájí lídr ručně, jakmile jsou přihlášení
+    // aspoň NEXT_MIN_PLAYERS; kdo se do té doby nepřihlásí, do hry nejde. Stav nese
+    // `wantsNext` hráče místnosti (true = hraje, null = rozhoduje se) a chodí v room_update.
+    // Kdo z místnosti odešel, v ní už není – klient ho páruje se soupiskou skončené hry
+    // (nextRoster v core/menuModel.js).
+
+    // Konec hry, ale ještě ne lobby další hry: v 'next_lobby' leží v room.gameState
+    // pořád stará vyhraná hra, přihlašovat se tam ale už nejde.
+    function atEndScreen(room) {
+        return !!room && !!room.gameState?.winner && room.phase !== 'lobby' && room.phase !== 'next_lobby';
+    }
+
+    socket.on('next_join', () => {
         const room = findRoomBySocket(socket.id);
-        if (!room || !room.gameState.winner) return;
+        if (!atEndScreen(room)) return;
         const p = room.players.find(pl => pl.socketId === socket.id);
-        if (!p) return;
-        p.wantsNext = vote;
+        if (!p || p.wantsNext === true) return;
+        p.wantsNext = true;
         broadcastRoom(room);
     });
 
-    socket.on('leader_start_next', () => {
+    // „Odhlásit se" = zpátky mezi rozhodující se (klidně se zase přihlásí). Lídr to
+    // neumí: hru buď zahájí (a hraje), nebo ji zruší.
+    socket.on('next_leave', () => {
         const room = findRoomBySocket(socket.id);
-        if (!room || room.leaderSocketId !== socket.id || !room.gameState.winner) return;
-        room.phase = 'finished';
-        room.players.forEach(p => {
-            p.wantsNext = (p.socketId === socket.id) ? true : null;
+        if (!atEndScreen(room) || room.leaderSocketId === socket.id) return;
+        const p = room.players.find(pl => pl.socketId === socket.id);
+        if (!p || p.wantsNext !== true) return;
+        p.wantsNext = null;
+        broadcastRoom(room);
+    });
+
+    // Lídr zahajuje (a tím sám hraje): přihlášení jdou dál, ostatní do menu. Plný stůl
+    // rovnou startuje navazující hru, jinak se otevře lobby další hry (S9) a volná místa
+    // se doplní tam (boti, noví hráči).
+    socket.on('next_start', () => {
+        const room = findRoomBySocket(socket.id);
+        if (!atEndScreen(room) || room.leaderSocketId !== socket.id) return;
+        const joined = room.players.filter(p => p.wantsNext === true || p.socketId === socket.id);
+        if (joined.length < NEXT_MIN_PLAYERS) return;
+        room.players.filter(p => !joined.includes(p)).forEach(p => {
+            // Odpojený člověk, za kterého hrál bot: fake socket pod jeho id patřil téhle hře.
+            ctx.botRelease?.(room, p);
+            if (p.isBot) botSockets?.delete(p.socketId);
+            const s = io.sockets.sockets.get(p.socketId);
+            if (s) { s.leave(room.id); s.emit('go_to_menu'); }
         });
-        if (room._nextGameTimerInterval) clearInterval(room._nextGameTimerInterval);
-        room.nextGameTimer = 20;
-        room._nextGameTimerInterval = setInterval(() => {
-            if (!rooms.has(room.id)) { clearInterval(room._nextGameTimerInterval); return; }
-            room.nextGameTimer = Math.max(0, (room.nextGameTimer || 0) - 1);
-            if (room.players.every(p => p.wantsNext === true)) {
-                clearInterval(room._nextGameTimerInterval);
-                room._nextGameTimerInterval = null;
-                room.nextGameTimer = null;
-                broadcastRoom(room);
-                return;
-            }
-            broadcastRoom(room);
-            if (room.nextGameTimer <= 0) {
-                clearInterval(room._nextGameTimerInterval);
-                room._nextGameTimerInterval = null;
-                room.nextGameTimer = null;
-                room.players.forEach(p => {
-                    if (p.wantsNext !== true) {
-                        const s = io.sockets.sockets.get(p.socketId);
-                        if (s) s.emit('go_to_menu');
-                    }
-                });
-                room.players = room.players
-                    .filter(p => p.wantsNext === true)
-                    .map((p, i) => ({ ...p, playerIdx: i, wantsNext: null, wasOriginalSurvivor: true }));
-                room.phase = 'next_lobby';
-                broadcastRoom(room);
-                broadcastLobbyList();
-            }
-        }, 1000);
-        broadcastRoom(room);
-    });
-
-    socket.on('confirm_next_game', () => {
-        const room = findRoomBySocket(socket.id);
-        if (!room || room.phase !== 'finished') return;
-        const p = room.players.find(pl => pl.socketId === socket.id);
-        if (p) { p.wantsNext = true; broadcastRoom(room); }
-    });
-
-    socket.on('check_start_next', () => {
-        const room = findRoomBySocket(socket.id);
-        if (!room || room.leaderSocketId !== socket.id) return;
-        if (room.phase === 'next_lobby') {
-            if (room.players.length >= room.maxPlayers) {
-                startNextGame(room);
-            }
+        room.players = joined;
+        room.players.forEach((p, i) => { p.playerIdx = i; p.wasOriginalSurvivor = true; });
+        ctx.glog.system(`"${room.name}" – další hra: ${joined.map(p => p.name).join(', ')}`);
+        if (room.players.length >= room.maxPlayers) {
+            startNextGame(room);
             return;
         }
-        if (room.phase !== 'finished') return;
-        const allIn = room.players.every(p => p.wantsNext === true);
-        if (allIn) {
-            room.players.forEach(p => { p.wasOriginalSurvivor = true; });
-            startNextGame(room);
-        }
-    });
-
-    socket.on('open_next_lobby', () => {
-        const room = findRoomBySocket(socket.id);
-        if (!room || room.leaderSocketId !== socket.id) return;
-        room.players = room.players
-            .filter(p => p.wantsNext === true)
-            .map((p, i) => ({
-                ...p,
-                playerIdx: i,
-                wantsNext: null,
-                wasOriginalSurvivor: true,
-            }));
+        room.players.forEach(p => { p.wantsNext = null; });
         room.phase = 'next_lobby';
         broadcastRoom(room);
         broadcastLobbyList();
+    });
+
+    // Start z lobby další hry (S9) – jen s plným stolem, stejně jako start_game.
+    socket.on('check_start_next', () => {
+        const room = findRoomBySocket(socket.id);
+        if (!room || room.leaderSocketId !== socket.id) return;
+        if (room.phase !== 'next_lobby' || room.players.length < room.maxPlayers) return;
+        startNextGame(room);
     });
 };
