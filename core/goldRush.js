@@ -37,6 +37,17 @@ if (typeof require === 'function') {
     if (typeof lawLocksOther === 'undefined') {
         globalThis.lawLocksOther = require('./playability.js').lawLocksOther;
     }
+    // …a karta Zlatá horečka ukončuje tah, což vynucená karta nedovolí vůbec.
+    if (typeof lawForcedCard === 'undefined') {
+        globalThis.lawForcedCard = require('./playability.js').lawForcedCard;
+    }
+    // Láhev a Komplic míří jako Bang! / Panika! – dostřel a vzdálenost jsou sdílené.
+    if (typeof computeCanHit === 'undefined') {
+        globalThis.computeCanHit = require('./distance.js').computeCanHit;
+    }
+    if (typeof computeDistance === 'undefined') {
+        globalThis.computeDistance = require('./distance.js').computeDistance;
+    }
 }
 
 // Hraje se rozšíření? Vlastní příznak `_goldRush`, ne „balíček není prázdný" – karet je
@@ -79,11 +90,128 @@ function gearJudgeBlocks(state, card) {
 }
 
 // Co nákup udělá navíc, z pohledu Práva západu. Zrcadlí GameState._gearLawOpts.
+// Rum léčí podle toho, kolik barev padne – počítá se nejhorší případ (4), stejně jako
+// u Tequily, kde se v tu chvíli ještě neví, koho vyléčí. Láhev a Komplic se posuzují
+// až podle zvoleného režimu (GEAR_MODE_LAW níž).
 function gearLawOpts(card) {
     if (!card) return {};
     if (card.effect === 'ZH_PANAK') return { heal: 1 };
     if (card.effect === 'ZH_UNION_PACIFIC') return { draws: 4 };
+    if (card.effect === 'ZH_RUM') return { heal: 4 };
     return {};
+}
+
+// ── Hnědé vybavení s volbou (fáze 4): Láhev a Komplic ───────────────────────
+// „Může být zahrána jako Panika!, Pivo nebo BANG!" / „…jako Hokynářství, Duel nebo
+// Cat Balou." Dodatek: i když má stejný efekt, NEPOVAŽUJE SE za tu kartu – takže se na
+// něj nevztahuje nic, co se ptá na kartu samotnou: limit 1× BANG!/tah, Slabův bonus,
+// Kazatel, „Pivo ve dvou hráčích", bonus Tequily Joea (FAQ Q14) ani paměť Lee Van Kliffa.
+//
+// JAK se karta zahraje, se volí rovnou s nákupem (`gear_buy { rowIdx, mode }`), ne až
+// po zaplacení: kdo zaplatí a pak zjistí, že zvolený způsob nemá na koho, přišel by
+// o valouny zadarmo. Cíl se pak vybírá stejnou fází jako u Panáku (GEAR_TARGET).
+// Tenhle blok je jediný zdroj pravdy pro server (gearBuy v logic/goldRush.js), okno
+// obchodu i bota – rozejít se nesmí, jinak by server nákup mlčky odmítl.
+const GEAR_MODES = {
+    ZH_LAHEV:   ['PANIC', 'BEER', 'BANG'],
+    ZH_KOMPLIC: ['STORE', 'DUEL', 'CAT_BALOU'],
+};
+// Jak se režim jmenuje v UI a logu (karta, jejíž efekt se půjčuje).
+const GEAR_MODE_LABEL = {
+    PANIC: 'Panika!', BEER: 'Pivo', BANG: 'BANG!',
+    STORE: 'Hokynářství', DUEL: 'Duel', CAT_BALOU: 'Cat Balou',
+};
+// Režimy, které míří na hráče (vybírá se ve fázi GEAR_TARGET).
+const GEAR_MODE_AIMED = ['PANIC', 'BANG', 'DUEL', 'CAT_BALOU'];
+// Co režim udělá navíc, z pohledu Práva západu (viz lawLocksOther). BANG! z Láhve limit
+// karet Bang! nečerpá (dodatek), takže mu nevadí; Panika! přidá do ruky ukradenou kartu,
+// Hokynářství líznutou, Pivo doléčí život.
+const GEAR_MODE_LAW = { PANIC: { draws: 1 }, BEER: { heal: 1 }, STORE: { draws: 1 } };
+
+function gearModesOf(card) {
+    return (card && GEAR_MODES[card.effect]) || null;
+}
+
+// Má hráč kartu, o kterou by šlo přijít (Panika!, Cat Balou)? Vybavení se nepočítá –
+// na to Panika ani Cat Balou nesmí (R3), proto se na `gear` vůbec neptáme.
+function _gearLosableCard(p) {
+    return (p.hand || []).length > 0 || (p.board || []).length > 0 ||
+           !!(p.weapon && p.weapon.id !== -1);
+}
+
+// Legální cíle cíleného režimu, měřené od kupujícího. Stejné podmínky, jako by hrál
+// skutečnou kartu z ruky: BANG! na dostřel zbraně (Laso ho srazí na 1 – computeCanHit),
+// Panika! na vzdálenost 1, Cat Balou a Duel na kohokoli. Sám na sebe nikdy.
+function gearModeTargets(state, playerIdx, mode) {
+    const out = [];
+    (state.players || []).forEach((q, i) => {
+        if (i === playerIdx || !q || !isInPlay(q)) return;
+        switch (mode) {
+            case 'BANG':
+                if (computeCanHit(state, playerIdx, i)) out.push(i);
+                break;
+            case 'PANIC':
+                if (_gearLosableCard(q) && computeDistance(state, playerIdx, i) <= 1) out.push(i);
+                break;
+            case 'CAT_BALOU':
+                if (_gearLosableCard(q)) out.push(i);
+                break;
+            case 'DUEL':
+                out.push(i);
+                break;
+            default:
+                break;
+        }
+    });
+    return out;
+}
+
+// Proč se tenhle režim teď zahrát nedá (null = dá). Neřeší cenu ani obchod – to dělá
+// gearBuyReason, který se na tohle ptá až nakonec.
+function gearModeReason(state, playerIdx, mode) {
+    const me = state.players[playerIdx];
+    if (!me || !GEAR_MODE_LABEL[mode]) return 'neznámý způsob';
+    // Pivo na plný život nic neudělá – stejně jako karta Pivo, která se pak nedá zahrát.
+    if (mode === 'BEER' && me.health >= me.maxHealth) return 'máš plné životy';
+    if (GEAR_MODE_AIMED.includes(mode) && !gearModeTargets(state, playerIdx, mode).length) {
+        switch (mode) {
+            case 'BANG':      return 'nikdo v dostřelu';
+            case 'PANIC':     return 'nikdo na vzdálenost 1 nemá kartu';
+            case 'CAT_BALOU': return 'nikdo nemá kartu';
+            default:          return 'není na koho';
+        }
+    }
+    if (lawLocksOther(state, me, playerIdx, null, GEAR_MODE_LAW[mode] || {}))
+        return 'Právo západu – nejdřív zahraj vynucenou kartu';
+    return null;
+}
+
+// Podmínky vázané na EFEKT karty (ne na obchod): režim Láhve/Komplice, Rum a karta
+// Zlatá horečka. `mode` = zvolený režim; u karty s režimy znamená null/undefined
+// „jde to aspoň nějak?" (okno obchodu podle toho zašedí celou kartu). Server se ptá
+// vždy s konkrétním režimem a karta s režimy bez něj neprojde (gearBuy).
+function gearCardReason(state, playerIdx, card, mode) {
+    const me = state?.players?.[playerIdx];
+    if (!me || !card) return 'prázdný slot';
+    const modes = gearModesOf(card);
+    if (modes) {
+        if (mode == null) {
+            return modes.some(m => gearModeReason(state, playerIdx, m) === null)
+                ? null : 'teď ji nejde zahrát ani jedním způsobem';
+        }
+        if (!modes.includes(mode)) return 'neznámý způsob';
+        return gearModeReason(state, playerIdx, mode);
+    }
+    // Rum léčí – na plný život by se za něj zaplatilo a nestalo by se nic.
+    if (card.effect === 'ZH_RUM' && me.health >= me.maxHealth) return 'máš plné životy';
+    if (card.effect === 'ZH_ZLATA_HORECKA') {
+        // „Tvůj tah končí" – a ukončit tah vynucená karta nedovolí (Fistful, Právo západu).
+        if (lawForcedCard(state, me, playerIdx)) return 'Právo západu – nejdřív zahraj vynucenou kartu';
+        // High Noon – Město duchů: duch je na konci svého tahu vyřazen, takže tah navíc
+        // už nezahraje – stejný výklad jako FAQ Q13 u Dona Bella.
+        if (me._ghost) return 'duch na konci tahu odchází';
+    }
+    return null;
 }
 
 // Je hráč vůbec ve stavu, kdy se smí nakupovat? Nákup NENÍ fáze (R6) – je to akce
@@ -96,7 +224,8 @@ function gearShopOpen(state, playerIdx) {
 
 // Smí tenhle hráč koupit kartu ze slotu `rowIdx`? Vrací důvod odmítnutí (nebo null),
 // aby klient uměl říct, PROČ je karta zašedlá. Zrcadlí GameState.gearBuy.
-function gearBuyReason(state, playerIdx, rowIdx) {
+// `mode` = jak se zahraje Láhev / Komplic (bez něj: „jde to aspoň nějak?").
+function gearBuyReason(state, playerIdx, rowIdx, mode) {
     if (!gearShopOpen(state, playerIdx)) return 'není tvůj tah';
     const card = (state.gearRow || [])[rowIdx];
     if (!card) return 'prázdný slot';
@@ -107,11 +236,11 @@ function gearBuyReason(state, playerIdx, rowIdx) {
     if (card.border === 'black' && hasGearFor(state, playerIdx, card.effect))
         return 'tohle vybavení už máš';
     if ((me.nuggets || 0) < gearCostFor(state, playerIdx, card)) return 'málo valounů';
-    return null;
+    return gearCardReason(state, playerIdx, card, mode);
 }
 
-function gearBuyOk(state, playerIdx, rowIdx) {
-    return gearBuyReason(state, playerIdx, rowIdx) === null;
+function gearBuyOk(state, playerIdx, rowIdx, mode) {
+    return gearBuyReason(state, playerIdx, rowIdx, mode) === null;
 }
 
 // Vynucené odhození cizího vybavení: cena karty + 1 (sleva Pretty Luzeny na tohle
@@ -199,6 +328,8 @@ function gearRucksackSaveOk(state, playerIdx) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { goldRushOn, gearOf, hasGearFor, gearOnFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
+                       GEAR_MODES, GEAR_MODE_LABEL, GEAR_MODE_AIMED, gearModesOf, gearModeTargets,
+                       gearModeReason, gearCardReason,
                        gearShopOpen, gearBuyReason, gearBuyOk,
                        gearForceCost, gearForceOk, gearForceAvailable, beerNuggetOk,
                        gearPanUsesLeft, gearPanOk, gearRucksackOk, gearRucksackSaveOk };

@@ -54,18 +54,23 @@ test('setup: do balíčku jdou jen HOTOVÉ druhy (GEAR_READY) a obchod se hned n
     const g = mkZH();
     // Kusů je celkem 24, ale do hry se rozdávají jen druhy, jejichž efekt už umí
     // pravidla (fáze 1: Panák 3× + Union Pacific 1×; fáze 2: šest pasivních černých,
-    // fáze 3: dvě placené černé – všechny černé po jednom kusu). Karta bez efektu by se prodala za valouny a neudělala nic –
-    // viz GEAR_READY v logic/goldRush.js.
-    const READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
-                   'ZH_BOTY', 'ZH_TALISMAN', 'ZH_NABOJOVY_PAS', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
+    // fáze 3: dvě placené černé – všechny černé po jednom kusu; fáze 4: Láhev 3×,
+    // Komplic 3×, Rum 2× a Zlatá horečka 1×). Karta bez efektu by se prodala za valouny
+    // a neudělala nic – viz GEAR_READY v logic/goldRush.js. Chybí už jen Wanted (3×).
+    const BLACK = ['ZH_BOTY', 'ZH_TALISMAN', 'ZH_NABOJOVY_PAS', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
                    'ZH_RYZOVACI_MISA', 'ZH_BATOH'];
+    const READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC', ...BLACK,
+                   'ZH_LAHEV', 'ZH_KOMPLIC', 'ZH_RUM', 'ZH_ZLATA_HORECKA'];
     const all = g.gearDeck.concat(g.gearRow.filter(Boolean));
-    assert.equal(all.length, 12);
-    assert.equal(new Set(all.map(c => c.id)).size, 12);
+    assert.equal(all.length, 21);
+    assert.equal(new Set(all.map(c => c.id)).size, 21);
     assert.ok(all.every(c => READY.includes(c.effect)));
     // Černé druhy fází 2 a 3 jsou v balíčku po JEDNOM kuse (`copies: 1` v datech), takže
     // se „ne dvě stejného vybavení" nedá porušit ani dvěma nákupy různých hráčů.
-    READY.slice(2).forEach(e => assert.equal(all.filter(c => c.effect === e).length, 1, e));
+    BLACK.forEach(e => assert.equal(all.filter(c => c.effect === e).length, 1, e));
+    const count = (e) => all.filter(c => c.effect === e).length;
+    assert.deepEqual([count('ZH_LAHEV'), count('ZH_KOMPLIC'), count('ZH_RUM'), count('ZH_ZLATA_HORECKA')],
+                     [3, 3, 2, 1]);
     // Obchod má 3 karty lícem vzhůru hned od začátku hry.
     assert.equal(g.gearRow.filter(Boolean).length, 3);
     assert.deepEqual(g.gearPile, []);

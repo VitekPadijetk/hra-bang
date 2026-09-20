@@ -154,6 +154,13 @@ if (typeof require === 'function') {
         globalThis.gearRucksackOk = __gr.gearRucksackOk;
         globalThis.gearRucksackSaveOk = __gr.gearRucksackSaveOk;
     }
+    // Samostatný guard: logic.js si z goldRush.js bere jen část (režimy Láhve/Komplice),
+    // takže by blok výš hlídaný gearBuyOk mohl zbytek přeskočit – a naopak.
+    if (typeof gearModesOf === 'undefined' || typeof gearModeTargets === 'undefined') {
+        const __gr2 = require('./goldRush.js');
+        globalThis.gearModesOf = __gr2.gearModesOf;
+        globalThis.gearModeTargets = __gr2.gearModeTargets;
+    }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
         globalThis.ROLES = __b.ROLES;
@@ -193,6 +200,11 @@ const GEAR_VALUE = {
     // Placené černé vybavení (fáze 3) – další valouny se za ně platí až při použití.
     ZH_RYZOVACI_MISA: 20,  // až 2 karty za tah, každá za 1 valoun
     ZH_BATOH: 16,          // život za 2 valouny, i jako záchrana posledního života mimo tah
+    // Hnědé karty fáze 4. Láhev a Komplic se oceňují až podle režimu a cíle
+    // (gearModePick), Rum podle toho, kolik životů chybí (decidePlay).
+    // Zlatá horečka UKONČÍ tah – proto ta nejnižší hodnota: koupí se, až bot v tahu
+    // nemá nic lepšího na práci (a pak dostane plné životy i celý další tah).
+    ZH_ZLATA_HORECKA: 5,
 };
 
 const HEARTS = '♥️';
@@ -369,6 +381,41 @@ function boardCardValue(card) {
 function _hasWorthTaking(p) {
     return p.hand.length > 0 || (p.weapon && p.weapon.id !== -1)
         || (p.board || []).some(c => boardCardValue(c) > 0);
+}
+
+// Zlatá horečka – Láhev a Komplic „jako" jiná karta: kolik stojí režim za to a na koho.
+// Jediné místo, kde se to rozhoduje – ptá se ho nákup (decidePlay) i výběr cíle ve fázi
+// GEAR_TARGET, takže bot nekoupí kartu na cíl, který by pak nevybral. `targets` = legální
+// cíle od pravidel (gearModeTargets / pendingGearTarget.targets). Vrací { score, targetIdx }
+// nebo null (nestojí za to). Skóre je pod skutečnou kartou z ruky: platí se valouny.
+function gearModePick(state, myIndex, beliefs, mode, targets) {
+    const me = state.players[myIndex];
+    const inTargets = (e) => (targets || []).includes(e.idx);
+    switch (mode) {
+        case 'BANG': {
+            // Do limitu 1× BANG!/tah se nepočítá – je to výstřel NAVÍC k těm z ruky.
+            const t = shootTargets(state, myIndex, beliefs).find(inTargets);
+            return t ? { score: 20, targetIdx: t.idx } : null;
+        }
+        case 'DUEL': {
+            // Duel vyhraje ten, komu vydrží karty Bang! – bez jediné by si bot koupil prohru.
+            if (!(me.hand || []).some(c => c && !c._placeholder && playsAsBang(state, me, c))) return null;
+            const t = shootTargets(state, myIndex, beliefs).find(inTargets);
+            return t ? { score: 14, targetIdx: t.idx } : null;
+        }
+        case 'PANIC':
+        case 'CAT_BALOU': {
+            const t = rankEnemies(state, myIndex, beliefs, false)
+                .find(e => inTargets(e) && _hasWorthTaking(state.players[e.idx]));
+            return t ? { score: 14, targetIdx: t.idx } : null;
+        }
+        case 'BEER':
+            if (!isInPlay(me) || me.health >= me.maxHealth) return null;
+            return { score: me.health <= 2 ? 26 : 7, targetIdx: null };
+        default:
+            // Hokynářství: rozdá kartu i každému soupeři – za valouny se to botovi nevyplatí.
+            return null;
+    }
 }
 
 // ── Karty, které jen „točí" balíček, když karty dojdou ───────────────────────
@@ -1101,12 +1148,31 @@ function decidePlay(state, myIndex, beliefs) {
     // se zasekla na tahu, který nic nemění.
     if (goldRushOn(state)) {
         (state.gearRow || []).forEach((card, rowIdx) => {
-            if (!card || !gearBuyOk(state, myIndex, rowIdx)) return;
+            if (!card) return;
+            // Láhev a Komplic: každý režim je samostatná nabídka se svým skóre. Server
+            // nákup bez režimu odmítne, takže se ptá STEJNÝM predikátem i s režimem.
+            const modes = gearModesOf(card);
+            if (modes) {
+                modes.forEach(mode => {
+                    if (!gearBuyOk(state, myIndex, rowIdx, mode)) return;
+                    const pick = gearModePick(state, myIndex, beliefs, mode,
+                                              gearModeTargets(state, myIndex, mode));
+                    if (pick) consider(pick.score, { event: 'gear_buy', payload: { rowIdx, mode } });
+                });
+                return;
+            }
+            if (!gearBuyOk(state, myIndex, rowIdx)) return;
             let val = GEAR_VALUE[card.effect] || 0;
             // Panák léčí – bez zranění by se za něj zaplatilo a efekt by vyšuměl.
             if (card.effect === 'ZH_PANAK' && me.health >= me.maxHealth) val = 0;
             // Union Pacific líže – bez karet v balíčku i odhozu by se platilo za nic.
             if (card.effect === 'ZH_UNION_PACIFIC' && !drawCardWorth(state, me, 4)) val = 0;
+            // Rum léčí podle barev (ze 4 karet padnou v průměru skoro 3) – vyplatí se tím
+            // víc, čím víc životů chybí. Na plný život ho pravidla koupit nepustí.
+            if (card.effect === 'ZH_RUM') {
+                const miss = me.maxHealth - me.health;
+                val = miss >= 2 ? (me.health <= 2 ? 30 : 22) : (miss === 1 ? 8 : 0);
+            }
             if (val > 0) consider(val, { event: 'gear_buy', payload: { rowIdx } });
         });
         // Pivo za valoun jen s PLNÝM životem: jinak je vyléčení cennější než zlato
@@ -1480,6 +1546,15 @@ function decideBotAction(state, myIndex, beliefs) {
         // kterým je co léčit, takže se vždycky vrací legální cíl.
         case 'GEAR_TARGET': {
             const targets = state.pendingGearTarget?.targets || [];
+            // Láhev / Komplic „jako" cílená karta: cíl vybírá tentýž gearModePick, podle
+            // kterého se kupovalo. Volba je povinná (zaplaceno je), takže když by mezitím
+            // nikdo neprošel (nemělo by nastat), vezme se první legální cíl.
+            const mode = state.pendingGearTarget?.mode;
+            if (mode) {
+                const pick = gearModePick(state, myIndex, beliefs, mode, targets);
+                const t = pick && pick.targetIdx != null ? pick.targetIdx : targets[0];
+                return { event: 'gear_target', payload: { targetIdx: t } };
+            }
             if (targets.includes(myIndex)) return { event: 'gear_target', payload: { targetIdx: myIndex } };
             let pick = targets[0], pickH = Infinity;
             targets.forEach(i => {

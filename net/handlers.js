@@ -2894,6 +2894,10 @@ function _playCardAnim(data) {
         case 'law_reveal':
             startLawReveal(data);
             break;
+        // Zlatá horečka – Rum: otočené karty v řadě uprostřed stolu, pak do odhozu.
+        case 'gear_rum':
+            playGearRum(data);
+            break;
         case 'store_pick': {
             // Karta letí ze slotu hokynářství do ruky hráče. Já: lícem do mého slotu
             // (staging). Jiný: líc→rub do jeho ruky (mizí mu do skryté ruky).
@@ -2985,6 +2989,71 @@ function startLawReveal(data) {
         }
     }
     startDeckCardReveal(data.card, data.playerIdx, LAW_ANIM, opts);
+}
+
+// ── Zlatá horečka – Rum: „Otoč! 4 karty: doplň si 1 život za každou různou barvu." ──
+// Otočené karty (4, s Lucky Dukem / Podkovou víc) vyletí z balíčku po jedné do řady
+// uprostřed stolu, cestou se překlopí, chvíli leží s popiskem výsledku a pak po jedné
+// odletí do odhozu. Časování je sdílené se serverem (core/goldRushAnim.js).
+// Stav (karty v odhozu, doléčené životy) dorazí až za cinematikou – fronta animací ho
+// drží. Sprity v odhozu proto zaniknou přesně na jeho příchodu (onNextState), ne podle
+// toho, jestli karta v odhozu je: kartu, kterou si vzal John Pain, tam stav mít nebude.
+function playGearRum(data) {
+    if (!gameScene || !state) return;
+    const D = RUM_ANIM;
+    const cards = data.cards || [];
+    const n = cards.length;
+    if (!n) return;
+    const from = deckTopPos();
+    const pileSc = currentLayout().scaleDeck;   // velikost karty v balíčku i v odhozu
+    const sprites = [];
+    let stateIn = false;
+    onNextState(() => { stateIn = true; });
+
+    cards.forEach((c, i) => {
+        const x = rumSlotX(i, n), y = D.rowY;
+        gameScene.time.delayedCall(i * D.staggerMs, () => {
+            if (!gameScene) return;
+            const spr = gameScene.add.image(from.x, from.y, 'card_back')
+                .setScale(pileSc).setDepth(820 + i).setAlpha(0.98);
+            sprites[i] = spr;
+            gameScene.tweens.add({ targets: spr, x, y, scaleY: D.scale, duration: D.flyMs, ease: 'Cubic.easeOut' });
+            // Překlopení rub→líc za letu (stejně jako u sejmutí, startCheckReveal).
+            gameScene.tweens.add({ targets: spr, scaleX: 0, duration: D.flyMs / 2, ease: 'Sine.easeIn',
+                onComplete: () => {
+                    if (!spr.active) return;
+                    spr.setTexture(getCardTex(c.id));
+                    gameScene.tweens.add({ targets: spr, scaleX: D.scale, duration: D.flyMs / 2, ease: 'Sine.easeOut' });
+                } });
+        });
+    });
+
+    // Popisek výsledku visí od chvíle, kdy dosedne poslední karta, do odletu řady.
+    const landStart = rumLandStartMs(n);
+    const barvy = data.suits === 1 ? 'barva' : (data.suits >= 2 && data.suits <= 4 ? 'barvy' : 'barev');
+    const who = state.players?.[data.playerIdx]?.name || '';
+    const label = `🥃 Rum${who ? ' – ' + who : ''}: ${data.suits} ${barvy} → +${data.healed || 0} ❤`;
+    gameScene.time.delayedCall((n - 1) * D.staggerMs + D.flyMs, () => {
+        if (!gameScene) return;
+        const cap = gameScene.add.text(960, D.rowY - 500 * D.scale / 2 - 34, label,
+            { fontFamily: THEME.fontUI, fontSize: '28px', fontStyle: 'bold', color: THEME.color.gold,
+              backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 16, y: 6 } })
+            .setOrigin(0.5).setDepth(830);
+        gameScene.time.delayedCall(D.holdMs, () => { if (cap.active) cap.destroy(); });
+    });
+
+    // Odlet do odhozu v pořadí otáčení – poslední otočená dosedne navrch, jako ve stavu.
+    cards.forEach((c, i) => {
+        gameScene.time.delayedCall(landStart + i * D.landStaggerMs, () => {
+            const spr = sprites[i];
+            if (!gameScene || !spr?.active) return;
+            const to = discardTopPos();
+            spr.setDepth(REVEAL_PILE_DEPTH + i);
+            gameScene.tweens.add({ targets: spr, x: to.x, y: to.y, scaleX: pileSc, scaleY: pileSc,
+                duration: D.landMs, ease: 'Cubic.easeIn',
+                onComplete: () => holdThenFinish(spr, () => stateIn, () => { if (spr.active) spr.destroy(); }) });
+        });
+    });
 }
 
 // Společné tělo obou (a předloha je 2. karta Black Jacka): karta vyletí z balíčku
@@ -3143,6 +3212,8 @@ function _animDurationMs(data) {
     if (data.type === 'law_reveal') return lawRevealMs();
     // Fistful – Ranč: celá vyměňovaná dávka je jedna položka fronty (karty po jedné).
     if (data.type === 'ranch_discard') return ranchDiscardMs((data.cardIds || []).length);
+    // Zlatá horečka – Rum: řada otočených karet uprostřed stolu, pak do odhozu.
+    if (data.type === 'gear_rum') return rumRevealMs((data.cards || []).length);
     // Divoký západ – Helena Zontero a obě půlky přerozdání rolí (Hřbitov i Helena).
     // `role_peek` trvá stejně u všech, i u těch, kdo si ho nepřehrají (role: null) –
     // jinak by se fronty klientů rozešly a stav by u každého dorazil jindy.

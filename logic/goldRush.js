@@ -48,10 +48,22 @@ const GEAR_READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
                     // fáze 2 – pasivní černé vybavení (leží před hráčem a jen mění pravidla)
                     'ZH_BOTY', 'ZH_TALISMAN', 'ZH_NABOJOVY_PAS', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
                     // fáze 3 – placené černé vybavení (leží před hráčem a používá se za valouny)
-                    'ZH_RYZOVACI_MISA', 'ZH_BATOH'];
+                    'ZH_RYZOVACI_MISA', 'ZH_BATOH',
+                    // fáze 4 – hnědé s volbou (Láhev, Komplic) a se sejmutím / tahem navíc
+                    'ZH_LAHEV', 'ZH_KOMPLIC', 'ZH_RUM', 'ZH_ZLATA_HORECKA'];
 
 // Rýžovací mísa: „Použitelné až 2× za tah."
 const PAN_USES_PER_TURN = 2;
+
+// Rum: „Otoč! 4 karty" – každý zdroj „karty navíc" (Lucky Duke, Podkova) přidá jednu.
+const RUM_FLIPS = 4;
+
+// Cílený režim Láhve / Komplice → deskriptor efektu pro `_repeatBrownEffect`
+// (logic/wildWest.js), tedy pro TOTÉŽ tělo, kterým Lee Van Kliff opakuje efekt karty
+// bez karty samotné. Láhev jako BANG! jde jako bang-EFEKT (`BANG_EFFECT`): do limitu
+// 1× BANG!/tah se nepočítá (dodatek karty) a Slabův bonus na něj neplatí – přesně jako
+// na ostatní karty, které mají efekt BANG!, ale kartou BANG! nejsou (Úder, Springfield).
+const GEAR_MODE_EFFECT = { BANG: 'BANG_EFFECT', DUEL: 'DUEL', PANIC: 'PANIC', CAT_BALOU: 'CAT_BALOU' };
 
 const GoldRushMixin = {
     // ── Příprava balíčku vybavení (setupGame / setupDebugGame / setupNextGame) ──
@@ -66,9 +78,13 @@ const GoldRushMixin = {
         this.gearPile = [];                  // odhozené: lícem vzhůru POD balíčkem
         this._goldRush = false;
         this.pendingGearTarget = null;
+        this._gearRumReveal = null;
         // Počítadlo Rýžovací mísy je klíčované `turnId`, který navazující hra čísluje
-        // znovu – starý záznam by jinak mohl sednout na tah nové hry.
-        (this.players || []).forEach(p => { p.gear = []; p.nuggets = 0; p._panTurn = null; p._panUses = 0; });
+        // znovu – starý záznam by jinak mohl sednout na tah nové hry. Zaplacený tah navíc
+        // (karta Zlatá horečka) se do nové hry taky nepřenáší.
+        (this.players || []).forEach(p => {
+            p.gear = []; p.nuggets = 0; p._panTurn = null; p._panUses = 0; p._gearExtraTurn = false;
+        });
         const on = options.expansions && options.expansions.zlata_horecka;
         if (!on || !Array.isArray(this.gearCardData)) return;
         this._goldRush = true;
@@ -219,7 +235,9 @@ const GoldRushMixin = {
     // NENÍ to fáze (rozhodnutí R6): kupuje se ve fázi PLAY, kolikrát hráč chce a dokud
     // má valouny – čekat se na nikoho nemusí. Vrací koupenou kartu (klient si podle ní
     // pustí animaci), nebo null, když se nákup neuskutečnil.
-    gearBuy(playerIdx, rowIdx) {
+    // `opts.mode` = jak se zahraje Láhev / Komplic (GEAR_MODES v core/goldRush.js); karta
+    // s režimy bez platného režimu neprojde – volí se PŘED zaplacením, ne po něm.
+    gearBuy(playerIdx, rowIdx, opts = {}) {
         if (!this._goldRushOn() || this.phase !== "PLAY") return null;
         if (playerIdx !== this.currentPlayerIndex) return null;
         const p = this.players[playerIdx];
@@ -236,6 +254,14 @@ const GoldRushMixin = {
         // „Ne dvě stejného jména" – jako u modrých karet, jen se ptáme na `effect` (R1).
         // Kontrola musí být PŘED zaplacením, jinak by hráč přišel o valouny zadarmo.
         if (card.border === 'black' && this._hasGear(playerIdx, card.effect)) return null;
+        // Láhev / Komplic: bez zvoleného (a právě hratelného) režimu se nekupuje.
+        const modes = gearModesOf(card);
+        const mode = modes ? opts.mode : null;
+        if (modes && !modes.includes(mode)) return null;
+        // Podmínky vázané na efekt karty (režim a jeho cíle, Rum na plný život, Zlatá
+        // horečka pod Právem západu / jako duch) – TÝŽ predikát, kterým se ptá okno
+        // obchodu i bot (core/goldRush.js). Musí být před zaplacením, jako všechno výš.
+        if (gearCardReason(this, playerIdx, card, mode) !== null) return null;
         const cost = this._gearCost(playerIdx, card);
         if (!this._payNuggets(playerIdx, cost)) return null;
 
@@ -244,12 +270,15 @@ const GoldRushMixin = {
         // doplnění muselo řešit odjinud.
         this.gearRow[rowIdx] = null;
         this._gearRefill();
-        this.logEvent('gear', { act: 'buy', who: p.name, card: card.name, cost, border: card.border });
+        this.logEvent('gear', { act: 'buy', who: p.name, card: card.name, cost, border: card.border,
+                                mode: mode ? GEAR_MODE_LABEL[mode] : undefined });
         if (card.border === 'black') {
             p.gear.push(card);
         } else {
-            this._gearApplyBrown(playerIdx, card);
+            // Na spodek balíčku jde karta HNED: efekt Zlaté horečky ukončí tah a rovnou
+            // rozjede další, takže „potom" by znamenalo až uprostřed nového tahu.
             this._gearDiscard(card);
+            this._gearApplyBrown(playerIdx, card, mode);
         }
         return card;
     },
@@ -260,17 +289,21 @@ const GoldRushMixin = {
     },
 
     // Co nákup udělá navíc, z pohledu Práva západu (léčení / líznuté karty).
+    // Zrcadlí gearLawOpts (core/goldRush.js); Rum počítá nejhorší případ (4 barvy).
+    // Láhev a Komplic se posuzují až podle zvoleného režimu – to dělá gearCardReason.
     _gearLawOpts(card) {
         if (!card) return {};
         if (card.effect === 'ZH_PANAK') return { heal: 1 };
         if (card.effect === 'ZH_UNION_PACIFIC') return { draws: 4 };
+        if (card.effect === 'ZH_RUM') return { heal: 4 };
         return {};
     },
 
     // Hnědý rám: efekt se uplatní HNED při nákupu a karta jde pod balíček. Karty, které
     // potřebují volbu, si tady jen otevřou vlastní fázi; zbytek se odbaví na místě.
-    // Seznam roste s fázemi plánu (§9) – Láhev, Komplic, Rum a Zlatá horečka přijdou ve 4.
-    _gearApplyBrown(playerIdx, card) {
+    // `mode` = zvolený režim Láhve / Komplice (u ostatních karet null).
+    _gearApplyBrown(playerIdx, card, mode = null) {
+        if (mode) { this._gearPlayMode(playerIdx, card, mode); return; }
         switch (card.effect) {
             // Panák: „Hráč dle tvé volby (i ty) si doplní 1 život." Volí se klikem na
             // hráče (fáze GEAR_TARGET, stejná dohoda jako u Pokrevních bratří). Není-li
@@ -297,12 +330,66 @@ const GoldRushMixin = {
                 this.phase = "DRAW";
                 return;
             }
+            case 'ZH_RUM': this._gearRum(playerIdx); return;
+            // Zlatá horečka: „Tvůj tah končí. Doplň si všechny životy a zahraj další tah."
+            // Tah se ukončí ÚPLNĚ obyčejně (tryEndTurn – odhoz nad limit, Madam Zuzana,
+            // Vendeta) a doléčení s tahem navíc přijde až na jeho konci, v pořadí textu
+            // karty – háček `_gearExtraTurnCheck` v nextTurn. Příznak nese HRÁČ, ne sedadlo:
+            // mezi nákupem a koncem tahu nic nesedí jinak, a kdyby na konci tahu umřel
+            // (pokuta Madam Zuzany), háček ho jen shodí.
+            case 'ZH_ZLATA_HORECKA': {
+                const p = this.players[playerIdx];
+                p._gearExtraTurn = true;
+                this.logEvent('gear', { act: 'zlata_horecka', who: p.name, msg: 'tah končí, hraje další' });
+                this.tryEndTurn();
+                return;
+            }
             default: return;
         }
     },
 
-    // Cíl hnědé karty s volbou (zatím jen Panák). `targetIdx` musí být ze seznamu, který
-    // hra nabídla – stejná dohoda jako u Pokrevních bratří a Zuřivé Doroty.
+    // ── Láhev a Komplic: „může být zahrána jako…" ───────────────────────────
+    // Karta NENÍ tou kartou, jejíž efekt má (dodatek) – proto se nic nevyrábí, nic nejde
+    // do odhozu hracího balíčku a nic se nepočítá: ani limit 1× BANG!/tah, ani zahraná
+    // karta Madam Zuzaně (`_trackCard`), ani paměť Lee Van Kliffa (`_markBrownPlayed`).
+    // Efekt jede stejným tělem, jakým Lee Van Kliff opakuje efekt karty bez karty samotné
+    // (`_repeatBrownEffect`) – takže se veze Barel, Jourdonnais, Belle Star, výběr karty
+    // soupeře i duel přesně jako u skutečné karty.
+    _gearPlayMode(playerIdx, card, mode) {
+        const p = this.players[playerIdx];
+        switch (mode) {
+            // Pivo: +1 život. Ne víc – Tequila Joe si Láhví doplní jen 1 (FAQ Q14) a Madam
+            // Yto (fáze 6) se nespouští; a ani „ve dvou hráčích Pivo nemá efekt" ani
+            // Kazatel se na ni nevztahují, protože kartou Pivo není.
+            case 'BEER': {
+                const healed = this._heal(p, 1);
+                this.logEvent('gear', { act: 'mode', who: p.name, card: card.name, mode: 'Pivo', heal: healed });
+                return;
+            }
+            // Hokynářství: rozdává úplně stejně jako karta (cinematika i pořadí výběru).
+            // Uncle Willa to nespouští – jeho schopnost se na kartu Hokynářství ani neptá.
+            case 'STORE': {
+                this.logEvent('gear', { act: 'mode', who: p.name, card: card.name, mode: 'Hokynářství' });
+                this.openStore();
+                return;
+            }
+            // Cílené režimy: cíl se vybírá klikem na hráče ve stejné fázi jako u Panáku.
+            // Seznam spočítal týž predikát, podle kterého šel nákup vůbec udělat, takže
+            // prázdný být nemůže.
+            default: {
+                this.pendingGearTarget = {
+                    playerIdx, effect: card.effect, cardName: card.name, mode,
+                    targets: gearModeTargets(this, playerIdx, mode),
+                };
+                this.phase = "GEAR_TARGET";
+                return;
+            }
+        }
+    },
+
+    // Cíl hnědé karty s volbou (Panák, cílené režimy Láhve a Komplice). `targetIdx` musí
+    // být ze seznamu, který hra nabídla – stejná dohoda jako u Pokrevních bratří a Zuřivé
+    // Doroty.
     resolveGearTarget(playerIdx, targetIdx) {
         const pg = this.pendingGearTarget;
         if (this.phase !== "GEAR_TARGET" || !pg || pg.playerIdx !== playerIdx) return false;
@@ -310,9 +397,87 @@ const GoldRushMixin = {
         const t = this.players[targetIdx];
         this.pendingGearTarget = null;
         this.phase = "PLAY";
+        if (pg.mode) {
+            this._gearModeHit(playerIdx, pg, targetIdx);
+            return true;
+        }
         const healed = this._heal(t, 1);
         this.logEvent('gear', { act: 'panak', who: this.players[playerIdx].name, target: t.name, heal: healed });
         this._processSpecialQueue();
+        return true;
+    },
+
+    // Cílený režim Láhve / Komplice dostal cíl → efekt jde cestou skutečné karty.
+    _gearModeHit(playerIdx, pg, targetIdx) {
+        const t = this.players[targetIdx];
+        this.logEvent('gear', { act: 'mode', who: this.players[playerIdx].name, card: pg.cardName,
+                                mode: GEAR_MODE_LABEL[pg.mode], target: t ? t.name : null });
+        // Cíl mezitím mohl odejít ze hry – pokuta Roubíku smí přerušit i tuhle volbu, když
+        // se čeká na někoho jiného než na pokutovaného. Efekt pak prostě vyšumí (karta je
+        // zaplacená a použitá); čekat na nový cíl by mohlo uváznout, kdyby žádný nezbyl.
+        if (!t || !isInPlay(t)) { this._processSpecialQueue(); return; }
+        // Karta vybavení nemá barvu, takže ji Apache Kid ani Kalumet nezastaví – `suit: null`
+        // projde `_effSuit` jako „ne káro" (pod Požehnáním srdce, pod Prokletím piky).
+        this._repeatBrownEffect(playerIdx, {
+            effect: GEAR_MODE_EFFECT[pg.mode],
+            name: `${pg.cardName} (${GEAR_MODE_LABEL[pg.mode]})`,
+            suit: null,
+        }, targetIdx);
+    },
+
+    // ── Rum: „Otoč! 4 karty: doplň si 1 život za každou různou barvu." ──────
+    // Je to sejmutí („otoč!"), takže platí všechno, co se na sejmutí váže:
+    //   • Lucky Duke i Podkova přidávají kartu navíc (FAQ Q05: Lucky Duke otočí 5) a
+    //     sčítají se (R8) – ptá se `_checkRevealCount`, stejně jako všech pět ostatních cest,
+    //   • barva se čte přes `_effSuit` (Požehnání = jediná barva srdce, Prokletí piky),
+    //   • John Pain si bere otočené karty po jedné, dokud má v ruce méně než 6 (FAQ Q12) –
+    //     až doběhne efekt, tedy po doléčení (`_johnPainQueueCard` → `_drainJohnPain`).
+    // „Vybrat výsledek" (Podkova, Lucky Duke) tu nic neznamená: počítají se všechny otočené
+    // karty, víc karet = víc šancí na další barvu. Opuštěný důl (Fistful) se sejmutí
+    // netýká – bere se z balíčku jako vždy.
+    _gearRum(playerIdx) {
+        const p = this.players[playerIdx];
+        const want = RUM_FLIPS + this._checkRevealCount(p) - 1;
+        // Otočené karty leží, dokud se neotočí všechny, NA STOLE – do odhozu jdou až potom.
+        // Kdyby šly hned, domíchání balíčku uprostřed (došel by) by je vrátilo zpátky.
+        const cards = [];
+        for (let k = 0; k < want; k++) {
+            const c = this.deck.draw({ toDiscard: true });
+            if (!c) break;   // došly obě hromádky – počítá se z toho, co se otočilo
+            cards.push(c);
+        }
+        cards.forEach(c => this.deck.discard(c));
+        const suits = new Set(cards.map(c => this._effSuit(c)).filter(Boolean));
+        const healed = this._heal(p, suits.size);
+        cards.forEach(c => this._johnPainQueueCard(c, playerIdx));
+        // Pro cinematiku (server/handlers.game.js – gear_buy): karty jsou po otočení
+        // veřejné, takže payload smí dostat celý stůl.
+        this._gearRumReveal = {
+            type: 'gear_rum', playerIdx,
+            cards: cards.map(c => ({ id: c.id, name: c.name, suit: c.suit, value: c.value })),
+            suits: suits.size, healed,
+        };
+        this.logEvent('gear', { act: 'rum', who: p.name,
+                                cards: cards.map(c => `${c.value}${this._effSuit(c)}`).join(' '),
+                                suits: suits.size, heal: healed });
+        // „Nejdřív doběhne efekt" – teprve teď si John Pain vezme otočené karty.
+        this._processSpecialQueue();
+    },
+
+    // ── Karta Zlatá horečka: tah navíc ──────────────────────────────────────
+    // Háček v nextTurn (logic.js) hned za Vendetou: tah skončil úplně obyčejně a teď se
+    // doléčí a hraje znovu. Tah navíc je týž jako u Vendety (`_vendettaExtraTurn`,
+    // logic/fistful.js) – plnohodnotný tah s novým `turnId`, kontrolami na Dynamit/Vězení
+    // i fází lízání, jen bez odkrytí nové události. Příznak se shodí VŽDYCKY, i když se
+    // tah navíc nekoná (hráč na konci tahu umřel) – jinak by čekal na jeho návrat do hry.
+    _gearExtraTurnCheck() {
+        const p = this.getCurrentPlayer();
+        if (!p || !p._gearExtraTurn) return false;
+        p._gearExtraTurn = false;
+        if (!isInPlay(p) || this.winner) return false;
+        const healed = this._heal(p, p.maxHealth);
+        this.logEvent('gear', { act: 'zlata_horecka', who: p.name, heal: healed });
+        this._vendettaExtraTurn('Zlatá horečka');
         return true;
     },
 

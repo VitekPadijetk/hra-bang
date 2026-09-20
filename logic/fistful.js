@@ -714,7 +714,9 @@ const FistfulMixin = {
     // `_extraTurn` jen zajistí, že se NEodkryje nová událost (R6) a nezapočítá se kolo.
     // Duch (Město duchů) si tím zahraje znovu jako duch: ruku odhodil už v tryEndTurn
     // (limit = 0 životů), `_ghost` mu zůstal a `_teardownGhost` se nespustil (R10).
-    _vendettaExtraTurn() {
+    // Stejným tělem jde i tah navíc za kartu Zlatá horečka (logic/goldRush.js) –
+    // `cardName` je jen pro log.
+    _vendettaExtraTurn(cardName = 'Vendeta') {
         this.turnId = (this.turnId || 0) + 1;
         this._extraTurn = true;
         const p = this.getCurrentPlayer();
@@ -722,7 +724,7 @@ const FistfulMixin = {
         // znovu (počítadlo od nuly) a penalizace na jeho konci může přijít podruhé.
         this._zuzanaDone = false;
         if (p) p._playedThisTurn = 0;
-        this.logEvent('event', { card: 'Vendeta', who: p?.name, msg: 'hraje ještě jeden tah' });
+        this.logEvent('event', { card: cardName, who: p?.name, msg: 'hraje ještě jeden tah' });
         this.phase = "PLAY";
         if (this._beginTurn()) return;
         this.handleStartOfTurnChecks();

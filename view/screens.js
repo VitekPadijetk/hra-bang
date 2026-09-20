@@ -607,16 +607,46 @@ function renderGearShopOverlay() {
 
         const why = me ? gearBuyReason(state, myIndex, i) : 'není tvůj tah';
         const ok = why === null && !App.blockInput;
+        // Láhev a Komplic („může být zahrána jako…"): jak se zahraje, se volí rovnou
+        // s nákupem – tlačítkem pod kartou, jedním na každý způsob. Klik na samotnou
+        // kartu by nevěděl, co koupit. Cíl se pak vybírá klikem na hráče (GEAR_TARGET).
+        const modes = gearModesOf(card);
         if (!ok) img.setTint(0x777777);
-        img.setInteractive({ useHandCursor: ok });
+        img.setInteractive({ useHandCursor: ok && !modes });
         img.on('pointerover', () => { if (ok) img.setScale(SCALE * 1.06).clearTint(); });
         img.on('pointerout', () => { img.setScale(SCALE); if (!ok) img.setTint(0x777777); });
         img.on('pointerdown', () => {
-            if (!ok) return;
+            if (!ok || modes) return;
             socket.emit('gear_buy', { rowIdx: i });
             App.blockInput = true;
             renderUI();
         });
+
+        // Důvod, který platí pro celou kartu (není tah, málo valounů, Právo západu…),
+        // stačí napsat jednou. Tlačítka se kreslí, jen když rozhoduje až způsob zahrání –
+        // každé pak řekne, proč zrovna tenhle způsob nejde („nikdo v dostřelu").
+        const MODES_NONE = 'teď ji nejde zahrát ani jedním způsobem';
+        if (modes && me && (why === null || why === MODES_NONE)) {
+            const cost = gearCostFor(state, myIndex, card);
+            modes.forEach((mode, k) => {
+                const mWhy = gearBuyReason(state, myIndex, i, mode);
+                const mOk = mWhy === null && !App.blockInput;
+                const txt = mOk ? `jako ${GEAR_MODE_LABEL[mode]} – ${cost} 💰`
+                                : `${GEAR_MODE_LABEL[mode]}: ${mWhy || ''}`;
+                const { bg } = themeButton(gameScene, cx, cy + 500 * SCALE / 2 + 32 + k * 42, 310, 36, txt, {
+                    ...themeToggleStyle(mOk), fontSize: mOk ? '19px' : '16px',
+                    onClick: () => {
+                        if (!mOk || App.blockInput) return;
+                        socket.emit('gear_buy', { rowIdx: i, mode });
+                        App.blockInput = true;
+                        renderUI();
+                    },
+                });
+                bg.setDepth(GEAR_DEPTH + 4);
+                if (!mOk) { bg.setAlpha(0.5); bg.disableInteractive(); }
+            });
+            return;
+        }
 
         const label = gameScene.add.text(cx, cy + 500 * SCALE / 2 + 12,
             ok ? `KOUPIT za ${gearCostFor(state, myIndex, card)} 💰` : (why || ''),

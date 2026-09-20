@@ -499,9 +499,10 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
             gs._onEvent = (e) => { if (e && e.ev === 'nuggets' && e.gain) gained = true; };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
             // Do hry jdou jen HOTOVÉ druhy (GEAR_READY, logic/goldRush.js) – fáze 1
-            // Panák 3× a Union Pacific 1×, fáze 2 šest pasivních černých a fáze 3 dvě
-            // placené černé po jednom; tři z nich hned leží v obchodě.
-            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 12, `${tag}: balíček vybavení`);
+            // Panák 3× a Union Pacific 1×, fáze 2 šest pasivních černých, fáze 3 dvě
+            // placené černé po jednom a fáze 4 Láhev 3×, Komplic 3×, Rum 2× a Zlatá
+            // horečka 1×; tři z nich hned leží v obchodě.
+            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 21, `${tag}: balíček vybavení`);
             assert.equal(gs.gearRow.filter(Boolean).length, 3, `${tag}: obchod je plný`);
             assert.ok(gs.players.every(p => p.nuggets === 0), `${tag}: začíná se bez valounů`);
 
@@ -530,6 +531,8 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
     ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
 
     let bought = 0, bootsSeen = 0, pickSeen = 0, panSeen = 0;
+    // Fáze 4: hnědé karty s volbou (Láhev/Komplic), Rum a tah navíc za Zlatou horečku.
+    let modeSeen = 0, rumSeen = 0, extraTurnSeen = 0;
     try {
         for (let ci = 0; ci < 6; ci++) {
             const n = 4 + (ci % 4);
@@ -543,9 +546,27 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
             const opts = { expansions: { zlata_horecka: true } };
             const room = { id: `zhrich${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
             ctx.rooms.set(room.id, room);
-            // Rýžovací mísa (fáze 3) se pozná z proudu událostí pravidel.
-            gs._onEvent = (e) => { if (e && e.ev === 'gear' && e.act === 'pan') panSeen++; };
+            // Rýžovací mísa (fáze 3) i karty fáze 4 se poznají z proudu událostí pravidel.
+            gs._onEvent = (e) => {
+                if (!e) return;
+                if (e.ev === 'gear' && e.act === 'pan') panSeen++;
+                if (e.ev === 'gear' && e.act === 'mode') modeSeen++;
+                if (e.ev === 'gear' && e.act === 'rum') rumSeen++;
+                if (e.ev === 'event' && e.card === 'Zlatá horečka') extraTurnSeen++;
+            };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Boty a Podkova se nasadí do obchodu ROVNOU: v balíčku je 21 karet, takže
+            // do šesti partií se do řady vůbec dostat nemusí – a právě ony vedou na
+            // klikací fáze (BOOTS_DRAW za ztracený život, výběr karty u sejmutí). Zbytek
+            // nabídky se doplňuje normálně z balíčku.
+            ['ZH_BOTY', 'ZH_PODKOVA'].forEach((eff, k) => {
+                if (gs.gearRow.some(c => c && c.effect === eff)) return;
+                const i = gs.gearDeck.findIndex(c => c.effect === eff);
+                if (i === -1) return;
+                const displaced = gs.gearRow[k];
+                gs.gearRow[k] = gs.gearDeck.splice(i, 1)[0];
+                if (displaced) gs.gearDeck.push(displaced);
+            });
             gs.players.forEach(p => ctx.createBot(room, p.name));
             const guard = pumpToWinner(ctx, room, () => {
                 // Kapsa se doplňuje průběžně – nákup je akce ve fázi PLAY, takže stačí
@@ -565,6 +586,12 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
     assert.ok(bootsSeen > 0, 'Boty aspoň jednou vedly na klikané líznutí');
     assert.ok(pickSeen > 0, 'Podkova aspoň jednou vedla na výběr karty u sejmutí');
     assert.ok(panSeen > 0, 'někdo aspoň jednou rýžoval (Rýžovací mísa → líznutí)');
+    // Fáze 4: Láhev/Komplic jdou existujícími cestami (RESPOND, výběr karty soupeře,
+    // hokynářství), Rum snímá 4–6 karet a Zlatá horečka rozjede tah navíc. Kdyby se
+    // některá z nich s pravidly rozešla, projeví se to tady jako stall.
+    assert.ok(modeSeen > 0, 'někdo zahrál Láhev / Komplice „jako" jinou kartu');
+    assert.ok(rumSeen > 0, 'někdo si koupil Rum (sejmutí 4 karet)');
+    assert.ok(extraTurnSeen > 0, 'někdo si Zlatou horečkou zaplatil tah navíc');
     // Batoh se tu schválně nevynucuje: bot ho bere jen se zraněním a Panák léčí levněji,
     // takže vyjde 0–9× na šest partií – jako podmínka by test byl flaky. Obě jeho cesty
     // (v tahu i záchrana) pokrývá deterministicky test/goldRush.paid.test.js; tady jde

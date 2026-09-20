@@ -133,6 +133,17 @@ if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
     globalThis.turnActionForCard = __pl.turnActionForCard;
 }
 
+// Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum a karta Zlatá horečka:
+// co jde s nákupem udělat a na koho. Stejným predikátem se ptá okno obchodu i bot –
+// kdyby se rozešly, server by nákup mlčky odmítl a hra jen botů by se zasekla.
+if (typeof gearModeTargets === 'undefined' && typeof require === 'function') {
+    const __gr = require('./core/goldRush.js');
+    globalThis.gearModesOf = __gr.gearModesOf;
+    globalThis.gearModeTargets = __gr.gearModeTargets;
+    globalThis.gearCardReason = __gr.gearCardReason;
+    globalThis.GEAR_MODE_LABEL = __gr.GEAR_MODE_LABEL;
+}
+
 class GameState {
     constructor() {
         this.players = [];
@@ -379,6 +390,10 @@ class GameState {
         // jednou. Gate je úplně nahoře, PŘED odchodem ducha (Město duchů): duch Vendetu
         // dostává taky (R10) a ze hry odchází až na konci toho tahu navíc.
         if (this._vendettaCheck()) return;
+        // Zlatá horečka – karta Zlatá horečka: „Tvůj tah končí. Doplň si všechny životy
+        // a zahraj další tah." Tah skončil (odhoz nad limit, Zuzana i Vendeta proběhly),
+        // teprve teď se doléčí a hraje znovu. Viz _gearExtraTurnCheck (logic/goldRush.js).
+        if (this._gearExtraTurnCheck()) return;
         // High Noon – Město duchů: končí-li právě tah ducha, odejde ze hry ještě předtím,
         // než se posune tah (odloží karty, spustí Grega Diggera/Herba Huntera). Když se
         // tím naplní fronta odložených akcí, posune tah až _resumeAfterSpecial.

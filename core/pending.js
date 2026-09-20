@@ -112,6 +112,14 @@ const _WAIT_LABELS = {
     VERA_COPY:             'Vera Custer – kopíruje postavu',
 };
 
+// Režimy Láhve a Komplice (Zlatá horečka) – jen pro popisek. Kopie GEAR_MODE_LABEL
+// z core/goldRush.js, protože pending.js se načítá i tam, kde goldRush.js není (server
+// log, testy) a sám nic nerequiruje.
+const _GEAR_MODE_NAMES = {
+    PANIC: 'Panika!', BEER: 'Pivo', BANG: 'BANG!',
+    STORE: 'Hokynářství', DUEL: 'Duel', CAT_BALOU: 'Cat Balou',
+};
+
 // Karta, která útok skutečně spustila. `sourceCard` je TYP efektu (Houfnice se řeší
 // jako Kulomet, Nůž/Derringer/Úder jako Bang!) – pro hráče ale musí být vidět reálně
 // zahraná karta, proto má přednost `sourceCardName` (doplní ji logic/*).
@@ -139,6 +147,12 @@ function waitingStatus(state) {
     // výběr vznikl – jinak by hráč bez Lucky Duka četl cizí jméno.
     if (pa.kind === 'LUCKY_DUKE' && state.luckyDukeState?.via === 'Podkova') {
         text = 'Podkova – vybírá kartu';
+    }
+    // Zlatá horečka – Láhev / Komplic zahraná „jako" jiná karta: cíl se vybírá ve stejné
+    // fázi jako u Panáku, jen „komu vybavení pomůže" by tu lhalo.
+    if (pa.kind === 'GEAR_TARGET' && state.pendingGearTarget?.mode) {
+        const pg = state.pendingGearTarget;
+        text = `${pg.cardName} jako ${_GEAR_MODE_NAMES[pg.mode] || pg.mode} – vybírá cíl`;
     }
     return { idx: pa.idx, kind: pa.kind, text };
 }

@@ -10,7 +10,7 @@ k výkladu sporných míst.
 
 Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 sad.
 
-> **Stav: hotové fáze 0, 1 a 2** (2026-09-10).
+> **Stav: hotové fáze 0–4** (2026-09-20).
 > **Fáze 0** — data, mixin `logic/goldRush.js`, `player.nuggets` a `player.gear`, trychtýř
 > `_afterLifeLost` ze všech tří vstupů, zisk valounu v `handleDamage`, přepínač ve všech
 > třech lobby obrazovkách, redakce `gearDeck` a zobrazení valounů u hráče.
@@ -32,7 +32,12 @@ Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 
 > a větví bota. Zátěž odkryla dvě staré díry při vyčerpaném balíčku (smyčka bota na
 > kartách „lízni N" a Hokynářství bez karet) – opravené, viz odchylky.
 > `npm test` = **1475 testů, 0 chyb** (nová sada `test/goldRush.paid.test.js`).
-> Odchylky od plánu jsou popsané u fází 0–3 v §9.
+> **Fáze 4** (2026-09-20) — hnědé karty s volbou **Láhev** a **Komplic** (režim se volí
+> s nákupem, cílené režimy jdou existující fází `GEAR_TARGET`), **Rum** (sejmutí 4 karet
+> + 1 za Lucky Duka / Podkovu, léčení podle různých barev, vlastní cinematika) a karta
+> **Zlatá horečka** (tah končí, doléčení a tah navíc v háku `nextTurn` za Vendetou).
+> `npm test` = **1564 testů, 0 chyb** (nová sada `test/goldRush.brown.test.js`).
+> Odchylky od plánu jsou popsané u fází 0–4 v §9.
 
 > **Assety zatím nejsou.** Plán je proto napsaný tak, aby se dal odpracovat celý bez nich
 > (§2.8 říká, co se s chybějícím artem děje) a aby se **jména karet daly doplnit na jednom
@@ -326,11 +331,11 @@ Rozšíření je **nezávislé na ostatních** — jde zapnout samo i se všemi 
 | Karta / postava | Hlavní hák | Nová fáze? |
 |---|---|---|
 | Panák | `gearBuy` → volba hráče | `GEAR_TARGET` |
-| Láhev | `gearBuy` → volba režimu → `playBang` / `playSpecialCard` / `_heal` | `GEAR_MODE` |
-| Komplic | `gearBuy` → volba režimu → `openStore` / duel / Cat Balou | `GEAR_MODE` |
-| Rum | `gearBuy` → 4× „otoč!" → `_heal(n)` | ne |
+| Láhev | `gearBuy { mode }` → `_gearPlayMode` → `_repeatBrownEffect` / `_heal` | ne (režim se volí s nákupem, cíl přes `GEAR_TARGET`) |
+| Komplic | `gearBuy { mode }` → `_gearPlayMode` → `openStore` / `_repeatBrownEffect` | ne (dtto) |
+| Rum | `gearBuy` → `_gearRum` (4× „otoč!", +1 za Lucky Duka / Podkovu) → `_heal(n)` | ne |
 | Union Pacific | `gearBuy` → `_setDrawPhase(4)` | `DRAW` (existující) |
-| Zlatá horečka (karta) | `gearBuy` → `_heal(max)` + `_vendettaExtraTurn`-styl | ne |
+| Zlatá horečka (karta) | `gearBuy` → `tryEndTurn`, pak háček `_gearExtraTurnCheck` v `nextTurn` → `_heal(max)` + `_vendettaExtraTurn` | ne |
 | Boty | `_afterLifeLost` → fronta `GEAR_BOOTS_DRAW` | ne |
 | Wanted | `gearBuy` → volba hráče; `handlePlayerDeath` odměna | `GEAR_TARGET` |
 | Rýžovací mísa | akce `gear_pan` ve fázi PLAY, 2×/tah | ne |
@@ -349,8 +354,8 @@ Rozšíření je **nezávislé na ostatních** — jde zapnout samo i se všemi 
 | Raddie Snake | akce `raddie_draw`, 2×/tah | ne |
 | Simeon Picos | `_afterLifeLost` | ne |
 
-**Čtyři nové fáze** (`GEAR_MODE`, `GEAR_TARGET`, `DUTCH_DISCARD` + gear varianta obrany)
-znamenají **čtyři nové větve v `core/pending.js` a čtyři v `core/botPolicy.js`** — hlídají
+**Nové fáze** (`GEAR_TARGET`, `DUTCH_DISCARD`; `GEAR_MODE` nakonec nevznikla — viz odchylky
+fáze 4 v §9) znamenají **novou větev v `core/pending.js` a v `core/botPolicy.js`** — hlídají
 to strukturální testy „každý kind z pendingActor má v decideBotAction svou větev"
 ([test/botPolicy.test.js:354](../test/botPolicy.test.js#L354)), takže se nezapomenou.
 
@@ -511,7 +516,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 | **1** ✅ | hromádky vybavení, obchod, nákup, doplnění, vynucené odhození, Pivo za valoun + **Panák, Union Pacific** | ekonomika kompletní |
 | **2** ✅ | pasivní černé: **Boty, Talisman, Nábojový pás, Krumpáč, Kalumet, Podkova** | 6 karet |
 | **3** ✅ | placené černé: **Rýžovací mísa, Batoh** (vč. záchrany posledního života) | 8 karet |
-| **4** | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 12 karet |
+| **4** ✅ | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 14 druhů z 15 |
 | **5** | **Wanted** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
 | **6** | **8 postav** (`GOLD_RUSH_READY` roste) | rozšíření hotové |
 | **7** | **Stínoví pistolníci** (volitelná varianta) | vše |
@@ -673,6 +678,60 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
   Doplňování valounů v zátěži běží jen prvních 60 tahů – s nekonečnou kapsou Batoh
   léčí bez konce a souboj 1 na 1 by nikdy neskončil (artefakt testu, ne pravidel).
 
+### Co se ve fázi 4 odchýlilo od plánu (a proč)
+
+- **Fáze `GEAR_MODE` nevznikla** (§3). Způsob, jakým se Láhev / Komplic zahraje, se volí
+  **s nákupem** (`gear_buy { rowIdx, mode }`, tlačítka pod kartou v okně obchodu), ne až
+  po zaplacení. Dva důvody: (1) kdo zaplatí a pak zjistí, že zvolený způsob nemá na koho,
+  přišel by o valouny zadarmo – takhle nákup rovnou neprojde; (2) nová fáze by znamenala
+  větev v `pendingActor`, u bota i v guardu, zatímco **cíl** se dá vybrat existující fází
+  `GEAR_TARGET` (Panák), která všechno tohle už má. Jediný zdroj pravdy „co jde, komu
+  a proč ne" je trojice `gearModesOf` / `gearModeTargets` / `gearCardReason`
+  ([core/goldRush.js](../core/goldRush.js)) – ptá se jí server, okno obchodu i bot.
+- **Efekt nejde přes `{ asGear: true }`, ale přes `_repeatBrownEffect`** ([logic/wildWest.js](../logic/wildWest.js)).
+  Plán (§4) chtěl protáhnout příznak skrz `playBang`/`playSpecialCard`; jenže tělo
+  „spusť efekt karty BEZ karty samotné" už existuje – je to Lee Van Kliff. Znovupoužitím
+  se veze Barel, Jourdonnais, Belle Star, výběr karty soupeře i duel a nikde nepřibyl
+  příznak, na který by se muselo pamatovat.
+- **Láhev jako BANG! je bang-EFEKT** (`BANG_EFFECT`), ne „BANG! s vypnutým limitem".
+  Tím zdarma padá limit 1× BANG!/tah i Slabův bonus – přesně jak dodatek karty chce –
+  a nic se nemuselo obcházet: stejnou cestou jde Úder i Springfield.
+- **Láhev jako Pivo je jen `_heal(p, 1)`.** Karta se za Pivo nepovažuje, takže se na ni
+  nevztahuje Kazatel/Reverend, limit „ve dvou hráčích", ani +2 Tequily Joea (FAQ Q14);
+  Madam Yto (fáze 6) se u ní nespustí. Otázka §11.5 (Láhev jako záchrana posledního
+  života) je tím **bezpředmětná**: kupuje se výhradně ve fázi PLAY vlastního tahu, kde
+  o poslední život nikdo nehraje.
+- **Rum ani Láhev-jako-Pivo se nekoupí na PLNÝ život** (`máš plné životy`). Pravidla to
+  nezakazují, ale karta Pivo se v téhle hře na plný život taky zahrát nedá a propadlé
+  valouny by hráč bral jako chybu UI. Rum navíc drží otočené karty mimo odhoz, dokud se
+  neotočí všechny – jinak by je domíchání balíčku uprostřed vrátilo do hry a jedna karta
+  by se mohla otočit dvakrát.
+- **Podkova u Rumu nic nevybírá**: „odkryj o kartu navíc a vyber výsledek" u Rumu znamená
+  jen víc otočených karet (FAQ Q05 to potvrzuje pro Lucky Duka: 5 místo 4), takže se
+  počítají všechny. Fáze `LUCKY_DUKE` se tu vůbec nepoužije.
+- **Karta Zlatá horečka jede v pořadí podle textu**: „tah končí" = `tryEndTurn`
+  (odhoz nad limit podle životů PŘED doléčením, Madam Zuzana, Vendeta), a teprve na konci
+  tahu se doléčí a hraje znovu – háček `_gearExtraTurnCheck` v `nextTurn` hned za Vendetou.
+  Tah navíc je Vendetin (`_vendettaExtraTurn('Zlatá horečka')`), jak plán chtěl. Navíc:
+  koupit ji nejde **pod Právem západu** s vynucenou kartou (tah by nešlo ukončit) ani
+  **duchovi** (na konci tahu odchází – stejný výklad jako FAQ Q13 u Dona Bella). Příznak
+  nese HRÁČ (`p._gearExtraTurn`), ne sedadlo, takže přežije výměnu míst (Lady Růže).
+- **Cinematika Rumu vznikla** ([core/goldRushAnim.js](../core/goldRushAnim.js), animace
+  `gear_rum`): otočené karty jsou veřejné a bez nich by se jen „někde" doléčily životy.
+  Nákup sám animaci letu dál nemá (§10).
+- **Panika! a Cat Balou zahraná „bez karty" dostala animaci** ukradené / zničené karty
+  (nová větev v `select_target_card`, [server/handlers.game.js](../server/handlers.game.js)).
+  Veze se tím i **Lee Van Kliff**, jehož opakovaná Panika doteď kartu jen přeskočila.
+  A fáze `GEAR_TARGET` dostala banner s výzvou, který Panák neměl.
+- **Bot** kupuje Láhev/Komplice po REŽIMECH (`gearModePick` – jediné místo, kde se
+  rozhoduje skóre i cíl, takže nekoupí kartu na cíl, který by pak nevybral): BANG! 20,
+  Duel 14 (jen s kartou Bang! v ruce), Panika!/Cat Balou 14, Pivo 7 (zraněný 26).
+  **Hokynářství z Komplice nekupuje vůbec** – rozdá kartu i každému soupeři. Rum se řídí
+  chybějícími životy, karta Zlatá horečka má skóre 5, takže si ji koupí, až v tahu nemá nic
+  lepšího na práci. Do zátěže („plná kapsa valounů") se **Boty a Podkova nasazují do
+  obchodu rovnou**: v balíčku je teď 21 karet, takže do šesti partií se do řady nemusely
+  dostat vůbec a staré pojistky testu začaly padat náhodně.
+
 Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `master`.
 
 ---
@@ -700,4 +759,6 @@ Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `
 2. **Rozložení obchodu na stole** (§2.7) — vlastní řádek nad pásem balíčků, nebo jinam?
 3. **Sdílet pás vyložených karet mezi `board` a `gear`**, nebo druhý pás?
 4. **R9 (Soudce blokuje nákup černých karet)** — plán volí „ano", ale je to výklad.
-5. **Láhev jako Pivo na záchranu posledního života** — plán volí „ano" (§4).
+5. ~~**Láhev jako Pivo na záchranu posledního života**~~ — **bezpředmětné (fáze 4)**:
+   vybavení se kupuje jen ve fázi PLAY vlastního tahu, takže se Láhev k obraně posledního
+   života nikdy nedostane.

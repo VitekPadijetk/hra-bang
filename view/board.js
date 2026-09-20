@@ -3316,6 +3316,35 @@ function drawPhaseOverlays(ctx) {
         }
     }
 
+    // ── Zlatá horečka – Panák / Láhev / Komplic: banner s výzvou k výběru cíle ──
+    // Zaplaceno je, teď se jen vybírá, na koho karta půjde (klik na postavu soupeře;
+    // sobě tlačítkem 🥃 SOBĚ, jen u Panáku). Režim Láhve / Komplice je v titulku, ať je
+    // vidět, CO se na cíl zahraje – kartou z ruky to není.
+    if (state.phase === "GEAR_TARGET" && state.pendingGearTarget) {
+        const _pg = state.pendingGearTarget;
+        const _gtMine = _pg.playerIdx === myIndex;
+        const _gtName = state.players[_pg.playerIdx]?.name || '?';
+        const _gtWhat = _pg.mode ? `${_pg.cardName} jako ${GEAR_MODE_LABEL[_pg.mode]}` : _pg.cardName;
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _gtMine ? 0xff5555 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_gtMine) {
+            let l1 = gameScene.add.text(960, 66, `💰 ${_gtWhat} – vyber cíl`,
+                { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, _pg.mode
+                    ? 'Klikni na hráče, na kterého ji zahraješ (zvýraznění jsou platné cíle)'
+                    : 'Klikni na hráče, kterému doplníš 1 život',
+                { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_gtName} – ${_gtWhat} (vybírá cíl)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
     // ── Divoký západ – Youl Grinner: banner „dej mu kartu" ────────────────────────
     if (state.phase === "GRINNER_GIVE" && state.pendingGrinner?.queue?.length) {
         const _gIdx = state.pendingGrinner.queue[0];

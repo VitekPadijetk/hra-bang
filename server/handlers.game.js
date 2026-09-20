@@ -3,6 +3,7 @@
 // hokynářství). registerGameHandlers(socket, ctx, withRoom) – těla byte-identická.
 const { niResultMs } = require('../core/highNoonAnim.js');
 const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
+const { rumRevealMs } = require('../core/goldRushAnim.js');
 const { pendingActor } = require('../core/pending.js');
 
 // Odešla karta z ruky, tedy PROŠLA pravidly? Pravidla (logic/*) odmítnutou akci mlčky
@@ -369,8 +370,15 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // ruky Sama (stejná animace jako Ragtime). ID ze stolu/výzbroje čteme PŘED
             // resolvem, z ruky až po něm (je to skrytá karta – majitel ji uvidí, ostatní rub).
             const isVultureSplit = sel?.isVultureSplit;
+            // Panika!/Cat Balou BEZ karty, která by letěla (panic_sequence): efekt zopakovaný
+            // Lee Van Kliffem, nebo zahraný Láhví / Komplicem (Zlatá horečka). Letí tedy jen
+            // to, co se opravdu hýbe – ukradená karta k útočníkovi (stejně jako u dělení
+            // mezi Vulture Samy), zničená do odhozu (stejně jako u Rvačky).
+            const isPlainSel = !!sel && !sel.isBrawl && !sel.isDaltons && !isVultureSplit;
+            const isPlainSteal = isPlainSel && sel.sourceCardType === 'Panika!';
+            const isPlainDiscard = isPlainSel && sel.sourceCardType === 'Cat Balou';
             let vsCardId = null, vsVisBoardIdx = null;
-            if (isVultureSplit && victim) {
+            if ((isVultureSplit || isPlainSteal) && victim) {
                 if (d.area === 'weapon') { vsCardId = victim.weapon?.id ?? null; vsVisBoardIdx = 0; }
                 else if (d.area === 'board') {
                     vsVisBoardIdx = 1 + (d.cardIdx ?? 0);
@@ -384,7 +392,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 return i === -1 ? null : i;
             };
             let brawlBoardId = null, brawlVisBoardIdx = null;
-            if (isBrawl && victim) {
+            if ((isBrawl || isPlainDiscard) && victim) {
                 if (d.area === 'weapon') { brawlBoardId = victim.weapon?.id ?? null; brawlVisBoardIdx = 0; }
                 else if (d.area === 'board') {
                     brawlVisBoardIdx = 1 + (d.cardIdx ?? 0);
@@ -392,6 +400,36 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 }
             }
             gs.resolveCardSelection(d.attackerIdx, d.area, d.cardIdx);
+            // Obyčejný výběr, který pravidla odmítla (Panika mimo dosah…), nechá výběr
+            // viset – pak se nic neanimuje. Z ruky se navíc nemuselo mít co vzít.
+            const plainDone = isPlainSel && gs.pendingSelection !== sel &&
+                (d.area !== 'hand' || (victim?.hand?.length ?? 0) < (victimHandIds?.length ?? 0));
+            if (isPlainSteal && plainDone && victimIdx != null) {
+                const atkIdx = d.attackerIdx;
+                const base = { type: 'ragtime_steal', attackerIdx: atkIdx, targetIdx: victimIdx,
+                               area: d.area, boardIdx: vsVisBoardIdx };
+                if (d.area === 'hand') {
+                    const atkHand = gs.players[atkIdx].hand;
+                    const ownerId = atkHand[atkHand.length - 1]?.id ?? null;
+                    const stolenIndex = handSlotOf(ownerId);
+                    emitAnimPrivate(room, atkIdx, { ...base, stolenIndex, stolenCardId: ownerId },
+                                                  { ...base, stolenIndex, stolenCardId: null });
+                } else if (vsCardId != null) {
+                    emitAnim(room, { ...base, stolenCardId: vsCardId });
+                }
+                broadcastRoomDelayed(room, 420);
+                return;
+            }
+            if (isPlainDiscard && plainDone && victimIdx != null) {
+                if (d.area === 'hand') {
+                    const top = gs.deck.discardTop();
+                    if (top) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: victimIdx, cardId: top.id });
+                } else if (brawlBoardId != null) {
+                    emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: victimIdx, cardId: brawlBoardId, boardIdx: brawlVisBoardIdx });
+                }
+                broadcastRoomDelayed(room, 420);
+                return;
+            }
             if (isVultureSplit && victimIdx != null) {
                 const atkIdx = d.attackerIdx;
                 const base = { type: 'ragtime_steal', attackerIdx: atkIdx, targetIdx: victimIdx,
@@ -1121,20 +1159,44 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         withRoom((room, p, gs) => {
             const idx = gs.currentPlayerIndex;
             const rowIdx = d && d.rowIdx;
-            // Animace letu karty z obchodu zatím žádná: art rozšíření ještě neexistuje
-            // (plán §2.8), takže by z obchodu letěl neidentifikovatelný rub. Karty se
-            // proto kreslí jako štítek se jménem a cenou a nákup je vidět ze stavu.
-            gs.gearBuy(idx, rowIdx);
-            broadcastRoom(room);
+            // Animace letu karty z obchodu zatím žádná (plán §10) – nákup je vidět ze stavu.
+            // `mode` = jak se zahraje Láhev / Komplic (Panika!/Pivo/BANG!, Hokynářství/
+            // Duel/Cat Balou); u ostatních karet se ignoruje.
+            gs._gearRumReveal = null;
+            const bought = gs.gearBuy(idx, rowIdx, { mode: d && d.mode });
+            // Rum: otočené karty se ukážou celému stolu (jsou veřejné – leží v odhozu).
+            // Stav dorazí až za cinematikou (fronta animací), boti o stejnou dobu počkají.
+            const rum = gs._gearRumReveal;
+            gs._gearRumReveal = null;
+            if (bought && rum && rum.cards.length) {
+                emitAnim(room, rum);
+                room._revealBlockUntil = Math.max(room._revealBlockUntil || 0,
+                                                  Date.now() + rumRevealMs(rum.cards.length));
+            }
+            // Komplic jako Hokynářství: rozdává stejně jako karta, takže i čekání na
+            // dojezd míchací cinematiky je stejné jako u play_card.
+            if (gs.phase === 'STORE') {
+                const t = ctx.storeCinematicMs?.(gs);
+                room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;
+            }
+            // Rum sejme až 6 karet a Hokynářství rozdává – obojí může domíchat balíček.
+            handleReshuffleAndBroadcast(room, gs);
         });
     });
 
-    // Hnědé vybavení s volbou cíle (Panák): kupující vybral, komu život patří.
+    // Hnědé vybavení s volbou cíle: Panák (komu život patří) a cílené režimy Láhve /
+    // Komplice (na koho BANG!, Panika!, Duel, Cat Balou). Ledger chování (dedukce rolí
+    // botů) se plní stejně jako u skutečných karet – režim nepřátelský, Panák přátelský.
     on('gear_target', (d) => {
         withRoom((room, p, gs) => {
-            const idx = gs.pendingGearTarget?.playerIdx;
+            const pg = gs.pendingGearTarget;
+            const idx = pg?.playerIdx;
             if (idx === undefined || idx === null) return;
-            gs.resolveGearTarget(idx, d && d.targetIdx);
+            const targetIdx = d && d.targetIdx;
+            const ok = gs.resolveGearTarget(idx, targetIdx);
+            if (ok && targetIdx != null && targetIdx !== idx) {
+                ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx, kind: pg.mode ? 'hostile' : 'support' });
+            }
             broadcastRoom(room);
         });
     });
