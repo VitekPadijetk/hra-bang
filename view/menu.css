@@ -17,7 +17,7 @@
   --noticeBg: rgba(201,162,75,.08);  --toastBg: #2a1614;
   --scrim: rgba(12,8,5,.8);
   --slotA: #23301f;  --slotB: #33261a;  --slotC: #1c2334;  --slotD: #2c1c34;
-  --roleSheriff: #e0c579;  --roleOutlaw: #e0705c;  --roleRenegade: #b07ad0;
+  --roleSheriff: #e0c579;  --roleDeputy: #6aa8d8;  --roleOutlaw: #e0705c;  --roleRenegade: #b07ad0;
   --scrollThumb: rgba(0,0,0,.38);  --scrollTrack: rgba(0,0,0,.18);
 }
 
@@ -37,7 +37,7 @@
   --noticeBg: rgba(156,107,30,.10);  --toastBg: #fdeee9;
   --scrim: rgba(60,40,20,.6);
   --slotA: #e4ecdd;  --slotB: #f0e3cd;  --slotC: #dde3ef;  --slotD: #e9dcef;
-  --roleSheriff: #8a5d15;  --roleOutlaw: #9c2f22;  --roleRenegade: #6b3a8e;
+  --roleSheriff: #8a5d15;  --roleDeputy: #23618e;  --roleOutlaw: #9c2f22;  --roleRenegade: #6b3a8e;
   --scrollThumb: rgba(0,0,0,.22);  --scrollTrack: rgba(0,0,0,.06);
 }
 
@@ -333,7 +333,8 @@ body.chat-on .bu-bar { padding-right: 90px; }
 .bu-owner span { color: var(--text); }
 
 /* Řada 3–8: vždy šest sloupců, i na mobilu. */
-.bu-counts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
+/* --counts drží dnešní šestici (3–8); debug hra (S16) jich posílá sedm. */
+.bu-counts { display: grid; grid-template-columns: repeat(var(--counts, 6), minmax(0, 1fr)); gap: 7px; }
 .bu-count {
   padding: 13px 0; border-radius: 9px; cursor: pointer;
   font-size: 22px; font-weight: 600;
@@ -651,4 +652,163 @@ button.bu-seat { width: 100%; text-align: left; cursor: pointer; }
 .bu-kick-title { font-size: 20px; font-weight: 600; letter-spacing: .03em; color: var(--bad); }
 .bu-kick-hint {
   margin-top: 6px; font-family: 'EB Garamond', serif; font-size: 16px; color: var(--muted); text-wrap: pretty;
+}
+
+/* ── S16 Debug ──────────────────────────────────────────────────────────── */
+
+.bu-tiles { display: grid; gap: 7px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+.bu-tile {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 12px 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel);
+}
+.bu-tile-label { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.bu-tile-value { font-size: 22px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
+.bu-tile-value.ok { color: var(--ok); }
+.bu-tile-value.bad { color: var(--bad); }
+.bu-tile-value.muted { color: var(--muted); font-family: ui-monospace, monospace; font-size: 18px; }
+
+/* Role debug hry: barva karty role, ať se naklikaná sestava dá přečíst po očku. */
+.bu-roles { display: flex; flex-wrap: wrap; gap: 7px; }
+.bu-role {
+  flex: 1 1 auto; min-height: 42px; padding: 10px 14px; border-radius: 9px; cursor: pointer;
+  font-size: 15px; letter-spacing: .03em; border: 2px solid currentColor; background: var(--panel);
+}
+.bu-role:hover { background: var(--noticeBg); }
+.bu-role.sheriff { color: var(--roleSheriff); }
+.bu-role.deputy { color: var(--roleDeputy); }
+.bu-role.outlaw { color: var(--roleOutlaw); }
+.bu-role.renegade { color: var(--roleRenegade); }
+.bu-role.clear { color: var(--muted); border-color: var(--line2); }
+
+.bu-sims { display: grid; gap: 7px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+.bu-sim {
+  text-align: left; min-height: 44px; padding: 11px 13px; border-radius: 9px; cursor: pointer;
+  font-size: 16px; border: 1px solid var(--line2); background: var(--panel); color: var(--text);
+}
+.bu-sim:hover { border-color: var(--gold); }
+
+.bu-log { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--inputBg); }
+.bu-logrow {
+  display: flex; gap: 12px; padding: 8px 13px; border-bottom: 1px solid var(--line);
+  font-family: ui-monospace, monospace; font-size: 13px;
+}
+.bu-logrow:last-child { border-bottom: none; }
+.bu-log-time { flex: none; color: var(--dim); }
+.bu-log-dir { flex: none; min-width: 64px; }
+.bu-log-dir.in { color: var(--ok); }
+.bu-log-dir.out { color: var(--gold); }
+.bu-log-dir.sys { color: var(--dim); }
+.bu-log-msg { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Celoplošné vrstvy: S0, S1, G1, G2, G3 ──────────────────────────────── */
+
+/* Vlastní kořen nad vrstvou menu (800), oknem se jménem (990) i nad plátnem. Sám kliky
+   nechytá, jinak by prázdná vrstva umrtvila celou hru. */
+.bang-ui.bu-ov-root { z-index: 1000; pointer-events: none; }
+.bu-ov-root > * { pointer-events: auto; }
+
+/* G1 — banner nové verze. */
+.bu-banner {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--goldHi); background: linear-gradient(var(--goldHi), var(--gold));
+  color: var(--onGold);
+}
+.bu-banner-txt { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: .02em; }
+.bu-banner-btn {
+  flex: none; min-height: 38px; padding: 7px 15px; border-radius: 7px; cursor: pointer;
+  font-size: 15px; font-weight: 600;
+  border: 1px solid rgba(0,0,0,.35); background: rgba(0,0,0,.14); color: var(--onGold);
+}
+.bu-banner-btn:hover { background: rgba(0,0,0,.24); }
+.bu-banner-x {
+  flex: none; min-width: 40px; min-height: 38px; padding: 7px 11px; border-radius: 7px; cursor: pointer;
+  font-size: 15px; border: none; background: transparent; color: var(--onGold); opacity: .7;
+}
+.bu-banner-x:hover { opacity: 1; }
+
+/* G3 — chybová hláška. S bublinou chatu v pravém dolním rohu se nepere: leží uprostřed
+   a sama zmizí. */
+.bu-toast {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  width: calc(100% - 32px); max-width: 440px;
+  display: flex; align-items: flex-start; gap: 11px; padding: 13px 15px; border-radius: 9px;
+  border: 1px solid var(--badLine); background: var(--toastBg); box-shadow: 0 14px 34px rgba(0,0,0,.45);
+}
+.bu-toast-ico { flex: none; font-size: 17px; color: var(--bad); }
+.bu-toast-txt { flex: 1; min-width: 0; }
+.bu-toast-title { display: block; font-size: 16px; font-weight: 500; letter-spacing: .02em; color: var(--text); }
+.bu-toast-hint {
+  display: block; margin-top: 2px; font-family: 'EB Garamond', serif; font-size: 15px;
+  line-height: 1.4; color: var(--muted); text-wrap: pretty;
+}
+.bu-toast-x {
+  flex: none; min-width: 36px; min-height: 32px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+  font-size: 15px; border: none; background: transparent; color: var(--muted);
+}
+.bu-toast-x:hover { color: var(--text); }
+
+/* G2 — ztracené spojení. */
+.bu-scrim {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: var(--scrim);
+}
+.bu-dialog {
+  width: 100%; max-width: 400px; padding: 22px; border-radius: 12px; text-align: center;
+  border: 1px solid var(--line2); background: linear-gradient(var(--panel), var(--bg));
+  box-shadow: 0 24px 60px rgba(0,0,0,.55);
+}
+.bu-dialog-title { margin-top: 14px; font-family: 'Rye', serif; font-size: 19px; color: var(--gold); }
+.bu-dialog-hint {
+  margin-top: 6px; font-family: 'EB Garamond', serif; font-size: 16px; line-height: 1.45;
+  color: var(--muted); text-wrap: pretty;
+}
+.bu-dialog-note { margin-top: 12px; font-size: 14px; letter-spacing: .06em; color: var(--dim); }
+.bu-dialog .bu-btn { margin-top: 14px; }
+.bu-pulse { display: flex; justify-content: center; gap: 5px; }
+.bu-pulse span {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--gold);
+  animation: bu-pulse 1.2s ease-in-out infinite;
+}
+.bu-pulse span:nth-child(2) { animation-delay: .2s; }
+.bu-pulse span:nth-child(3) { animation-delay: .4s; }
+@keyframes bu-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* S0 — načítání. Přes celou plochu: plátno je do sestavení scény prázdné. */
+.bu-boot {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg);
+}
+.bu-boot-box { width: 100%; max-width: 460px; text-align: center; }
+.bu-boot-track {
+  margin-top: 22px; height: 10px; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--line2); background: var(--panel);
+}
+.bu-boot-fill {
+  height: 100%; background: linear-gradient(90deg, var(--gold), var(--goldHi));
+  transition: width .2s linear;
+}
+.bu-boot-row {
+  margin-top: 10px; display: flex; justify-content: space-between; gap: 10px;
+  font-family: 'EB Garamond', serif; font-size: 15px; color: var(--muted);
+}
+.bu-boot-pct { font-family: 'Oswald', sans-serif; }
+
+/* S1 — otoč telefon. */
+.bu-rotate {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg);
+}
+.bu-rotate-box { width: 100%; max-width: 420px; text-align: center; }
+.bu-rotate-ico { font-size: 44px; animation: bu-rot 2.4s ease-in-out infinite; }
+.bu-rotate-title { margin-top: 10px; font-family: 'Rye', serif; font-size: 24px; color: var(--gold); }
+.bu-rotate-hint {
+  margin-top: 6px; font-family: 'EB Garamond', serif; font-size: 16px; line-height: 1.45;
+  color: var(--muted); text-wrap: pretty;
+}
+.bu-rotate .bu-btn { margin-top: 16px; }
+@keyframes bu-rot { 0%, 45% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bu-pulse span, .bu-rotate-ico { animation: none; }
 }

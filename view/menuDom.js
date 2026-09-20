@@ -16,7 +16,7 @@
 // a na mobilu zaklapl klávesnici. Psaní zapíše hodnotu přes MENU_FIELDS a vymění jen
 // oblasti označené data-live (souhrn a tlačítko v liště), viz _patchMenuLive.
 
-const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game', 'join_list', 'join_room', 'spectate_list', 'kicked']);
+const MENU_DOM_SCREENS = new Set(['main', 'ui_choice', 'create', 'bot_game', 'join_list', 'join_room', 'spectate_list', 'kicked', 'debug']);
 
 // Fáze místnosti, které kreslí vrstva: lobby = S8, next_lobby = S9 (jméno obrazovky = fáze).
 const MENU_DOM_ROOM_PHASES = new Set(['lobby', 'next_lobby']);
@@ -144,6 +144,8 @@ const MENU_ENTER = {
     },
     // game_list chodí sám při každé změně, tohle je jen pojistka čerstvosti po návratu.
     spectate_list() { socket.emit('get_game_list'); },
+    // Odezva serveru se měří, jen dokud je obrazovka otevřená (net/handlers.js).
+    debug() { startPingLoop(); },
 };
 
 // Vymění obsah jen při změně a podrží pozici rolující části (když se změní jen
@@ -282,9 +284,11 @@ function _menuOpenLobby() {
     return fresh;
 }
 
-// Řada 3–8 (počet hráčů / botů) – vždy šest tlačítek, i na mobilu.
-function _menuCountRow(act, current) {
-    return '<div class="bu-counts">' + [3, 4, 5, 6, 7, 8].map(n => {
+// Řada 3–8 (počet hráčů / botů) – vždy šest tlačítek, i na mobilu. Debug hra (S16)
+// si posílá vlastní seznam, protože umí i dva hráče.
+function _menuCountRow(act, current, nums = [3, 4, 5, 6, 7, 8]) {
+    const cols = nums.length === 6 ? '' : ` style="--counts:${nums.length}"`;
+    return `<div class="bu-counts"${cols}>` + nums.map(n => {
         const on = current === n;
         return `<button class="bu-count${on ? ' on' : ''}" data-act="${act}" data-arg="${n}" aria-pressed="${on}">${n}</button>`;
     }).join('') + '</div>';
@@ -631,6 +635,64 @@ ${_menuBar(null, actions)}`;
   </div>
 </div></div>`;
     },
+
+    // S16 — debug (D7): stav klienta, spouštěč debug hry, simulace celoplošných vrstev
+    // a log zpráv ze socketu. Debug hru hraje jeden prohlížeč za všechna místa, takže tu
+    // není ani jméno, ani lobby – jen role, počet, rozšíření a start.
+    debug() {
+        if (!App.debugExpansions) App.debugExpansions = emptyExpansions();
+        const exps = App.debugExpansions;
+        const count = App.debugPlayerCount || 4;
+        const tiles = debugStats({
+            connected: socket.connected,
+            pingMs: App.pingMs,
+            build: App.serverBuild,
+            waiting: waitingGamesCount(App.lobbyList),
+            running: (App.gameList || []).length,
+        }).map(d => `<div class="bu-tile"><span class="bu-tile-label">${esc(d.label)}</span>` +
+            `<span class="bu-tile-value ${d.tone}">${esc(d.value)}</span></div>`).join('');
+        const roles = DEBUG_ROLES.map(r =>
+            `<button class="bu-role ${r.toLowerCase()}" data-act="debugRole" data-arg="${r}">+ ${esc(roleNameCz(r))}</button>`).join('');
+        const extraOn = !!App.debugHighNoonExtra;
+        const extra = !hnExtraVisible(exps) ? '' :
+            `<button class="bu-extra${extraOn ? ' on' : ''}" data-act="debugHnExtra" aria-pressed="${extraOn}">` +
+            `<span class="bu-box">${extraOn ? '✔' : ''}</span>` +
+            `<span>Přibalené karty <span class="bu-label-aside">— Nová identita a Želízka z Fistfulu</span></span></button>`;
+        const sims = DEBUG_SIMS.map(a =>
+            `<button class="bu-sim" data-act="${a.act}">${esc(a.label)}</button>`).join('');
+        const rows = (App.socketLog || []).map(socketLogLine);
+        const log = rows.length
+            ? rows.map(l => `<div class="bu-logrow"><span class="bu-log-time">${esc(l.time)}</span>` +
+                `<span class="bu-log-dir ${l.cls}">${esc(l.dir)}</span>` +
+                `<span class="bu-log-msg">${esc(l.msg)}</span></div>`).join('')
+            : '<div class="bu-logrow"><span class="bu-log-msg">Zatím nic — zprávy přibývají, jak hra běží.</span></div>';
+        return `
+${_menuHead('⚙ Debug', 'Stav klienta, debug hra a simulace hlášek')}
+<div class="bu-scroll"><div class="bu-form">
+  <div>
+    <div class="bu-label">Stav klienta</div>
+    <div class="bu-tiles">${tiles}</div>
+  </div>
+  <div>
+    <div class="bu-label">Debug hra <span class="bu-label-aside">— všechna místa hraje tenhle prohlížeč</span></div>
+    <div class="bu-roles">${roles}<button class="bu-role clear" data-act="debugRolesClear">✕ Vyčistit</button></div>
+    <div class="bu-note">Role: ${esc(debugRolesLabel(App.debugRoles))} <span class="bu-label-aside">— zbytek se dolosuje</span></div>
+    ${_menuCountRow('debugCount', count, DEBUG_PLAYER_COUNTS)}
+    ${_menuExpansionGrid('debugExp', exps)}
+    ${extra}
+  </div>
+  <div>
+    <div class="bu-label">Simulovat stav</div>
+    <div class="bu-sims">${sims}</div>
+  </div>
+  <div>
+    <div class="bu-label">Poslední zprávy ze serveru</div>
+    <div class="bu-log">${log}</div>
+  </div>
+</div></div>
+${_menuBar(esc(`${playersLabel(count)} · ${expansionsLabel(exps)}`),
+    '<button class="bu-btn primary bar" data-act="debugStart">▶ SPUSTIT DEBUG HRU</button>')}`;
+    },
 };
 
 // S8 / S9. Zpět je varovné „Opustit hru" – odchod tu ruší místo u stolu (components.md).
@@ -674,6 +736,15 @@ const MENU_FIELDS = {
 
 const MENU_ACTIONS = {
     fullscreen() { requestGameFullscreen(); },
+    // Celoplošné vrstvy (S0/S1/G1–G3)
+    reload() { location.reload(); },
+    bannerHide() { App.banner = false; renderMenuOverlays(); },
+    toastHide() { clearTimeout(_toastTimer); App.toast = null; renderMenuOverlays(); },
+    rotateAnyway() {
+        _rotateDismissed = true;
+        try { sessionStorage.setItem('bangRotateDismiss', '1'); } catch (_) {}
+        syncRotateOverlay();
+    },
     go(screen) {
         // Zakládá se pod jménem – bez něj se nejdřív zeptej, na S5 se jde až po „OK".
         if (screen === 'create' && !playerName) {
@@ -776,7 +847,59 @@ const MENU_ACTIONS = {
         App.spectating = true;
         socket.emit('spectate', { roomId: id });
     },
+
+    // S16 — debug hra. Rozšíření drží App.debugExpansions pod klíči MENU_EXPANSIONS;
+    // na camelCase, který čte server, je přeloží debugStartPayload (core/menuModel.js).
+    debugRole(role) { App.debugRoles.push(role); renderUI(); },
+    debugRolesClear() { App.debugRoles = []; renderUI(); },
+    debugCount(n) { App.debugPlayerCount = Number(n); renderUI(); },
+    debugExp(key) {
+        _menuToggleExpansion(App.debugExpansions, key, () => { App.debugHighNoonExtra = true; });
+    },
+    debugHnExtra() { App.debugHighNoonExtra = !App.debugHighNoonExtra; renderUI(); },
+    debugStart() {
+        socket.emit('debug_start', debugStartPayload({
+            count: App.debugPlayerCount || 4,
+            roles: App.debugRoles,
+            exps: App.debugExpansions,
+            hnExtra: App.debugHighNoonExtra,
+        }));
+    },
+
+    // S16 — simulace celoplošných vrstev. Jediný způsob, jak je vidět bez výpadku sítě
+    // a bez nasazení nové verze (vzhled se pak dá zkontrolovat i snímkem, tools/menushot.js).
+    simToast() { showToast('Do hry se nepodařilo připojit', 'Stůl se mezitím zaplnil. Vyber si ze seznamu jinou hru.'); },
+    simConn() { showConnLost(3); setTimeout(hideConnLost, 6000); },
+    simBanner() { showUpdateBanner(); },
+    simKicked() {
+        App.kickedMsg = 'Game Leader ukončil hru.';
+        App.kickedSpectator = false;
+        App.menuScreen = 'kicked';
+        renderUI();
+    },
+    simRotate() { App.rotate = true; renderMenuOverlays(); },
+    simForgetName() {
+        try { localStorage.removeItem('bangName'); } catch (_) {}
+        playerName = null;
+        openNameModal({});
+        renderUI();
+    },
+    simForgetSession() {
+        clearBangSession();
+        showToast('Uložená hra zapomenuta', 'Po načtení stránky se už nepokusím vrátit na svoje místo u stolu.');
+    },
 };
+
+// Simulace v S16 – popisek a akce z MENU_ACTIONS (pořadí = pořadí tlačítek).
+const DEBUG_SIMS = [
+    { act: 'simToast', label: 'Vyvolat chybovou hlášku' },
+    { act: 'simConn', label: 'Simulovat výpadek spojení' },
+    { act: 'simBanner', label: 'Ukázat banner nové verze' },
+    { act: 'simKicked', label: 'Obrazovka „vyhozen ze hry“' },
+    { act: 'simRotate', label: 'Ukázat „otoč telefon“' },
+    { act: 'simForgetName', label: 'Zapomenout jméno' },
+    { act: 'simForgetSession', label: 'Zapomenout uloženou hru' },
+];
 
 // ── S4 — okno se jménem ────────────────────────────────────────────────────
 // Vlastní kořen (ne uvnitř vrstvy): otevírají ho i staré Phaserové obrazovky přes
@@ -854,3 +977,139 @@ function openNameModal({ onConfirm, onCancel } = {}) {
 function closeNameModal() {
     if (_nameModal) { _nameModal.remove(); _nameModal = null; }
 }
+
+// ── Celoplošné vrstvy: S0 načítání, S1 otoč telefon, G1 banner, G2 výpadek, G3 hláška ──
+// Vlastní kořen NAD vrstvou menu i nad plátnem – tyhle věci musí být vidět v menu,
+// v lobby i uprostřed hry, a S0 se ukazuje ještě dřív, než Phaser vůbec nastartuje.
+// Kořen sám kliky nechytá (pointer-events v menu.css), takže prázdná vrstva neblokuje
+// plátno; stav drží App (boot / rotate / banner / conn / toast) a překresluje se jedním
+// řetězcem jako obrazovky menu.
+
+let _ovRoot = null;
+let _ovLastHtml = null;
+let _toastTimer = 0;
+const TOAST_MS = 9000;
+
+function _ovEnsureRoot() {
+    if (_ovRoot) return _ovRoot;
+    _ovRoot = document.createElement('div');
+    _ovRoot.className = 'bang-ui bu-ov-root';
+    _ovRoot.dataset.theme = menuTheme();
+    document.body.appendChild(_ovRoot);
+    _ovRoot.addEventListener('click', (e) => {
+        const el = e.target.closest('[data-act]');
+        if (!el || el.disabled || !_ovRoot.contains(el)) return;
+        const fn = MENU_ACTIONS[el.dataset.act];
+        if (fn) fn(el.dataset.arg, el);
+    });
+    return _ovRoot;
+}
+
+// Pořadí = pořadí vrstvení: banner nejníž, výzva k otočení nejvýš (přebije i načítání).
+function renderMenuOverlays() {
+    const root = _ovEnsureRoot();
+    root.dataset.theme = menuTheme();
+    const html = _ovBanner() + _ovToast() + _ovConn() + _ovBoot() + _ovRotate();
+    if (html === _ovLastHtml) return;
+    _ovLastHtml = html;
+    root.innerHTML = html;
+}
+
+// G1 — vyšla nová verze (otisk kódu ze server/version.js). Prohlížeč drží starý JS
+// a rozehraná hra je po nasazení stejně pryč, takže hráč potřebuje vědět, že to není
+// chyba, ale aktualizace, a že stačí načíst stránku znovu.
+function _ovBanner() {
+    if (!App.banner) return '';
+    return '<div class="bu-banner" role="status">' +
+        '<span class="bu-banner-txt">Vyšla nová verze hry — načti stránku znovu.</span>' +
+        '<button class="bu-banner-btn" data-act="reload">Načíst znovu</button>' +
+        '<button class="bu-banner-x" data-act="bannerHide" aria-label="Skrýt">✕</button></div>';
+}
+
+// G3 — chybová hláška. Sama zmizí; ✕ je pro toho, komu překáží dřív.
+function _ovToast() {
+    const t = App.toast;
+    if (!t) return '';
+    return '<div class="bu-toast" role="alert"><span class="bu-toast-ico">⚠</span>' +
+        `<span class="bu-toast-txt"><span class="bu-toast-title">${esc(t.title)}</span>` +
+        (t.hint ? `<span class="bu-toast-hint">${esc(t.hint)}</span>` : '') + '</span>' +
+        '<button class="bu-toast-x" data-act="toastHide" aria-label="Zavřít">✕</button></div>';
+}
+
+// G2 — ztracené spojení. Socket.IO se připojuje znovu sám, tohle jen říká, co se děje
+// (a že místo u stolu drží server podle tokenu, viz rejoin v net/handlers.js).
+function _ovConn() {
+    if (!App.conn) return '';
+    const v = connLostView(!!roomState, App.conn.attempt || 0);
+    return '<div class="bu-scrim"><div class="bu-dialog" role="alertdialog">' +
+        '<div class="bu-pulse"><span></span><span></span><span></span></div>' +
+        `<div class="bu-dialog-title">${esc(v.title)}</div>` +
+        `<div class="bu-dialog-hint">${esc(v.hint)}</div>` +
+        `<div class="bu-dialog-note">${esc(v.note)}</div>` +
+        '<button class="bu-btn quiet" data-act="reload">Načíst stránku znovu</button></div></div>';
+}
+
+// S0 — načítání. Ukazuje se od načtení stránky (dole v tomhle souboru) do sestavení
+// scény (createScene v game.js); průběh plní preload a opravná kola ensureAssetsLoaded.
+function _ovBoot() {
+    if (!App.boot) return '';
+    const v = loadingView(App.boot);
+    return '<div class="bu-boot"><div class="bu-boot-box"><div class="bu-logo">BANG!</div>' +
+        `<div class="bu-boot-track"><div class="bu-boot-fill" style="width:${v.pct}%"></div></div>` +
+        `<div class="bu-boot-row"><span>${esc(v.text)}</span>` +
+        `<span class="bu-boot-pct">${esc(v.label)}</span></div></div></div>`;
+}
+
+// S1 — otoč telefon. Hra je navržená jen na šířku (na výšku je měřítko 0,20 místo 0,36).
+function _ovRotate() {
+    if (!App.rotate) return '';
+    return '<div class="bu-rotate"><div class="bu-rotate-box">' +
+        '<div class="bu-rotate-ico">📱</div>' +
+        '<div class="bu-rotate-title">Otoč telefon na šířku</div>' +
+        '<div class="bu-rotate-hint">Bang! se hraje na šířku — na výšku je všechno malé ' +
+        'a karty se nevejdou.</div>' +
+        '<button class="bu-btn quiet" data-act="rotateAnyway">Hrát i tak</button></div></div>';
+}
+
+// ── Vstupy zvenčí (game.js, net/handlers.js) ───────────────────────────────
+
+function showBootScreen(pct, missing) { App.boot = { pct, missing }; renderMenuOverlays(); }
+function hideBootScreen() { App.boot = null; renderMenuOverlays(); }
+
+function showUpdateBanner() { App.banner = true; renderMenuOverlays(); }
+
+function showToast(title, hint) {
+    App.toast = { title, hint };
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => { App.toast = null; renderMenuOverlays(); }, TOAST_MS);
+    renderMenuOverlays();
+}
+
+function showConnLost(attempt) {
+    App.conn = { attempt: attempt || 0 };
+    renderMenuOverlays();
+}
+
+function hideConnLost() {
+    if (!App.conn) return;
+    App.conn = null;
+    renderMenuOverlays();
+}
+
+// S1: jen dotykové zařízení na výšku. Hrát i tak platí do konce relace
+// (sessionStorage), aby se výzva nevracela při každém otočení.
+let _rotateDismissed = false;
+try { _rotateDismissed = sessionStorage.getItem('bangRotateDismiss') === '1'; } catch (_) {}
+
+function syncRotateOverlay() {
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    App.rotate = !_rotateDismissed && !!coarse && window.innerHeight > window.innerWidth;
+    renderMenuOverlays();
+}
+window.addEventListener('resize', syncRotateOverlay);
+// orientationchange přijde dřív, než prohlížeč přepočítá innerWidth/Height.
+window.addEventListener('orientationchange', () => setTimeout(syncRotateOverlay, 200));
+
+// Načítání běží od načtení stránky – plátno je do sestavení scény jen hnědá plocha.
+App.boot = { pct: 0 };
+syncRotateOverlay();

@@ -2087,18 +2087,16 @@ function preload() {
     // znatelně nezpomalí, ale výrazně sníží počet chyb, které musí opravovat retry.
     this.load.maxParallelDownloads = 8;
 
-    // Kamera na jeviště hned v preloadu – bez toho by cedule „Načítám…" (souřadnice
-    // 960,540) seděla vlevo od skutečného středu, dokud scénu nesestaví createScene.
+    // Kamera na jeviště už v preloadu – cokoli, co by scéna nakreslila před
+    // createScene, by jinak sedělo vlevo od skutečného středu.
     this.cameras?.main?.setScroll(-(App.stage?.dx || 0), -(App.stage?.dy || 0));
 
-    // Cedule s průběhem – jinak je do konce načítání jen prázdné plátno.
-    const loadTxt = this.add.text(960, 540, 'Načítám…', {
-        fontFamily: 'Arial', fontSize: '34px', color: '#e8dcc0'
-    }).setOrigin(0.5).setDepth(5000);
-    this._loadingText = loadTxt;
-    this.load.on('progress', p => {
-        if (this._loadingText) this._loadingText.setText('Načítám… ' + Math.round(p * 100) + ' %');
-    });
+    // Průběh do obrazovky načítání (S0, view/menuDom.js) – ta leží nad plátnem a ukazuje
+    // se od načtení stránky, takže hráč nekouká na prázdné plátno ani před startem Phaseru.
+    // Posluchač na loaderu scény přežije i createScene, takže by pozdější dotažení assetů
+    // rozšíření (loadExpansionAssets) obrazovku načítání vrátilo přes rozehranou hru –
+    // proto se plní, jen dokud běží (App.boot shodí hideBootScreen).
+    this.load.on('progress', p => { if (App.boot) showBootScreen(p); });
 
     // Pozadí ve 4K. Při paralelním stahování všech textur občas soubor skončí loaderror
     // → zůstala by holá barva plátna. Proto ho při chybě párkrát znovu zařadíme do fronty
@@ -2182,7 +2180,7 @@ function ensureAssetsLoaded(scene, done, round) {
         return;
     }
     clog('warn', 'Donačítám chybějící assety, kolo ' + round, { missing: missing.slice(0, 20), count: missing.length });
-    if (scene._loadingText) scene._loadingText.setText('Načítám… (' + missing.length + ')');
+    showBootScreen(1, missing.length);
 
     // Do dalšího kola pusť i ty, které už vyčerpaly pokusy v preloadu – tady chceme
     // soubory dotáhnout za každou cenu, jen s omezeným počtem kol.
@@ -2657,7 +2655,7 @@ function create() {
 // Vlastní sestavení scény. Běží až jsou assety v cache (viz ensureAssetsLoaded), jinak
 // beze změny – `this` je scéna, stejně jako dřív v create().
 function createScene() {
-    if (this._loadingText) { this._loadingText.destroy(); this._loadingText = null; }
+    hideBootScreen();   // S0 končí sestavením scény (view/menuDom.js)
 
     gameScene = this;
 
@@ -2827,6 +2825,9 @@ function mAdd(obj, depth = 201) {
 }
 
 function renderUI() {
+    // Celoplošné vrstvy (S0/S1/G1–G3) žijí mimo scénu i mimo obrazovky menu – překresli
+    // je dřív, než se renderUI bez scény vrátí (viz view/menuDom.js).
+    renderMenuOverlays();
     if (!gameScene) return;
 
     // Kreslila deska v předchozím renderu? Reflow slide (klouzání karet z minulé pozice)

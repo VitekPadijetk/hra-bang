@@ -44,14 +44,24 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         ctx.glog.system(`${playerName} vytvořil místnost "${name}" (${maxPlayers}P)`, { options });
     });
 
+    // join_error nese { title, hint }: nadpis hlášky (G3) a větu, co s tím – klient ji
+    // ukazuje i v liště akcí na S7, kde zůstane až do dalšího pokusu.
+    const joinError = (hint) => socket.emit('join_error', { title: 'Do hry se nepodařilo připojit', hint });
+
     socket.on('join_room', ({ roomId, playerName, token }) => {
         const room = rooms.get(roomId);
-        if (!room || (room.phase !== 'lobby' && room.phase !== 'next_lobby')) return socket.emit('join_error', 'Hra není dostupná');
-        if (room.players.length >= room.maxPlayers) return socket.emit('join_error', 'Hra je plná');
-        if (room.players.some(p => p.name === playerName)) return socket.emit('join_error', `Hráč se jménem "${playerName}" již v místnosti hraje`);
+        if (!room || (room.phase !== 'lobby' && room.phase !== 'next_lobby')) {
+            return joinError('Hra už není dostupná — nejspíš mezitím začala, nebo ji zakladatel zrušil.');
+        }
+        if (room.players.length >= room.maxPlayers) {
+            return joinError('Stůl se mezitím zaplnil. Vyber si ze seznamu jinou hru.');
+        }
+        if (room.players.some(p => p.name === playerName)) {
+            return joinError(`U stolu už sedí hráč se jménem »${playerName}«. Zvol si jiné jméno.`);
+        }
         for (const [, r] of rooms) {
             if (r.players.some(p => p.name === playerName && p.socketId !== socket.id && !p.disconnected)) {
-                return socket.emit('join_error', `Jméno "${playerName}" je již používáno jiným hráčem na serveru`);
+                return joinError(`Jméno »${playerName}« právě používá jiný hráč na serveru. Zvol si jiné.`);
             }
         }
         leaveSpectate(socket);   // hráč nesmí zůstat divákem jinde (stavy dvou her by se praly)
@@ -249,6 +259,10 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         // promluvení nestojí nic.
         if (p) ctx.applyGagPenalty?.(room, p.playerIdx);
     });
+
+    // Odezva serveru pro debug obrazovku (S16): klient posílá vlastní razítko a měří,
+    // za jak dlouho se mu vrátí. Se stavem hry to nemá co dělat, proto je to prázdná ozvěna.
+    socket.on('client_ping', (t) => socket.emit('client_pong', t));
 
     // ── DISCONNECT ───────────────────────────────────────────────────────────
     socket.on('disconnect', () => {

@@ -21,6 +21,60 @@ const _animQ = createAnimQueue({
     onDrop: (n) => clog('warn', `animační fronta zaostala – přeskočeno ${n} animací`),
 });
 
+// ── LOG ZPRÁV A ODEZVA SERVERU (debug obrazovka S16) ─────────────────────────
+// Kruhový buffer posledních zpráv na socketu. Bez něj se u hlášené chyby („zaseklo se
+// to") nedá z prohlížeče zjistit vůbec nic – serverový log (server/gamelog.js) vidí jen
+// svou stranu. Payloady se NEUKLÁDAJÍ (room_update má stovky kilobajtů), jen jméno
+// eventu a krátká poznámka. Ping a client_log se vynechávají, jinak by log zaplavily.
+const SOCKET_LOG_MAX = 40;
+const SOCKET_LOG_SKIP = new Set(['client_ping', 'client_pong', 'client_log']);
+
+function _logSocket(dir, event, note) {
+    if (SOCKET_LOG_SKIP.has(event)) return;
+    App.socketLog.unshift({ t: Date.now(), dir, event, note });
+    if (App.socketLog.length > SOCKET_LOG_MAX) App.socketLog.length = SOCKET_LOG_MAX;
+}
+
+// Poznámka = to, co se o zprávě dá říct jednou krátkou větou (bez cizích dat v logu).
+function _socketNote(event, arg) {
+    if (Array.isArray(arg)) return `${arg.length} položek`;
+    if (event === 'room_update') return roomState ? `fáze ${roomState.roomPhase}` : '';
+    if (typeof arg === 'string') return arg.slice(0, 60);
+    if (arg && typeof arg === 'object') return Object.keys(arg).slice(0, 4).join(', ');
+    return '';
+}
+
+socket.onAny((event, arg) => _logSocket('in', event, _socketNote(event, arg)));
+socket.onAnyOutgoing((event, arg) => _logSocket('out', event, _socketNote(event, arg)));
+
+// Odezva serveru: prázdná ozvěna vlastního razítka (server/handlers.lobby.js). Měří ji
+// jen otevřená debug obrazovka – interval se sám ukončí, jakmile z ní hráč odejde.
+socket.on('client_pong', (t) => {
+    App.pingMs = Date.now() - t;
+    if (menuDomScreen() === 'debug') renderUI();
+});
+
+function startPingLoop() {
+    socket.emit('client_ping', Date.now());
+    const id = setInterval(() => {
+        if (menuDomScreen() !== 'debug') { clearInterval(id); return; }
+        socket.emit('client_ping', Date.now());
+    }, 2000);
+}
+
+// ── VÝPADEK SPOJENÍ (G2) ─────────────────────────────────────────────────────
+// Socket.IO se připojuje znovu sám; tohle jen ukáže, co se děje. Krátký výpadek se
+// přežije bez okna (GRACE), jinak by na horší lince problikávalo při každém škytnutí.
+const CONN_LOST_GRACE_MS = 900;
+let _connTimer = 0;
+
+socket.on('disconnect', (reason) => {
+    if (reason === 'io client disconnect') return;   // odpojili jsme se sami
+    clearTimeout(_connTimer);
+    _connTimer = setTimeout(() => showConnLost(0), CONN_LOST_GRACE_MS);
+});
+socket.io.on('reconnect_attempt', (n) => { if (App.conn) showConnLost(n); });
+
 // ── INTRO SOCKET HANDLERY ─────────────────────────────────────────────────────
 
 socket.on('intro_phase', (data) => {
@@ -3374,7 +3428,11 @@ function attemptRejoin() {
     if (sess.name) playerName = sess.name;
     socket.emit('rejoin', { roomId: sess.roomId, token: bangToken });
 }
-socket.on('connect', () => { _rejoinDone = false; _rejoinTries = 0; _animQ.reset(); attemptRejoin(); });
+socket.on('connect', () => {
+    clearTimeout(_connTimer);
+    hideConnLost();   // G2: výpadek skončil
+    _rejoinDone = false; _rejoinTries = 0; _animQ.reset(); attemptRejoin();
+});
 
 // ── Nasazení nové verze za běhu ──────────────────────────────────────────────
 // Server posílá otisk svého kódu po každém připojení (server/version.js). Ten první
@@ -3386,6 +3444,7 @@ socket.on('connect', () => { _rejoinDone = false; _rejoinTries = 0; _animQ.reset
 let _serverBuild = null;
 socket.on('server_version', (build) => {
     if (!build) return;
+    App.serverBuild = build;   // dlaždice „Otisk serveru" na debug obrazovce (S16)
     if (_serverBuild === null) { _serverBuild = build; clog('info', 'server build ' + build); return; }
     if (_serverBuild === build) return;
     clog('warn', 'nová verze serveru: ' + _serverBuild + ' → ' + build);
@@ -3400,6 +3459,7 @@ socket.on('rejoin_failed', () => {
     if (_rejoinDone) return;
     if (++_rejoinTries <= 6) { setTimeout(attemptRejoin, 500); return; }
     clearBangSession();
+    showToast('Návrat do hry se nepovedl', 'Hra už neběží, nebo tvoje místo mezitím zabral někdo jiný.');
     if (!roomState) return;
     roomState = null; state = null; myIndex = null; _myNextGameVote = null; App.startPressed = false;
     App.menuScreen = 'main';
@@ -3724,7 +3784,12 @@ socket.on('notify', (msg) => {
     if (gameScene) renderUI();
 });
 
-socket.on('join_error', (msg) => {
-    App.joinError = msg;
+// Server posílá { title, hint } (server/handlers.lobby.js). Věta „co s tím" zůstane
+// v liště akcí na S7 až do dalšího pokusu; hláška (G3) se ukazuje jen tehdy, když hráč
+// na S7 není – jinak by tutéž informaci říkala dvakrát.
+socket.on('join_error', (err) => {
+    const v = joinErrorView(err);
+    App.joinError = v.hint || v.title;
+    if (menuDomScreen() !== 'join_room') showToast(v.title, v.hint);
     if (gameScene) renderUI();
 });

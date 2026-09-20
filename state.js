@@ -33,6 +33,22 @@ const App = {
     joinError: null,
     notifyMsg: null,
     kickedMsg: null,
+    // ── Celoplošné vrstvy (S0/S1/G1–G3, view/menuDom.js) ──────────────────────
+    // Žijí mimo obrazovky menu i mimo Phaser – musí být vidět v menu i uprostřed hry.
+    boot: null,        // S0 načítání: { pct, missing } (null = scéna je sestavená)
+    rotate: false,     // S1: telefon na výšku
+    banner: false,     // G1: na server se nahrála nová verze
+    conn: null,        // G2: ztracené spojení, { attempt }
+    toast: null,       // G3: chybová hláška, { title, hint } (sama zmizí)
+    // Debug obrazovka (S16): odezva serveru, otisk běžícího kódu a kruhový log zpráv
+    // ze socketu (net/handlers.js). Bez debug obrazovky je nikdo nečte.
+    pingMs: null,
+    serverBuild: null,
+    socketLog: [],
+    // Debug hra: rozšíření pod klíči MENU_EXPANSIONS (na camelCase pro server je přeloží
+    // debugStartPayload). Starší App.debug<Rozšíření> patří Phaserové obrazovce (fáze 8).
+    debugExpansions: null,
+    debugPlayerCount: 4,
     // Vyhodilo mě to ze sledování (ne od stolu) – S15 pak nabízí jinou hru ke sledování.
     kickedSpectator: false,
     // Otevřené statistiky hry (S14) přes konec hry; zavírají se samy s výsledkem (menuDomScreen).

@@ -82,8 +82,8 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 | 4 | **S8, S9** lobby (sedačky, ➕ Bot, ✕ bot, varovné „Opustit hru") | `start_game` jen s plným stolem | ✅ |
 | 5 | **S12, S14, S15** (statistiky už jsou HTML v `showStats` → nový vzhled + seskupení podle rolí) | – | ✅ |
 | 6 | **S13** účast in / wait / out (D8) | `next_join` / `next_leave`, stav na hráče v `roomPayload`, ruční start lídrem, pryč `nextGameTimer`; testy `test/server.*` | ✅ |
-| 7 | **G1, G2, G3, S0, S1, S16** (D7) | `join_error` → `{ title, hint }` | ☐ |
-| 8 | Úklid: smazat Phaserové obrazovky z `view/menu.js`, `renderWinnerScreen` (view/screens.js), `ui_choice` v game.js, starý `#rotate-overlay`; řádek do CLAUDE.md + `docs/pravidla/menu-ui.md` | – | ☐ |
+| 7 | **G1, G2, G3, S0, S1, S16** (D7) | `join_error` → `{ title, hint }`, ozvěna `client_ping` | ✅ |
+| 8 | Úklid: smazat Phaserové obrazovky z `view/menu.js` (vč. debug a `App.debug<Rozšíření>`), `renderWinnerScreen` (view/screens.js), `ui_choice` v game.js, mrtvé `App.notifyMsg`; řádek do CLAUDE.md + `docs/pravidla/menu-ui.md`. Starý `#rotate-overlay` smazala už fáze 7. | – | ☐ |
 
 ## Stav po fázích
 
@@ -251,3 +251,57 @@ ověřit nedá – herní stůl dál kontroluje uživatel.
 - `renderWinnerScreen` (view/screens.js) je teď mrtvý kód – smaže se ve fázi 8.
 - Otevřené: při stole pro 3 a jednom odchodu se na 3 přihlášené už nedá dojít (nikdo nový do S13
   nepřijde), lídr pak může jen zrušit hru.
+
+### Fáze 7 (hotovo)
+
+- **Vrstva nad vrstvou.** S0, S1 a G1–G3 nejsou obrazovky menu – žijí ve VLASTNÍM kořeni
+  `.bu-ov-root` (z-index 1000, nad menu i nad oknem se jménem) a musí být vidět i uprostřed
+  hry, kde je vrstva menu schovaná. Kořen sám kliky nechytá (`pointer-events: none`,
+  děti `auto`), jinak by prázdná vrstva umrtvila celou hru. Překresluje je jedním řetězcem
+  `renderMenuOverlays()` (diff jako u obrazovek), stav drží `App.boot / rotate / banner /
+  conn / toast`. `renderUI` ji volá jako úplně první krok – ještě PŘED `if (!gameScene) return`,
+  protože S0 běží dřív, než scéna vůbec vznikne.
+- **S0** nahradila Phaserovou cedulku „Načítám… 62 %": ukazuje se od načtení stránky
+  (`App.boot = { pct: 0 }` na konci menuDom.js), průběh do ní sype `preload` a opravná kola
+  `ensureAssetsLoaded` (ta místo procent hlásí, kolik souborů dotahují), zháší ji
+  `hideBootScreen()` v `createScene`. **Posluchač `load.on('progress')` přežije createScene**,
+  takže pozdější `loadExpansionAssets` obrazovku vracel přes rozehranou hru – proto se plní,
+  jen dokud `App.boot` stojí.
+- **S1** se přestěhovala z inline skriptu v `index.html` do vrstvy (kód i styl); `#rotate-overlay`
+  je tím pádem smazaný už teď, ne až ve fázi 8. „Hrát i tak" platí dál do konce relace
+  (`sessionStorage.bangRotateDismiss`).
+- **G1** nahradil `showUpdateBanner` ve `view/menu.js` (smazaný) – stejný spouštěč
+  (`server_version`, net/handlers.js), jen v tokenech vrstvy a s ✕.
+- **G2** je nová: `socket.on('disconnect')` (kromě `io client disconnect` = odpojili jsme se
+  sami) ukáže okno po **900 ms odkladu** – bez něj by na horší lince problikávalo při každém
+  škytnutí. `socket.io.on('reconnect_attempt')` dopisuje číslo pokusu, `connect` ho zhasne.
+  Text se liší podle toho, jestli hráč sedí u stolu (server mu místo drží podle tokenu).
+- **G3** ukazuje `join_error` – server ho nově posílá jako **`{ title, hint }`**
+  (server/handlers.lobby.js, helper `joinError(hint)`; čte ho `joinErrorView`). Hláška se
+  ukazuje, **jen když hráč není na S7** – tam už tutéž větu nese lišta akcí a hlásit ji dvakrát
+  nemá smysl. Druhý spouštěč je vyčerpaný `rejoin_failed` (hráč skončí v menu a dosud nevěděl proč).
+- **S16** (D7) má čtyři části: dlaždice stavu klienta, spouštěč debug hry, simulace vrstev
+  a log zpráv.
+  - **Odezva serveru** měří prázdná ozvěna `client_ping` → `client_pong`
+    (server/handlers.lobby.js). Interval si pouští `MENU_ENTER.debug` a **sám se ukončí**,
+    jakmile `menuDomScreen()` vrátí něco jiného (žádný hák na odchod z obrazovky neexistuje).
+  - **Log zpráv** je kruhový buffer 40 posledních eventů (`socket.onAny` / `onAnyOutgoing`
+    v net/handlers.js). Payloady se NEUKLÁDAJÍ (room_update má stovky kilobajtů), jen jméno
+    eventu a krátká poznámka; `client_ping`/`client_pong`/`client_log` se vynechávají, jinak
+    by log zaplavily. Do té doby se u hlášené chyby nedalo z prohlížeče zjistit vůbec nic –
+    serverový log (server/gamelog.js) vidí jen svou stranu.
+  - **Debug hra** je postavená z prvků S5: role (barva karty role), `_menuCountRow`
+    s **2–8** (debug hra umí i dva hráče, proto má řada počet sloupců parametrem `--counts`;
+    3–8 zůstává pixelově beze změny), mřížka rozšíření a lišta se startem. Rozšíření drží
+    `App.debugExpansions` pod klíči `MENU_EXPANSIONS`; na camelCase, který čte server,
+    je překládá `debugStartPayload` (core/menuModel.js). Starší `App.debugDodgeCity` a spol.
+    patří Phaserové obrazovce a odejdou s ní ve fázi 8.
+  - **Simulace** jsou jediný způsob, jak si vrstvy prohlédnout bez výpadku sítě a bez nasazení
+    nové verze – a tedy i jak je vyfotit (`tools/menushot.js`).
+- `core/menuModel.js`: `loadingView`, `connLostView`, `joinErrorView`, `DEBUG_PLAYER_COUNTS`,
+  `DEBUG_ROLES`, `debugStats`, `debugRolesLabel`, `debugStartPayload`, `socketLogLine`.
+- Ověřeno snímky: S16 1280×720 (shora i zespoda), G1+G3 přes hlavní menu, G2 ve světlém
+  motivu 740×360 i po skutečném `engine.close()` (a že po reconnectu zmizí), S1 740×360,
+  S0 při načítání a že po sestavení scény zmizí. Proti běžícímu serveru: `join_error`
+  ze serveru → hláška v menu a naopak lišta (bez hlášky) na S7; „▶ Spustit debug hru" →
+  výběr postav ve 3 hráčích.

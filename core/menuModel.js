@@ -597,6 +597,93 @@ function kickedView(msg, { spectator = false } = {}) {
             next: { label: 'Najít jinou hru', screen: 'join_list' } };
 }
 
+// ── Celoplošné vrstvy: S0 načítání, S1 otoč telefon, G1 banner, G2 výpadek, G3 hláška ──
+
+// S0: pruh načítání pod logem. `missing` = opravné kolo (ensureAssetsLoaded v game.js)
+// dotahuje soubory, které při preloadu spadly – procenta tam nedávají smysl.
+function loadingView({ pct = 0, missing = 0 } = {}) {
+    const p = Math.max(0, Math.min(100, Math.round((pct || 0) * 100)));
+    if (missing) {
+        return { pct: p, label: '', text: `Dotahuji ${missing} ${czPlural(missing, 'soubor', 'soubory', 'souborů')}…` };
+    }
+    return { pct: p, label: `${p} %`, text: 'Načítám karty a postavy…' };
+}
+
+// G2: výpadek spojení. Kdo sedí u stolu, potřebuje hlavně vědět, že o místo nepřijde
+// (server ho drží podle tokenu, viz 'rejoin' v net/handlers.js).
+function connLostView(inRoom, attempt) {
+    return {
+        title: 'Ztraceno spojení',
+        hint: inRoom
+            ? 'Zkouším se připojit znovu. Tvoje místo u stolu zůstává zabrané — nikam nespěchej.'
+            : 'Zkouším se připojit znovu. Server je nejspíš chvíli nedostupný.',
+        note: attempt > 0 ? `${attempt}. pokus o připojení` : 'Připojuji…',
+    };
+}
+
+// G3: server posílá join_error jako { title, hint } – nadpis hlášky a věta, co s tím.
+// Starší tvar (holý řetězec) zůstává čitelný, ať klient nepadá na půlce nasazení.
+function joinErrorView(err) {
+    if (!err) return null;
+    const fallback = 'Do hry se nepodařilo připojit';
+    if (typeof err === 'string') return { title: fallback, hint: err };
+    return { title: err.title || fallback, hint: err.hint || '' };
+}
+
+// ── S16 Debug ─────────────────────────────────────────────────────────────
+
+// 2 hráči jsou jen v debug hře (setupDebugGame si role losuje sám, rolesForPlayerCount
+// je pro ně „Sheriff + Outlaw").
+const DEBUG_PLAYER_COUNTS = [2, 3, 4, 5, 6, 7, 8];
+const DEBUG_ROLES = ['Sheriff', 'Deputy', 'Outlaw', 'Renegade'];
+
+// Dlaždice stavu klienta. `tone` = barva hodnoty ('ok' | 'bad' | 'text' | 'muted').
+function debugStats({ connected, pingMs, build, waiting, running }) {
+    return [
+        { label: 'Spojení', value: connected ? 'připojen' : 'odpojen', tone: connected ? 'ok' : 'bad' },
+        { label: 'Odezva serveru', value: pingMs == null ? '—' : `${pingMs} ms`,
+          tone: pingMs == null ? 'muted' : pingMs > 250 ? 'bad' : 'text' },
+        { label: 'Hry na serveru', value: `${waiting} čeká · ${running} běží`, tone: 'text' },
+        { label: 'Otisk serveru', value: build ? String(build).slice(0, 7) : '—', tone: 'muted' },
+    ];
+}
+
+// Role debug hry v pořadí, v jakém se naklikaly; zbytek si server dolosuje.
+function debugRolesLabel(roles) {
+    const list = (roles || []).map(roleNameCz);
+    return list.length ? list.join(', ') : '(náhodné)';
+}
+
+// Payload pro 'debug_start'. Klíče jsou camelCase per rozšíření – takhle je čte
+// server/handlers.debug.js, zatímco obrazovky menu drží rozšíření pod klíči
+// MENU_EXPANSIONS (dodge_city, …), takže se to musí jednou přeložit.
+function debugStartPayload({ count, roles, exps, hnExtra }) {
+    const e = exps || {};
+    return {
+        playerCount: count,
+        roles: roles || [],
+        dodgeCity: !!e.dodge_city,
+        highNoon: !!e.high_noon,
+        highNoonExtra: !!(e.high_noon && hnExtra),
+        fistful: !!e.fistful,
+        divokyZapad: !!e.divoky_zapad,
+        zlataHorecka: !!e.zlata_horecka,
+    };
+}
+
+// Řádek logu zpráv (S16) z jednoho záznamu kruhového bufferu (net/handlers.js).
+function socketLogLine(entry) {
+    const d = new Date(entry.t);
+    const two = (n) => String(n).padStart(2, '0');
+    const dirs = { in: ['← přišlo', 'in'], out: ['→ odešlo', 'out'] };
+    const [dir, cls] = dirs[entry.dir] || ['···', 'sys'];
+    return {
+        time: `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`,
+        dir, cls,
+        msg: entry.note ? `${entry.event} · ${entry.note}` : entry.event,
+    };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         esc, czPlural, waitingGamesLabel, runningGamesLabel, waitingGamesCount,
@@ -612,5 +699,7 @@ if (typeof module !== 'undefined' && module.exports) {
         playerWon, NEXT_MIN_PLAYERS, nextRoster, nextTally, nextGameSummary, endGameView,
         nextGameView, nextRowTag,
         statsTotalsLabel, topCardsLabel, statsRow, statsGroups, kickedView,
+        loadingView, connLostView, joinErrorView,
+        DEBUG_PLAYER_COUNTS, DEBUG_ROLES, debugStats, debugRolesLabel, debugStartPayload, socketLogLine,
     };
 }

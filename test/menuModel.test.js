@@ -478,3 +478,68 @@ test('kickedView: druhý řádek radí, hlavní akce vede k hraní (divák ke sl
     assert.equal(M.kickedView(null, { spectator: true }).next.screen, 'spectate_list');
     assert.equal(M.kickedView(null).title, 'Game Leader ukončil hru.');
 });
+
+// ── Celoplošné vrstvy a debug (fáze 7) ────────────────────────────────────
+
+test('loadingView: procenta se ořezávají, opravné kolo místo nich hlásí soubory', () => {
+    assert.deepEqual(M.loadingView({ pct: 0.624 }), { pct: 62, label: '62 %', text: 'Načítám karty a postavy…' });
+    assert.equal(M.loadingView().pct, 0);
+    assert.equal(M.loadingView({ pct: 2 }).pct, 100);
+    assert.equal(M.loadingView({ pct: -1 }).pct, 0);
+    const rep = M.loadingView({ pct: 1, missing: 3 });
+    assert.equal(rep.label, '');
+    assert.equal(rep.text, 'Dotahuji 3 soubory…');
+    assert.equal(M.loadingView({ pct: 1, missing: 1 }).text, 'Dotahuji 1 soubor…');
+    assert.equal(M.loadingView({ pct: 1, missing: 7 }).text, 'Dotahuji 7 souborů…');
+});
+
+test('connLostView: u stolu slibuje místo, v menu ne; pokus se počítá až od prvního', () => {
+    assert.match(M.connLostView(true, 1).hint, /místo u stolu zůstává zabrané/);
+    assert.doesNotMatch(M.connLostView(false, 1).hint, /stolu/);
+    assert.equal(M.connLostView(true, 0).note, 'Připojuji…');
+    assert.equal(M.connLostView(true, 3).note, '3. pokus o připojení');
+});
+
+test('joinErrorView: { title, hint } i starší holý řetězec', () => {
+    assert.deepEqual(M.joinErrorView({ title: 'A', hint: 'B' }), { title: 'A', hint: 'B' });
+    assert.deepEqual(M.joinErrorView('Hra je plná'), { title: 'Do hry se nepodařilo připojit', hint: 'Hra je plná' });
+    assert.equal(M.joinErrorView({ hint: 'B' }).title, 'Do hry se nepodařilo připojit');
+    assert.equal(M.joinErrorView(null), null);
+});
+
+test('debugStats: čtyři dlaždice, odpojení a pomalá odezva svítí červeně', () => {
+    const on = M.debugStats({ connected: true, pingMs: 38, build: 'abcdef1234', waiting: 2, running: 1 });
+    assert.deepEqual(on.map(d => d.value), ['připojen', '38 ms', '2 čeká · 1 běží', 'abcdef1']);
+    assert.deepEqual(on.map(d => d.tone), ['ok', 'text', 'text', 'muted']);
+    const off = M.debugStats({ connected: false, pingMs: null, build: null, waiting: 0, running: 0 });
+    assert.deepEqual(off.map(d => d.value), ['odpojen', '—', '0 čeká · 0 běží', '—']);
+    assert.deepEqual(off.map(d => d.tone), ['bad', 'muted', 'text', 'muted']);
+    assert.equal(M.debugStats({ connected: true, pingMs: 400 })[1].tone, 'bad');
+});
+
+test('debugRolesLabel: role česky v pořadí zadání, prázdno = náhodné', () => {
+    assert.equal(M.debugRolesLabel([]), '(náhodné)');
+    assert.equal(M.debugRolesLabel(), '(náhodné)');
+    assert.equal(M.debugRolesLabel(['Sheriff', 'Outlaw']), 'Šerif, Bandita');
+});
+
+test('debugStartPayload: klíče rozšíření se překládají na camelCase serveru', () => {
+    const exps = { dodge_city: true, high_noon: true, fistful: false, divoky_zapad: true, zlata_horecka: false };
+    assert.deepEqual(M.debugStartPayload({ count: 5, roles: ['Sheriff'], exps, hnExtra: true }), {
+        playerCount: 5, roles: ['Sheriff'],
+        dodgeCity: true, highNoon: true, highNoonExtra: true,
+        fistful: false, divokyZapad: true, zlataHorecka: false,
+    });
+    // Přibalené karty bez High Noonu nedávají smysl a server by je stejně zahodil.
+    assert.equal(M.debugStartPayload({ count: 3, exps: {}, hnExtra: true }).highNoonExtra, false);
+    assert.deepEqual(M.debugStartPayload({ count: 3, exps: {} }).roles, []);
+});
+
+test('socketLogLine: směr, čas a jednořádkový popis', () => {
+    const t = new Date(2026, 0, 2, 9, 5, 7).getTime();
+    assert.deepEqual(M.socketLogLine({ t, dir: 'in', event: 'lobby_list', note: '3 položek' }),
+        { time: '09:05:07', dir: '← přišlo', cls: 'in', msg: 'lobby_list · 3 položek' });
+    assert.equal(M.socketLogLine({ t, dir: 'out', event: 'add_bot' }).msg, 'add_bot');
+    assert.equal(M.socketLogLine({ t, dir: 'out', event: 'add_bot' }).dir, '→ odešlo');
+    assert.equal(M.socketLogLine({ t, dir: '?', event: 'x' }).cls, 'sys');
+});
