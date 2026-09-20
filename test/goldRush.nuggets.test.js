@@ -52,25 +52,24 @@ test('data: identita karty je `effect`, ne jméno – a je unikátní', () => {
 
 test('setup: do balíčku jdou jen HOTOVÉ druhy (GEAR_READY) a obchod se hned naplní', () => {
     const g = mkZH();
-    // Kusů je celkem 24, ale do hry se rozdávají jen druhy, jejichž efekt už umí
-    // pravidla (fáze 1: Panák 3× + Union Pacific 1×; fáze 2: šest pasivních černých,
-    // fáze 3: dvě placené černé – všechny černé po jednom kusu; fáze 4: Láhev 3×,
-    // Komplic 3×, Rum 2× a Zlatá horečka 1×). Karta bez efektu by se prodala za valouny
-    // a neudělala nic – viz GEAR_READY v logic/goldRush.js. Chybí už jen Wanted (3×).
+    // Fází 5 je GEAR_READY (logic/goldRush.js) ÚPLNÝ, takže se rozdávají všechny druhy
+    // i všechny kusy – počet se proto čte z dat (`copies`), ne z natvrdo psaného čísla:
+    // jinak by test spadl při každé nové kartě místo toho, aby hlídal, že nic nechybí.
     const BLACK = ['ZH_BOTY', 'ZH_TALISMAN', 'ZH_NABOJOVY_PAS', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
                    'ZH_RYZOVACI_MISA', 'ZH_BATOH'];
-    const READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC', ...BLACK,
-                   'ZH_LAHEV', 'ZH_KOMPLIC', 'ZH_RUM', 'ZH_ZLATA_HORECKA'];
+    const PIECES = gearData.reduce((a, k) => a + Math.max(1, k.copies || 1), 0);
     const all = g.gearDeck.concat(g.gearRow.filter(Boolean));
-    assert.equal(all.length, 21);
-    assert.equal(new Set(all.map(c => c.id)).size, 21);
-    assert.ok(all.every(c => READY.includes(c.effect)));
+    assert.equal(all.length, PIECES, 'všech 24 kusů je ve hře');
+    assert.equal(new Set(all.map(c => c.id)).size, PIECES, 'každý kus má vlastní id');
+    assert.equal(new Set(all.map(c => c.effect)).size, gearData.length, 'a žádný druh nechybí');
     // Černé druhy fází 2 a 3 jsou v balíčku po JEDNOM kuse (`copies: 1` v datech), takže
-    // se „ne dvě stejného vybavení" nedá porušit ani dvěma nákupy různých hráčů.
+    // se „ne dvě stejného vybavení" nedá porušit ani dvěma nákupy různých hráčů. Wanted
+    // je výjimka (3 kusy) – vykládá se před CIZÍ hráče, takže může viset na třech naráz.
     BLACK.forEach(e => assert.equal(all.filter(c => c.effect === e).length, 1, e));
     const count = (e) => all.filter(c => c.effect === e).length;
-    assert.deepEqual([count('ZH_LAHEV'), count('ZH_KOMPLIC'), count('ZH_RUM'), count('ZH_ZLATA_HORECKA')],
-                     [3, 3, 2, 1]);
+    assert.deepEqual([count('ZH_LAHEV'), count('ZH_KOMPLIC'), count('ZH_RUM'), count('ZH_ZLATA_HORECKA'),
+                      count('ZH_WANTED')],
+                     [3, 3, 2, 1, 3]);
     // Obchod má 3 karty lícem vzhůru hned od začátku hry.
     assert.equal(g.gearRow.filter(Boolean).length, 3);
     assert.deepEqual(g.gearPile, []);

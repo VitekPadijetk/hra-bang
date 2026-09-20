@@ -2866,9 +2866,12 @@ function drawMyArea(ctx) {
         // Ostatní se vybírají klikem na postavu (drawOpponents); vlastní portrét se
         // v mojí zóně neklika, takže na sebe je tlačítko. Kreslí se jen tehdy, když
         // jsem mezi platnými cíli (tedy když mám co léčit).
+        // Wanted („zahraj na libovolného hráče", FAQ Q07) se smí vyložit i před sebe –
+        // tlačítko je tedy totéž, jen se nechlubí životem, který nedoplní.
         if (state.phase === "GEAR_TARGET" && state.pendingGearTarget?.playerIdx === myIndex &&
             (state.pendingGearTarget.targets || []).includes(myIndex)) {
-            const { bg: _selfBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 300, L.btnH, '🥃 SOBĚ +1 ❤', {
+            const _gtSelfLabel = state.pendingGearTarget.card ? '🎯 PŘED SEBE' : '🥃 SOBĚ +1 ❤';
+            const { bg: _selfBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 300, L.btnH, _gtSelfLabel, {
                 fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum,
                 textColor: THEME.color.gold, fontSize: '22px',
                 onClick: () => {
@@ -3332,9 +3335,12 @@ function drawPhaseOverlays(ctx) {
             let l1 = gameScene.add.text(960, 66, `💰 ${_gtWhat} – vyber cíl`,
                 { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
             mAdd(l1, 206);
-            let l2 = gameScene.add.text(960, 112, _pg.mode
-                    ? 'Klikni na hráče, na kterého ji zahraješ (zvýraznění jsou platné cíle)'
-                    : 'Klikni na hráče, kterému doplníš 1 život',
+            let l2 = gameScene.add.text(960, 112,
+                _pg.card
+                    ? 'Klikni na hráče, před kterého kartu vyložíš (i na sebe – tlačítkem)'
+                    : (_pg.mode
+                        ? 'Klikni na hráče, na kterého ji zahraješ (zvýraznění jsou platné cíle)'
+                        : 'Klikni na hráče, kterému doplníš 1 život'),
                 { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
             mAdd(l2, 206);
         } else {

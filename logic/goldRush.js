@@ -43,14 +43,21 @@ function gearPieces(kind) {
 // Které druhy vybavení se do balíčku vůbec rozdávají. Stejný vzor jako `WILD_WEST_READY`
 // (logic/entities.js): rozšíření se dá hrát dřív, než je hotových všech 15 druhů, a karta,
 // jejíž efekt ještě není napsaný, se nesmí dostat do obchodu – hráč by za ni zaplatil
-// valouny a nedostal nic. Seznam roste s fázemi plánu (§9); ve fázi 5 bude úplný.
+// valouny a nedostal nic. Fází 5 je seznam ÚPLNÝ (všech 15 druhů) a zůstává jen jako
+// pojistka pro další rozšíření – stejně jako `WILD_WEST_READY` po dodělání Divokého západu.
 const GEAR_READY = ['ZH_PANAK', 'ZH_UNION_PACIFIC',
                     // fáze 2 – pasivní černé vybavení (leží před hráčem a jen mění pravidla)
                     'ZH_BOTY', 'ZH_TALISMAN', 'ZH_NABOJOVY_PAS', 'ZH_KRUMPAC', 'ZH_KALUMET', 'ZH_PODKOVA',
                     // fáze 3 – placené černé vybavení (leží před hráčem a používá se za valouny)
                     'ZH_RYZOVACI_MISA', 'ZH_BATOH',
                     // fáze 4 – hnědé s volbou (Láhev, Komplic) a se sejmutím / tahem navíc
-                    'ZH_LAHEV', 'ZH_KOMPLIC', 'ZH_RUM', 'ZH_ZLATA_HORECKA'];
+                    'ZH_LAHEV', 'ZH_KOMPLIC', 'ZH_RUM', 'ZH_ZLATA_HORECKA',
+                    // fáze 5 – černé vybavení na CIZÍ stůl (odměna za vyřazení jeho majitele)
+                    'ZH_WANTED'];
+
+// Wanted: „Kdo toho hráče vyřadí, lízne si 2 karty a vezme si 1 valoun."
+const WANTED_CARDS = 2;
+const WANTED_NUGGETS = 1;
 
 // Rýžovací mísa: „Použitelné až 2× za tah."
 const PAN_USES_PER_TURN = 2;
@@ -253,7 +260,9 @@ const GoldRushMixin = {
         if (this._lawLocked(playerIdx, null, this._gearLawOpts(card))) return null;
         // „Ne dvě stejného jména" – jako u modrých karet, jen se ptáme na `effect` (R1).
         // Kontrola musí být PŘED zaplacením, jinak by hráč přišel o valouny zadarmo.
-        if (card.border === 'black' && this._hasGear(playerIdx, card.effect)) return null;
+        // U Wanted se neměří na kupujícím, ale až na vybraném CÍLI (gearBlackTargets) –
+        // karta jde „na libovolného hráče", takže vlastní stůl nic neblokuje.
+        if (card.border === 'black' && !gearAimedBlack(card) && this._hasGear(playerIdx, card.effect)) return null;
         // Láhev / Komplic: bez zvoleného (a právě hratelného) režimu se nekupuje.
         const modes = gearModesOf(card);
         const mode = modes ? opts.mode : null;
@@ -273,7 +282,19 @@ const GoldRushMixin = {
         this.logEvent('gear', { act: 'buy', who: p.name, card: card.name, cost, border: card.border,
                                 mode: mode ? GEAR_MODE_LABEL[mode] : undefined });
         if (card.border === 'black') {
-            p.gear.push(card);
+            // Wanted: „zahraj na libovolného hráče" – karta se nevykládá před kupujícího,
+            // ale počká si na cíl ve stejné fázi jako Panák. Do té doby ji drží pending
+            // (nikde jinde neleží), takže se nesmí ztratit ani v cestě „cíl mezitím odešel
+            // ze hry" – tu řeší resolveGearTarget odhozením pod balíček.
+            if (gearAimedBlack(card)) {
+                this.pendingGearTarget = {
+                    playerIdx, effect: card.effect, cardName: card.name, card,
+                    targets: gearBlackTargets(this, playerIdx, card),
+                };
+                this.phase = "GEAR_TARGET";
+            } else {
+                p.gear.push(card);
+            }
         } else {
             // Na spodek balíčku jde karta HNED: efekt Zlaté horečky ukončí tah a rovnou
             // rozjede další, takže „potom" by znamenalo až uprostřed nového tahu.
@@ -387,7 +408,7 @@ const GoldRushMixin = {
         }
     },
 
-    // Cíl hnědé karty s volbou (Panák, cílené režimy Láhve a Komplice). `targetIdx` musí
+    // Cíl karty s volbou (Panák, cílené režimy Láhve a Komplice, Wanted). `targetIdx` musí
     // být ze seznamu, který hra nabídla – stejná dohoda jako u Pokrevních bratří a Zuřivé
     // Doroty.
     resolveGearTarget(playerIdx, targetIdx) {
@@ -397,6 +418,22 @@ const GoldRushMixin = {
         const t = this.players[targetIdx];
         this.pendingGearTarget = null;
         this.phase = "PLAY";
+        // Wanted: karta se vyloží před vybraného hráče (i před kupujícího, FAQ Q07).
+        // Cíl mohl mezitím odejít ze hry – pokuta Roubíku smí tuhle volbu přerušit, když
+        // se čeká na někoho jiného než na pokutovaného. Zaplacená karta se pak nesmí
+        // ztratit: jde pod balíček vybavení, jako by ji majitel odhodil.
+        if (pg.card) {
+            const who = this.players[playerIdx];
+            if (!t || !isInPlay(t)) {
+                this._gearDiscard(pg.card);
+                this.logEvent('gear', { act: 'wanted_place', who: who?.name, target: null });
+            } else {
+                t.gear.push(pg.card);
+                this.logEvent('gear', { act: 'wanted_place', who: who?.name, target: t.name });
+            }
+            this._processSpecialQueue();
+            return true;
+        }
         if (pg.mode) {
             this._gearModeHit(playerIdx, pg, targetIdx);
             return true;
@@ -586,6 +623,39 @@ const GoldRushMixin = {
         const healed = this._heal(p, 1);
         this.logEvent('gear', { act: 'rucksack', who: p.name, heal: healed });
         return true;
+    },
+
+    // ── Wanted: odměna za vyřazení jeho majitele ────────────────────────────
+    // „Kdo toho hráče vyřadí, lízne si 2 karty a vezme si 1 valoun." Volá handlePlayerDeath
+    // (logic/combat.js) MEZI odměnou za banditu a pokutou šerifa za pomocníka – obojí
+    // z toho plyne z pravidel:
+    //   • odměny se SČÍTAJÍ: bandita s Wanted dá 2 + 3 = 5 karet a 1 + 1 = 2 valouny.
+    //     Karty jdou dvěma frontami po 2 a 3 (jako u Herba Huntera), ne jednou pětkou –
+    //     jsou to dva různé efekty a každý se líže vlastní fází,
+    //   • „vyřadí-li šerif pomocníka s Wanted, NEJPRVE si vezme 2 karty a teprve pak
+    //     odhodí celou ruku, ale zlato si ponechá" – čili karty jsou ztracené. Fronta
+    //     odložených akcí se odbavuje až po návratu z handlePlayerDeath, tedy AŽ ZA
+    //     pokutou; líznout je do ruky „na oko" by je hráči nechalo. Výsledek pravidla je
+    //     přesně „dvě karty z balíčku do odhozu", takže se tak i provedou.
+    // `opts.loseHand` = chystá se pokuta šerifa za pomocníka (počítá ji volající, ať se
+    // tahle podmínka nepíše na dvou místech).
+    _gearWantedReward(killerIdx, opts = {}) {
+        if (!this._goldRushOn()) return;
+        const killer = this.players[killerIdx];
+        if (!killer || !isInPlay(killer)) return;
+        this._gainNugget(killerIdx, WANTED_NUGGETS);
+        this.logEvent('gear', { act: 'wanted', who: killer.name,
+                                cards: WANTED_CARDS, nuggets: WANTED_NUGGETS,
+                                lost: opts.loseHand ? 'pokuta šerifa' : undefined });
+        if (opts.loseHand) {
+            for (let k = 0; k < WANTED_CARDS; k++) {
+                const c = this.deck.draw();
+                if (!c) break;
+                this.deck.discard(c);
+            }
+            return;
+        }
+        this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: killerIdx, cardsNeeded: WANTED_CARDS });
     },
 
     // ── Vyřazení hráče ──────────────────────────────────────────────────────

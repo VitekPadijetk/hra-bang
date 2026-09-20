@@ -517,7 +517,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 | **2** ✅ | pasivní černé: **Boty, Talisman, Nábojový pás, Krumpáč, Kalumet, Podkova** | 6 karet |
 | **3** ✅ | placené černé: **Rýžovací mísa, Batoh** (vč. záchrany posledního života) | 8 karet |
 | **4** ✅ | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 14 druhů z 15 |
-| **5** | **Wanted** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
+| **5** ✅ | **Wanted** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
 | **6** | **8 postav** (`GOLD_RUSH_READY` roste) | rozšíření hotové |
 | **7** | **Stínoví pistolníci** (volitelná varianta) | vše |
 | **8** | bot: nákupní politika + zátěž, layout invarianty | — |
@@ -731,6 +731,55 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
   lepšího na práci. Do zátěže („plná kapsa valounů") se **Boty a Podkova nasazují do
   obchodu rovnou**: v balíčku je teď 21 karet, takže do šesti partií se do řady nemusely
   dostat vůbec a staré pojistky testu začaly padat náhodně.
+
+### Co se ve fázi 5 odchýlilo od plánu (a proč)
+
+- **Wanted je první ČERNÁ karta, která nekončí před kupujícím.** „Zahraj na libovolného
+  hráče" znamená, že po zaplacení následuje volba cíle – recykluje se fáze `GEAR_TARGET`
+  (Panák, cílené režimy Láhve a Komplice), takže nevznikla nová fáze a bot ani
+  `pendingActor` nepotřebovaly novou větev. Že se taková karta pozná, drží **seznam**
+  `GEAR_AIMED_BLACK` (core/goldRush.js), ne rovnost jednoho `effect` – stejný důvod jako
+  u `GEAR_MODES`: druhá taková karta se přidá na jedno místo a server, okno obchodu i bot
+  se o ní dozvědí naráz.
+- **„Ne dvě stejného" se u ní měří na CÍLI, ne na kupujícím.** Wanted jsou tři kusy, takže
+  může viset na třech hráčích zároveň – a hráč, který jedno před sebou má, si další koupit
+  smí (jen ne zase na sebe). Volné cíle počítá `gearBlackTargets`; bez jediného se karta
+  nedá koupit vůbec (`gearCardReason`), aby se nezaplatilo za kartu, která nemá kam.
+- **Mezi zaplacením a volbou drží kartu `pendingGearTarget.card`** – nikde jinde neleží.
+  Cíl přitom může mezitím odejít ze hry (pokuta Roubíku smí `GEAR_TARGET` přerušit, když
+  se čeká na někoho jiného než na pokutovaného), takže `resolveGearTarget` má stejnou
+  pojistku jako `_gearModeHit`: karta jde pod balíček vybavení a hra běží dál.
+- **Odměna se NELÍŽE frontou, když šerif zabil pomocníka.** Pravidlo „nejprve si vezme
+  2 karty a teprve pak odhodí celou ruku, ale zlato si ponechá" jinak nejde splnit: fronta
+  odložených akcí se odbavuje až po návratu z `handlePlayerDeath`, tedy AŽ ZA pokutou –
+  hráč by si karty nechal. Výsledek pravidla je přesně „2 karty z balíčku do odhozu",
+  takže se tak i provedou. V běžném případě zůstává odměna obyčejným `KILL_REWARD`
+  (klikací fáze lízání), aby se líznutí nerozešlo s jedinou cestou, kterou v projektu má.
+  Podmínku pokuty proto počítá `handlePlayerDeath` do proměnné a předává ji dál
+  (`_gearWantedReward(killerIdx, { loseHand })`) – psát ji na dvou místech by se rozešlo.
+- **Odměny se sčítají dvěma frontami, ne jednou pětkou** (2 + 3 karty). Jsou to dva různé
+  efekty a každý se líže vlastní fází – stejná dohoda jako u Herba Huntera.
+- **Příznak Wanted se musí přečíst PŘED `_gearDropAll`**, které vybavení mrtvého uklidí.
+  Čte se přes `_gearOn`, takže se veze R10 (Laso vypne celý stůl, Belle Star ve svém tahu
+  cizí karty) – vypnuté Wanted neodměňuje.
+- **Ledger chování bere vyložení Wanted jako NEPŘÁTELSKÉ** (`server/handlers.game.js`):
+  je to odměna vypsaná na cizí hlavu, ne pomoc jako Panák. Bot si ho z téhož důvodu pověsí
+  jen na nepřítele (`gearWantedPick`, core/botPolicy.js) a bez nepřítele v nabídce ho
+  nekupuje vůbec – na spojenci by platil 2 valouny za to, že pomůže protistraně.
+- **`GEAR_READY` je tím ÚPLNÝ** (všech 15 druhů, 24 kusů) a zůstává jen jako pojistka pro
+  další rozšíření – stejně jako `WILD_WEST_READY` po dodělání Divokého západu. Dva testy,
+  které počet kusů měly natvrdo (21), teď počítají `copies` z dat: mají hlídat „nic
+  nechybí", ne konkrétní číslo.
+- **Nákup pořád nemá animaci letu** (plán §10) – karta se před vybraným hráčem prostě
+  objeví se stavem.
+- **Zátěž „plná kapsa valounů" musela dostat větší vzorek** (6 → 24 partií,
+  `GEAR_STRESS_GAMES` v test/server.bots.test.js). Tvrzení „Boty / Podkova aspoň jednou
+  vedly na svou klikací fázi" je VZORKOVÁNÍ – jestli zrovna majitel ztratí život nebo bude
+  na něco snímat, je náhoda –, takže při šesti partiích padalo ~1× z 10 běhů **už před
+  fází 5** a s každou další kartou v balíčku se šance ředí. Partie je levná (jednotky ms),
+  takže se jen zvětšil vzorek; pravidla obou karet drží deterministicky
+  `test/goldRush.cards.test.js`. Wanted se v zátěži protáčí bohatě (~88 vyložení a ~55
+  vyplacených odměn na 24 partií), takže má obojí jako podmínku.
 
 Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `master`.
 

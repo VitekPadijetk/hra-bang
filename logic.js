@@ -133,15 +133,18 @@ if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
     globalThis.turnActionForCard = __pl.turnActionForCard;
 }
 
-// Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum a karta Zlatá horečka:
-// co jde s nákupem udělat a na koho. Stejným predikátem se ptá okno obchodu i bot –
-// kdyby se rozešly, server by nákup mlčky odmítl a hra jen botů by se zasekla.
+// Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum, karta Zlatá horečka
+// a Wanted („zahraj na libovolného hráče"): co jde s nákupem udělat a na koho. Stejným
+// predikátem se ptá okno obchodu i bot – kdyby se rozešly, server by nákup mlčky odmítl
+// a hra jen botů by se zasekla.
 if (typeof gearModeTargets === 'undefined' && typeof require === 'function') {
     const __gr = require('./core/goldRush.js');
     globalThis.gearModesOf = __gr.gearModesOf;
     globalThis.gearModeTargets = __gr.gearModeTargets;
     globalThis.gearCardReason = __gr.gearCardReason;
     globalThis.GEAR_MODE_LABEL = __gr.GEAR_MODE_LABEL;
+    globalThis.gearAimedBlack = __gr.gearAimedBlack;
+    globalThis.gearBlackTargets = __gr.gearBlackTargets;
 }
 
 class GameState {

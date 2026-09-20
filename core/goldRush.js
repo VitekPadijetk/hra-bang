@@ -101,6 +101,33 @@ function gearLawOpts(card) {
     return {};
 }
 
+// ── Černé vybavení, které se vykládá PŘED JINÉHO HRÁČE (fáze 5): Wanted ─────
+// „Zahraj na libovolného hráče." Jediná karta vybavení, která po zaplacení NESKONČÍ
+// před kupujícím – cíl se vybírá klikem na hráče ve stejné fázi jako u Panáku
+// (GEAR_TARGET). FAQ Q07: „okamžitě — před sebe, nebo před jiného hráče", takže je
+// kupující mezi platnými cíli jako každý jiný.
+//
+// Seznam, ne rovnost, ze stejného důvodu jako GEAR_MODES: až přibude druhá taková karta,
+// přidá se sem – a všechny tři strany (server, okno obchodu, bot) se o ní dozvědí naráz.
+const GEAR_AIMED_BLACK = ['ZH_WANTED'];
+
+function gearAimedBlack(card) {
+    return !!card && GEAR_AIMED_BLACK.includes(card.effect);
+}
+
+// Komu se dá karta vyložit. Pravidlo „ne dvě stejného" (R1) se měří na CÍLI, ne na
+// kupujícím: Wanted jsou tři kusy, takže může viset na třech různých hráčích – a hráč,
+// který už jedno má, z nabídky vypadne.
+function gearBlackTargets(state, playerIdx, card) {
+    const out = [];
+    (state?.players || []).forEach((q, i) => {
+        if (!q || !isInPlay(q)) return;
+        if (hasGearFor(state, i, card?.effect)) return;
+        out.push(i);
+    });
+    return out;
+}
+
 // ── Hnědé vybavení s volbou (fáze 4): Láhev a Komplic ───────────────────────
 // „Může být zahrána jako Panika!, Pivo nebo BANG!" / „…jako Hokynářství, Duel nebo
 // Cat Balou." Dodatek: i když má stejný efekt, NEPOVAŽUJE SE za tu kartu – takže se na
@@ -202,6 +229,10 @@ function gearCardReason(state, playerIdx, card, mode) {
         if (!modes.includes(mode)) return 'neznámý způsob';
         return gearModeReason(state, playerIdx, mode);
     }
+    // Wanted: „zahraj na libovolného hráče" – musí být komu. Bez volného cíle (každý
+    // ve hře už jedno má) by se zaplatilo za kartu, která nemá kam.
+    if (gearAimedBlack(card) && !gearBlackTargets(state, playerIdx, card).length)
+        return 'tohle vybavení už mají všichni';
     // Rum léčí – na plný život by se za něj zaplatilo a nestalo by se nic.
     if (card.effect === 'ZH_RUM' && me.health >= me.maxHealth) return 'máš plné životy';
     if (card.effect === 'ZH_ZLATA_HORECKA') {
@@ -233,7 +264,9 @@ function gearBuyReason(state, playerIdx, rowIdx, mode) {
     if (gearJudgeBlocks(state, card)) return 'Soudce zakazuje vykládat karty';
     if (lawLocksOther(state, me, playerIdx, null, gearLawOpts(card)))
         return 'Právo západu – nejdřív zahraj vynucenou kartu';
-    if (card.border === 'black' && hasGearFor(state, playerIdx, card.effect))
+    // „Ne dvě stejného" se u Wanted měří až na vybraném CÍLI (gearBlackTargets), ne na
+    // kupujícím – jinak by si hráč s Wanted před sebou další už nikdy nekoupil.
+    if (card.border === 'black' && !gearAimedBlack(card) && hasGearFor(state, playerIdx, card.effect))
         return 'tohle vybavení už máš';
     if ((me.nuggets || 0) < gearCostFor(state, playerIdx, card)) return 'málo valounů';
     return gearCardReason(state, playerIdx, card, mode);
@@ -328,6 +361,7 @@ function gearRucksackSaveOk(state, playerIdx) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { goldRushOn, gearOf, hasGearFor, gearOnFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
+                       GEAR_AIMED_BLACK, gearAimedBlack, gearBlackTargets,
                        GEAR_MODES, GEAR_MODE_LABEL, GEAR_MODE_AIMED, gearModesOf, gearModeTargets,
                        gearModeReason, gearCardReason,
                        gearShopOpen, gearBuyReason, gearBuyOk,

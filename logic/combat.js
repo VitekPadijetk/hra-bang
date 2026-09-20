@@ -132,6 +132,12 @@ const CombatMixin = {
             deadPlayer.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
         }
 
+        // Zlatá horečka – Wanted: „Kdo toho hráče vyřadí, lízne si 2 karty a vezme si
+        // 1 valoun." Číst se to musí TEĎ, dřív než _gearDropAll vybavení mrtvého uklidí;
+        // odměna se pak vyplácí níž, mezi odměnou za banditu a pokutou šerifa (viz tam).
+        // `_gearOn` v sobě nese Laso i Belle Star (R10) – vypnuté Wanted neodměňuje.
+        const wantedBounty = this._gearOn(deadPlayer, 'ZH_WANTED');
+
         // Zlatá horečka: koupené vybavení jde na spodek balíčku vybavení lícem vzhůru
         // a Vulture Sam ho NEZÍSKÁVÁ. Že se do jeho hrsti nemá jak dostat, plyne z toho,
         // že `player.gear` je vlastní pole vedle `board` (rozhodnutí R3) – tady se jen
@@ -170,8 +176,18 @@ const CombatMixin = {
         }
 
         // Pokuta za zabití vlastního pomocníka. Ve hře pro 3 šerif není, takže tahle větev
-        // tam nikdy nespustí (podmínka na roli Sheriff se nesplní).
-        if (deadPlayer.role === "Deputy" && killer && killer.role === "Sheriff") {
+        // tam nikdy nespustí (podmínka na roli Sheriff se nesplní). Podmínka se počítá
+        // zvlášť, protože ji potřebuje i Wanted hned pod ní.
+        const sheriffPenalty = deadPlayer.role === "Deputy" && killer && killer.role === "Sheriff";
+
+        // Zlatá horečka – Wanted: odměna se PŘIČÍTÁ k odměně za banditu (2 + 3 karty,
+        // 1 + 1 valoun), proto stojí až za ní. A stojí PŘED pokutou šerifa, protože
+        // „nejprve si vezme 2 karty a teprve pak odhodí celou ruku" (viz _gearWantedReward).
+        if (wantedBounty && killerIdx !== null && killerIdx !== deadIdx) {
+            this._gearWantedReward(killerIdx, { loseHand: sheriffPenalty });
+        }
+
+        if (sheriffPenalty) {
             const killerWeapon = (killer.weapon && killer.weapon.id !== -1) ? [killer.weapon] : [];
             // Snapshot PŘED přesunem: klient odhodí šerifovy karty stejnou animací jako
             // při smrti (po jedné do odhozu), jen bez poklesu životů a bez odhalení role –

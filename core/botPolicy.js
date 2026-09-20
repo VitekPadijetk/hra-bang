@@ -161,6 +161,12 @@ if (typeof require === 'function') {
         globalThis.gearModesOf = __gr2.gearModesOf;
         globalThis.gearModeTargets = __gr2.gearModeTargets;
     }
+    // …a Wanted (fáze 5) si logic.js bere taky jen napůl – vlastní guard ze stejného důvodu.
+    if (typeof gearAimedBlack === 'undefined') {
+        const __gr3 = require('./goldRush.js');
+        globalThis.gearAimedBlack = __gr3.gearAimedBlack;
+        globalThis.gearBlackTargets = __gr3.gearBlackTargets;
+    }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
         globalThis.ROLES = __b.ROLES;
@@ -205,6 +211,9 @@ const GEAR_VALUE = {
     // Zlatá horečka UKONČÍ tah – proto ta nejnižší hodnota: koupí se, až bot v tahu
     // nemá nic lepšího na práci (a pak dostane plné životy i celý další tah).
     ZH_ZLATA_HORECKA: 5,
+    // Wanted se vykládá na CIZÍHO hráče, takže se neoceňuje jako vlastní vybavení: hodnota
+    // se počítá až podle toho, jestli je na koho ho pověsit (gearWantedPick).
+    ZH_WANTED: 0,
 };
 
 const HEARTS = '♥️';
@@ -416,6 +425,24 @@ function gearModePick(state, myIndex, beliefs, mode, targets) {
             // Hokynářství: rozdá kartu i každému soupeři – za valouny se to botovi nevyplatí.
             return null;
     }
+}
+
+// Zlatá horečka – Wanted: „Zahraj na libovolného hráče. Kdo toho hráče vyřadí, lízne si
+// 2 karty a vezme si 1 valoun." Je to odměna vypsaná na CIZÍ hlavu, takže dává smysl jen
+// na NEPŘÍTELI: na spojenci by platila celému stolu a bota by to stálo 2 valouny za to,
+// že jeho vlastní straně někdo pomůže. Stejně jako gearModePick je to jediné místo, kde se
+// to rozhoduje – ptá se ho nákup (decidePlay) i výběr cíle ve fázi GEAR_TARGET, takže bot
+// nekoupí kartu na cíl, který by pak nevybral. `targets` = legální cíle od pravidel.
+// Vrací { score, targetIdx } nebo null (není na koho).
+function gearWantedPick(state, myIndex, beliefs, targets) {
+    const list = targets || [];
+    // Nejnepřátelštější cíl v nabídce; sám na sebe si odměnu bot nevypíše nikdy.
+    const t = rankEnemies(state, myIndex, beliefs, false)
+        .find(e => e.idx !== myIndex && list.includes(e.idx));
+    if (!t) return null;
+    // Pod hodnotou trvalého vlastního vybavení (Boty 30, Krumpáč 26): odměna se vyplatí
+    // jen tomu, kdo cíl doopravdy dorazí, a to nemusí být bot sám.
+    return { score: 14, targetIdx: t.idx };
 }
 
 // ── Karty, které jen „točí" balíček, když karty dojdou ───────────────────────
@@ -1162,6 +1189,14 @@ function decidePlay(state, myIndex, beliefs) {
                 return;
             }
             if (!gearBuyOk(state, myIndex, rowIdx)) return;
+            // Wanted se vykládá na cizího hráče – koupí se jen tehdy, když je v nabídce
+            // nepřítel. Cíl vybere ve fázi GEAR_TARGET tentýž gearWantedPick.
+            if (gearAimedBlack(card)) {
+                const pick = gearWantedPick(state, myIndex, beliefs,
+                                            gearBlackTargets(state, myIndex, card));
+                if (pick) consider(pick.score, { event: 'gear_buy', payload: { rowIdx } });
+                return;
+            }
             let val = GEAR_VALUE[card.effect] || 0;
             // Panák léčí – bez zranění by se za něj zaplatilo a efekt by vyšuměl.
             if (card.effect === 'ZH_PANAK' && me.health >= me.maxHealth) val = 0;
@@ -1554,6 +1589,13 @@ function decideBotAction(state, myIndex, beliefs) {
                 const pick = gearModePick(state, myIndex, beliefs, mode, targets);
                 const t = pick && pick.targetIdx != null ? pick.targetIdx : targets[0];
                 return { event: 'gear_target', payload: { targetIdx: t } };
+            }
+            // Wanted: odměna na hlavu nepřítele (nikdy na vlastní – proto ne větev Panáka
+            // pod tím). Volba je povinná, takže bez nepřítele padne na první legální cíl.
+            if (state.pendingGearTarget?.card) {
+                const pick = gearWantedPick(state, myIndex, beliefs, targets);
+                return { event: 'gear_target',
+                         payload: { targetIdx: pick ? pick.targetIdx : targets[0] } };
             }
             if (targets.includes(myIndex)) return { event: 'gear_target', payload: { targetIdx: myIndex } };
             let pick = targets[0], pickH = Infinity;

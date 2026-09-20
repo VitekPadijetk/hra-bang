@@ -648,8 +648,11 @@ function renderGearShopOverlay() {
             return;
         }
 
+        // Wanted končí před hráčem dle volby, ne před kupujícím – ať to je vidět ještě
+        // před zaplacením (obecný text okna nahoře slibuje „černý ti zůstane ležet").
         const label = gameScene.add.text(cx, cy + 500 * SCALE / 2 + 12,
-            ok ? `KOUPIT za ${gearCostFor(state, myIndex, card)} 💰` : (why || ''),
+            ok ? `KOUPIT za ${gearCostFor(state, myIndex, card)} 💰${gearAimedBlack(card) ? ' → na hráče' : ''}`
+               : (why || ''),
             { fontFamily: THEME.fontUI, fontSize: '21px', fontStyle: ok ? 'bold' : 'normal',
               color: ok ? '#ffd24d' : '#aa8888',
               backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 10, y: 5 } })

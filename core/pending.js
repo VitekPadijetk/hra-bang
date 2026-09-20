@@ -154,6 +154,10 @@ function waitingStatus(state) {
         const pg = state.pendingGearTarget;
         text = `${pg.cardName} jako ${_GEAR_MODE_NAMES[pg.mode] || pg.mode} – vybírá cíl`;
     }
+    // …a Wanted se vykládá na CIZÍ stůl, takže „komu pomůže" by lhalo ještě víc.
+    if (pa.kind === 'GEAR_TARGET' && state.pendingGearTarget?.card) {
+        text = `${state.pendingGearTarget.cardName} – vybírá, na koho ho zahraje`;
+    }
     return { idx: pa.idx, kind: pa.kind, text };
 }
 

@@ -498,11 +498,12 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
             let gained = false;
             gs._onEvent = (e) => { if (e && e.ev === 'nuggets' && e.gain) gained = true; };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
-            // Do hry jdou jen HOTOVÉ druhy (GEAR_READY, logic/goldRush.js) – fáze 1
-            // Panák 3× a Union Pacific 1×, fáze 2 šest pasivních černých, fáze 3 dvě
-            // placené černé po jednom a fáze 4 Láhev 3×, Komplic 3×, Rum 2× a Zlatá
-            // horečka 1×; tři z nich hned leží v obchodě.
-            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, 21, `${tag}: balíček vybavení`);
+            // Fází 5 je GEAR_READY (logic/goldRush.js) úplný, takže se rozdává všech
+            // 15 druhů ve všech 24 kusech; tři z nich hned leží v obchodě. Počet se čte
+            // z dat, ať test hlídá „nic nechybí", ne konkrétní číslo.
+            const gearPieces = gs.gearCardData.reduce((a, k) => a + Math.max(1, k.copies || 1), 0);
+            assert.equal(gs.gearDeck.length + gs.gearRow.filter(Boolean).length, gearPieces,
+                         `${tag}: balíček vybavení`);
             assert.equal(gs.gearRow.filter(Boolean).length, 3, `${tag}: obchod je plný`);
             assert.ok(gs.players.every(p => p.nuggets === 0), `${tag}: začíná se bez valounů`);
 
@@ -524,6 +525,14 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
 // (fáze BOOTS_DRAW za ztracený život, výběr karty u sejmutí s Podkovou, vynucené
 // odhození cizího vybavení). Kdyby některé z nich chyběl handler nebo větev bota,
 // projeví se to tady jako stall, ne až v ostré hře.
+// Kolik partií se na to odehraje. Dole se tvrdí „tahle karta aspoň jednou vedla na svou
+// fázi", což je VZORKOVÁNÍ: jestli zrovna majitel Bot ztratí život nebo majitel Podkovy
+// bude na něco snímat, je náhoda. Při šesti partiích to padalo ~1× z 10 běhů (a s každou
+// další kartou v balíčku se šance ředí), takže vzorek musí být větší – partie je levná
+// (jednotky ms). Samotná pravidla obou karet drží deterministicky test/goldRush.cards.test.js;
+// tady jde o to, že se k jejich fázím bot v reálné hře DOSTANE a nezasekne se na nich.
+const GEAR_STRESS_GAMES = 24;
+
 test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vybavení', () => {
     const ctx = buildCtx();
     let stalls = 0;
@@ -533,8 +542,10 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
     let bought = 0, bootsSeen = 0, pickSeen = 0, panSeen = 0;
     // Fáze 4: hnědé karty s volbou (Láhev/Komplic), Rum a tah navíc za Zlatou horečku.
     let modeSeen = 0, rumSeen = 0, extraTurnSeen = 0;
+    // Fáze 5: Wanted se vyloží na cizí hráče a odměna padne, až ho někdo vyřadí.
+    let wantedSeen = 0, bountySeen = 0;
     try {
-        for (let ci = 0; ci < 6; ci++) {
+        for (let ci = 0; ci < GEAR_STRESS_GAMES; ci++) {
             const n = 4 + (ci % 4);
             const gs = new GameState();
             gs.cardData = cardData;
@@ -553,12 +564,14 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
                 if (e.ev === 'gear' && e.act === 'mode') modeSeen++;
                 if (e.ev === 'gear' && e.act === 'rum') rumSeen++;
                 if (e.ev === 'event' && e.card === 'Zlatá horečka') extraTurnSeen++;
+                if (e.ev === 'gear' && e.act === 'wanted_place' && e.target) wantedSeen++;
+                if (e.ev === 'gear' && e.act === 'wanted') bountySeen++;
             };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
-            // Boty a Podkova se nasadí do obchodu ROVNOU: v balíčku je 21 karet, takže
-            // do šesti partií se do řady vůbec dostat nemusí – a právě ony vedou na
-            // klikací fáze (BOOTS_DRAW za ztracený život, výběr karty u sejmutí). Zbytek
-            // nabídky se doplňuje normálně z balíčku.
+            // Boty a Podkova se nasadí do obchodu ROVNOU: v balíčku je 24 karet, takže
+            // do řady se samy dostat nemusí – a právě ony vedou na klikací fáze
+            // (BOOTS_DRAW za ztracený život, výběr karty u sejmutí). Zbytek nabídky
+            // se doplňuje normálně z balíčku.
             ['ZH_BOTY', 'ZH_PODKOVA'].forEach((eff, k) => {
                 if (gs.gearRow.some(c => c && c.effect === eff)) return;
                 const i = gs.gearDeck.findIndex(c => c.effect === eff);
@@ -592,6 +605,10 @@ test('Zlatá horečka: s plnou kapsou valounů se protočí nákupy i fáze z vy
     assert.ok(modeSeen > 0, 'někdo zahrál Láhev / Komplice „jako" jinou kartu');
     assert.ok(rumSeen > 0, 'někdo si koupil Rum (sejmutí 4 karet)');
     assert.ok(extraTurnSeen > 0, 'někdo si Zlatou horečkou zaplatil tah navíc');
+    // Fáze 5: Wanted je levné (2) a bot ho věší na nepřítele, kdykoli je v obchodě, takže
+    // obojí padá v desítkách – vyložení i vyplacená odměna za vyřazení jeho majitele.
+    assert.ok(wantedSeen > 0, 'někdo vyložil Wanted na jiného hráče');
+    assert.ok(bountySeen > 0, 'a někdo za vyřazení jeho majitele dostal odměnu');
     // Batoh se tu schválně nevynucuje: bot ho bere jen se zraněním a Panák léčí levněji,
     // takže vyjde 0–9× na šest partií – jako podmínka by test byl flaky. Obě jeho cesty
     // (v tahu i záchrana) pokrývá deterministicky test/goldRush.paid.test.js; tady jde

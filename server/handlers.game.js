@@ -1184,9 +1184,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    // Hnědé vybavení s volbou cíle: Panák (komu život patří) a cílené režimy Láhve /
-    // Komplice (na koho BANG!, Panika!, Duel, Cat Balou). Ledger chování (dedukce rolí
-    // botů) se plní stejně jako u skutečných karet – režim nepřátelský, Panák přátelský.
+    // Vybavení s volbou cíle: Panák (komu život patří), cílené režimy Láhve / Komplice
+    // (na koho BANG!, Panika!, Duel, Cat Balou) a Wanted (před koho karta půjde). Ledger
+    // chování (dedukce rolí botů) se plní stejně jako u skutečných karet – režim i Wanted
+    // jsou nepřátelské (odměna vypsaná na cizí hlavu), Panák přátelský.
     on('gear_target', (d) => {
         withRoom((room, p, gs) => {
             const pg = gs.pendingGearTarget;
@@ -1195,7 +1196,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const targetIdx = d && d.targetIdx;
             const ok = gs.resolveGearTarget(idx, targetIdx);
             if (ok && targetIdx != null && targetIdx !== idx) {
-                ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx, kind: pg.mode ? 'hostile' : 'support' });
+                ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx,
+                                             kind: (pg.mode || pg.card) ? 'hostile' : 'support' });
             }
             broadcastRoom(room);
         });
