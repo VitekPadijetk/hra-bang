@@ -96,7 +96,8 @@ Q — boti a server              24, 46, 53   HOTOVO
 
 OTEVŘENÉ
 --------
-
+- 69 někde bych měl vidět počet valounů, které mám (ne jen v obchodu)
+- 70 bug 67 "když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit" stále není opraven. Když si líznu jednu kartu, tak je animace pak se objeví v ruce, ale druhá má jen animaci a v ruce se objeví až jakmile se ukáže DZ karta
 
 HOTOVÉ
 ------
