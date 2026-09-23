@@ -302,6 +302,14 @@ function _menuCheck(cls, act, key, label, hint, on) {
         `<span class="bu-check-hint">${hint}</span></span></button>`;
 }
 
+// Přepínač varianty Stínoví pistolníci (S11, S16) – stejný vzhled jako „přibalené karty".
+// Na S5 je to řádek pokročilých možností (ADVANCED_OPTIONS v core/menuModel.js).
+function _menuShadowToggle(act, on) {
+    return `<button class="bu-extra${on ? ' on' : ''}" data-act="${act}" aria-pressed="${on}">` +
+        `<span class="bu-box">${on ? '✔' : ''}</span>` +
+        `<span>Stínoví pistolníci <span class="bu-label-aside">— vyřazení se na svůj tah vracejí jako stín</span></span></button>`;
+}
+
 function _menuExpansionGrid(act, exps) {
     return '<div class="bu-checks">' +
         MENU_EXPANSIONS.map(e => _menuCheck('bu-check', act, e.key, e.label, e.hint, !!exps[e.key])).join('') +
@@ -440,6 +448,7 @@ ${_menuBar(esc(createGameSummary(args)),
             `<button class="bu-extra${extraOn ? ' on' : ''}" data-act="botHnExtra" aria-pressed="${extraOn}">` +
             `<span class="bu-box">${extraOn ? '✔' : ''}</span>` +
             `<span>Přibalené karty <span class="bu-label-aside">— Nová identita a Želízka z Fistfulu</span></span></button>`;
+        const shadows = _menuShadowToggle('botShadows', !!App.botGameShadows);
         return `
 ${_menuHead('Sledovat hru botů', 'Hra bez lidí · rozjede se hned')}
 <div class="bu-scroll"><div class="bu-form">
@@ -454,6 +463,7 @@ ${_menuHead('Sledovat hru botů', 'Hra bez lidí · rozjede se hned')}
     ${_menuExpansionGrid('botExp', exps)}
   </div>
   ${extra}
+  ${shadows}
 </div></div>
 ${_menuBar(esc(botGameSummary(count, exps)),
     '<button class="bu-btn primary bar" data-act="startBotGame">▶ SPUSTIT A SLEDOVAT</button>')}`;
@@ -658,6 +668,7 @@ ${_menuBar(null, actions)}`;
             `<button class="bu-extra${extraOn ? ' on' : ''}" data-act="debugHnExtra" aria-pressed="${extraOn}">` +
             `<span class="bu-box">${extraOn ? '✔' : ''}</span>` +
             `<span>Přibalené karty <span class="bu-label-aside">— Nová identita a Želízka z Fistfulu</span></span></button>`;
+        const shadows = _menuShadowToggle('debugShadows', !!App.debugShadows);
         const sims = DEBUG_SIMS.map(a =>
             `<button class="bu-sim" data-act="${a.act}">${esc(a.label)}</button>`).join('');
         const rows = (App.socketLog || []).map(socketLogLine);
@@ -680,6 +691,7 @@ ${_menuHead('⚙ Debug', 'Stav klienta, debug hra a simulace hlášek')}
     ${_menuCountRow('debugCount', count, DEBUG_PLAYER_COUNTS)}
     ${_menuExpansionGrid('debugExp', exps)}
     ${extra}
+    ${shadows}
   </div>
   <div>
     <div class="bu-label">Simulovat stav</div>
@@ -776,7 +788,7 @@ const MENU_ACTIONS = {
         App.createPlayerCount = null;
         App.createGameName = null;
         App.createGameNameOwner = null;
-        App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, expansions: emptyExpansions() };
+        App.createOptions = { noAdvancedCards: false, singleChar: false, rotatingSheriff: false, highNoonExtra: false, shadowGunslingers: false, expansions: emptyExpansions() };
     },
 
     // S11
@@ -785,11 +797,12 @@ const MENU_ACTIONS = {
         _menuToggleExpansion(App.botGameExpansions, key, () => { App.botGameHighNoonExtra = true; });
     },
     botHnExtra() { App.botGameHighNoonExtra = !App.botGameHighNoonExtra; renderUI(); },
+    botShadows() { App.botGameShadows = !App.botGameShadows; renderUI(); },
     startBotGame() {
         App.ignoreRoomId = null;   // vstupujeme do hry (jako u sledování) – filtr už nemá co blokovat
         socket.emit('create_bot_game', {
             count: App.botGameCount || 4,
-            options: botGameOptions(App.botGameExpansions, App.botGameHighNoonExtra),
+            options: botGameOptions(App.botGameExpansions, App.botGameHighNoonExtra, App.botGameShadows),
         });
     },
 
@@ -857,12 +870,14 @@ const MENU_ACTIONS = {
         _menuToggleExpansion(App.debugExpansions, key, () => { App.debugHighNoonExtra = true; });
     },
     debugHnExtra() { App.debugHighNoonExtra = !App.debugHighNoonExtra; renderUI(); },
+    debugShadows() { App.debugShadows = !App.debugShadows; renderUI(); },
     debugStart() {
         socket.emit('debug_start', debugStartPayload({
             count: App.debugPlayerCount || 4,
             roles: App.debugRoles,
             exps: App.debugExpansions,
             hnExtra: App.debugHighNoonExtra,
+            shadows: App.debugShadows,
         }));
     },
 

@@ -61,6 +61,7 @@ const SetupMixin = {
         this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
         this._setupWwsDeck(options);     // Divoký západ: třetí balíček (jinak no-op)
         this._setupGearDeck(options);    // Zlatá horečka: balíček vybavení + obchod (jinak no-op)
+        this._setupShadows(options);     // Zlatá horečka – varianta Stínoví pistolníci (logic/shadow.js)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {
@@ -104,6 +105,7 @@ const SetupMixin = {
         this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
         this._setupWwsDeck(options);     // Divoký západ: třetí balíček (jinak no-op)
         this._setupGearDeck(options);    // Zlatá horečka: balíček vybavení + obchod (jinak no-op)
+        this._setupShadows(options);     // Zlatá horečka – varianta Stínoví pistolníci (logic/shadow.js)
 
         let roles = [...debugRoles];
         const allRoles = ["Sheriff", "Deputy", "Outlaw", "Renegade"];
@@ -237,6 +239,7 @@ const SetupMixin = {
         this._setupFistfulDeck(options); // Fistful of Cards: druhý balíček (jinak no-op)
         this._setupWwsDeck(options);     // Divoký západ: třetí balíček (jinak no-op)
         this._setupGearDeck(options);    // Zlatá horečka: balíček vybavení + obchod (jinak no-op)
+        this._setupShadows(options);     // Zlatá horečka – varianta Stínoví pistolníci (logic/shadow.js)
 
         // Zakázat pokročilé karty
         if (options.noAdvancedCards) {

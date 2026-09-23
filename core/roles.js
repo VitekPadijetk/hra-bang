@@ -55,6 +55,15 @@ function firstPlayerIndex(players) {
     return d !== -1 ? d : 0;
 }
 
+// Za kterou stranu hráč právě hraje. Skoro vždy = role; JEDINOU výjimkou je stínový
+// odpadlík (Zlatá horečka – Stínoví pistolníci), který se na začátku každého svého
+// stínového tahu přidá k jedné ze stran (`_shadowSide`, logic/shadow.js) a vyhrává s ní.
+// Ptá se tím bot (za koho střílí) i konec hry (kdo vyhrál, core/menuModel.js).
+function teamRole(player) {
+    if (!player) return undefined;
+    return player._shadowSide || player.role;
+}
+
 const LOW_HEALTH_CHARS = ["Paul Regret", "El Gringo",
     // Dodge City – postavy se 3 životy (Apache Kid a Vera Custer přibudou ve fázi 7).
     "Elena Fuente", "Pixie Pete", "Sean Mallory", "Apache Kid", "Vera Custer",
@@ -95,5 +104,5 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { rolesForPlayerCount, baseHealthForCharacter, healthForCharacter,
                        startCardsForCharacter, START_CARDS_CHARS,
                        LOW_HEALTH_CHARS, HIGH_HEALTH_CHARS, ROLE_CZ, roleNameCz,
-                       TARGET_3P, isThreePlayerMode, firstPlayerIndex };
+                       TARGET_3P, isThreePlayerMode, firstPlayerIndex, teamRole };
 }

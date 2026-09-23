@@ -38,6 +38,8 @@ Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 
 > **Zlatá horečka** (tah končí, doléčení a tah navíc v háku `nextTurn` za Vendetou).
 > `npm test` = **1564 testů, 0 chyb** (nová sada `test/goldRush.brown.test.js`).
 > Odchylky od plánu jsou popsané u fází 0–4 v §9.
+> **Fáze 5–7** (2026-09-23): Wanted, 8 postav a varianta **Stínoví pistolníci**
+> (`logic/shadow.js`, predikát `canHeal`, `teamRole`). Odchylky opět v §9.
 
 > **Assety zatím nejsou.** Plán je proto napsaný tak, aby se dal odpracovat celý bez nich
 > (§2.8 říká, co se s chybějícím artem děje) a aby se **jména karet daly doplnit na jednom
@@ -520,7 +522,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 | **4** ✅ | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 14 druhů z 15 |
 | **5** ✅ | **Wanted** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
 | **6** ✅ | **8 postav** (`GOLD_RUSH_READY` je tím úplný) | rozšíření hotové |
-| **7** | **Stínoví pistolníci** (volitelná varianta) | vše |
+| **7** ✅ | **Stínoví pistolníci** (volitelná varianta) | vše |
 | **8** | bot: nákupní politika + zátěž, layout invarianty | — |
 
 Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které sahají na render,
@@ -852,6 +854,48 @@ Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `
   fázi, predikát i handler, ale `decideCardClick` vrátil intent `VALENTINE_DISCARD`,
   který v `view/board.js` nikdo neobsluhoval – klik tedy v prohlížeči nic nedělal.
   Přišlo se na to při kopírování téhož vzoru pro Dutche Willa; obě větve teď existují.
+
+### Co se ve fázi 7 odchýlilo od plánu (a proč)
+
+- **Vlastní dotaz `isShadowTurn(p)` nevznikl** (§7). Stačil příznak `p._shadow`, který –
+  stejně jako `_ghost` – drží JEN po dobu vlastního tahu (nastaví `nextTurn`, shodí
+  `_teardownShadow`). Mimo tah je stín obyčejný vyřazený hráč, takže „mimo svůj tah jsi
+  mimo hru pro všechny účely" platí samo a všechna dnešní volání `isInPlay` se nemusela
+  procházet po jednom: `isInPlay` dostal `|| _shadow` (po dobu tahu ve hře JE – vzdálenost,
+  cíl, hokynářství) a rozdíl proti duchovi je jinde:
+  - **výhra**: stínu zůstává `health = 0` a na `_shadow` se `evaluateWinner` neptá, takže
+    se za živého nepočítá (duch ano, FAQ H7). Beze změny v core/winCondition.js;
+  - **„nemůže ztratit život"** plyne z nuly: `handleDamage` i všechny klikané zásahy
+    (dynamit, Madam Zuzana, Roubík, Ruská ruleta, Fistful of Cards) nulu míjejí. Tím odpadá
+    i valoun útočníkovi a reakce Barta Cassidyho / El Gringa;
+  - **„nemůže získat život"** potřeboval jediný nový predikát **`canHeal(p)`**
+    (core/distance.js). Všech ~25 míst, kde se server, klient i bot ptaly na léčení vzorem
+    `isInPlay(p) && p.health < p.maxHealth`, se na něj převedlo – bez toho by bot poslal
+    Pivo, které server odmítne, a hra jen botů by se zasekla. `_heal` má pojistku zvlášť.
+- **Dynamit ani `checkWinCondition` se neměnily** – dynamit se posouvá jen na `health > 0`,
+  takže stíny mimo jejich tah přeskakuje sám.
+- **Stín odhazuje všechno hned v `tryEndTurn`, ne až při odchodu.** Vendeta, Don Bell
+  i karta Zlatá horečka mu dají tah navíc, a ten podle FAQ Q08 začíná s prázdnýma rukama
+  („odhodí ruku i vše před sebou… pak lízne 2 nové karty"). `_teardownShadow` volá tentýž
+  (idempotentní) `_shadowStrip` jako pojistku. Fáze odhazování (DISCARD) se tím vynechá –
+  není to odhoz nad limit, takže se ho netýká ani Gary Looter.
+- **Odchod stínu přehrává animaci odchodu ducha** (`_ghostLeaveAnim` → `sheriff_penalty_discard`),
+  jen bez Vulture Sama. Vlastní cinematiku nepotřebuje.
+- **Město duchů přebíjí variantu**: pořadí návratů v `nextTurn` je Mrtvý muž → Hřbitov →
+  duch → stín. Karta, která platí jen jedno kolo, má přednost před trvalou variantou.
+- **Stínový odpadlík** se neřeší v `computeBeliefs`: jeho role je od vyřazení odhalená
+  (`_roleRevealed`), takže neznámou rolí nikdy není. Stranu nese `p._shadowSide`
+  a jediný dotaz „za koho hraje" je **`teamRole(p)`** (core/roles.js) – ptá se jím bot
+  (`hostilityOf`, `rankEnemies`, …) i konec hry (`playerWon`, core/menuModel.js).
+  `evaluateWinner` se nemění: stín je mrtvý, takže odpadlík-stín nikdy nevyhraje jako
+  odpadlík, jen se stranou. Ve hře pro 3 se strana nevolí (nejsou strany, jen cíle v kruhu).
+- **Ve stínovém tahu se strana přepočítá jen z `nextTurn`**, ne při tahu navíc (Vendeta,
+  Don Bell): mezi dvěma částmi téhož tahu se odhalené role změnit nemohly, leda vyřazením
+  v tom tahu – přepočet tam doplnit je jeden řádek, kdyby se ukázal potřebný.
+- **Art oboustranné karty chybí** (`assets/roles/odpadlik_stin_pomocnik.webp`,
+  `odpadlik_stin_bandita.webp`). Loader je registrovaný v `EXPANSION_LOADERS.zlata_horecka`;
+  do té doby kreslí `roleTexFor` (view/board.js) kartu strany (pomocník / bandita).
+  Bez zapnuté Zlaté horečky se art nestahuje vůbec – varianta pak vždycky ukazuje kartu strany.
 
 ## 10. Co plán vědomě nedělá
 

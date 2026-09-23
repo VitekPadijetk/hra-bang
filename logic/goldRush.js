@@ -412,7 +412,7 @@ const GoldRushMixin = {
             case 'ZH_PANAK': {
                 const targets = [];
                 this.players.forEach((p, i) => {
-                    if (isInPlay(p) && p.health < p.maxHealth) targets.push(i);
+                    if (canHeal(p)) targets.push(i);
                 });
                 if (!targets.length) {
                     this.logEvent('gear', { act: 'panak', who: this.players[playerIdx].name, target: null });

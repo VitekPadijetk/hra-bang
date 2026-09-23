@@ -25,6 +25,10 @@ if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
     }
+    // Stínoví pistolníci: „smí se léčit?" (stín ne) – samostatný guard, přibyl později.
+    if (typeof canHeal === 'undefined') {
+        globalThis.canHeal = require('./distance.js').canHeal;
+    }
     if (typeof hasAbility === 'undefined') {
         globalThis.hasAbility = require('./distance.js').hasAbility;
     }
@@ -278,6 +282,7 @@ function gearModeReason(state, playerIdx, mode) {
     const me = state.players[playerIdx];
     if (!me || !GEAR_MODE_LABEL[mode]) return 'neznámý způsob';
     // Pivo na plný život nic neudělá – stejně jako karta Pivo, která se pak nedá zahrát.
+    if (mode === 'BEER' && me._shadow) return 'stín nemůže získat život';
     if (mode === 'BEER' && me.health >= me.maxHealth) return 'máš plné životy';
     if (GEAR_MODE_AIMED.includes(mode) && !gearModeTargets(state, playerIdx, mode).length) {
         switch (mode) {
@@ -313,6 +318,7 @@ function gearCardReason(state, playerIdx, card, mode) {
     if (gearAimedBlack(card) && !gearBlackTargets(state, playerIdx, card).length)
         return 'tohle vybavení už mají všichni';
     // Rum léčí – na plný život by se za něj zaplatilo a nestalo by se nic.
+    if (card.effect === 'ZH_RUM' && me._shadow) return 'stín nemůže získat život';
     if (card.effect === 'ZH_RUM' && me.health >= me.maxHealth) return 'máš plné životy';
     if (card.effect === 'ZH_ZLATA_HORECKA') {
         // „Tvůj tah končí" – a ukončit tah vynucená karta nedovolí (Fistful, Právo západu).
@@ -415,7 +421,7 @@ function gearRucksackOk(state, playerIdx) {
     if (!gearShopOpen(state, playerIdx)) return false;
     if (!gearOnFor(state, playerIdx, 'ZH_BATOH')) return false;
     const me = state.players[playerIdx];
-    if ((me.nuggets || 0) < 2 || me.health >= me.maxHealth) return false;
+    if ((me.nuggets || 0) < 2 || !canHeal(me)) return false;
     return !lawLocksOther(state, me, playerIdx, null, { heal: 1 });
 }
 

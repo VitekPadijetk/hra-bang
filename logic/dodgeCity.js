@@ -276,7 +276,7 @@ const DodgeCityMixin = {
         if (eff === 'heal_self') {                       // Čutora – +1 sobě (efekt, ne Pivo)
             // Na plných životech (a mimo hru) se karta neaktivuje – neměla by co udělat.
             // Duch (Město duchů) ve hře je, takže se jím vyléčit může.
-            if (!isInPlay(player) || player.health >= player.maxHealth) return;
+            if (!canHeal(player)) return;
             discardAndTrack();
             this._heal(player, 1);
             this.checkSuzyLafayette(player);

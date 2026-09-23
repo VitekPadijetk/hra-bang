@@ -22,7 +22,9 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         const options = { expansions: { dodge_city: dodgeCity, high_noon: highNoon, fistful,
                                         divoky_zapad: divokyZapad,
                                         zlata_horecka: zlataHorecka },
-                          highNoonExtra: highNoon && hnExtra };
+                          highNoonExtra: highNoon && hnExtra,
+                          // Zlatá horečka – varianta Stínoví pistolníci (nezávislá na rozšíření).
+                          shadowGunslingers: typeof data === 'object' ? !!data.shadowGunslingers : false };
         const names = Array.from({ length: playerCount }, (_, i) => `Debug${i + 1}`);
         const room = makeRoom('DEBUG', playerCount, socket.id, 'Debug1', options);
         room.players = names.map((name, idx) => ({ socketId: socket.id, playerIdx: idx, name, ready: false, wantsNext: null }));

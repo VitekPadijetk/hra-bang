@@ -400,7 +400,7 @@ const FistfulMixin = {
     _bloodBrothersTargets(fromIdx) {
         const out = [];
         this.players.forEach((p, i) => {
-            if (i === fromIdx || !isInPlay(p) || p.health >= p.maxHealth) return;
+            if (i === fromIdx || !canHeal(p)) return;
             out.push(i);
         });
         return out;

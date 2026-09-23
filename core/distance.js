@@ -64,8 +64,22 @@ function hasAbility(player, name) {
 // test „je ve hře"; prosté `health > 0` zůstává tam, kde jde o skutečný život (Greg
 // Digger, záchrana posledního života). Příznak drží jen po dobu svého tahu (_teardownGhost,
 // který duchovi zároveň vrátí životy na nulu).
+//
+// Zlatá horečka – varianta Stínoví pistolníci (`_shadow`): vyřazený hráč se vrací na
+// KAŽDÝ svůj tah, i tehdy je ve hře (vzdálenost, cíl, hokynářství), ale s 0 životy,
+// které se „nedají získat ani ztratit". Mimo svůj tah je mimo hru jako každý vyřazený –
+// příznak drží zase jen po dobu jeho tahu (_teardownShadow, logic/shadow.js).
 function isInPlay(player) {
-    return !!player && (player.health > 0 || !!player._ghost);
+    return !!player && (player.health > 0 || !!player._ghost || !!player._shadow);
+}
+
+// Může si hráč právě teď doplnit život? JEDINÝ dotaz všech léčivých cest (Pivo, Salón,
+// Whisky, Tequila, Sid Ketchum, Panák, Batoh, Rum, …) na serveru, u klienta i u bota.
+// Duch (Město duchů) se léčit smí; stín (Stínoví pistolníci) ne – „nemůžeš získat ani
+// ztratit život". Kdyby se jedna strana ptala jinak, bot by poslal léčení, které server
+// mlčky odmítne, a hra jen botů by se zasekla.
+function canHeal(player) {
+    return isInPlay(player) && !player._shadow && player.health < player.maxHealth;
 }
 
 // Kolik hráčů právě SEDÍ VE HŘE (duch Města duchů se počítá – na svůj tah hraje).
@@ -136,5 +150,5 @@ function bangEffectReach(card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, abilitiesOf, hasAbility, isInPlay, inPlayCount };
+    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, abilitiesOf, hasAbility, isInPlay, canHeal, inPlayCount };
 }

@@ -58,7 +58,7 @@ const PlayMixin = {
             [CardType.SALOON]: () => {
                 // Léčí každého VE HŘE – při Městě duchů (High Noon) tedy i ducha, který si
                 // zrovna odbývá svůj tah (isInPlay, ne health > 0).
-                const anyDamaged = this.players.some(p => isInPlay(p) && p.health < p.maxHealth);
+                const anyDamaged = this.players.some(p => canHeal(p));
                 if (!anyDamaged) return false;
                 this.players.forEach(p => { this._heal(p, 1); });
                 return true;

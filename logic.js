@@ -15,6 +15,10 @@ if (typeof isInPlay === 'undefined' && typeof require === 'function') {
 if (typeof inPlayCount === 'undefined' && typeof require === 'function') {
     globalThis.inPlayCount = require('./core/distance.js').inPlayCount;
 }
+// Stínoví pistolníci (Zlatá horečka): „smí si hráč doplnit život?" – stín ne.
+if (typeof canHeal === 'undefined' && typeof require === 'function') {
+    globalThis.canHeal = require('./core/distance.js').canHeal;
+}
 
 // Samostatný guard: `hasAbility`/`abilitiesOf` (Greygory Deck – Divoký západ) je nový
 // trychtýř dotazů „umí X?"; bloky výš hlídané jiným globálem by ho mohly minout.
@@ -307,6 +311,10 @@ class GameState {
         // …a jestli tenhle tah přeskočilo Vězení (FAQ Q06). Pamatuje si to konec tahu,
         // protože `p._turnSkippedByJail` spotřebuje dřív Madam Zuzana (logic/wildWest.js).
         this._jailSkipTurn = null;
+        // Zlatá horečka – varianta Stínoví pistolníci: vyřazení se vracejí na KAŽDÝ svůj
+        // tah jako stín (0 životů, na konci tahu odhodí vše). Vlastní přepínač
+        // `options.shadowGunslingers`, nezávislý na rozšíření (R14). Viz logic/shadow.js.
+        this._shadowGunslingers = false;
     }
 
     getCurrentPlayer() {
@@ -372,8 +380,10 @@ class GameState {
     // ve hře JE (isInPlay), takže se léčit MŮŽE: naléčené životy pak smí utratit postava,
     // která za dobrovolnou ztrátu života profituje (Chuck Wengam). Na konci jeho tahu
     // spadnou zase na nulu (tryEndTurn / _teardownGhost).
+    // Stín (Stínoví pistolníci) ve hře je taky, ale „nemůže získat ani ztratit život" –
+    // stejný dotaz, jakým se ptá klient i bot (`canHeal`, core/distance.js).
     _heal(player, amount = 1) {
-        if (!player || !isInPlay(player) || amount <= 0) return 0;
+        if (!player || !isInPlay(player) || player._shadow || amount <= 0) return 0;
         const before = player.health;
         player.health = Math.min(player.health + amount, player.maxHealth);
         return player.health - before;
@@ -437,6 +447,9 @@ class GameState {
         // než se posune tah (odloží karty, spustí Grega Diggera/Herba Huntera). Když se
         // tím naplní fronta odložených akcí, posune tah až _resumeAfterSpecial.
         if (this._teardownGhost()) return;
+        // Stínoví pistolníci: stín odchází bez jediné reakce u stolu (FAQ Q09), takže
+        // tah nikdy nezdržuje – jen odloží, co mu zbylo, a shodí příznak.
+        this._teardownShadow();
         this.turnId = (this.turnId || 0) + 1;   // monotonní ID tahu (zelené karty: „nelze aktivovat ve stejném tahu")
         // High Noon – Zlatá horečka: hraje se proti směru hodinových ručiček. Krok musí
         // použít i cyklus přeskakující mrtvé, jinak by se směr u mrtvého souseda obrátil.
@@ -453,6 +466,11 @@ class GameState {
         // natrvalo (a opakovaně). V pořadí se tedy taky nepřeskakuje – a protože je návrat
         // trvalý, nesmí místo něj nastoupit duch: pořadí testů je Mrtvý muž → Hřbitov → duch.
         const boneOrchard = this.hasEvent('HRBITOV');
+        // Zlatá horečka – Stínoví pistolníci: „při této variantě nejste nikdy mimo hru" –
+        // vyřazený se na KAŽDÝ svůj tah vrací jako stín, takže se v pořadí nepřeskakuje.
+        // Je poslední v řadě: Mrtvý muž i Hřbitov vracejí doopravdy a Město duchů (karta,
+        // která platí jen chvíli) přebíjí trvalou variantu.
+        const shadows = this._shadowsOn();
         this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
         let p = this.players[this.currentPlayerIndex];
         // Divoký západ – Lady Růže z Texasu: kdo si s někým vyměnil místo, „přeskočí svůj
@@ -461,13 +479,15 @@ class GameState {
         // jednorázový a shodí ho `_roseSkip` (logic/wildWest.js), takže smyčka vždycky
         // doběhne – každá další otočka jich má o jeden míň.
         while (this._roseSkip(p) ||
-               (p.health <= 0 && !ghostTown && !boneOrchard && this.currentPlayerIndex !== deadManIdx)) {
+               (p.health <= 0 && !ghostTown && !boneOrchard && !shadows && this.currentPlayerIndex !== deadManIdx)) {
             this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
             p = this.players[this.currentPlayerIndex];
         }
         if (ghostTown && !boneOrchard && p.health <= 0 && this.currentPlayerIndex !== deadManIdx) {
             p._ghost = true;
             this.logEvent('event', { card: 'Město duchů', who: p.name, msg: 'vrací se na jeden tah do hry' });
+        } else if (shadows && !boneOrchard && p.health <= 0 && this.currentPlayerIndex !== deadManIdx) {
+            this._enterShadow(this.currentPlayerIndex);
         }
         // Fistful – Vendeta: sejmutí („jen jednou za tah") i příznak tahu navíc platí vždy
         // jen pro hráče, jehož tah právě skončil. Nuluje se to tedy při přechodu na jiného
@@ -580,6 +600,15 @@ class GameState {
         // ztrácí (do hry se vrátil s nulou). Musí to padnout PŘED limitem karet, aby zbytek
         // tahu proběhl „klasicky": limit = 0 životů → odhodí celou ruku (FAQ H8).
         if (p._ghost) p.health = 0;
+        // Stínoví pistolníci: stín „na konci tahu odhodí ruku i vše před sebou" – limit
+        // karet se ho netýká, odhazuje všechno. Musí to padnout TEĎ, ne až při odchodu
+        // (_teardownShadow): Vendeta, Don Bell i karta Zlatá horečka mu můžou dát tah
+        // navíc, a ten začíná s prázdnýma rukama (FAQ Q08).
+        if (p._shadow) {
+            this._shadowStrip(this.currentPlayerIndex);
+            this.nextTurn();
+            return;
+        }
         const handLength = p.hand ? p.hand.length : 0;
         if (handLength > this._handLimit(p)) {
             this.phase = "DISCARD";
@@ -684,7 +713,8 @@ if (typeof module !== 'undefined' && typeof require === 'function') {
         require('./logic/highNoon.js'),
         require('./logic/fistful.js'),
         require('./logic/wildWest.js'),
-        require('./logic/goldRush.js')
+        require('./logic/goldRush.js'),
+        require('./logic/shadow.js')
     );
 }
 

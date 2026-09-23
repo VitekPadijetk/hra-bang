@@ -82,7 +82,9 @@ test('přibalené karty: jen High Noon bez Fistfulu', () => {
     const keys = exps => M.visibleAdvancedOptions(exps).map(o => o.key);
     assert.ok(keys({ high_noon: true }).includes('highNoonExtra'));
     assert.ok(!keys({}).includes('highNoonExtra'));
-    assert.equal(keys({}).length, 3);
+    assert.equal(keys({}).length, 4);
+    // Stínoví pistolníci jdou i bez Zlaté horečky (pravidla to výslovně dovolují).
+    assert.ok(keys({}).includes('shadowGunslingers'));
 });
 
 test('advancedSummary: počítá jen viditelné volby a skloňuje', () => {
@@ -129,6 +131,8 @@ test('botGameOptions: všechna rozšíření jako boolean, přibalené karty jen
     assert.equal(o.highNoonExtra, true);
     assert.equal(M.botGameOptions({}, true).highNoonExtra, false);
     assert.equal(M.botGameOptions(undefined, false).expansions.dodge_city, false);
+    assert.equal(M.botGameOptions({}, false).shadowGunslingers, false);
+    assert.equal(M.botGameOptions({}, false, true).shadowGunslingers, true);
 });
 
 // ── Seznamy her (S6, S10) a detail hry (S7) ───────────────────────────────
@@ -303,6 +307,15 @@ test('playerWon: strana vyhrává i s mrtvými, odpadlík jen jako poslední ži
     assert.deepEqual(table.map(p => M.playerWon(p, 'Zákon vyhrál!', table)), [true, true, false, false, false]);
     assert.deepEqual(table.map(p => M.playerWon(p, 'Bandité vyhráli!', table)), [false, false, true, false, false]);
     assert.deepEqual(table.map(p => M.playerWon(p, 'Odpadlík vyhrál!', table)), [false, false, false, false, true]);
+});
+
+test('playerWon: stínový odpadlík vyhrává se stranou, ke které se přidal', () => {
+    const table = [{ name: 'S', role: 'Sheriff', health: 3 }, { name: 'O', role: 'Outlaw', health: 0 },
+                   { name: 'R', role: 'Renegade', health: 0, _shadowSide: 'Deputy' }];
+    // Hra pro 3 je jen bez šerifa – tady šerif je, takže jede klasika.
+    assert.equal(M.playerWon(table[2], 'Zákon vyhrál!', table), true);
+    assert.equal(M.playerWon(table[2], 'Bandité vyhráli!', table), false);
+    assert.equal(M.playerWon({ ...table[2], _shadowSide: 'Outlaw' }, 'Bandité vyhráli!', table), true);
 });
 
 test('playerWon: hra pro 3 podle role, Divoký západ podle jména', () => {
@@ -528,8 +541,9 @@ test('debugStartPayload: klíče rozšíření se překládají na camelCase ser
     assert.deepEqual(M.debugStartPayload({ count: 5, roles: ['Sheriff'], exps, hnExtra: true }), {
         playerCount: 5, roles: ['Sheriff'],
         dodgeCity: true, highNoon: true, highNoonExtra: true,
-        fistful: false, divokyZapad: true, zlataHorecka: false,
+        fistful: false, divokyZapad: true, zlataHorecka: false, shadowGunslingers: false,
     });
+    assert.equal(M.debugStartPayload({ count: 4, exps: {}, shadows: true }).shadowGunslingers, true);
     // Přibalené karty bez High Noonu nedávají smysl a server by je stejně zahodil.
     assert.equal(M.debugStartPayload({ count: 3, exps: {}, hnExtra: true }).highNoonExtra, false);
     assert.deepEqual(M.debugStartPayload({ count: 3, exps: {} }).roles, []);

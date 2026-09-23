@@ -2312,6 +2312,10 @@ const EXPANSION_LOADERS = {
         for (let i = 42; i <= 49; i++) {
             loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.webp`);
         }
+        // Oboustranná karta Stínový odpadlík (varianta Stínoví pistolníci). Dokud art
+        // chybí, kreslí se místo ní karta strany, ke které se přidal (roleTexFor, view/board.js).
+        loadAsset(scene, 'image', 'role_shadow_deputy', 'assets/roles/odpadlik_stin_pomocnik.webp');
+        loadAsset(scene, 'image', 'role_shadow_outlaw', 'assets/roles/odpadlik_stin_bandita.webp');
         return {
             // Líce kritické nejsou – do dotažení za ně stojí štítek.
             critical: ['zh_back'],
@@ -2319,6 +2323,8 @@ const EXPANSION_LOADERS = {
                 // Dodané ve 2× (650×1000) → srovnat na 325×500 jako ostatní karty.
                 normalizeTexture(scene, 'zh_back');
                 normalizeCharTextures(scene, 42, 49);
+                normalizeTexture(scene, 'role_shadow_deputy');
+                normalizeTexture(scene, 'role_shadow_outlaw');
                 buildGearTextures(scene);
             },
         };

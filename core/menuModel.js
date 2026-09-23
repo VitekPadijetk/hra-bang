@@ -6,6 +6,7 @@
 if (typeof require === 'function') {
     if (typeof roleNameCz === 'undefined') globalThis.roleNameCz = require('./roles.js').roleNameCz;
     if (typeof isThreePlayerMode === 'undefined') globalThis.isThreePlayerMode = require('./roles.js').isThreePlayerMode;
+    if (typeof teamRole === 'undefined') globalThis.teamRole = require('./roles.js').teamRole;
 }
 
 // Každý text od hráče (jméno, název hry) jde do innerHTML jen přes esc() –
@@ -89,6 +90,8 @@ const ADVANCED_OPTIONS = [
     { key: 'singleChar', label: 'Přiřadit postavu náhodně', hint: 'Hráči si nevybírají ze dvou postav', short: 'postavy náhodně' },
     { key: 'rotatingSheriff', label: 'Rotující šerif', hint: 'Šerif se po každé hře posouvá doleva', short: 'rotující šerif' },
     { key: 'highNoonExtra', label: 'High Noon: přibalené karty', hint: '+ Nová identita a Želízka z Fistfulu', short: 'přibalené karty High Noonu' },
+    // Varianta ze Zlaté horečky, ale hraje se i bez ní (pravidla to výslovně dovolují).
+    { key: 'shadowGunslingers', label: 'Stínoví pistolníci', hint: 'Vyřazení se na svůj tah vracejí jako stín s 0 životy', short: 'stínoví pistolníci' },
 ];
 
 // „Přibalené karty" (Nová identita, Želízka) mají smysl jen s High Noonem BEZ Fistfulu –
@@ -151,10 +154,11 @@ function botGameSummary(count, exps) {
 }
 
 // Volby pro create_bot_game: všechna rozšíření jako boolean, přibalené karty jen s High Noonem.
-function botGameOptions(exps, hnExtra) {
+// `shadows` = varianta Stínoví pistolníci (nezávislá na rozšířeních).
+function botGameOptions(exps, hnExtra, shadows) {
     const expansions = emptyExpansions();
     for (const k of Object.keys(expansions)) expansions[k] = !!(exps && exps[k]);
-    return { expansions, highNoonExtra: expansions.high_noon && !!hnExtra };
+    return { expansions, highNoonExtra: expansions.high_noon && !!hnExtra, shadowGunslingers: !!shadows };
 }
 
 // ── Seznamy her (S6 Připojit se, S10 Sledovat) a detail hry (S7) ──────────
@@ -377,9 +381,12 @@ function playerWon(p, winner, players) {
     if (!p || !winner) return false;
     if (winner === `${p.name} vyhrál!`) return true;   // Divoký západ: vyhrává jednotlivec
     if (isThreePlayerMode(players)) return winner === `${roleNameCz(p.role)} vyhrál!`;
-    if (winner === 'Zákon vyhrál!') return p.role === 'Sheriff' || p.role === 'Deputy';
-    if (winner === 'Bandité vyhráli!') return p.role === 'Outlaw';
-    if (winner === 'Odpadlík vyhrál!') return p.role === 'Renegade' && p.health > 0;
+    // Stínový odpadlík (Stínoví pistolníci) vyhrává se stranou, ke které se naposledy
+    // přidal (`teamRole`); do role Odpadlík se už nikdy nevrací.
+    const team = teamRole(p);
+    if (winner === 'Zákon vyhrál!') return team === 'Sheriff' || team === 'Deputy';
+    if (winner === 'Bandité vyhráli!') return team === 'Outlaw';
+    if (winner === 'Odpadlík vyhrál!') return team === 'Renegade' && p.health > 0;
     return false;
 }
 
@@ -657,7 +664,7 @@ function debugRolesLabel(roles) {
 // Payload pro 'debug_start'. Klíče jsou camelCase per rozšíření – takhle je čte
 // server/handlers.debug.js, zatímco obrazovky menu drží rozšíření pod klíči
 // MENU_EXPANSIONS (dodge_city, …), takže se to musí jednou přeložit.
-function debugStartPayload({ count, roles, exps, hnExtra }) {
+function debugStartPayload({ count, roles, exps, hnExtra, shadows }) {
     const e = exps || {};
     return {
         playerCount: count,
@@ -668,6 +675,7 @@ function debugStartPayload({ count, roles, exps, hnExtra }) {
         fistful: !!e.fistful,
         divokyZapad: !!e.divoky_zapad,
         zlataHorecka: !!e.zlata_horecka,
+        shadowGunslingers: !!shadows,
     };
 }
 

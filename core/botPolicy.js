@@ -36,6 +36,14 @@ if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
     }
+    // Stínoví pistolníci: „smí se léčit?" (stín ne) – samostatný guard, přibyl později.
+    if (typeof canHeal === 'undefined') {
+        globalThis.canHeal = require('./distance.js').canHeal;
+    }
+    // Stínový odpadlík (Stínoví pistolníci) střílí za stranu, ke které se přidal.
+    if (typeof teamRole === 'undefined') {
+        globalThis.teamRole = require('./roles.js').teamRole;
+    }
     if (typeof inPlayCount === 'undefined') {
         globalThis.inPlayCount = require('./distance.js').inPlayCount;
     }
@@ -280,7 +288,7 @@ function hostOpts(state, beliefs, myIndex) {
 // Očekávaná nepřátelskost bota (myIndex) vůči cíli podle beliefů.
 function hostilityOf(state, myIndex, targetIdx, beliefs) {
     const me = state.players[myIndex];
-    return expectedHostility(me.role, beliefs[targetIdx], hostOpts(state, beliefs, myIndex));
+    return expectedHostility(teamRole(me), beliefs[targetIdx], hostOpts(state, beliefs, myIndex));
 }
 
 // Jaká je šance, že je cíl někdo, na koho se STŘÍLET NEMÁ (pomocník pro šerifa, spoluodpadlík
@@ -293,7 +301,7 @@ function allyRisk(state, myIndex, targetIdx, beliefs) {
     const me = state.players[myIndex];
     const opts = hostOpts(state, beliefs, myIndex);
     let p = 0;
-    for (const r of ROLES) if ((dist[r] || 0) > 0 && roleHostility(me.role, r, opts) < 0) p += dist[r];
+    for (const r of ROLES) if ((dist[r] || 0) > 0 && roleHostility(teamRole(me), r, opts) < 0) p += dist[r];
     return p;
 }
 
@@ -321,8 +329,8 @@ function rankEnemies(state, myIndex, beliefs, requireReach) {
     state.players.forEach((p, idx) => {
         if (idx === myIndex || p.health <= 0) return;
         if (requireReach && !computeCanHit(state, myIndex, idx)) return;
-        all.push({ idx, h: expectedHostility(me.role, beliefs[idx], opts),
-                   ep: enemyProbability(me.role, beliefs[idx], opts),
+        all.push({ idx, h: expectedHostility(teamRole(me), beliefs[idx], opts),
+                   ep: enemyProbability(teamRole(me), beliefs[idx], opts),
                    health: p.health, hand: p.hand.length,
                    hurt: Math.max(0, (p.maxHealth || p.health) - p.health) });
     });
@@ -429,7 +437,7 @@ function gearModePick(state, myIndex, beliefs, mode, targets) {
             return t ? { score: 14, targetIdx: t.idx } : null;
         }
         case 'BEER':
-            if (!isInPlay(me) || me.health >= me.maxHealth) return null;
+            if (!canHeal(me)) return null;
             return { score: me.health <= 2 ? 26 : 7, targetIdx: null };
         default:
             // Hokynářství: rozdá kartu i každému soupeři – za valouny se to botovi nevyplatí.
@@ -757,7 +765,7 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
             return { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t, area: a.area, boardIdx: a.cardIdx ?? 0 } };
         }
         case 'DE_HEAL': {
-            const t = (isInPlay(me) && me.health < me.maxHealth) ? myIndex
+            const t = canHeal(me) ? myIndex
                 : state.players.findIndex((p, i) => alive(i) && p.health < p.maxHealth);
             return t === -1 ? null : { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t } };
         }
@@ -898,7 +906,7 @@ function decidePlay(state, myIndex, beliefs) {
         }
         if (action === 'DE_HEAL') { // Tequila: +1 sobě nebo zraněnému spojenci
             let tIdx = null;
-            if (isInPlay(me) && me.health < me.maxHealth) tIdx = myIndex;   // duch se léčit smí
+            if (canHeal(me)) tIdx = myIndex;   // duch se léčit smí
             else {
                 const ally = state.players.findIndex((p, idx) => idx !== myIndex && p.health > 0
                     && p.health < p.maxHealth && hostilityOf(state, myIndex, idx, beliefs) < -ENEMY_EPS);
@@ -909,7 +917,7 @@ function decidePlay(state, myIndex, beliefs) {
         }
         if (action === 'DE_DECK') { // Whisky (heal_self_2) / Rvačka (brawl) – cíl implicitní
             if (card.discardExtra === 'heal_self_2') {
-                if (me.health < me.maxHealth) consider(me.health <= 2 ? 28 : 10, { event: 'discard_extra_choose', payload: { cardIdx: i } });
+                if (canHeal(me)) consider(me.health <= 2 ? 28 : 10, { event: 'discard_extra_choose', payload: { cardIdx: i } });
             } else if (card.discardExtra === 'brawl') {
                 const { pos, neg } = aoeBalance();
                 if (pos >= 1 && pos > neg) consider(20, { event: 'discard_extra_choose', payload: { cardIdx: i } });
@@ -943,10 +951,10 @@ function decidePlay(state, myIndex, beliefs) {
         const intent = { event: 'play_card', payload: i };
 
         if (card.type === T.BEER) {
-            if (me.health < me.maxHealth) consider(me.health <= 1 ? 100 : (me.health <= 2 ? 30 : 6), intent);
+            if (canHeal(me)) consider(me.health <= 1 ? 100 : (me.health <= 2 ? 30 : 6), intent);
             return;
         }
-        if (card.type === T.SALOON) { if (me.health < me.maxHealth) consider(8, intent); return; }
+        if (card.type === T.SALOON) { if (canHeal(me)) consider(8, intent); return; }
         if (card.type === T.WEAPON) {
             // Jednu zbraň za tah stačí – další si nech „v zásobě" na příští tah. Bez
             // tohohle bot v jednom tahu vyložil Schofield a hned na něj Remington
@@ -1017,7 +1025,7 @@ function decidePlay(state, myIndex, beliefs) {
         if (card.activate === 'heal_self') {
             // Mimo hru (mrtvý) by server kartu neaktivoval a bot by ji vybíral pořád dokola
             // (stav by se nezměnil = zaseknutá hra). Duch (Město duchů) ve hře je.
-            if (isInPlay(me) && me.health < me.maxHealth) consider(me.health <= 2 ? 28 : 8, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
+            if (canHeal(me)) consider(me.health <= 2 ? 28 : 8, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId } });
             return;
         }
         if (card.activate === 'draw_3') {   // Pony express – tři karty, stejná priorita jako Wells Fargo
@@ -1089,7 +1097,7 @@ function decidePlay(state, myIndex, beliefs) {
     // a nesmí přebít výstřel ani líznutí karet navíc.
     const _roseIdx = roseSwapOffer(state, myIndex);
     if (_roseIdx != null) {
-        const _roseEp = enemyProbability(me.role, beliefs[_roseIdx], hostOpts(state, beliefs, myIndex));
+        const _roseEp = enemyProbability(teamRole(me), beliefs[_roseIdx], hostOpts(state, beliefs, myIndex));
         if (_roseEp >= 0.5) consider(14, { event: 'lady_rose', payload: {} });
     }
     // Zuřivá Doroty (Divoký západ): „jmenuj kartu a vyber hráče, který ji musí zahrát".
@@ -1161,7 +1169,7 @@ function decidePlay(state, myIndex, beliefs) {
                     break;
                 }
                 case 'heal': {
-                    if (me.health < me.maxHealth) { targetIdx = myIndex; score = me.health <= 2 ? 30 : 10; }
+                    if (canHeal(me)) { targetIdx = myIndex; score = me.health <= 2 ? 30 : 10; }
                     break;
                 }
                 default: {
@@ -1174,7 +1182,7 @@ function decidePlay(state, myIndex, beliefs) {
                     else if (_lvk.effect === 'STORE') score = drawCardWorth(state, me, 2) ? 30 : 0;
                     else if (_lvk.effect === 'brawl') score = 24;
                     else if (_lvk.effect === 'BEER' || _lvk.effect === 'SALOON' || _lvk.effect === 'heal_self_2') {
-                        if (me.health < me.maxHealth) score = me.health <= 2 ? 30 : 8;
+                        if (canHeal(me)) score = me.health <= 2 ? 30 : 8;
                     } else if (_lvk.effect === 'INDIANS' || _lvk.effect === 'GATLING') {
                         const bal = aoeBalance();
                         if (bal.pos > bal.neg) score = 26;
@@ -1218,20 +1226,20 @@ function decidePlay(state, myIndex, beliefs) {
             }
             let val = GEAR_VALUE[card.effect] || 0;
             // Panák léčí – bez zranění by se za něj zaplatilo a efekt by vyšuměl.
-            if (card.effect === 'ZH_PANAK' && me.health >= me.maxHealth) val = 0;
+            if (card.effect === 'ZH_PANAK' && !canHeal(me)) val = 0;
             // Union Pacific líže – bez karet v balíčku i odhozu by se platilo za nic.
             if (card.effect === 'ZH_UNION_PACIFIC' && !drawCardWorth(state, me, 4)) val = 0;
             // Rum léčí podle barev (ze 4 karet padnou v průměru skoro 3) – vyplatí se tím
             // víc, čím víc životů chybí. Na plný život ho pravidla koupit nepustí.
             if (card.effect === 'ZH_RUM') {
-                const miss = me.maxHealth - me.health;
+                const miss = canHeal(me) ? me.maxHealth - me.health : 0;   // stín se neléčí
                 val = miss >= 2 ? (me.health <= 2 ? 30 : 22) : (miss === 1 ? 8 : 0);
             }
             if (val > 0) consider(val, { event: 'gear_buy', payload: { rowIdx } });
         });
         // Pivo za valoun jen s PLNÝM životem: jinak je vyléčení cennější než zlato
         // (a Pivo na plný život stejně nejde zahrát, takže by v ruce jen leželo).
-        if (me.health >= me.maxHealth) {
+        if (!canHeal(me)) {
             const bi = me.hand.findIndex(c => c && !c._placeholder && beerNuggetOk(state, myIndex, c));
             if (bi !== -1 && recycleOk(me)) consider(6, { event: 'beer_for_nugget', payload: { cardIdx: bi } });
         }
@@ -1398,7 +1406,7 @@ function decideBotAction(state, myIndex, beliefs) {
             // zraněnému, který už má co hrát – jinak jsou karty cennější. Duch (Město duchů)
             // o naléčený život na konci tahu zase přijde, takže si radši líže.
             if (ds.cardsDrawn === 0 && opts.includes('liquor') && !me._ghost &&
-                me.health < me.maxHealth && me.hand.length >= 3) {
+                canHeal(me) && me.hand.length >= 3) {
                 return { event: 'draw_card', payload: { source: 'liquor', sourceIdx: null } };
             }
             if (ds.cardsDrawn === 0 && opts.includes('opponent_hand')) {

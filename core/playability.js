@@ -23,6 +23,10 @@ if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') {
         globalThis.isInPlay = require('./distance.js').isInPlay;
     }
+    // Stínoví pistolníci: „smí se léčit?" (stín ne) – samostatný guard, přibyl později.
+    if (typeof canHeal === 'undefined') {
+        globalThis.canHeal = require('./distance.js').canHeal;
+    }
     if (typeof inPlayCount === 'undefined') {
         globalThis.inPlayCount = require('./distance.js').inPlayCount;
     }
@@ -185,8 +189,8 @@ function nativePlayInTurn(state, me, myIndex, card) {
             !lawProtectedCard(state, me, myIndex, c))) return false;
         // Léčit lze každého VE HŘE – duch (Město duchů, High Noon) v ní na svůj tah je,
         // takže i jeho (isInPlay, ne health > 0).
-        if (card.discardExtra === 'heal_self_2') return isInPlay(me) && me.health < me.maxHealth;
-        if (card.discardExtra === 'heal_any') return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
+        if (card.discardExtra === 'heal_self_2') return canHeal(me);
+        if (card.discardExtra === 'heal_any') return state.players.some(p => canHeal(p));
         if (card.discardExtra === 'bang_any') return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
         if (card.discardExtra === 'steal_any') return state.players.some((p, idx) =>
             idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0))
@@ -216,10 +220,10 @@ function nativePlayInTurn(state, me, myIndex, card) {
         if (beerBlockedFor(state)) return false;   // Reverend (High Noon)
         const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
         if (aliveCount <= 2) return false;
-        if (!isInPlay(me) || me.health >= me.maxHealth) return false;   // duch se léčit smí
+        if (!canHeal(me)) return false;   // duch se léčit smí
         return true;
     }
-    if (card.type === "Salon") return state.players.some(p => isInPlay(p) && p.health < p.maxHealth);
+    if (card.type === "Salon") return state.players.some(p => canHeal(p));
     if (["Zbraň","Barel","Vybavení","Dynamit"].includes(card.type)) {
         if (card.type === "Zbraň") { if (me.weapon?.id !== -1 && me.weapon?.name === card.name) return false; }
         else { if ((me.board||[]).some(c => c.name === card.name)) return false; }

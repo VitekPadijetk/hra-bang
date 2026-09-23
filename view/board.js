@@ -13,6 +13,19 @@
 // zásahu). Statický sprite je po tu dobu skrytý, takže bez registrace té plovoucí kopie
 // problikávání uprostřed pohybu zamrzlo na Veře a po dosednutí skočilo zpátky do fáze
 // cyklu (bug 50).
+
+// Zlatá horečka – Stínoví pistolníci: stínový odpadlík má kartu role otočenou na stranu,
+// se kterou právě hraje (`_shadowSide`, logic/shadow.js) – „stínový pomocník / bandita".
+// Než dorazí art oboustranné karty, stojí za ni karta té strany. Ostatním vrací `fallback`.
+const SHADOW_ROLE_TEX = { Deputy: 'role_shadow_deputy', Outlaw: 'role_shadow_outlaw' };
+function roleTexFor(player, fallback) {
+    const side = player && player._shadowSide;
+    if (!side) return fallback;
+    const tex = SHADOW_ROLE_TEX[side];
+    if (tex && gameScene && gameScene.textures.exists(tex)) return tex;
+    return RoleImages[side] || fallback;
+}
+
 function registerVeraPortrait(sprite, player, getCharTex, slideKey, playerIdx) {
     if (!sprite || !player) return;
     if (player.character !== 'Vera Custer' || !player._copiedCharacter) return;
@@ -698,7 +711,8 @@ function drawOpponents(ctx) {
         // Duch (Město duchů) má roli odkrytou od svého vyřazení – i když si během svého
         // tahu naléčí životy, karta role mu ze stolu zmizet nesmí (`_ghost` proto zůstává
         // „mrtvý" pro slot role; cílení a interakci řeší `isDead && !player._ghost` níž).
-        const isDead = player.health <= 0 || !!player._ghost;
+        // Stín (Stínoví pistolníci) je na tom stejně: roli má odkrytou, na svůj tah hraje.
+        const isDead = player.health <= 0 || !!player._ghost || !!player._shadow;
         // Cinematika vyřazení (core/deathAnim.js): dokud hráč klesá na nulu a odhazuje
         // karty, kreslí se jeho místo pořád ještě BEZ karty role – ta se odhaluje až
         // nakonec. Ve fázi 'settled' je slot role rezervovaný (postava se k němu posune),
@@ -728,7 +742,7 @@ function drawOpponents(ctx) {
         }));
         const displayCards = (_roleSlot
             ? [{ _isRole: true, _pseudo: true, _zoomKey: 'role:' + actualIdx,
-                 _tex: deadRoleMap[player.role] || 'role_card_back' }, ...allBoardCards]
+                 _tex: roleTexFor(player, deadRoleMap[player.role] || 'role_card_back') }, ...allBoardCards]
             : [...allBoardCards]).concat(_greyCards, _gearCards);
 
         const numBluePrimary = Math.min(displayCards.length, L.oppBoardPerRow);
@@ -751,7 +765,7 @@ function drawOpponents(ctx) {
         const addCharInteraction = (sprite) => {
             // Duch (Město duchů, High Noon) je na svůj tah zpátky ve hře – kreslí se
             // jako hráč na tahu a dá se na něj cílit, i když má 0 životů.
-            if (isDead && !player._ghost) {
+            if (isDead && !player._ghost && !player._shadow) {
                 sprite.setInteractive({ useHandCursor: false });
                 return;
             }
@@ -766,7 +780,7 @@ function drawOpponents(ctx) {
                 selectedState.action === 'DE_HEAL' ? 'heal' : null;
             const deValid = !deMode ? false : (deMode === 'bang'
                 ? player.health > 0
-                : (isInPlay(player) && player.health < player.maxHealth));   // duch (Město duchů) se léčit smí
+                : (canHeal(player)));   // duch (Město duchů) se léčit smí
             const canActuallyTarget = (
                 (isShoot && _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ||
                 isDuel ||
@@ -1532,7 +1546,7 @@ function drawMyArea(ctx) {
         const roleX = livesX + L.roleOffX;
 
         const roleMap = { 'Sheriff': '000', 'Outlaw': '001', 'Renegade': '002', 'Deputy': '003' };
-        const roleTex = 'role_' + (roleMap[me.role] || '001');
+        const roleTex = roleTexFor(me, 'role_' + (roleMap[me.role] || '001'));
         // Divoký západ – Hřbitov / Helena Zontero: moje karta role zrovna letí doprostřed
         // stolu na zamíchání (roles_reshuffle, net/handlers.js) a pak leží rubem nahoru,
         // dokud si novou roli neprohlédnu. Po tu dobu se tady nekreslí – jinak by byla
@@ -1793,7 +1807,7 @@ function drawMyArea(ctx) {
         // Umírám-li, moje karty zůstávají na stole, dokud jedna po druhé neodletí
         // (viz deathCardsStillShown) – ne že by všechny zmizely v okamžiku zásahu.
         // Duch (Město duchů, High Noon) hraje s 0 životy, takže potřebuje svůj stůl vidět.
-        if (me.health > 0 || me._ghost || deathCardsStillShown(myIndex)) {
+        if (me.health > 0 || me._ghost || me._shadow || deathCardsStillShown(myIndex)) {
             if (me.weapon && me.weapon.id !== -1) {
                 myBoardCards.push({ ...me.weapon, _isWeapon: true });
             } else {
@@ -2145,7 +2159,7 @@ function drawMyArea(ctx) {
                 } else if (card.bangEffect && card.range === 'mass') {
                     ok = state.players.some((pl, idx) => idx !== myIndex && pl.health > 0);
                 } else if (card.activate === 'heal_self') {
-                    ok = isInPlay(me) && me.health < me.maxHealth;   // duch se léčit smí
+                    ok = canHeal(me);   // duch se léčit smí
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
                     // Cíl může být soupeř (má kartu) NEBO já sám (moje karta na stole – mimo
                     // tuhle aktivovanou zelenou), pravidla umožňují cílit i na sebe.
@@ -2650,7 +2664,7 @@ function drawMyArea(ctx) {
         state.sidKetchumPending?.playerIdx !== myIndex) {
             const sidCanHeal = hasAbility(me, "Sid Ketchum") &&
                 me.hand.filter(c => !c._placeholder).length >= 2 &&
-                isInPlay(me) && me.health < me.maxHealth;
+                canHeal(me);
             // Zelená karta na mém stole, kterou lze teď aktivovat, se počítá jako
             // hratelná akce (blikání „Ukončit tah" pak nemá smysl). Zrcadlí `ok`-logiku
             // aktivace zelených karet výše v drawMyArea.
@@ -2667,7 +2681,7 @@ function drawMyArea(ctx) {
                 } else if (card.bangEffect && card.range === 'mass') {
                     return state.players.some((pl, idx) => idx !== myIndex && pl.health > 0);
                 } else if (card.activate === 'heal_self') {
-                    return isInPlay(me) && me.health < me.maxHealth;   // duch se léčit smí
+                    return canHeal(me);   // duch se léčit smí
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
                     return state.players.some((pl, idx) => idx !== myIndex && pl.health > 0 &&
                         (pl.hand.length > 0 || (pl.weapon && pl.weapon.id !== -1) || (pl.board || []).length > 0));
@@ -2737,7 +2751,7 @@ function drawMyArea(ctx) {
             }
         }
 
-        if (hasAbility(me, "Sid Ketchum") && me.hand.length >= 2 && isInPlay(me) && me.health < me.maxHealth
+        if (hasAbility(me, "Sid Ketchum") && me.hand.length >= 2 && canHeal(me)
             // PEYOTE/RANCH (Fistful) mají OBA slotky tlačítek obsazené (tip na barvu,
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
@@ -2805,7 +2819,7 @@ function drawMyArea(ctx) {
             // je tu jako druhá pojistka, aby tlačítko nikdy neproblesklo.
             const _canLiquor = state.phase === "DRAW" && _ds?.active && _ds.playerIdx === myIndex &&
                 (_ds.options || []).includes('liquor') && _ds.cardsDrawn === 0 &&
-                isInPlay(me) && me.health < me.maxHealth &&
+                canHeal(me) &&
                 App.pendingDrawCount === 0 && !App.blockInput;
             if (_canLiquor) {
                 themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH, '🥃 PÁLENKA: +1 ❤️', {
@@ -3172,7 +3186,7 @@ function drawSpectatorPlayer(ctx) {
 
         const player = me;
         const isCurrent = state.currentPlayerIndex === 0;
-        const isDead = player.health <= 0 || !!player._ghost;   // duch: role zůstává odkrytá (viz drawOpponents)
+        const isDead = player.health <= 0 || !!player._ghost || !!player._shadow;   // duch/stín: role zůstává odkrytá (viz drawOpponents)
         const sOpp = L.specScale;
         const cW = 325 * sOpp;
         const cH = 500 * sOpp;
@@ -3193,7 +3207,7 @@ function drawSpectatorPlayer(ctx) {
         const _roleSlot = !!state.mode3p || (isDead && !deathCardsStillShown(0));
         const allBoard = [];
         if (_roleSlot) allBoard.push({ _isRole: true, _pseudo: true, _zoomKey: 'role:0',
-                                       _tex: deadRoleMap[player.role] || 'role_card_back' });
+                                       _tex: roleTexFor(player, deadRoleMap[player.role] || 'role_card_back') });
         if (player.weapon && player.weapon.id !== -1) allBoard.push(player.weapon);
         if (player.board) allBoard.push(...player.board);
         // Divoký západ – Greygory Deck: líznutá dvojice postav leží na konci pásu

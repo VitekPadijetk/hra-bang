@@ -429,7 +429,7 @@ const CharactersMixin = {
         if (!p || !hasAbility(p, "Sid Ketchum")) return;
         // Mrtvý se neléčí – jinak by se dvěma kartami „obživl". Duch (Město duchů) ve hře
         // je, takže se léčit smí (na konci svého tahu o to stejně přijde).
-        if (!isInPlay(p) || p.health >= p.maxHealth) return;
+        if (!canHeal(p)) return;
         if (!p.hand[cardIdx]) return;
 
         const card = p.hand.splice(cardIdx, 1)[0];
@@ -508,7 +508,7 @@ const CharactersMixin = {
     useSidKetchum(playerIdx, cardIndices) {
         let p = this.players[playerIdx];
         if (!p || !hasAbility(p, "Sid Ketchum")) return;
-        if (!isInPlay(p) || p.health >= p.maxHealth) return;   // duch (Město duchů) se léčit smí
+        if (!canHeal(p)) return;   // duch (Město duchů) se léčit smí
         if (cardIndices.length !== 2) return;
         cardIndices.sort((a, b) => b - a);
         if (new Set(cardIndices).size !== 2) return;

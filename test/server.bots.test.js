@@ -519,6 +519,55 @@ test('matice Zlaté horečky × 3–8 hráčů: hra doběhne a valouny přibýva
     assert.equal(earned, COMBOS.length, 'v každé hře někdo někoho zranil, takže si vydělal valoun');
 });
 
+// Zlatá horečka – varianta Stínoví pistolníci (fáze 7). Vyřazení hrají dál na každý
+// svůj tah, takže se hra prodlužuje – a stín je jediný hráč u stolu s nulou životů,
+// který je NA TAHU. Kdyby mu kdekoli chybělo zrcadlo (léčení, na které se bot ptá jinak
+// než server), zasekl by se tady stall guard. Varianta jde i bez rozšíření, takže se
+// hraje v obou podobách.
+test('Stínoví pistolníci × 3–8 hráčů: hra doběhne a stíny doopravdy hrají', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    let shadowTurns = 0, sided = 0;
+    try {
+        for (let rep = 0; rep < 3; rep++) {
+            for (let n = 3; n <= 8; n++) {
+                const all = rep === 2;
+                const gs = new GameState();
+                gs.cardData = cardData;
+                gs.dodgeCityCardData = dodgeCityCardData;
+                gs.highNoonCardData = highNoonCardData;
+                gs.fistfulCardData = fistfulCardData;
+                gs.wwsCardData = wwsCardData;
+                gs.gearCardData = gearCardData;
+                const opts = { shadowGunslingers: true,
+                               expansions: { dodge_city: all, high_noon: all, fistful: all,
+                                             divoky_zapad: all, zlata_horecka: rep >= 1 } };
+                const tag = `stíny r${rep} (${n}p)`;
+                const room = { id: `sh${rep}_${n}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+                ctx.rooms.set(room.id, room);
+                gs._onEvent = (e) => {
+                    if (e && e.card === 'Stínoví pistolníci' && /vrací/.test(e.msg || '')) {
+                        shadowTurns++;
+                        if (/stínový/.test(e.msg)) sided++;
+                    }
+                };
+                gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+                gs.players.forEach(p => ctx.createBot(room, p.name));
+                const guard = pumpToWinner(ctx, room);
+                assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+                assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+                assert.ok(gs.players.every(p => !p._shadow || gs.players[gs.currentPlayerIndex] === p),
+                          `${tag}: stín je jen ten, kdo je na tahu`);
+            }
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci');
+    assert.ok(shadowTurns > 0, 'aspoň jeden vyřazený hrál jako stín');
+    assert.ok(sided > 0, 'aspoň jeden odpadlík se jako stín přidal ke straně');
+});
+
 // Zlatá horečka (fáze 2) – pasivní černé vybavení. Bot ho kupuje ze stejného `consider`
 // jako všechno ostatní, jenže valouny se vydělávají pomalu, takže by se v běžné hře
 // dražší kusy protočily jen občas. Tady se všem valouny doplňují po každém broadcastu:

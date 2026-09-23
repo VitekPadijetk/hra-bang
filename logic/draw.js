@@ -105,8 +105,8 @@ const DrawMixin = {
     // S PLNÝMI ŽIVOTY se nenabízí vůbec: hráč by se vzdal celé fáze lízání za nic
     // (léčit se není kam) – tlačítko by šlo zmáčknout jen omylem.
     _drawOptionsBase(player) {
-        const canHeal = !!player && isInPlay(player) && player.health < player.maxHealth;
-        return (this.hasEvent('PALENKA') && canHeal) ? ['deck', 'liquor'] : ['deck'];
+        const healable = !!player && canHeal(player);
+        return (this.hasEvent('PALENKA') && healable) ? ['deck', 'liquor'] : ['deck'];
     },
 
     _getDrawOptions(player) {
