@@ -106,11 +106,20 @@ module.exports = function installRoomService(ctx) {
         const clausState = (gs.clausState && viewerIdx !== gs.currentPlayerIndex)
             ? { ...gs.clausState, revealed: hideAll(gs.clausState.revealed) }
             : gs.clausState;
+        // Zlatá horečka – Dutch Will: `pendingDutchDiscard.cardIds` jsou ID karet, které
+        // si PRÁVĚ LÍZL a drží je v ruce. Klient má `cards.json`, takže z ID pozná kartu
+        // přesně – ostatním se proto seznam schová (stejný důvod jako `_lawCardId` výš).
+        // Kdo na koho se čeká, zůstává veřejné (pendingActor, štítek „čeká se na…").
+        const dutch = (gs.pendingDutchDiscard && gs.pendingDutchDiscard.playerIdx !== viewerIdx)
+            ? { ...gs.pendingDutchDiscard, cardIds: [] }
+            : gs.pendingDutchDiscard;
         // Zlatá horečka: `gearDeck` je čtvrtá hromádka, jejíž POŘADÍ je tajné – je to
         // příští nabídka obchodu. Zbytek rozšíření je naopak veřejný a zůstává tak, jak
         // je: `gearRow` (obchod leží lícem vzhůru), `gearPile` (odhozené lícem vzhůru)
         // i `player.gear` / `player.nuggets` („pokládejte viditelně před sebe").
-        return { ...gs, players, deck, clausState,
+        // Karta ve fázi GEAR_MODE (Josh McCloud) je naopak VEŘEJNÁ – leží lícem vzhůru
+        // pod balíčkem vybavení, takže `pendingGearMode` se neořezává.
+        return { ...gs, players, deck, clausState, pendingDutchDiscard: dutch,
                  eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck),
                  wwsDeck: hideAll(gs.wwsDeck), gearDeck: hideAll(gs.gearDeck) };
     }

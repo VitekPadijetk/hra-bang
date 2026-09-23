@@ -55,6 +55,12 @@ const DrawMixin = {
         // i každé líznutí. Viz _startMineTurn v logic/fistful.js.
         this._startMineTurn();
 
+        // Zlatá horečka – Dutch Will: „lízne si 2 karty, 1 odhodí a vezme si 1 valoun."
+        // Odhazuje jednu z PRÁVĚ LÍZNUTÝCH, takže si fáze 1 musí zapamatovat, jak ruka
+        // vypadala předtím. Sem, a ne k volajícím: pod tímhle řádkem se lízání větví na
+        // Kita Carlsona, Clause i běžnou cestu a snímek musí platit pro všechny.
+        this._dutchSnapshot(this.currentPlayerIndex);
+
         if (hasAbility(player, "Kit Carlson")) {
             this.startKitCarlsonDraw();
             return;
@@ -350,15 +356,26 @@ const DrawMixin = {
             this._resumeAfterSpecial();
         } else {
             this.phase = "PLAY";
-            if (wwsFlip !== null) this._flipWwsEvent(wwsFlip);
-            this._processSpecialQueue();
-            // High Noon – Želízka: po fázi lízání si hráč na tahu volí barvu. Ptáme se až
-            // po frontě odložených akcí (na konci lízání bývá prázdná); kdyby si ji fronta
-            // vzala, zůstane hráč pro tenhle tah bez omezení – nikdy ne zaseknutý.
-            // Fistful – Ranč (výměna karet) jde AŽ ZA Želízky, takže když se čeká na barvu,
-            // pustí ho na řadu chooseHandcuffsSuit (logic/highNoon.js).
-            if (wasStartOfTurn && this.phase === "PLAY" && !this._startHandcuffs()) this._startRanch();
+            // Zlatá horečka – Dutch Will: odhoz jedné z právě líznutých karet je pořád
+            // FÁZE 1, takže se ptá DŘÍV než Želízka a Ranč. Až doklikne, pokračuje se
+            // TÍMTÉŽ ocasem (dutchWillDiscard → _finishDrawTail), aby se cesty nerozešly.
+            if (wasStartOfTurn && this._startDutchWill(this.drawPhaseState.playerIdx)) return;
+            this._finishDrawTail(wasStartOfTurn, wwsFlip);
         }
+    },
+
+    // Ocas fáze lízání: odkrytí karty Divokého západu (Dostavník / Wells Fargo), fronta
+    // odložených akcí a na konci fáze 1 ještě Želízka s Rančem. Je vytažený zvlášť, aby
+    // se do něj dalo vrátit poté, co ho přeruší Dutch Will (Zlatá horečka).
+    _finishDrawTail(wasStartOfTurn, wwsFlip) {
+        if (wwsFlip !== null && wwsFlip !== undefined) this._flipWwsEvent(wwsFlip);
+        this._processSpecialQueue();
+        // High Noon – Želízka: po fázi lízání si hráč na tahu volí barvu. Ptáme se až
+        // po frontě odložených akcí (na konci lízání bývá prázdná); kdyby si ji fronta
+        // vzala, zůstane hráč pro tenhle tah bez omezení – nikdy ne zaseknutý.
+        // Fistful – Ranč (výměna karet) jde AŽ ZA Želízky, takže když se čeká na barvu,
+        // pustí ho na řadu chooseHandcuffsSuit (logic/highNoon.js).
+        if (wasStartOfTurn && this.phase === "PLAY" && !this._startHandcuffs()) this._startRanch();
     },
 
     // Claus "The Saint" (A Fistful of Cards): ve fázi 1 si lízne o kartu víc, než je

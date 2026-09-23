@@ -156,6 +156,13 @@ const CharactersMixin = {
                 if (!isInPlay(this.players[a.playerIdx])) this.specialActionQueue.splice(i, 1);
                 continue;
             }
+            // Zlatá horečka – Madam Yto: líznutí za cizí Pivo. Ze stejného důvodu jako
+            // Boty: fáze YTO_DRAW čeká na klik své majitelky, a ta mezitím mohla odejít
+            // ze hry (Pivo se hraje i uprostřed útoku, který ji vyřadil).
+            if (a.type === 'YTO_DRAW') {
+                if (!isInPlay(this.players[a.playerIdx])) this.specialActionQueue.splice(i, 1);
+                continue;
+            }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
             if (!p || p.health <= 0 || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
@@ -180,7 +187,7 @@ const CharactersMixin = {
         // / _finishDraw (ty aktivní draw nastaví na false PŘED voláním, takže tenhle guard pustí).
         if (this.phase === "DRAW" && this.drawPhaseState?.active) return true;
 
-        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW") {
+        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW") {
             this.interruptedPhase = this.phase;
         }
 
@@ -193,6 +200,11 @@ const CharactersMixin = {
             // recyklovaný BART_DRAW), aby log i klientské zvýraznění řekly příčinu.
             this.pendingBootsDraw = { playerIdx: action.playerIdx };
             this.phase = "BOOTS_DRAW";
+        } else if (action.type === 'YTO_DRAW') {
+            // Zlatá horečka – Madam Yto: líznutí za zahrané Pivo. Vlastní fáze ze stejného
+            // důvodu jako u Bot – ať log i klientské zvýraznění řeknou správnou příčinu.
+            this.pendingYtoDraw = { playerIdx: action.playerIdx };
+            this.phase = "YTO_DRAW";
         } else if (action.type === 'EL_GRINGO_STEAL') {
             this.pendingElGringoSteal = { playerIdx: action.playerIdx, attackerIdx: action.attackerIdx };
             this.phase = "EL_GRINGO_STEAL";
@@ -374,6 +386,17 @@ const CharactersMixin = {
         const c = this.deck.draw();   // null = došly obě hromádky, viz suzyLafayetteDraw
         if (c) this.players[playerIdx].hand.push(c);
         this.pendingBootsDraw = null;
+        this._resumeAfterSpecial();
+    },
+
+    // Zlatá horečka – Madam Yto: „Pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+    // Totéž klikací líznutí; kdo Pivo zahrál, je jedno (i ona sama).
+    madamYtoDraw(playerIdx) {
+        if (this.phase !== "YTO_DRAW" || !this.pendingYtoDraw) return;
+        if (this.pendingYtoDraw.playerIdx !== playerIdx) return;
+        const c = this.deck.draw();   // null = došly obě hromádky, viz suzyLafayetteDraw
+        if (c) this.players[playerIdx].hand.push(c);
+        this.pendingYtoDraw = null;
         this._resumeAfterSpecial();
     },
 

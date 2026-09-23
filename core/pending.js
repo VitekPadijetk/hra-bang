@@ -57,10 +57,19 @@ function pendingActor(state) {
         // patří. Kupuje se ve fázi PLAY, takže tohle je jediná fáze, kterou obchod má.
         case 'GEAR_TARGET':      return state.pendingGearTarget
             ? { idx: state.pendingGearTarget.playerIdx, kind: 'GEAR_TARGET' } : null;
+        // Zlatá horečka – Josh McCloud si lízl Láhev / Komplice: způsob se volí až teď
+        // (u nákupu se volí předem, protože se za něj platí).
+        case 'GEAR_MODE':        return state.pendingGearMode
+            ? { idx: state.pendingGearMode.playerIdx, kind: 'GEAR_MODE' } : null;
+        // Zlatá horečka – Dutch Will: odhoz jedné z právě líznutých karet (fáze 1).
+        case 'DUTCH_DISCARD':    return state.pendingDutchDiscard
+            ? { idx: state.pendingDutchDiscard.playerIdx, kind: 'DUTCH_DISCARD' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
         case 'BOOTS_DRAW':       return state.pendingBootsDraw ? { idx: state.pendingBootsDraw.playerIdx, kind: 'BOOTS_DRAW' } : null;
+        // Zlatá horečka – Madam Yto: líznutí za zahrané Pivo (klik na balíček, jako Bart).
+        case 'YTO_DRAW':         return state.pendingYtoDraw ? { idx: state.pendingYtoDraw.playerIdx, kind: 'YTO_DRAW' } : null;
         case 'EL_GRINGO_STEAL':  return state.pendingElGringoSteal ? { idx: state.pendingElGringoSteal.playerIdx, kind: 'EL_GRINGO_STEAL' } : null;
         case 'SUZY_DRAW':        return state.pendingSuzyDraw ? { idx: state.pendingSuzyDraw.playerIdx, kind: 'SUZY_DRAW' } : null;
         case 'UHYB_DRAW':        return state.pendingUhybDraw ? { idx: state.pendingUhybDraw.playerIdx, kind: 'UHYB_DRAW' } : null;
@@ -102,9 +111,12 @@ const _WAIT_LABELS = {
     GREYGORY_OFFER:        'Greygory Deck – vybírá si postavy',
     DOROTHY_TARGET:        'Zuřivá Doroty – vybírá cíl poručené karty',
     GEAR_TARGET:           'vybírá, komu vybavení pomůže',
+    GEAR_MODE:             'vybírá, jak vybavení zahraje',
+    DUTCH_DISCARD:         'Dutch Will – odhazuje líznutou kartu',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',
+    YTO_DRAW:              'Madam Yto – líže za Pivo',
     EL_GRINGO_STEAL:       'El Gringo – bere kartu',
     SUZY_DRAW:             'Suzy Lafayette – líže si kartu',
     UHYB_DRAW:             'Úhyb – líže si kartu',
@@ -252,6 +264,18 @@ function describePendingCheck(state, viewerIdx) {
                 short: 'Vendeta',
                 title: '🔫 Vendeta – lízni si kontrolní kartu',
                 detail: '♥ = hraješ ještě jeden tah, jinak tah končí',
+            };
+        }
+        // Zlatá horečka – Don Bell: sejmutí na KONCI tahu, stejně jako Vendeta.
+        if (pcd.reason === 'DON_BELL') {
+            return {
+                forMe: pcd.playerIdx === viewerIdx,
+                kind: 'DON_BELL',
+                playerIdx: pcd.playerIdx,
+                waitingName: nameOf(pcd.playerIdx),
+                short: 'Don Bell',
+                title: '🔔 Don Bell – lízni si kontrolní kartu',
+                detail: '♥ nebo ♦ = hraješ ještě jeden tah, jinak tah končí',
             };
         }
         // Divoký západ – Teren Kill: sejmutí na vlastní vyřazení (taky bez karty na stole).

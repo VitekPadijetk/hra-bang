@@ -77,10 +77,89 @@ function gearOnFor(state, playerIdx, effect) {
     return !(playerIdx !== cur && hasAbility(state.players?.[cur], "Belle Star"));
 }
 
+// ── Pretty Luzena (fáze 6) ──────────────────────────────────────────────────
+// „Jednou za tah smí koupit vybavení za cenu sníženou o 1." Sleva se uplatní
+// AUTOMATICKY na první nákup v tahu (rozhodnutí R16): dávat ji na výběr by znamenalo
+// druhé tlačítko u každé karty v obchodě a hráč by stejně skoro vždy vzal to levnější.
+// Počítadlo je klíčované `turnId` (stejně jako Rýžovací mísa), takže se nikde nenuluje.
+const LUZENA_DISCOUNT = 1;
+
+function luzenaFree(state, playerIdx) {
+    const p = state?.players?.[playerIdx];
+    return !!p && hasAbility(p, "Pretty Luzena") && p._luzenaTurn !== state.turnId;
+}
+
 // Cena karty pro konkrétního hráče. Zrcadlí GameState._gearCost – jediné místo, kde se
-// cena liší podle toho, kdo kupuje (Pretty Luzena, fáze 6).
+// cena liší podle toho, kdo kupuje (Pretty Luzena). Klient podle ní kreslí cenovku
+// i zašedlé karty, bot podle ní počítá, server podle ní strhává valouny.
 function gearCostFor(state, playerIdx, card) {
-    return card ? Math.max(0, card.cost || 0) : 0;
+    if (!card) return 0;
+    const base = Math.max(0, card.cost || 0);
+    return luzenaFree(state, playerIdx) ? Math.max(0, base - LUZENA_DISCOUNT) : base;
+}
+
+// ── Jacky Murieta (fáze 6) ──────────────────────────────────────────────────
+// „Ve svém tahu smí zaplatit 2 valouny a vystřelit 1 BANG! navíc." Smí to vícekrát za
+// tah a nehraje k tomu žádnou kartu, takže je to tlačítko schopnosti (vedle Chucka
+// Wengama), ne karta. Zaplacené výstřely zvedají LIMIT karet Bang! – počítadlo je
+// klíčované `turnId`, takže se nikde nenuluje (vzor Rýžovací mísa).
+const JACKY_COST = 2;
+
+function jackyExtraBangs(state, player) {
+    if (!goldRushOn(state) || !player) return 0;
+    return player._jackyTurn === state.turnId ? (player._jackyBangs || 0) : 0;
+}
+
+// Smí Jacky teď zaplatit další BANG!? Zrcadlí GameState.useJackyMurieta. Právo západu
+// se neptáme: schopnost limit jen ZVEDÁ, takže vynucenou kartu vypnout nemůže.
+function jackyMurietaOk(state, playerIdx) {
+    if (!gearShopOpen(state, playerIdx)) return false;
+    const me = state.players[playerIdx];
+    return hasAbility(me, "Jacky Murieta") && (me.nuggets || 0) >= JACKY_COST;
+}
+
+// ── Josh McCloud (fáze 6) ───────────────────────────────────────────────────
+// „Smí si za 2 valouny líznout vrchní vybavení z balíčku." Jen ve svém tahu. Karta je
+// lícem dolů, takže se dopředu neví, co udělá – pod Právem západu se proto schopnost
+// nenabízí VŮBEC (mohla by doléčit život, přisypat karty do ruky, nebo rovnou ukončit
+// tah kartou Zlatá horečka, a vynucená karta žádnou z těch věcí nedovolí).
+const JOSH_COST = 2;
+
+// Kolikrát už si Josh v TOMHLE tahu lízl. Pravidla to nijak neomezují (brzdou jsou
+// valouny), takže to není podmínka nákupu – je to jen informace pro bota (viz JOSH_BOT_CAP
+// v core/botPolicy.js): s plnou kapsou by jinak točil balíček vybavení donekonečna
+// a jeho tah by nikdy neskončil. Stejná past a stejné řešení jako u RECYCLE_CAP.
+function joshUsesThisTurn(state, playerIdx) {
+    const p = state?.players?.[playerIdx];
+    return p && p._joshTurn === state.turnId ? (p._joshUses || 0) : 0;
+}
+
+function joshMcCloudOk(state, playerIdx) {
+    if (!gearShopOpen(state, playerIdx)) return false;
+    const me = state.players[playerIdx];
+    if (!hasAbility(me, "Josh McCloud") || (me.nuggets || 0) < JOSH_COST) return false;
+    if (!(state.gearDeck || []).length && !(state.gearPile || []).length) return false;
+    return !lawForcedCard(state, me, playerIdx);
+}
+
+// ── Raddie Snake (fáze 6) ───────────────────────────────────────────────────
+// „Ve svém tahu smí odhodit 1 valoun a líznout si 1 kartu (až 2×)." Je to Rýžovací mísa
+// jako schopnost, takže i stejný tvar počítadla i stejná otázka na Právo západu
+// (líznutá karta může vynucenou kartu „vypnout").
+const RADDIE_USES = 2;
+
+function raddieUsesLeft(state, playerIdx) {
+    const p = state?.players?.[playerIdx];
+    const used = p && p._raddieTurn === state.turnId ? (p._raddieUses || 0) : 0;
+    return Math.max(0, RADDIE_USES - used);
+}
+
+function raddieSnakeOk(state, playerIdx) {
+    if (!gearShopOpen(state, playerIdx)) return false;
+    const me = state.players[playerIdx];
+    if (!hasAbility(me, "Raddie Snake") || (me.nuggets || 0) < 1) return false;
+    if (raddieUsesLeft(state, playerIdx) <= 0) return false;
+    return !lawLocksOther(state, me, playerIdx, null, { draws: 1 });
 }
 
 // Fistful – Soudce: „hráči nesmí vykládat karty před sebe ani před ostatní hráče."
@@ -361,6 +440,9 @@ function gearRucksackSaveOk(state, playerIdx) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { goldRushOn, gearOf, hasGearFor, gearOnFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
+                       LUZENA_DISCOUNT, luzenaFree, JACKY_COST, jackyExtraBangs, jackyMurietaOk,
+                       JOSH_COST, joshMcCloudOk, joshUsesThisTurn,
+                       RADDIE_USES, raddieUsesLeft, raddieSnakeOk,
                        GEAR_AIMED_BLACK, gearAimedBlack, gearBlackTargets,
                        GEAR_MODES, GEAR_MODE_LABEL, GEAR_MODE_AIMED, gearModesOf, gearModeTargets,
                        gearModeReason, gearCardReason,

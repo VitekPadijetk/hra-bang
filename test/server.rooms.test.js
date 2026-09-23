@@ -290,6 +290,20 @@ test('redakce: vynucená karta Práva západu leží v cizí ruce zakrytá', () 
     assert.equal(payloadFor(emits, 's3').players[2]._lawCardId, 5);
 });
 
+// Zlatá horečka – Dutch Will: seznam právě líznutých karet je stejně citlivý jako ID
+// vynucené karty výš. Klient má cards.json, takže by z ID poznal kartu přesně.
+test('redakce: které karty Dutch Will líznul, vidí jen on', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.phase = 'DUTCH_DISCARD';
+    room.gameState.pendingDutchDiscard = { playerIdx: 2, cardIds: [5, 6] };
+    ctx.broadcastRoom(room);
+    assert.deepEqual(payloadFor(emits, 's1').pendingDutchDiscard,
+                     { playerIdx: 2, cardIds: [] }, 'cizím zbude jen to, na koho se čeká');
+    assert.deepEqual(payloadFor(emits, 's3').pendingDutchDiscard.cardIds, [5, 6]);
+});
+
 test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => {
     const { ctx, addSocket, emits } = setup();
     ['s1', 's2', 's3'].forEach(addSocket);

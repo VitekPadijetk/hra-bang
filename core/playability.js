@@ -261,6 +261,17 @@ function cardPlayability(state, me, myIndex, card) {
     if (state.phase === "VALENTINE_DISCARD") {
         return state.pendingValentine?.playerIdx === myIndex ? true : null;
     }
+    // Zlatá horečka – Dutch Will: odhazuje JEDNU z právě líznutých karet, takže na rozdíl
+    // od Valentýna není klikatelná celá ruka – jen ty, které přibyly ve fázi 1 (seznam
+    // nese `pendingDutchDiscard.cardIds`). Je to jeho vlastní fáze 1, ale sedí tady
+    // nahoře ze stejného důvodu jako předchozí tři: fáze PLAY v tu chvíli neběží.
+    if (state.phase === "DUTCH_DISCARD") {
+        const pd = state.pendingDutchDiscard;
+        if (pd?.playerIdx !== myIndex) return null;
+        if (!pd.cardIds.includes(card.id)) return false;
+        // Právo západu: vynucenou kartu odhodit nejde (zrcadlo _lawProtected).
+        return !lawProtectedCard(state, me, myIndex, card);
+    }
     const isMyResponseTurn = isResponseTurn(state, myIndex);
     const isMyPlayTurn = isPlayTurn(state, myIndex);
     // High Noon – Želízka: ve svém tahu jen karty zvolené barvy (i jako reakce).
@@ -553,12 +564,27 @@ function bangCardFromHand(state, me, myIndex, card) {
     return playsAsBang(state, me, card);
 }
 
+// Zlatá horečka – Jacky Murieta: zaplacené výstřely navíc (core/goldRush.js). Ten modul
+// se na playability.js sám ptá (Právo západu u nákupu), takže se tady require-ovat NESMÍ:
+// vznikl by kruh a jeden z obou by dostal poloprázdné exporty. Čte se proto až při prvním
+// volání – v prohlížeči je to dávno načtený globál, v Node hotový modul z cache.
+let _jackyFn = null;
+function _jackyExtra(state, me) {
+    if (!_jackyFn) {
+        _jackyFn = (typeof jackyExtraBangs !== 'undefined') ? jackyExtraBangs
+                 : (typeof require === 'function' ? require('./goldRush.js').jackyExtraBangs : null);
+        if (!_jackyFn) _jackyFn = () => 0;
+    }
+    return _jackyFn(state, me) || 0;
+}
+
 // Zbývá hráči volný limit karet Bang! na tenhle tah? (Willy the Kid a Volcanic ho nemají;
-// Laso zbraň na stole vypíná, takže s ním Volcanic neplatí. Přestřelka zvedá limit na 2.)
+// Laso zbraň na stole vypíná, takže s ním Volcanic neplatí. Přestřelka zvedá limit na 2,
+// Jacky Murieta o 1 za každé zaplacené 2 valouny.)
 function bangLimitFree(state, me) {
     if (hasAbility(me, "Willy the Kid")) return true;
     if (!boardDeadFor(state) && me.weapon?.name?.includes("Volcanic")) return true;
-    return me.bangsPlayedThisTurn < bangLimitFor(state);
+    return me.bangsPlayedThisTurn < bangLimitFor(state) + _jackyExtra(state, me);
 }
 
 // Smí vybraná karta letět na POSTAVU (klasický výstřel)? Odražená střela se do limitu

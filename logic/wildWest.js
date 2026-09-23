@@ -356,6 +356,10 @@ const WildWestMixin = {
         // a nuluje i tehdy, když se Zuzana zrovna nehraje.
         const skipped = !!(p && p._turnSkippedByJail);
         if (p) p._turnSkippedByJail = false;
+        // Zlatá horečka – Don Bell: „ve Vězení schopnost nefunguje" (FAQ Q06). Jeho gate
+        // v nextTurn běží až za Zuzanou, tedy až po tomhle vynulování – konec tahu si
+        // proto musí pamatovat sám, že se tenhle tah nehrál.
+        if (skipped) this._jailSkipTurn = this.turnId;
         if (!this.hasEvent('MADAM_ZUZANA') || this._zuzanaDone || this.winner) return false;
         if (skipped) return false;
         // Duch (Město duchů) má na konci svého tahu 0 životů (tryEndTurn) – zásah by ho

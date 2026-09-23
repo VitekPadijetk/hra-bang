@@ -1253,5 +1253,78 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             broadcastRoom(room);
         });
     });
+
+    // ── Zlatá horečka: postavy rozšíření (fáze 6) ────────────────────────────
+    // Zuřivá Doroty ani nic jiného je poručit nemůže – jsou to schopnosti, ne karty.
+
+    // Dutch Will: odhoz jedné z právě líznutých karet (pořád fáze 1). Karta letí do
+    // odhozu úplně stejnou animací jako každý jiný odhoz z ruky; `stolenIndex` netřeba,
+    // kartu si vybral její majitel a klient si slot najde podle ID.
+    on('dutch_discard', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingDutchDiscard?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const res = gs.dutchWillDiscard(idx, d && d.cardId);
+            if (!res) { broadcastRoom(room); return; }
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            broadcastRoom(room);
+        });
+    });
+
+    // Josh McCloud si lízl Láhev / Komplice a teď volí, jak ji zahraje. Cílené režimy
+    // pokračují fází GEAR_TARGET (gear_target výš), Hokynářství může domíchat balíček.
+    on('gear_mode', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingGearMode?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            gs.chooseGearMode(idx, d && d.mode);
+            if (gs.phase === 'STORE') {
+                const t = ctx.storeCinematicMs?.(gs);
+                room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;
+            }
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    // Jacky Murieta: 2 valouny za BANG! navíc. Nehraje k tomu žádnou kartu, takže
+    // nikam nic neletí – stav stačí.
+    on('jacky_murieta', () => {
+        withRoom((room, p, gs) => {
+            gs.useJackyMurieta(gs.currentPlayerIndex);
+            broadcastRoom(room);
+        });
+    });
+
+    // Josh McCloud: 2 valouny za vrchní kartu balíčku vybavení. Animace letu karty
+    // z balíčku zatím žádná (stejně jako u nákupu z obchodu, plán §10).
+    on('josh_mccloud', () => {
+        withRoom((room, p, gs) => {
+            gs._gearRumReveal = null;
+            gs.useJoshMcCloud(gs.currentPlayerIndex);
+            // Lízl Rum: otočené karty se ukážou celému stolu (jsou veřejné) – stejně
+            // jako při nákupu, viz gear_buy.
+            const rum = gs._gearRumReveal;
+            gs._gearRumReveal = null;
+            if (rum && rum.cards.length) {
+                emitAnim(room, rum);
+                room._revealBlockUntil = Math.max(room._revealBlockUntil || 0,
+                                                  Date.now() + rumRevealMs(rum.cards.length));
+            }
+            if (gs.phase === 'STORE') {
+                const t = ctx.storeCinematicMs?.(gs);
+                room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;
+            }
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    // Raddie Snake: valoun za kartu (až 2× za tah). Pravidla otevřou běžnou fázi lízání,
+    // takže karta přiletí až klikem na balíček (draw_card výš) – jako u Rýžovací mísy.
+    on('raddie_snake', () => {
+        withRoom((room, p, gs) => {
+            gs.useRaddieSnake(gs.currentPlayerIndex);
+            broadcastRoom(room);
+        });
+    });
 };
 

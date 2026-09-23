@@ -16,6 +16,7 @@ const highNoonCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.high_
 const fistfulCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.fistful.json', 'utf8'));
 const wwsCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.divoky_zapad.json', 'utf8'));
 const gearCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.zlata_horecka.json', 'utf8'));
+const { GOLD_RUSH_CHARACTERS } = require('../logic/entities.js');
 
 before(() => { console.log = () => {}; console.warn = () => {}; });
 
@@ -1646,4 +1647,69 @@ test('20 her jen botů, ve kterých jsou VŠICHNI Greygory Deck', () => {
         }
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani se samými Greygory');
+});
+
+// ── Zlatá horečka: stůl samých postav rozšíření (fáze 6) ───────────────────
+// Osm postav, z toho čtyři s vlastní fází nebo akcí (Dutch Will, Josh McCloud,
+// Jacky Murieta, Raddie Snake) a jedna na konci tahu (Don Bell). Kdyby kterékoli
+// z nich chyběla větev bota nebo handler, projeví se to tady jako stall – a stůl
+// samých stejných postav to vyvolá spolehlivě, na rozdíl od náhodného výběru.
+// Valouny se průběžně doplňují: bez nich by se placené schopnosti nerozjely vůbec.
+test('hry jen botů, ve kterých mají VŠICHNI tutéž postavu Zlaté horečky', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const seen = { dutch: 0, josh: 0, jacky: 0, raddie: 0, bell: 0, yto: 0 };
+    // Tři partie na postavu: hra pro tři hráče umí skončit po pár tazích, takže by se
+    // z jediné nedalo tvrdit „bot se ke schopnosti dostal" (Don Bell snímá až na KONCI
+    // svého tahu). Partie je levná, jednotky ms.
+    try {
+        for (let k = 0; k < GOLD_RUSH_CHARACTERS.length * 3; k++) {
+            const name = GOLD_RUSH_CHARACTERS[k % GOLD_RUSH_CHARACTERS.length];
+            const n = 3 + (k % 5);
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            const opts = { expansions: { zlata_horecka: true, dodge_city: k % 2 === 0,
+                                         high_noon: k % 3 === 0, fistful: k % 4 === 0 } };
+            const room = { id: 'grchar' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e || e.ev !== 'special') return;
+                if (e.card === 'Dutch Will') seen.dutch++;
+                if (e.card === 'Josh McCloud') seen.josh++;
+                if (e.card === 'Jacky Murieta') seen.jacky++;
+                if (e.card === 'Raddie Snake') seen.raddie++;
+                if (e.card === 'Madam Yto') seen.yto++;
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => { p.charChoices = [name, name]; });
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+            assert.ok(gs.players.every(pl => pl.character === name),
+                `${name}: všichni opravdu dostali tuhle postavu`);
+            const guard = pumpToWinner(ctx, room, () => {
+                // Stejný trik jako u stresu vybavení: bez valounů by placené schopnosti
+                // (Jacky, Josh, Raddie) v běžné hře padly jen výjimečně. Jen prvních 60
+                // tahů, ať se souboj 1 na 1 nedá léčit donekonečna.
+                if (gs.turnId <= 60) gs.players.forEach(p => { if (p.nuggets < 6) p.nuggets = 6; });
+                if (gs.phase === 'CHECK_DRAW' && gs.pendingCheckDraw?.reason === 'DON_BELL') seen.bell++;
+            });
+            assert.ok(gs.winner, `${name}: hra (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${name}: hra nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani s postavami Zlaté horečky');
+    // Že se bot ke každé schopnosti doopravdy dostal (jinak by test nic nehlídal).
+    assert.ok(seen.dutch > 0, 'Dutch Will aspoň jednou odhodil líznutou kartu');
+    assert.ok(seen.josh > 0, 'Josh McCloud si aspoň jednou lízl vybavení');
+    assert.ok(seen.jacky > 0, 'Jacky Murieta aspoň jednou zaplatil za BANG! navíc');
+    assert.ok(seen.raddie > 0, 'Raddie Snake aspoň jednou proměnil valoun v kartu');
+    assert.ok(seen.bell > 0, 'Don Bell aspoň jednou snímal na konci tahu');
+    assert.ok(seen.yto > 0, 'Madam Yto aspoň jednou lízla za zahrané Pivo');
 });

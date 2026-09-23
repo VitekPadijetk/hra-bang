@@ -45,6 +45,12 @@ if (typeof CardType === 'undefined' && typeof require === 'function') {
 if (typeof distinctCardKinds === 'undefined' && typeof require === 'function') {
     globalThis.distinctCardKinds = require('./logic/entities.js').distinctCardKinds;
 }
+// Samostatný shim ze stejného důvodu: postavy Zlaté horečky přibyly až s fází 6.
+if (typeof GOLD_RUSH_CHARACTERS === 'undefined' && typeof require === 'function') {
+    const __ent = require('./logic/entities.js');
+    globalThis.GOLD_RUSH_CHARACTERS = __ent.GOLD_RUSH_CHARACTERS;
+    globalThis.GOLD_RUSH_READY = __ent.GOLD_RUSH_READY;
+}
 
 // Čisté helpery rolí/výhry. V prohlížeči globály z core/*, v Node přes require.
 if (typeof rolesForPlayerCount === 'undefined' && typeof require === 'function') {
@@ -145,6 +151,20 @@ if (typeof gearModeTargets === 'undefined' && typeof require === 'function') {
     globalThis.GEAR_MODE_LABEL = __gr.GEAR_MODE_LABEL;
     globalThis.gearAimedBlack = __gr.gearAimedBlack;
     globalThis.gearBlackTargets = __gr.gearBlackTargets;
+}
+// Samostatný shim: postavy Zlaté horečky (fáze 6) mají vzorce ceny a limitu karet Bang!
+// ve stejném zrcadle, ale blok výš by je přeskočil, kdyby si goldRush.js natáhl někdo dřív.
+if (typeof luzenaFree === 'undefined' && typeof require === 'function') {
+    const __gr = require('./core/goldRush.js');
+    globalThis.gearCostFor = __gr.gearCostFor;
+    globalThis.luzenaFree = __gr.luzenaFree;
+    globalThis.jackyExtraBangs = __gr.jackyExtraBangs;
+    globalThis.JACKY_COST = __gr.JACKY_COST;
+    globalThis.JOSH_COST = __gr.JOSH_COST;
+    globalThis.joshMcCloudOk = __gr.joshMcCloudOk;
+    globalThis.jackyMurietaOk = __gr.jackyMurietaOk;
+    globalThis.raddieSnakeOk = __gr.raddieSnakeOk;
+    globalThis.gearModeReason = __gr.gearModeReason;
 }
 
 class GameState {
@@ -275,6 +295,18 @@ class GameState {
         this._goldRush = false;   // je rozšíření zapnuté? (`_goldRushOn`, viz logic/goldRush.js)
         // Hnědá karta vybavení, která potřebuje volbu cíle (zatím Panák) – fáze GEAR_TARGET.
         this.pendingGearTarget = null;
+        // Láhev / Komplic LÍZNUTÁ Joshem McCloudem: způsob se volí až teď (u nákupu se
+        // volí předem) – fáze GEAR_MODE. Viz _gearModeChoice v logic/goldRush.js.
+        this.pendingGearMode = null;
+        // Dutch Will: odhoz jedné z právě líznutých karet – fáze DUTCH_DISCARD.
+        this.pendingDutchDiscard = null;
+        // Madam Yto: líznutí za zahrané Pivo – fáze YTO_DRAW (fronta odložených akcí).
+        this.pendingYtoDraw = null;
+        // Don Bell: sejmutí na konci vlastního tahu je v jednom tahu jen jednou.
+        this._donBellDone = false;
+        // …a jestli tenhle tah přeskočilo Vězení (FAQ Q06). Pamatuje si to konec tahu,
+        // protože `p._turnSkippedByJail` spotřebuje dřív Madam Zuzana (logic/wildWest.js).
+        this._jailSkipTurn = null;
     }
 
     getCurrentPlayer() {
@@ -397,6 +429,10 @@ class GameState {
         // a zahraj další tah." Tah skončil (odhoz nad limit, Zuzana i Vendeta proběhly),
         // teprve teď se doléčí a hraje znovu. Viz _gearExtraTurnCheck (logic/goldRush.js).
         if (this._gearExtraTurnCheck()) return;
+        // Zlatá horečka – Don Bell: „na konci svého tahu sejme kartu: padne-li srdce nebo
+        // káro, hraje tah navíc." Poslední z gatů, které umí tah prodloužit – a stejně
+        // jako Vendeta si příznak nastaví hned, takže se smyčka udělat nedá.
+        if (this._donBellCheck()) return;
         // High Noon – Město duchů: končí-li právě tah ducha, odejde ze hry ještě předtím,
         // než se posune tah (odloží karty, spustí Grega Diggera/Herba Huntera). Když se
         // tím naplní fronta odložených akcí, posune tah až _resumeAfterSpecial.
@@ -438,6 +474,8 @@ class GameState {
         // – a NUTNĚ ještě před _beginTurn(), který se ptá _extraTurn (odkrytí událostí).
         this._vendettaDone = false;
         this._extraTurn = false;
+        // Zlatá horečka – Don Bell: totéž („na konci tahu navíc už neotáčí znovu").
+        this._donBellDone = false;
         // Divoký západ – Madam Zuzana: totéž pro její penalizaci (jen jednou za tah)
         // a pro počítadlo zahraných karet, které patří vždy jednomu tahu jednoho hráče.
         this._zuzanaDone = false;

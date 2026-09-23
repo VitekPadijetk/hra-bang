@@ -38,6 +38,10 @@ module.exports = function installActionGuard(ctx) {
         // Batoh jde i mimo tah (poslední život), ale i tehdy je jeho majitel ten, na
         // koho hra čeká (obránce / oběť zásahu) – guard na pendingActor proto sedí.
         'gear_pan', 'gear_rucksack',
+        // Zlatá horečka – postavy (fáze 6). Dutch Will i Madam Yto mají vlastní fázi,
+        // zbytek jsou akce hráče na tahu, takže guard na pendingActor sedí u všech.
+        'gear_mode', 'dutch_discard', 'madam_yto_draw',
+        'jacky_murieta', 'josh_mccloud', 'raddie_snake',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another',
         'activate_green_card',
         'bart_cassidy_draw', 'boots_draw', 'uhyb_draw', 'el_gringo_steal', 'suzy_draw',

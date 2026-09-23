@@ -2345,9 +2345,14 @@ function drawMyArea(ctx) {
                 const _isValentinePick = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "VALENTINE_DISCARD" && state.pendingValentine?.playerIdx === myIndex;
                 if (_isValentinePick) cSprite.setTint(0xffff44);
+                // Zlatá horečka – Dutch Will: svítí JEN právě líznuté karty (ne celá ruka),
+                // které karty to jsou, říká pendingDutchDiscard.cardIds přes cardPlayability.
+                const _isDutchPick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "DUTCH_DISCARD" && state.pendingDutchDiscard?.playerIdx === myIndex;
+                if (_isDutchPick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
-                                       _isGrinnerPick || _isValentinePick || _isLawForced;
+                                       _isGrinnerPick || _isValentinePick || _isDutchPick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2521,6 +2526,23 @@ function drawMyArea(ctx) {
                         case 'GRINNER_GIVE':
                             // Divoký západ – Youl Grinner: dát kartu je povinné, žádné potvrzení.
                             socket.emit('grinner_give', { cardId: intent.cardId });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
+                        case 'VALENTINE_DISCARD':
+                            // Divoký západ – Miláček Valentýn: odhoz je povinný, žádné potvrzení.
+                            socket.emit('valentine_discard', { cardId: intent.cardId });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
+                        case 'DUTCH_DISCARD':
+                            // Zlatá horečka – Dutch Will: odhoz jedné z právě líznutých karet
+                            // (pořád fáze 1). Taky povinný, takže bez potvrzení.
+                            socket.emit('dutch_discard', { cardId: intent.cardId });
                             optimisticRemoveCard(intent.index);
                             selectedState = { cardIndex: null, action: null };
                             App.blockInput = true;
@@ -2720,7 +2742,7 @@ function drawMyArea(ctx) {
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
-                 'GRINNER_GIVE', 'VALENTINE_DISCARD'].includes(state.phase)
+                 'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -3042,6 +3064,53 @@ function drawMyArea(ctx) {
                         },
                     });
                 }
+            }
+            // ── Zlatá horečka: postavy placené valouny (fáze 6) ───────────────
+            // Všechny tři jsou JEDEN klik bez míření, takže se nic nenabíjí – a ptají se
+            // stejnými predikáty jako server i bot (core/goldRush.js), aby klient
+            // nenabízel akci, kterou pravidla mlčky odmítnou.
+            if (myPlayTurn && !_abilSlotUsed && jackyMurietaOk(state, myIndex)) {
+                _abilSlotUsed = true;
+                themeButton(gameScene, _abilX, BTN_Y, 340, 58, `JACKY: ${JACKY_COST} 💰 → BANG! navíc`, {
+                    fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum,
+                    stroke: THEME.color.goldNum, fontSize: '19px',
+                    onClick: () => {
+                        if (App.blockInput) return;
+                        selectedState = { cardIndex: null, action: null };
+                        App.blockInput = true;
+                        socket.emit('jacky_murieta', {});
+                        renderUI();
+                    },
+                });
+            }
+            if (myPlayTurn && !_abilSlotUsed && joshMcCloudOk(state, myIndex)) {
+                _abilSlotUsed = true;
+                themeButton(gameScene, _abilX, BTN_Y, 340, 58, `JOSH: ${JOSH_COST} 💰 → vybavení`, {
+                    fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum,
+                    stroke: THEME.color.goldNum, fontSize: '19px',
+                    onClick: () => {
+                        if (App.blockInput) return;
+                        selectedState = { cardIndex: null, action: null };
+                        App.blockInput = true;
+                        socket.emit('josh_mccloud', {});
+                        renderUI();
+                    },
+                });
+            }
+            if (myPlayTurn && !_abilSlotUsed && raddieSnakeOk(state, myIndex)) {
+                _abilSlotUsed = true;
+                const _left = raddieUsesLeft(state, myIndex);
+                themeButton(gameScene, _abilX, BTN_Y, 340, 58, `RADDIE: 1 💰 → karta (${_left}×)`, {
+                    fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum,
+                    stroke: THEME.color.goldNum, fontSize: '19px',
+                    onClick: () => {
+                        if (App.blockInput) return;
+                        selectedState = { cardIndex: null, action: null };
+                        App.blockInput = true;
+                        socket.emit('raddie_snake', {});
+                        renderUI();
+                    },
+                });
             }
             // Divoký západ – Zuřivá Doroty: „jmenuj kartu a vyber hráče, který ji musí
             // zahrát". Nabito → přes desku se rozloží mřížka DRUHŮ karet
@@ -3393,6 +3462,70 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_vName} – Miláček Valentýn (odhazuje ruku)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+
+    // ── Zlatá horečka – Dutch Will: banner „odhoď jednu z líznutých karet" ───────
+    if (state.phase === "DUTCH_DISCARD" && state.pendingDutchDiscard) {
+        const _dMine = state.pendingDutchDiscard.playerIdx === myIndex;
+        const _dName = state.players[state.pendingDutchDiscard.playerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _dMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_dMine) {
+            let l1 = gameScene.add.text(960, 66, '💰 Dutch Will – odhoď jednu z líznutých karet',
+                { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, 'Za odhozenou kartu si vezmeš 1 valoun',
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_dName} – Dutch Will (odhazuje líznutou kartu)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Zlatá horečka – Josh McCloud si lízl Láhev / Komplice: jak ji zahraje? ────
+    // Nabídka je plochá řada tlačítek uprostřed desky; režimy prověřila pravidla
+    // (pendingGearMode.modes), takže je každý z nich opravdu hratelný. Zrušit nejde –
+    // karta je zaplacená a nabídka není prázdná.
+    if (state.phase === "GEAR_MODE" && state.pendingGearMode) {
+        const _gmMine = state.pendingGearMode.playerIdx === myIndex;
+        const _gmName = state.players[state.pendingGearMode.playerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _gmMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_gmMine) {
+            let l1 = gameScene.add.text(960, 70,
+                `🥃 ${state.pendingGearMode.cardName} – jak ji zahraješ?`,
+                { fontSize: '30px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            const modes = state.pendingGearMode.modes || [];
+            const W = 220, GAP = 16;
+            const total = modes.length * W + (modes.length - 1) * GAP;
+            modes.forEach((m, k) => {
+                const x = 960 - total / 2 + k * (W + GAP) + W / 2;
+                const { bg: b, txt: t } = themeButton(gameScene, x, 150, W, 52,
+                    GEAR_MODE_LABEL[m] || m, {
+                    fill: THEME.color.panelNum, fillHover: THEME.color.panelHiNum,
+                    stroke: THEME.color.goldNum, fontSize: '20px',
+                    onClick: () => {
+                        if (App.blockInput) return;
+                        App.blockInput = true;
+                        socket.emit('gear_mode', { mode: m });
+                        renderUI();
+                    },
+                });
+                b.setDepth(206); if (t) t.setDepth(207);
+            });
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_gmName} – vybírá, jak vybavení zahraje`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }
@@ -3855,6 +3988,7 @@ function drawDrawPiles(ctx) {
         (state.phase === "BARREL_DRAW" && state.pendingBarrelCheck?.targetIdx === myIndex) ||
         (state.phase === "BART_DRAW" && state.pendingBartDraw?.playerIdx === myIndex) ||
         (state.phase === "BOOTS_DRAW" && state.pendingBootsDraw?.playerIdx === myIndex) ||
+        (state.phase === "YTO_DRAW" && state.pendingYtoDraw?.playerIdx === myIndex) ||
         (state.phase === "SUZY_DRAW" && state.pendingSuzyDraw?.playerIdx === myIndex) ||
         (state.phase === "UHYB_DRAW" && state.pendingUhybDraw?.playerIdx === myIndex);
     const discardNeedsCursor = _mine ? _wantsDrawClick : _wantsDiscardClick;
@@ -4082,6 +4216,18 @@ function drawDrawPiles(ctx) {
         drawPileSprite.on('pointerdown', () => {
             socket.emit('boots_draw');
             state.pendingBootsDraw = null;
+            state.phase = state.interruptedPhase || 'PLAY';
+            renderUI();
+        });
+    }
+
+    // Zlatá horečka – Madam Yto: líznutí za zahrané Pivo (totéž).
+    if (state.phase === "YTO_DRAW" && state.pendingYtoDraw?.playerIdx === myIndex) {
+        tintPile(drawPileSprite, 0xffff44);
+        drawPileSprite.setInteractive({ useHandCursor: true });
+        drawPileSprite.on('pointerdown', () => {
+            socket.emit('madam_yto_draw');
+            state.pendingYtoDraw = null;
             state.phase = state.interruptedPhase || 'PLAY';
             renderUI();
         });

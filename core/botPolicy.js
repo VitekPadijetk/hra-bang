@@ -167,6 +167,16 @@ if (typeof require === 'function') {
         globalThis.gearAimedBlack = __gr3.gearAimedBlack;
         globalThis.gearBlackTargets = __gr3.gearBlackTargets;
     }
+    // Postavy rozšíření (fáze 6) – vlastní guard ze stejného důvodu jako u tří bloků výš.
+    if (typeof joshUsesThisTurn === 'undefined') {
+        const __gr4 = require('./goldRush.js');
+        globalThis.jackyMurietaOk = __gr4.jackyMurietaOk;
+        globalThis.joshMcCloudOk = __gr4.joshMcCloudOk;
+        globalThis.joshUsesThisTurn = __gr4.joshUsesThisTurn;
+        globalThis.raddieSnakeOk = __gr4.raddieSnakeOk;
+        globalThis.JACKY_COST = __gr4.JACKY_COST;
+        globalThis.JOSH_COST = __gr4.JOSH_COST;
+    }
     if (typeof computeBeliefs === 'undefined') {
         const __b = require('./beliefs.js');
         globalThis.ROLES = __b.ROLES;
@@ -460,6 +470,11 @@ function gearWantedPick(state, myIndex, beliefs, targets) {
 //     tahu ZARUČUJE – první brzda jen odřízne běžný případ dřív.
 const RECYCLE_CAP = 15;
 
+// Zlatá horečka – Josh McCloud: kolikrát si bot za tah lízne vybavení. Pravidlo strop
+// nemá (platí se valouny), tohle je čistě politika bota proti nekonečnému tahu – hnědé
+// vybavení se vrací pod balíček, takže by se líznutím nikdy nevyčerpal.
+const JOSH_BOT_CAP = 2;
+
 function drawableCount(state) {
     const d = state?.deck;
     return ((d?._drawPile || d?.cards || []).length) + ((d?._discardPile || d?.discardPile || []).length);
@@ -526,6 +541,10 @@ const CHAR_RANK = {
     // bez něj spadne postava na 0 a bot si ji nikdy nevybere (hlídá test).
     'Big Spencer': 7, 'Flint Westwood': 7, 'Gary Looter': 7, 'Greygory Deck': 8,
     'John Pain': 8, 'Lee Van Kliff': 8, 'Teren Kill': 6, 'Youl Grinner': 7,
+    // Zlatá horečka. Hodnota postavy stojí a padá s valouny, a ty bez zapnutého
+    // rozšíření nejsou – do výběru se ale dostanou jen s ním (_characterPool).
+    'Don Bell': 7, 'Dutch Will': 6, 'Jacky Murieta': 7, 'Josh McCloud': 6,
+    'Madam Yto': 6, 'Pretty Luzena': 6, 'Raddie Snake': 6, 'Simeon Picos': 7,
 };
 // Průměrný rank postavy základní hry (těch 16, ze kterých líže Greygory Deck).
 // Je to očekávaná hodnota náhodného líznutí, takže i práh, pod kterým se vyplatí měnit.
@@ -1240,6 +1259,37 @@ function decidePlay(state, myIndex, beliefs) {
         if (gearRucksackOk(state, myIndex) && me.health <= 2) {
             consider(28, { event: 'gear_rucksack', payload: {} });
         }
+        // ── Postavy rozšíření (fáze 6) ──────────────────────────────────────
+        // Tři z nich jsou akce ve fázi PLAY, takže se ptají stejnými predikáty jako
+        // server a klient (core/goldRush.js) – jinak by bot posílal akci, kterou
+        // pravidla mlčky odmítnou, a hra jen botů by se zasekla na tahu bez změny.
+        // S Batohem si bot drží 2 valouny na záchranu posledního života (jako u mísy).
+        const _nug = me.nuggets || 0;
+        const _save = hasGearFor(state, myIndex, 'ZH_BATOH') ? 2 : 0;
+        // Raddie Snake: valoun za kartu, až 2× za tah. Stejná cena i hodnota jako
+        // Rýžovací mísa, takže i stejné skóre.
+        if (raddieSnakeOk(state, myIndex) && _nug - 1 >= _save && drawCardWorth(state, me, 1)) {
+            consider(11, { event: 'raddie_snake', payload: {} });
+        }
+        // Josh McCloud: 2 valouny za vrchní kartu balíčku vybavení. Je to nákup naslepo,
+        // takže menší skóre než cílená koupě z obchodu – zato vždycky něco přinese.
+        // Pravidla počet líznutí neomezují, ale bot s plnou kapsou by jinak točil
+        // balíček vybavení donekonečna a tah by nikdy neskončil (hnědé karty se vracejí
+        // pod balíček, takže se nevyčerpá) – stejná past jako u RECYCLE_CAP.
+        if (joshMcCloudOk(state, myIndex) && _nug - JOSH_COST >= _save &&
+            joshUsesThisTurn(state, myIndex) < JOSH_BOT_CAP) {
+            consider(12, { event: 'josh_mccloud', payload: {} });
+        }
+        // Jacky Murieta: 2 valouny za BANG! navíc. Vyplatí se JEN když je limit už
+        // vyčerpaný a v ruce leží karta Bang! na někoho v dostřelu – jinak by si za
+        // valouny koupil právo, které neuplatní.
+        if (jackyMurietaOk(state, myIndex) && _nug - JACKY_COST >= _save && !bangLimitFree(state, me)) {
+            const _hasBang = me.hand.some(c => c && !c._placeholder && bangCardFromHand(state, me, myIndex, c)
+                                               && !preacherBlocks(state, me, myIndex, c));
+            const _tgt = _hasBang && shootTargets(state, myIndex, beliefs)
+                .find(e => computeCanHit(state, myIndex, e.idx));
+            if (_tgt) consider(19, { event: 'jacky_murieta', payload: {} });
+        }
     }
 
     if (hasAbility(me, 'Doc Holyday') && !me._docUsed && me.hand.length >= 3) {
@@ -1607,6 +1657,43 @@ function decideBotAction(state, myIndex, beliefs) {
             return { event: 'gear_target', payload: { targetIdx: pick } };
         }
 
+        // Zlatá horečka – Josh McCloud si lízl Láhev / Komplice a teď volí způsob.
+        // Rozhoduje tentýž gearModePick jako u nákupu; volba je POVINNÁ (karta je
+        // zaplacená a nabídnuté režimy pravidla prověřila), takže se vždy něco vrátí.
+        case 'GEAR_MODE': {
+            const modes = state.pendingGearMode?.modes || [];
+            let best = modes[0], bestScore = -Infinity;
+            modes.forEach(m => {
+                const pick = gearModePick(state, myIndex, beliefs, m, gearModeTargets(state, myIndex, m));
+                const sc = pick ? pick.score : 0;
+                if (sc > bestScore) { bestScore = sc; best = m; }
+            });
+            return { event: 'gear_mode', payload: { mode: best } };
+        }
+
+        // Zlatá horečka – Dutch Will: „lízne si 2 karty, 1 odhodí a vezme si 1 valoun."
+        // Odhazuje se ta nejméně užitečná z právě líznutých – stejné měřítko jako
+        // u odhozu nad limit (keepScore).
+        case 'DUTCH_DISCARD': {
+            const ids = state.pendingDutchDiscard?.cardIds || [];
+            const me = state.players[myIndex];
+            const hand = me?.hand || [];
+            let pick = null, worst = Infinity;
+            ids.forEach(id => {
+                const c = hand.find(h => h && h.id === id);
+                // Fistful – Právo západu: vynucenou kartu odhodit nejde, server by akci
+                // mlčky odmítl a stav by se nezměnil (= zaseknutá hra jen botů). Ptáme se
+                // proto TÝMŽ predikátem jako klient (cardPlayability → lawProtectedCard).
+                if (!c || cardPlayability(state, me, myIndex, c) !== true) return;
+                const s = keepScore(c);
+                if (s < worst) { worst = s; pick = id; }
+            });
+            // Vynucená karta je vždycky nejvýš JEDNA, takže při dvou a víc líznutých
+            // zbyde co odhodit. `ids[0]` je jen pojistka: vrátit null by znamenalo, že
+            // driver nepošle NIC a hra zamrzne (ani stall guard se pak nemá čeho chytit).
+            return { event: 'dutch_discard', payload: { cardId: pick == null ? ids[0] : pick } };
+        }
+
         case 'GREYGORY_OFFER': {
             const cur = state.pendingGreygory?.current || [];
             const free = state.pendingGreygory?.free || 0;
@@ -1649,6 +1736,8 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'BART_DRAW':       return { event: 'bart_cassidy_draw' };
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
         case 'BOOTS_DRAW':      return { event: 'boots_draw' };
+        // Zlatá horečka – Madam Yto: líznutí za zahrané Pivo (totéž).
+        case 'YTO_DRAW':        return { event: 'madam_yto_draw' };
         case 'EL_GRINGO_STEAL': return { event: 'el_gringo_steal' };
         case 'SUZY_DRAW':       return { event: 'suzy_draw' };
         case 'UHYB_DRAW':       return { event: 'uhyb_draw' };

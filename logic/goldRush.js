@@ -91,6 +91,12 @@ const GoldRushMixin = {
         // (karta Zlatá horečka) se do nové hry taky nepřenáší.
         (this.players || []).forEach(p => {
             p.gear = []; p.nuggets = 0; p._panTurn = null; p._panUses = 0; p._gearExtraTurn = false;
+            // Postavy rozšíření (fáze 6): počítadla klíčovaná `turnId` a snímek ruky
+            // Dutche Willa. Nová hra čísluje tahy znovu, takže by starý záznam mohl
+            // sednout na tah nové hry.
+            p._luzenaTurn = null; p._jackyTurn = null; p._jackyBangs = 0;
+            p._raddieTurn = null; p._raddieUses = 0; p._dutchSnap = null;
+            p._joshTurn = null; p._joshUses = 0;
         });
         const on = options.expansions && options.expansions.zlata_horecka;
         if (!on || !Array.isArray(this.gearCardData)) return;
@@ -147,8 +153,6 @@ const GoldRushMixin = {
     //   `last`        – byl to POSLEDNÍ život? Boty i Talisman se pak neuplatní
     //                   („neúčinkují při ztrátě posledního života"); Simeon Picos ano,
     //                   jeho text tu výjimku nemá.
-    //
-    // Fáze 6 (Simeon Picos) přibude SEM, ne k volajícím.
     _afterLifeLost(playerIdx, opts = {}) {
         if (!this._goldRushOn()) return;
         const p = this.players[playerIdx];
@@ -158,6 +162,12 @@ const GoldRushMixin = {
             by: opts.attackerIdx != null ? this.players[opts.attackerIdx]?.name : null,
             last: !!opts.last,
         });
+        // Simeon Picos: „Pokaždé, když ztratí 1 život, vezme si 1 valoun." Vždy ze
+        // SPOLEČNÉ zásoby, ne od toho, kdo ztrátu způsobil (dodatek) – útočník si svůj
+        // valoun za způsobené zranění bere nezávisle. Jeho text výjimku na poslední
+        // život NEMÁ, takže sedí NAD ní: i zásah, který ho vyřadí, mu valoun přinese
+        // (a s ním třeba záchranu Batohem, který se platí valouny).
+        if (hasAbility(p, "Simeon Picos")) this._gainNugget(playerIdx, 1);
         // „Neúčinkují při ztrátě POSLEDNÍHO života" – platí na Boty i Talisman shodně
         // (dodatek v pravidlech). Zbytek trychtýře (Simeon Picos) tu výjimku nemá,
         // proto se nesmí odbýt jedním early returnem nahoře.
@@ -202,10 +212,23 @@ const GoldRushMixin = {
     },
 
     // Cena karty pro KONKRÉTNÍHO hráče. Jediné místo, kde se cena liší podle toho, kdo
-    // kupuje – Pretty Luzena (fáze 6) má jednou za tah slevu 1. Zrcadlo pro klienta
-    // a bota je `gearCostFor` (core/goldRush.js); rozejít se nesmí.
+    // kupuje – Pretty Luzena má jednou za tah slevu 1. Deleguje rovnou do zrcadla
+    // (`gearCostFor`, core/goldRush.js), aby se server s klientem a botem nemohl rozejít.
     _gearCost(playerIdx, card) {
-        return card ? Math.max(0, card.cost || 0) : 0;
+        return gearCostFor(this, playerIdx, card);
+    },
+
+    // Spotřebovala se tímhle nákupem sleva Pretty Luzeny? Ptát se MUSÍ před zaplacením
+    // (cena je pak už stržená), zapisovat se smí až po něm.
+    _luzenaFree(playerIdx) {
+        return luzenaFree(this, playerIdx);
+    },
+
+    // Zlatá horečka – Jacky Murieta: kolik karet Bang! navíc má hráč zaplacené.
+    // Zrcadlo `jackyExtraBangs` (core/goldRush.js) je jediný zdroj vzorce; ptá se jím
+    // server (playBang → _bangLimit) i klient s botem (bangLimitFree, core/playability.js).
+    _jackyExtraBangs(player) {
+        return jackyExtraBangs(this, player);
     },
 
     // ── Hromádky vybavení: JEDINÁ cesta, kudy se na ně smí sáhnout ───────────
@@ -271,8 +294,15 @@ const GoldRushMixin = {
         // horečka pod Právem západu / jako duch) – TÝŽ predikát, kterým se ptá okno
         // obchodu i bot (core/goldRush.js). Musí být před zaplacením, jako všechno výš.
         if (gearCardReason(this, playerIdx, card, mode) !== null) return null;
+        // Pretty Luzena: sleva platí na PRVNÍ nákup v tahu. Ptát se musí PŘED zaplacením
+        // (pak je cena už stržená) a zapsat až po něm (neúspěšný nákup slevu nespotřebuje).
+        const luzena = this._luzenaFree(playerIdx);
         const cost = this._gearCost(playerIdx, card);
         if (!this._payNuggets(playerIdx, cost)) return null;
+        if (luzena) {
+            p._luzenaTurn = this.turnId;
+            this.logEvent('special', { who: p.name, card: 'Pretty Luzena', msg: `sleva 1 na ${card.name}` });
+        }
 
         // Koupená karta se nahrazuje OKAMŽITĚ (R7), ještě než se rozehraje její efekt –
         // ten může změnit fázi (Union Pacific vede na lízání), takže potom by se
@@ -281,27 +311,77 @@ const GoldRushMixin = {
         this._gearRefill();
         this.logEvent('gear', { act: 'buy', who: p.name, card: card.name, cost, border: card.border,
                                 mode: mode ? GEAR_MODE_LABEL[mode] : undefined });
+        this._gearAcquire(playerIdx, card, mode);
+        return card;
+    },
+
+    // ── Karta vybavení se dostala hráči do rukou ────────────────────────────
+    // Společný ocas nákupu (`gearBuy`) a líznutí Joshe McClouda – pravidlově je to totéž
+    // („lízne si vrchní vybavení, jako by ho koupil"), jen se u Joshe neplatí cena karty
+    // a nejde dopředu vybrat režim, protože karta leží lícem dolů.
+    //   `mode` = zvolený způsob Láhve / Komplice; null u karty s režimy znamená
+    //            „zeptej se teď" (fáze GEAR_MODE).
+    _gearAcquire(playerIdx, card, mode = null) {
+        const p = this.players[playerIdx];
         if (card.border === 'black') {
             // Wanted: „zahraj na libovolného hráče" – karta se nevykládá před kupujícího,
             // ale počká si na cíl ve stejné fázi jako Panák. Do té doby ji drží pending
             // (nikde jinde neleží), takže se nesmí ztratit ani v cestě „cíl mezitím odešel
             // ze hry" – tu řeší resolveGearTarget odhozením pod balíček.
             if (gearAimedBlack(card)) {
+                const targets = gearBlackTargets(this, playerIdx, card);
+                // Josh McCloud si ji mohl líznout ve chvíli, kdy ji mají všichni – nákup
+                // se v tu chvíli nenabízí vůbec (gearCardReason), líznutí se nedá řídit.
+                if (!targets.length) { this._gearDiscard(card); return; }
                 this.pendingGearTarget = {
-                    playerIdx, effect: card.effect, cardName: card.name, card,
-                    targets: gearBlackTargets(this, playerIdx, card),
+                    playerIdx, effect: card.effect, cardName: card.name, card, targets,
                 };
                 this.phase = "GEAR_TARGET";
-            } else {
-                p.gear.push(card);
+                return;
             }
-        } else {
-            // Na spodek balíčku jde karta HNED: efekt Zlaté horečky ukončí tah a rovnou
-            // rozjede další, takže „potom" by znamenalo až uprostřed nového tahu.
-            this._gearDiscard(card);
-            this._gearApplyBrown(playerIdx, card, mode);
+            // „Lízne-li černý rám, který už má, musí ho odhodit" (Josh McCloud). Nákup
+            // se na duplicitu ptá dřív, než se zaplatí, takže sem s ní nikdy nepřijde.
+            if (this._hasGear(playerIdx, card.effect)) {
+                this._gearDiscard(card);
+                this.logEvent('gear', { act: 'dup_drop', who: p.name, card: card.name });
+                return;
+            }
+            p.gear.push(card);
+            return;
         }
-        return card;
+        // Na spodek balíčku jde karta HNED: efekt Zlaté horečky ukončí tah a rovnou
+        // rozjede další, takže „potom" by znamenalo až uprostřed nového tahu.
+        this._gearDiscard(card);
+        if (!mode && gearModesOf(card)) { this._gearModeChoice(playerIdx, card); return; }
+        this._gearApplyBrown(playerIdx, card, mode);
+    },
+
+    // Láhev / Komplic líznutá Joshem McCloudem: způsob se volí AŽ TEĎ (u nákupu se volí
+    // předem, protože se za něj platí). Nabídnou se jen režimy, které teď opravdu jdou –
+    // TÝMŽ predikátem, jakým se ptá nákup, okno obchodu i bot. Když nejde žádný, karta
+    // prostě odchází pod balíček (líznutí se řídit nedá, takže efekt vyšumí).
+    _gearModeChoice(playerIdx, card) {
+        const modes = (gearModesOf(card) || []).filter(m => gearModeReason(this, playerIdx, m) === null);
+        if (!modes.length) {
+            this.logEvent('gear', { act: 'mode', who: this.players[playerIdx]?.name,
+                                    card: card.name, mode: null });
+            return false;
+        }
+        this.pendingGearMode = { playerIdx, card, effect: card.effect, cardName: card.name, modes };
+        this.phase = "GEAR_MODE";
+        return true;
+    },
+
+    // Volba způsobu (fáze GEAR_MODE). Karta už leží pod balíčkem – odešla tam při líznutí,
+    // stejně jako u nákupu.
+    chooseGearMode(playerIdx, mode) {
+        const pm = this.pendingGearMode;
+        if (this.phase !== "GEAR_MODE" || !pm || pm.playerIdx !== playerIdx) return false;
+        if (!pm.modes.includes(mode)) return false;
+        this.pendingGearMode = null;
+        this.phase = "PLAY";
+        this._gearPlayMode(playerIdx, pm.card, mode);
+        return true;
     },
 
     // Soudce (Fistful) blokuje jen to, co někomu skončí před ním – tedy černý rám (R9).
@@ -511,7 +591,10 @@ const GoldRushMixin = {
         const p = this.getCurrentPlayer();
         if (!p || !p._gearExtraTurn) return false;
         p._gearExtraTurn = false;
-        if (!isInPlay(p) || this.winner) return false;
+        // Duch (Město duchů) je na konci svého tahu vyřazen, takže tah navíc nezahraje –
+        // týž výklad jako FAQ Q13 u Dona Bella. Nákup to zakazuje dopředu (gearCardReason),
+        // ale Josh McCloud si kartu může líznout naslepo, takže pojistka patří i sem.
+        if (!isInPlay(p) || p._ghost || this.winner) return false;
         const healed = this._heal(p, p.maxHealth);
         this.logEvent('gear', { act: 'zlata_horecka', who: p.name, heal: healed });
         this._vendettaExtraTurn('Zlatá horečka');
@@ -561,6 +644,8 @@ const GoldRushMixin = {
         this._markBrownPlayed(playerIdx, card);   // Divoký západ – Lee Van Kliff
         this.logEvent('gear', { act: 'beer_nugget', who: p.name });
         this.checkSuzyLafayette(p);
+        // Madam Yto: „nezáleží, jestli šlo Pivo na život, nebo na valoun" (dodatek).
+        this._madamYtoOnBeer(playerIdx);
         this._processSpecialQueue();
         return card;
     },
@@ -669,6 +754,195 @@ const GoldRushMixin = {
         this.logEvent('gear', { act: 'death_drop', who: p.name, n: p.gear.length });
         this._gearDiscard(...p.gear);
         p.gear = [];
+    },
+
+    // ══ POSTAVY ROZŠÍŘENÍ (fáze 6) ═══════════════════════════════════════════
+    // Osm postav, všechny se 4 životy, a všechny se točí kolem valounů – proto sedí
+    // tady, a ne v logic/characters.js. Tři z nich jsou tlačítko schopnosti ve fázi PLAY
+    // (Jacky Murieta, Josh McCloud, Raddie Snake), dvě jsou hák v existujícím trychtýři
+    // (Simeon Picos v `_afterLifeLost`, Pretty Luzena v `_gearCost`), jedna má vlastní
+    // fázi uprostřed lízání (Dutch Will) a dvě visí na cizích událostech (Madam Yto na
+    // každém zahraném Pivu, Don Bell na konci vlastního tahu).
+
+    // ── Jacky Murieta ────────────────────────────────────────────────────────
+    // „Ve svém tahu smí zaplatit 2 valouny a vystřelit 1 BANG! navíc." Vícekrát za tah
+    // (dodatek) a BEZ karty, takže je to tlačítko schopnosti vedle Chucka Wengama –
+    // nezvyšuje počet karet v ruce, jen LIMIT (`_bangLimit`, logic/play.js).
+    // Počítadlo je klíčované `turnId` (vzor Rýžovací mísa), takže se nikde nenuluje;
+    // Vendetin tah navíc má nové ID, a zaplacené výstřely si tedy s sebou nenese.
+    useJackyMurieta(playerIdx) {
+        if (!jackyMurietaOk(this, playerIdx)) return false;
+        if (!this._payNuggets(playerIdx, JACKY_COST)) return false;
+        const p = this.players[playerIdx];
+        if (p._jackyTurn !== this.turnId) { p._jackyTurn = this.turnId; p._jackyBangs = 0; }
+        p._jackyBangs++;
+        this.logEvent('special', { who: p.name, card: 'Jacky Murieta',
+                                   msg: `zaplatil ${JACKY_COST} valouny, BANG! navíc (${p._jackyBangs})` });
+        return true;
+    },
+
+    // ── Josh McCloud ─────────────────────────────────────────────────────────
+    // „Smí si za 2 valouny líznout vrchní vybavení z balíčku." Jen ve svém tahu.
+    // Karta se pak chová, jako by ji koupil (`_gearAcquire`) – s jediným rozdílem, který
+    // říká dodatek: lízne-li ČERNÝ rám, který už má, musí ho odhodit. Kolikrát za tah
+    // karta neomezuje, brzdou jsou valouny.
+    //
+    // Vrací líznutou kartu (klient si podle ní pustí animaci), nebo null.
+    useJoshMcCloud(playerIdx) {
+        if (!joshMcCloudOk(this, playerIdx)) return null;
+        const p = this.players[playerIdx];
+        if (!this._payNuggets(playerIdx, JOSH_COST)) return null;
+        const card = this._gearDraw();
+        if (!card) return null;   // hromádky mezitím došly (joshMcCloudOk se ptal, ale…)
+        // Počítadlo je INFORMATIVNÍ – karta počet líznutí neomezuje, brzdou jsou valouny.
+        // Čte ho jen bot (joshUsesThisTurn, core/goldRush.js), aby si s plnou kapsou
+        // netočil balíček vybavení donekonečna a tah někdy skončil.
+        if (p._joshTurn !== this.turnId) { p._joshTurn = this.turnId; p._joshUses = 0; }
+        p._joshUses++;
+        this.logEvent('special', { who: p.name, card: 'Josh McCloud', taken: card.name });
+        this._gearAcquire(playerIdx, card);
+        return card;
+    },
+
+    // ── Raddie Snake ─────────────────────────────────────────────────────────
+    // „Ve svém tahu smí odhodit 1 valoun a líznout si 1 kartu (až 2×)." Je to Rýžovací
+    // mísa jako schopnost: líže se KLIKEM na balíček, běžnou fází lízání mimo začátek
+    // tahu, takže se veze i animace. Počítadlo klíčované `turnId`.
+    useRaddieSnake(playerIdx) {
+        if (!raddieSnakeOk(this, playerIdx)) return false;
+        if (!this._payNuggets(playerIdx, 1)) return false;
+        const p = this.players[playerIdx];
+        if (p._raddieTurn !== this.turnId) { p._raddieTurn = this.turnId; p._raddieUses = 0; }
+        p._raddieUses++;
+        this.logEvent('special', { who: p.name, card: 'Raddie Snake', msg: `valoun za kartu (${p._raddieUses}.)` });
+        this._setDrawPhase({ active: true, playerIdx, cardsNeeded: 1, cardsDrawn: 0,
+                             options: ['deck'], isStartOfTurn: false });
+        this.phase = "DRAW";
+        return true;
+    },
+
+    // ── Dutch Will ───────────────────────────────────────────────────────────
+    // „Lízne si 2 karty, 1 odhodí a vezme si 1 valoun." Je to jeho FÁZE 1, takže odhoz
+    // patří ještě do ní – vlastní fáze `DUTCH_DISCARD` mezi lízáním a Želízky/Rančem
+    // (vzor Youl Grinner). Odhazuje „jednu ze DVOU právě líznutých", což se v téhle hře
+    // musí brát jako „jednu z toho, co ve fázi 1 přibylo": s Krumpáčem (Zlatá horečka)
+    // jsou to tři karty, s Příjezdem vlaku taky, s Jessem Jonesem je jedna z nich cizí.
+    //
+    // Pod ŽÍZNÍ (High Noon) si líže jen jednu kartu – „jedna ze dvou" pak nedává smysl
+    // a schopnost se neuplatní vůbec (ani odhoz, ani valoun). Totéž při došlém balíčku.
+    //
+    // Které karty přibyly, se pozná SNÍMKEM ruky pořízeným na začátku fáze 1: postavy,
+    // které si lízání přebírají (Kit Carlson, Claus, Black Jack, Jesse Jones, Pedro
+    // Ramirez, Pat Brennan) tím projdou zdarma a nemusí každá hlásit, co si vzala.
+    // JEDINÁ výjimka je Peyote (Fistful): ten celou fázi 1 NAHRAZUJE a přebíjí i postavy,
+    // které si ji upravují – snímek se proto nad ním vůbec nepořizuje a Dutch Will se
+    // v takovém tahu neuplatní.
+    _dutchSnapshot(playerIdx) {
+        const p = this.players[playerIdx];
+        if (!this._goldRushOn() || !p || !hasAbility(p, "Dutch Will")) return;
+        p._dutchSnap = { turnId: this.turnId, ids: (p.hand || []).map(c => c && c.id) };
+    },
+
+    // Volá `_finishDraw` na konci fáze 1. Vrací true, když se čeká na klik.
+    _startDutchWill(playerIdx) {
+        if (!this._goldRushOn()) return false;
+        const p = this.players[playerIdx];
+        const snap = p && p._dutchSnap;
+        if (p) p._dutchSnap = null;
+        if (!p || !isInPlay(p) || !hasAbility(p, "Dutch Will")) return false;
+        if (!snap || snap.turnId !== this.turnId) return false;
+        const cardIds = (p.hand || []).filter(c => c && !snap.ids.includes(c.id)).map(c => c.id);
+        if (cardIds.length < 2) return false;
+        this.pendingDutchDiscard = { playerIdx, cardIds };
+        this.phase = "DUTCH_DISCARD";
+        return true;
+    },
+
+    // Klik na jednu z právě líznutých karet. Vrací { card, handIdx } pro animaci, nebo
+    // null u neplatného kliku (fáze se pak NEposune).
+    dutchWillDiscard(playerIdx, cardId) {
+        const pd = this.pendingDutchDiscard;
+        if (this.phase !== "DUTCH_DISCARD" || !pd || pd.playerIdx !== playerIdx) return null;
+        if (!pd.cardIds.includes(cardId)) return null;
+        const p = this.players[playerIdx];
+        const i = (p.hand || []).findIndex(c => c && c.id === cardId);
+        if (i === -1) return null;
+        // Fistful – Právo západu: vynucená karta se odhodit nesmí (lawProtectedCard),
+        // jinak by se jí hráč zbavil, aniž by ji zahrál. Vybere se tedy ta druhá.
+        if (this._lawProtected(playerIdx, p.hand[i])) return null;
+        const card = p.hand.splice(i, 1)[0];
+        this.deck.discard(card);
+        this.pendingDutchDiscard = null;
+        this._gainNugget(playerIdx, 1);
+        this.logEvent('special', { who: p.name, card: 'Dutch Will', taken: card.name });
+        this.phase = "PLAY";
+        // Molly Stark si za odhoz nelíže (odhazuje ve SVÉM tahu), Suzy Lafayette
+        // s prázdnou rukou ano – tu obslouží fronta odložených akcí v ocase fáze 1.
+        this.checkSuzyLafayette(p);
+        this._finishDrawTail(true, null);
+        return { card, handIdx: i };
+    },
+
+    // ── Madam Yto ────────────────────────────────────────────────────────────
+    // „Pokaždé, když je zahráno Pivo, lízne si 1 kartu z balíčku." Nezáleží, kdo ho
+    // zahrál (i ona sama) ani jestli šlo na život, nebo na valoun – proto je to trychtýř
+    // volaný ze VŠECH TŘÍ cest karty Pivo: `playCard` (léčení), `beerLastLifeSave`
+    // (záchrana posledního života) a `beerForNugget` (Pivo za valoun, Zlatá horečka).
+    // Neplatí pro Whisky, Salón ani Láhev – ty kartou Pivo nejsou, takže sem nechodí.
+    //
+    // Líznutí jde do FRONTY odložených akcí (vlastní fáze `YTO_DRAW`, vzor Boty a Bart
+    // Cassidy): platí pro ně pravidlo „nejdřív doběhne efekt zahrané karty". U stolu
+    // může sedět víc Madam Yto naráz jen přes Veru Custer, a i tak dostane každá svoje.
+    _madamYtoOnBeer(playerIdx) {
+        if (!this._goldRushOn()) return;
+        this.players.forEach((p, i) => {
+            if (!isInPlay(p) || !hasAbility(p, "Madam Yto")) return;
+            this.logEvent('special', { who: p.name, card: 'Madam Yto',
+                                       target: this.players[playerIdx]?.name });
+            this.specialActionQueue.push({ type: 'YTO_DRAW', playerIdx: i });
+        });
+    },
+
+    // ── Don Bell ─────────────────────────────────────────────────────────────
+    // „Na konci svého tahu sejme kartu: padne-li srdce nebo káro, hraje tah navíc."
+    // Gate v `nextTurn` (logic.js) hned za kartou Zlatá horečka. Sejmutí jde existující
+    // cestou CHECK_DRAW → CHECKING → `_applyCheckResult` jako Vendeta, takže se zdarma
+    // veze Lucky Duke, Podkova, John Pain, klientská cinematika i větev bota.
+    //
+    // `_donBellDone` se nastaví HNED (stejná past jako u Vendety): „na konci tahu navíc
+    // už neotáčí znovu" pak platí samo a smyčka nemůže vzniknout. Nuluje ho až přechod
+    // tahu na jiného hráče.
+    //
+    // Dvě výjimky z FAQ, obě musí být tady:
+    //   Q06 – ve Vězení schopnost nefunguje. Tah přeskočený Vězením pozná
+    //         `_jailSkipTurn` (nastavuje `_zuzanaPenalty`, logic/wildWest.js – ten
+    //         spotřebuje `p._turnSkippedByJail` dřív, než se sem hra dostane),
+    //   Q13 – duch (Město duchů) je na konci svého tahu vyřazen, takže se neuplatní vůbec.
+    _donBellCheck() {
+        if (!this._goldRushOn() || this._donBellDone || this.winner) return false;
+        const p = this.getCurrentPlayer();
+        if (!p || !isInPlay(p) || !hasAbility(p, "Don Bell")) return false;
+        if (p._ghost) return false;                             // FAQ Q13
+        if (this._jailSkipTurn === this.turnId) return false;   // FAQ Q06
+        this._donBellDone = true;
+        this.pendingCheckDraw = {
+            active: true,
+            playerIdx: this.currentPlayerIndex,
+            dynamiteIdx: null,
+            jailIdx: null,
+            reason: 'DON_BELL',
+        };
+        this.phase = "CHECK_DRAW";
+        return true;
+    },
+
+    // Výsledek sejmutí Dona Bella (volá `_applyCheckResult`, logic/checks.js). Červená
+    // (♥ i ♦ – pod Požehnáním je červené všechno, pod Prokletím nic) = tah navíc; ten je
+    // týž jako u Vendety, tedy plnohodnotný (`_vendettaExtraTurn`).
+    _donBellResult(red) {
+        if (red) { this._vendettaExtraTurn('Don Bell'); return; }
+        this.phase = "PLAY";
+        this.nextTurn();
     },
 };
 

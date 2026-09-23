@@ -77,6 +77,7 @@ proto plán začíná infrastrukturou a teprve pak jde karta po kartě.
 | **R12** | Jacky Murieta a limit BANG! | Přibude **`player._extraBangs`** (zaplacené výstřely navíc), ne nový parametr `_bangLimit()`. | `_bangLimit()` i zrcadlo `bangLimitFor(state)` jsou dnes bez hráče. Přidat parametr by znamenalo měnit obě strany švu a všechny volající; přičíst zaplacený kredit jsou **dva řádky** ([logic/play.js:161](../logic/play.js#L161), [core/playability.js:561](../core/playability.js#L561)) a je to i sémanticky přesnější. |
 | **R13** | Postavy do ostré hry | Jako u Divokého západu: `GOLD_RUSH_READY` roste s fázemi, v debug hře jdou vybrat všechny. | Osvědčený vzor `WILD_WEST_READY` — dá se hrát dřív, než je hotových všech osm. |
 | **R14** | Stínoví pistolníci | **Vlastní přepínač `options.shadowGunslingers`**, nezávislý na rozšíření, implementovaný **až nakonec** (fáze 7). | Pravidla to výslovně dovolují („můžete použít i bez rozšíření"). Je to zdaleka nejinvazivnější část a nemá cenu jí blokovat zbytek. |
+| **R16** | Sleva Pretty Luzeny | Uplatní se **automaticky na první nákup v tahu**, není to volba. | Volba by znamenala druhé tlačítko u každé karty v obchodě a hráč by ji skoro vždy udělal stejně. Sleva sedí v `_gearCost` → `gearCostFor`, takže ji server, okno obchodu i bot počítají jedním vzorcem. |
 | **R15** | Wanted na sobě samém | Smí se zahrát i **na sebe** (FAQ Q07 „před sebe, nebo před jiného hráče"), ale **odhodit si vlastní vybavení zaplacením nejde** (FAQ Q10). | Doslova z FAQ. |
 
 ---
@@ -518,7 +519,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 | **3** ✅ | placené černé: **Rýžovací mísa, Batoh** (vč. záchrany posledního života) | 8 karet |
 | **4** ✅ | hnědé s volbou: **Láhev, Komplic**, dál **Rum, Zlatá horečka** | 14 druhů z 15 |
 | **5** ✅ | **Wanted** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
-| **6** | **8 postav** (`GOLD_RUSH_READY` roste) | rozšíření hotové |
+| **6** ✅ | **8 postav** (`GOLD_RUSH_READY` je tím úplný) | rozšíření hotové |
 | **7** | **Stínoví pistolníci** (volitelná varianta) | vše |
 | **8** | bot: nákupní politika + zátěž, layout invarianty | — |
 
@@ -784,6 +785,73 @@ Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které s
 Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `master`.
 
 ---
+
+### Co se ve fázi 6 odchýlilo od plánu (a proč)
+
+- **Sleva Pretty Luzeny se uplatní AUTOMATICKY na první nákup v tahu (rozhodnutí R16).**
+  „Jednou za tah SMÍ koupit za cenu sníženou o 1" by doslova znamenalo druhé tlačítko
+  u každé karty v obchodě („koupit za 3 / koupit se slevou za 2") a rozhodnutí, které
+  by hráč skoro vždy udělal stejně. Sleva proto sedí v `_gearCost`, který deleguje rovnou
+  do zrcadla `gearCostFor` (core/goldRush.js) – tím se server, okno obchodu i bot ptají
+  JEDNÍM vzorcem a cenovka v obchodě ukazuje rovnou tu sníženou. Spotřebuje ji až
+  ÚSPĚŠNÝ nákup (`p._luzenaTurn = turnId`), takže odmítnutý pokus slevu nepálí; na
+  vynucené odhození cizího vybavení se nevztahuje (cena se tam bere z karty, FAQ Q10).
+- **Jacky Murieta nemění `bangsPlayedThisTurn`, ale LIMIT.** Zaplacené výstřely jsou
+  `p._jackyTurn`/`p._jackyBangs` klíčované `turnId` (vzor Rýžovací mísa – nic se nikde
+  nenuluje) a vzorec `jackyExtraBangs` je jeden pro server (`_bangLimit` + hák
+  v `playBang`) i pro klienta a bota (`bangLimitFree`, core/playability.js).
+  `core/playability.js` si ho nesmí `require`-ovat nahoře: `core/goldRush.js` se na
+  playability ptá sám (Právo západu u nákupu), takže by vznikl kruh a jeden z obou modulů
+  by dostal poloprázdné exporty – čte se proto až při prvním volání (`_jackyExtra`).
+- **Josh McCloud si vynutil fázi `GEAR_MODE`.** Líznutá karta je lícem dolů, takže
+  u Láhve a Komplice nejde zvolit způsob PŘED zaplacením (u nákupu se volí předem právě
+  proto, aby se neplatilo naslepo). Nabídnou se jen režimy, které pravidla v tu chvíli
+  pustí (`gearModeReason`); když neprojde žádný, karta odchází pod balíček. Zbytek
+  líznutí jde společným ocasem `_gearAcquire`, který si z `gearBuy` vzal celou větev
+  „co se s koupenou kartou stane" – jinak by se obě cesty rozešly.
+- **Josh má INFORMATIVNÍ počítadlo `_joshUses`, které pravidla nečtou.** Karta počet
+  líznutí neomezuje (brzdou jsou valouny), ale bot s plnou kapsou by balíček vybavení
+  točil donekonečna – hnědé karty se vracejí pod balíček, takže se líznutím nevyčerpá –
+  a jeho tah by nikdy neskončil. Strop je proto POLITIKA BOTA (`JOSH_BOT_CAP`,
+  core/botPolicy.js), stejná past a stejné řešení jako u `RECYCLE_CAP`. Projevilo se to
+  v zátěži „s plnou kapsou valounů" jako partie, která nedoběhla do 8000 tiků.
+- **Dutch Will pozná právě líznuté karty SNÍMKEM ruky, ne výčtem u každého zdroje.**
+  Snímek se bere na jednom místě (`_dutchSnapshot` ve `startDrawPhase`, hned nad větvemi
+  postav), takže se zdarma veze Kit Carlson, Claus, Black Jack, Jesse Jones, Pedro
+  Ramirez i Pat Brennan – jinak by každá z těch cest musela hlásit, co si vzala.
+  Odhoz je pořád FÁZE 1, takže se ptá dřív než Želízka a Ranč; ocas fáze lízání se kvůli
+  tomu vytáhl do `_finishDrawTail` a obě cesty (`_finishDraw` i `dutchWillDiscard`) jdou
+  jím, aby se nerozešly.
+- **Dutch Will pod Žízní (High Noon) schopnost neuplatní vůbec.** „Odhodí jednu ze DVOU
+  právě líznutých" – s jedinou líznutou kartou není z čeho vybírat, takže nepřijde ani
+  odhoz, ani valoun. S Krumpáčem (líže 3) naopak odhazuje jednu ze tří.
+- **Madam Yto je trychtýř na KARTU Pivo, ne na léčení.** `_madamYtoOnBeer` volají všechny
+  tři cesty, kudy se karta Pivo hraje (`playCard`, `beerLastLifeSave` ve všech třech
+  fázích, `beerForNugget`), a nikdo jiný: Salón, Whisky ani Láhev zahraná jako Pivo
+  kartou Pivo nejsou (dodatek na Láhvi), takže ji nespustí. Líznutí jde frontou
+  odložených akcí do vlastní fáze `YTO_DRAW` (vzor Boty) – platí pro ně pravidlo
+  „nejdřív doběhne efekt zahrané karty" a fáze se musí čistit v `_pruneSuzyQueue`,
+  kdyby majitelka mezitím odešla ze hry.
+- **Don Bell recykluje sejmutí Vendety.** `_donBellCheck` je poslední gate v `nextTurn`
+  (za kartou Zlatá horečka) a jde cestou CHECK_DRAW → CHECKING → `_applyCheckResult`,
+  takže se veze Lucky Duke, Podkova, John Pain, klientská cinematika i větev bota.
+  `_donBellDone` se nastaví hned na začátku sejmutí (past z Vendety), čímž „na konci tahu
+  navíc už neotáčí znovu" platí samo a smyčka nemůže vzniknout.
+- **FAQ Q06 (Vězení) si vyžádalo `_jailSkipTurn`.** Příznak `p._turnSkippedByJail` čte
+  a NULUJE `_zuzanaPenalty` (logic/wildWest.js), který v `nextTurn` běží dřív než Don
+  Bell – konec tahu si proto musí zapamatovat sám, že se tenhle tah nehrál.
+- **FAQ Q13 (Město duchů) platí i pro kartu Zlatá horečka.** Duch je na konci svého tahu
+  vyřazen, takže tah navíc nezahraje. Nákup to zakazoval dopředu (`gearCardReason`), ale
+  Josh McCloud si tu kartu může líznout naslepo – pojistka proto přibyla i do
+  `_gearExtraTurnCheck`.
+- **Portréty 042–049 zatím chybí** (dodají se abecedně jako další čísla). Loader je
+  registrovaný (`EXPANSION_LOADERS.zlata_horecka` + `normalizeCharTextures(scene, 42, 49)`),
+  takže se karty postav dotáhnou samy, jakmile soubory přibudou; do té doby jsou
+  placeholder, přesně jako art vybavení před fází 4.
+- **Klient dostal chybějící větev Miláčka Valentýna.** Odhoz karty po kartě (bug 35) měl
+  fázi, predikát i handler, ale `decideCardClick` vrátil intent `VALENTINE_DISCARD`,
+  který v `view/board.js` nikdo neobsluhoval – klik tedy v prohlížeči nic nedělal.
+  Přišlo se na to při kopírování téhož vzoru pro Dutche Willa; obě větve teď existují.
 
 ## 10. Co plán vědomě nedělá
 

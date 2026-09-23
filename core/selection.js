@@ -19,6 +19,7 @@
 //   { type: 'ROULETTE_DISCARD', index, cardId }       – Ruská ruleta (Fistful): odhoď kartu Vedle!
 //   { type: 'GRINNER_GIVE', index, cardId }           – Youl Grinner (Divoký západ): dej mu kartu
 //   { type: 'VALENTINE_DISCARD', index, cardId }      – Miláček Valentýn (Divoký západ): odhoď kartu z ruky
+//   { type: 'DUTCH_DISCARD', index, cardId }          – Dutch Will (Zlatá horečka): odhoď jednu z líznutých
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
@@ -95,6 +96,13 @@ function decideCardClick(ctx) {
     // volí hráč (a je jedno), takže klik rovnou odhazuje – stejně jako u Grinnera.
     if (state.phase === "VALENTINE_DISCARD" && state.pendingValentine?.playerIdx === myIndex) {
         return { type: 'VALENTINE_DISCARD', index, cardId: card.id };
+    }
+
+    // Zlatá horečka – Dutch Will: odhazuje jednu z PRÁVĚ LÍZNUTÝCH karet, takže klik na
+    // zbytek ruky (a na vynucenou kartu Práva západu) jen blikne – hlídá to cardPlayability.
+    if (state.phase === "DUTCH_DISCARD" && state.pendingDutchDiscard?.playerIdx === myIndex) {
+        return playable === true ? { type: 'DUTCH_DISCARD', index, cardId: card.id }
+                                 : { type: 'UNPLAYABLE_FLASH' };
     }
 
     // Divoký západ – Lee Van Kliff: nabitá schopnost čeká na kartu BANG!, kterou se

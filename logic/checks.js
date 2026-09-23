@@ -202,6 +202,12 @@ const ChecksMixin = {
                 this.phase = "PLAY";
                 this.nextTurn();
             }
+        } else if (check.reason === "DON_BELL") {
+            // Zlatá horečka – Don Bell: červená (♥ nebo ♦) = tah navíc. Barva se čte přes
+            // _effSuit jako všude jinde, takže Požehnání dává tah navíc vždycky a Prokletí
+            // nikdy. `_donBellDone` je nastavené od začátku sejmutí, takže se nextTurn
+            // zeptat znovu nemůže a tah se prostě posune dál.
+            this._donBellResult(suit === Suits.HEARTS || suit === Suits.DIAMONDS);
         } else if (check.reason === "TEREN_KILL") {
             // Divoký západ – Teren Kill: ♠ = vyřazení, které se na tohle sejmutí
             // pozastavilo, proběhne doopravdy; cokoli jiného = zůstává na 1 životě

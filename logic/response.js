@@ -26,6 +26,9 @@ const ResponseMixin = {
 
             this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
+            // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+            // Do fronty se musí dostat DŘÍV, než ji některá z cest níž dobere.
+            this._madamYtoOnBeer(playerIdx);
 
             // Dynamit je tu rozložený na 3 zásahy po 1 (klikání), pravidla ho berou jako
             // -3 najednou. Aby to vyšlo stejně, Joeův druhý život zruší i další zásah
@@ -52,6 +55,9 @@ const ResponseMixin = {
 
             this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
+            // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+            // Do fronty se musí dostat DŘÍV, než ji některá z cest níž dobere.
+            this._madamYtoOnBeer(playerIdx);
             if (gain > 1) p.health = Math.min(p.health + gain - 1, p.maxHealth);
 
             this.pendingNoonDamage = null;
@@ -73,6 +79,9 @@ const ResponseMixin = {
             // kde se odložené náhrady uvolní.
             this._mollyPlayedOutOfTurn(playerIdx, pr.sourceCard === CardType.DUEL);
             this.checkSuzyLafayette(p);
+            // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+            // Do fronty se musí dostat DŘÍV, než ji některá z cest níž dobere.
+            this._madamYtoOnBeer(playerIdx);
 
             // Zásah se nikdy neaplikuje (hráč zůstává na 1 HP) → přebytek je čisté léčení.
             if (gain > 1) p.health = Math.min(p.health + gain - 1, p.maxHealth);

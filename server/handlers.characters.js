@@ -64,6 +64,25 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Zlatá horečka – Madam Yto: „Pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+    // Klikací líznutí, tělem i časováním shodné s Boty (a tedy s Bartem Cassidym).
+    on('madam_yto_draw', () => {
+        withRoom((room, p, gs) => {
+            const playerIdx = gs.pendingYtoDraw?.playerIdx ?? p.playerIdx;
+            const before = gs.players[playerIdx]?.hand.length ?? 0;
+            gs.madamYtoDraw(playerIdx);
+            // Majitelka uvidí líznutou kartu (reveal flip), ostatní jen rub.
+            const hand = gs.players[playerIdx].hand;
+            if (hand.length > before) {
+                const drawnId = hand[hand.length - 1]?.id;
+                emitAnimPrivate(room, playerIdx,
+                    { type: 'draw', playerIdx, cardId: drawnId },
+                    { type: 'draw', playerIdx });
+            }
+            handleReshuffleAndBroadcast(room, gs, 350);
+        });
+    });
+
     on('get_taken_names', () => {
         const taken = new Set();
         for (const [, r] of rooms) {

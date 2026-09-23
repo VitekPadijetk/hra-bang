@@ -386,9 +386,9 @@ test('každý kind z pendingActor má v decideBotAction svou větev', () => {
 test('CHAR_RANK zná každou postavu ze všech rozšíření', () => {
     const { CHAR_RANK, pickCharacter } = require('../core/botPolicy.js');
     const { ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS,
-            WILD_WEST_CHARACTERS } = require('../logic/entities.js');
+            WILD_WEST_CHARACTERS, GOLD_RUSH_CHARACTERS } = require('../logic/entities.js');
     const all = [...ALL_CHARACTERS, ...DODGE_CITY_CHARACTERS, ...FISTFUL_CHARACTERS,
-                 ...WILD_WEST_CHARACTERS];
+                 ...WILD_WEST_CHARACTERS, ...GOLD_RUSH_CHARACTERS];
     assert.deepEqual(all.filter(c => !CHAR_RANK[c]), [], 'postava bez ranku = bot si ji nevybere');
     assert.equal(pickCharacter(['Vulture Sam', 'Uncle Will']), 'Uncle Will');
 });

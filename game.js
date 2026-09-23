@@ -413,7 +413,7 @@ function _zoomSuppressed(key) {
         (state.phase === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.playerIdx === myIndex)
     );
     if (iAmActing) {
-        const suppressPhases = ['RESPOND','DISCARD','BARREL_DRAW','BART_DRAW','BOOTS_DRAW',
+        const suppressPhases = ['RESPOND','DISCARD','BARREL_DRAW','BART_DRAW','BOOTS_DRAW','YTO_DRAW',
                                 'SUZY_DRAW','EL_GRINGO_STEAL','CHECK_DRAW','KIT_CARLSON','LUCKY_DUKE','DRAW','DYNAMITE_DAMAGE'];
         if (suppressPhases.includes(state.phase)) return true;
     }
@@ -2303,18 +2303,22 @@ const EXPANSION_LOADERS = {
     // ten už od create() drží RenderTextura se štítkem (buildGearTextures) a Phaser
     // duplicitní klíč přeskočí. Stahuje se proto pod `zh_art_<art>` a done() ho do
     // STEJNÉ RenderTextury přemaluje – sprity, které ji už drží, se překreslí samy.
-    // Portréty postav zatím chybí (přibude `normalizeCharTextures(scene, 42, 49)`).
     zlata_horecka(scene) {
         const data = scene.cache.json.get('cards_zlata_horecka_data') || [];
         // Rub je vidět hned v intru (míchání balíčku vybavení), takže jde první.
         loadAsset(scene, 'image', 'zh_back', 'assets/other_cards/zlata_horecka/zlata_horecka_back.webp');
         data.forEach(c => { if (c.art) loadAsset(scene, 'image', gearArtKey(c), `assets/zlata_horecka_cards/${c.art}.webp`); });
+        // …a 8 postav rozšíření (portréty 042–049, řazené podle abecedy jako v characters.json).
+        for (let i = 42; i <= 49; i++) {
+            loadAsset(scene, 'image', 'char_' + i, `assets/characters/${i.toString().padStart(3, '0')}.webp`);
+        }
         return {
             // Líce kritické nejsou – do dotažení za ně stojí štítek.
             critical: ['zh_back'],
             done: () => {
                 // Dodané ve 2× (650×1000) → srovnat na 325×500 jako ostatní karty.
                 normalizeTexture(scene, 'zh_back');
+                normalizeCharTextures(scene, 42, 49);
                 buildGearTextures(scene);
             },
         };

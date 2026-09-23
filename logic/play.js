@@ -48,7 +48,12 @@ const PlayMixin = {
                 // Přes _heal, který ohlídá i to, že mrtvého léčit nejde (duch při Městě
                 // duchů ale ano) – jinak se Pivo vůbec nezahraje.
                 const gain = hasAbility(player, "Tequila Joe") ? 2 : 1;
-                return this._heal(player, gain) > 0;
+                if (this._heal(player, gain) <= 0) return false;
+                // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si
+                // 1 kartu." Až TEĎ, kdy je jisté, že se Pivo doopravdy zahrálo (vrátí-li
+                // efekt false, karta zůstává v ruce).
+                this._madamYtoOnBeer(this.currentPlayerIndex);
+                return true;
             },
             [CardType.SALOON]: () => {
                 // Léčí každého VE HŘE – při Městě duchů (High Noon) tedy i ducha, který si
@@ -158,7 +163,11 @@ const PlayMixin = {
         // (kartou Bang! je tam každá) – rozhoduje o tom preacherBlocks.
         if (!isEffect && preacherBlocks(this, attacker, attackerIdx, card)) return;
 
-        if (!isEffect && !isWilly && !hasVolcanic && attacker.bangsPlayedThisTurn >= this._bangLimit()) {
+        // Zlatá horečka – Jacky Murieta: „smí zaplatit 2 valouny a vystřelit 1 BANG!
+        // navíc." Zaplacené výstřely zvedají LIMIT; vzorec je jediný (`jackyExtraBangs`,
+        // core/goldRush.js) a ptá se jím i klient s botem (bangLimitFree).
+        if (!isEffect && !isWilly && !hasVolcanic &&
+            attacker.bangsPlayedThisTurn >= this._bangLimit() + this._jackyExtraBangs(attacker)) {
             return;
         }
 

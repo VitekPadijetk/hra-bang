@@ -24,6 +24,12 @@ const SetupMixin = {
             const pool = options.debugPool ? WILD_WEST_CHARACTERS : WILD_WEST_READY;
             if (typeof pool !== 'undefined') base.push(...pool);
         }
+        // Zlatá horečka: totéž. Postavy rozšíření se točí kolem valounů, takže bez
+        // zapnutého rozšíření (žádná měna, žádný obchod) by neuměly vůbec nic.
+        if (exps.zlata_horecka) {
+            const pool = options.debugPool ? GOLD_RUSH_CHARACTERS : GOLD_RUSH_READY;
+            if (typeof pool !== 'undefined') base.push(...pool);
+        }
         return base;
     },
 

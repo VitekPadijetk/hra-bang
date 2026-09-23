@@ -79,6 +79,19 @@ const WILD_WEST_CHARACTERS = [
 // je celý seznam – zůstává jako pojistka pro budoucí rozšíření, ne kvůli rozdílu.
 const WILD_WEST_READY = [...WILD_WEST_CHARACTERS];
 
+// Postavy rozšíření Zlatá horečka (Gold Rush). Portréty 042–049, VŠECHNY mají 4 životy,
+// takže `healthForCharacter` (core/roles.js) nepotřebuje ani řádek – 4 je default. Do
+// výběru se přidají jen se zapnutým rozšířením (options.expansions.zlata_horecka →
+// `_characterPool`, logic/setup.js): bez valounů by polovina z nich neuměla nic.
+const GOLD_RUSH_CHARACTERS = [
+    "Don Bell", "Dutch Will", "Jacky Murieta", "Josh McCloud",
+    "Madam Yto", "Pretty Luzena", "Raddie Snake", "Simeon Picos"
+];
+
+// …a podmnožina, která už MÁ schopnost (vzor WILD_WEST_READY). Od fáze 6 je to celý
+// seznam a zůstává jen jako pojistka pro další rozšíření.
+const GOLD_RUSH_READY = [...GOLD_RUSH_CHARACTERS];
+
 class Card {
     constructor(id, name, type, suit, value, props = {}) {
         this.id = id;
@@ -296,5 +309,5 @@ function distinctCardKinds(rawCardData) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, Card, Player, Deck, distinctCardKinds };
+    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, GOLD_RUSH_CHARACTERS, GOLD_RUSH_READY, Card, Player, Deck, distinctCardKinds };
 }
