@@ -523,11 +523,15 @@ test('sloupec Divokého západu nedosáhne na vyložené karty soupeřů ani na 
 // překryvné okno a na stole zůstává JEDNA hromádka. I ta ale musí mít volné místo
 // ve všech kombinacích rozšíření, v obou profilech a při každém počtu hráčů –
 // jinak by ležela na kartách, na které se kliká.
-function gearRect(L) {
+// Zrcadlí drawGearPile (view/board.js): vrstvy po 0,25 px vystředěné kolem slotu,
+// takže hromádka o 24 kartách (víc jich balíček vybavení nemá) přesahuje o ~3 px
+// nahoru i dolů. `lift` = zvednutí při hokynářství (gearDeckSlot v game.js).
+function gearRect(L, lift = 0) {
     const s = gearSlot(L);
     const w = 325 * L.scaleDeck, h = 500 * L.scaleDeck;
-    const stack = 23 * 0.125;   // balíček vybavení má nejvýš 24 karet
-    return { x0: s.x - w / 2, x1: s.x + w / 2, y0: s.y - h / 2 - stack, y1: s.y + h / 2 };
+    const stack = (24 - 1) * 0.25 / 2;
+    const y = s.y - lift;
+    return { x0: s.x - w / 2, x1: s.x + w / 2, y0: y - h / 2 - stack, y1: y + h / 2 + stack };
 }
 
 test('balíček vybavení nekoliduje s balíčky ani se sloupci událostí (oba profily)', () => {
@@ -571,6 +575,84 @@ test('balíček vybavení nedosáhne na vyložené karty soupeřů ani na moje',
             global.state = null; global.myIndex = null;
         }
     }
+});
+
+// Fáze 8: totéž mimo základní jeviště 16:9 – široké okno (soupeři se lepí na okraj,
+// můj stůl má delší řadu) a mobil (kompaktní řada soupeřů nahoře, můj stůl vejš).
+// Pás se skládá ze skutečných karet I koupeného vybavení, které se řadí až za ně.
+test('balíček vybavení nedosáhne na pásy soupeřů ani na můj – široké jeviště i mobil', () => {
+    const variants = [
+        ['široké', (fn) => withStage(1600, 800, fn)],
+        ['vysoké', (fn) => withStage(1200, 900, fn)],
+        ['mobil', (fn) => withMobile(844, 390, fn)],
+    ];
+    variants.forEach(([name, run]) => run((st, L) => {
+        const rect = gearRect(L);
+        for (let total = 3; total <= 8; total++) {
+            const anchors = getOpponentAnchors(total);
+            const compact = anchors[0].side === 'compact';
+            const scaleO = compact ? compactMetrics(total - 1, L, st).scale : oppScale(L, total - 1);
+            for (let k = 1; k <= 12; k++) {
+                const nGear = Math.min(3, k - 1), nBoard = k - 1 - nGear;
+                const players = Array.from({ length: total }, () => ({
+                    health: 4, maxHealth: 4, hand: [], weapon: { id: 1 },
+                    board: Array.from({ length: nBoard }, (_, i) => ({ id: i })),
+                    gear: Array.from({ length: nGear }, (_, i) => ({ id: 6000 + i })),
+                }));
+                setWorld(players, 0);
+                for (let opp = 1; opp < total; opp++) {
+                    const side = anchors[opp - 1].side;
+                    for (let b = 0; b < k; b++) {
+                        const r = cardRect(getBoardCardPos(opp, b), side, scaleO);
+                        assert.ok(!overlaps(r, rect),
+                            `${name}, ${total} hráčů, soupeř ${opp} (${side}), ${k} karet, karta ${b}: leze na vybavení`);
+                    }
+                }
+                for (let b = 0; b < k; b++) {
+                    const r = cardRect(getBoardCardPos(0, b), 'bottom', L.scaleMe);
+                    assert.ok(!overlaps(r, rect), `${name}, ${total} hráčů, ${k} karet, moje karta ${b}: leze na vybavení`);
+                }
+            }
+        }
+    }));
+});
+
+// Při hokynářství se balíčky i rub vybavení zvednou o storeLift a pod ně se rozdá řada
+// karet – při 8 hráčích až k x 1429, tedy přímo pod rub vybavení. Svisle je mezi nimi
+// na mobilu mezera nulová, takže se toleruje přesah hromádky (necelé 3 px – stejná
+// tolerance jako u sloupců událostí při hokynářství).
+test('řada hokynářství se rubu vybavení vyhne (oba profily, 1–8 rozdaných karet)', () => {
+    const { getStoreSlotPos } = require('../positions.js');
+    const TOL = 3;
+    [['desktop', withStage], ['mobile', withMobile]].forEach(([name, withX]) => withX(1920, 1080, (st, L) => {
+        const g = gearRect(L, L.storeLift);
+        for (let count = 1; count <= 8; count++) {
+            for (let i = 0; i < count; i++) {
+                const r = cardRect(getStoreSlotPos(i, count, L.storeLift), 'bottom', 0.3);
+                const dx = Math.min(r.x1, g.x1) - Math.max(r.x0, g.x0);
+                const dy = Math.min(r.y1, g.y1) - Math.max(r.y0, g.y0);
+                assert.ok(dx <= 0 || dy <= TOL,
+                    `${name}, ${count} karet, karta ${i}: řada leze na vybavení o ${dy.toFixed(1)} px`);
+            }
+        }
+    }));
+});
+
+// Portrét na mé kartě životů jede nahoru po nábojích; na mobilu leží karta životů
+// vpravo (x 1500), tedy kousek od rubu vybavení (x 1385).
+test('portrét na mé kartě životů minul rub vybavení (oba profily, 1–10 životů)', () => {
+    const { myLivesGeom, CARD_ART_W: CARD_W, CARD_ART_H: CARD_H } = require('../core/layout.js');
+    ['desktop', 'mobile'].forEach(name => {
+        const L = LAYOUT_PROFILES[name];
+        const g = gearRect(L);
+        for (let hp = 1; hp <= 10; hp++) {
+            const geo = myLivesGeom(L, hp, Math.max(hp, 4));
+            const cy = geo.baseY - hp * geo.track.step;
+            const r = { x0: L.livesX - CARD_W * geo.scale / 2, x1: L.livesX + CARD_W * geo.scale / 2,
+                        y0: cy - CARD_H * geo.scale / 2, y1: cy + CARD_H * geo.scale / 2 };
+            assert.ok(!overlaps(r, g), `${name}, ${hp} životů: portrét leze na vybavení`);
+        }
+    });
 });
 
 test('koupené vybavení roztahuje pás, ale indexy karet na stole neposouvá', () => {

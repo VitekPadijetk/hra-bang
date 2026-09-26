@@ -40,6 +40,10 @@ Výchozí stav (ověřeno 2026-09-07): `npm test` = **1368 testů, 0 chyb**, 19 
 > Odchylky od plánu jsou popsané u fází 0–4 v §9.
 > **Fáze 5–7** (2026-09-23): Wanted, 8 postav a varianta **Stínoví pistolníci**
 > (`logic/shadow.js`, predikát `canHeal`, `teamRole`). Odchylky opět v §9.
+> **Fáze 8** (2026-09-26): nákupní politika bota (ocenění po majiteli `gearValueFor`,
+> šetření `gearSaveFor`), invarianty rozložení pro široké/vysoké jeviště, mobil,
+> hokynářství a portrét, a oprava odchodu ducha s vybavením. **Rozšíření je hotové.**
+> `npm test` = **1664 testů, 0 chyb** (nová sada `test/goldRush.bot.test.js`).
 
 > **Assety zatím nejsou.** Plán je proto napsaný tak, aby se dal odpracovat celý bez nich
 > (§2.8 říká, co se s chybějícím artem děje) a aby se **jména karet daly doplnit na jednom
@@ -523,7 +527,7 @@ Pozor na `test/_helpers.js`: **stav se staví ručně**, takže helpery budou po
 | **5** ✅ | **Wanted** (odměna v `handlePlayerDeath`) | **všech 15 druhů** |
 | **6** ✅ | **8 postav** (`GOLD_RUSH_READY` je tím úplný) | rozšíření hotové |
 | **7** ✅ | **Stínoví pistolníci** (volitelná varianta) | vše |
-| **8** | bot: nákupní politika + zátěž, layout invarianty | — |
+| **8** ✅ | bot: nákupní politika + zátěž, layout invarianty | — |
 
 Po každé fázi: `node --check`, `npm test`, boot serveru, a u fází, které sahají na render,
 **ověření v prohlížeči uživatelem** (CLAUDE.md: render nejde ověřit automaticky).
@@ -896,6 +900,40 @@ Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `
   `odpadlik_stin_bandita.webp`). Loader je registrovaný v `EXPANSION_LOADERS.zlata_horecka`;
   do té doby kreslí `roleTexFor` (view/board.js) kartu strany (pomocník / bandita).
   Bez zapnuté Zlaté horečky se art nestahuje vůbec – varianta pak vždycky ukazuje kartu strany.
+
+### Co se ve fázi 8 odchýlilo od plánu (a proč)
+
+- **Většina fáze 8 vznikla dřív.** Bot nakupuje od fáze 1 (bez toho by se obchod v zátěži
+  neprotočil), větve `GEAR_MODE`/`GEAR_TARGET`/`DUTCH_DISCARD` a záchrana Batohem přišly
+  s kartami, které je potřebovaly, a do zátěže (`test/server.bots.test.js`) přibyla
+  Zlatá horečka v matici 3–8 hráčů i varianta „plná kapsa valounů" už ve fázích 0 a 2.
+  Na fázi 8 zbyly jen dvě věci, které plán v §6 chtěl a politika zatím neměla:
+- **Ocenění PO MAJITELI – `gearValueFor(state, idx, card)`** (core/botPolicy.js). Tabulka
+  `GEAR_VALUE` zůstává cenou „pro kohokoli"; funkce od ní odečte, co by konkrétnímu
+  majiteli nepřineslo nic: **Kalumet Apache Kidovi** (imunní je sám), **černé vybavení
+  duchovi a stínu** (na konci tahu o něj přijdou), **Nábojový pás** hráči s 8+ životy
+  (třetina ceny) a **Podkova Lucky Dukovi** (polovina – třetí karta je menší zlepšení
+  než druhá). Do téže funkce se přestěhovaly dřívější inline podmínky Panáku, Union
+  Pacific a Rumu. Ptá se jí i **vynucené odhození cizího vybavení** – oceňuje se podle
+  CÍLE, takže bot neplatí za odhození karty, ze které cíl nic nemá.
+- **Šetření – `gearSaveFor`.** Bez něj bot utratil každý valoun za první levnou kartu
+  a na Boty/Krumpáč nenašetřil nikdy. Šetří se na kartu, na kterou chybí nejvýš
+  `SAVE_GAP` (2) valounů a která je o `SAVE_MARGIN` (8) lepší; do té doby počkají horší
+  nákupy i drobné výdaje (Rýžovací mísa, Raddie Snake, Josh McCloud, vynucené odhození).
+  Záměrně se šetří **jen na kartu, které chybí VÝHRADNĚ valouny** (`gearBuyReason` ===
+  'málo valounů') – na kartu, kterou pravidla nepustí z jiného důvodu, by bot čekal
+  věčně. Taktické výdaje (Jacky Murieta, Batoh na 2 životech) se nebrzdí.
+- **Oprava, na kterou se při tom přišlo: duch odcházel i s vybavením.** Duch (Město duchů)
+  si ve svém tahu vybavení koupit smí, ale `_teardownGhost` (logic/highNoon.js) uklízel
+  jen ruku, stůl a zbraň – koupené vybavení zůstalo ležet před vyřazeným hráčem napořád
+  (a s ním třeba jediný kus Bot). Teď volá `_gearDropAll` jako vyřazení i odchod stínu.
+- **Invarianty rozložení** (test/positions.test.js) přibyly tři: rub vybavení × pásy
+  soupeřů i můj pás **včetně koupeného vybavení** na širokém a vysokém jeviště a na mobilu
+  (3–8 hráčů); rub vybavení × **řada hokynářství** (obě zvednuté o `storeLift`, 1–8
+  rozdaných karet) a × **portrét na mé kartě životů** (1–10 životů). Obdélník hromádky
+  teď zrcadlí `drawGearPile` přesně (0,25 px na vrstvu, vystředěno). Na mobilu leží řada
+  hokynářství těsně pod zvednutým rubem – přesah hromádky necelé 3 px, stejná tolerance
+  jako u sloupců událostí. Rozložení se neměnilo o pixel.
 
 ## 10. Co plán vědomě nedělá
 

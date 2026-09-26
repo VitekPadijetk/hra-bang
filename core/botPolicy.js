@@ -175,6 +175,11 @@ if (typeof require === 'function') {
         globalThis.gearAimedBlack = __gr3.gearAimedBlack;
         globalThis.gearBlackTargets = __gr3.gearBlackTargets;
     }
+    // Šetření na lepší kartu (fáze 8) potřebuje DŮVOD odmítnutí nákupu – vlastní guard
+    // ze stejného důvodu jako u bloků výš.
+    if (typeof gearBuyReason === 'undefined') {
+        globalThis.gearBuyReason = require('./goldRush.js').gearBuyReason;
+    }
     // Postavy rozšíření (fáze 6) – vlastní guard ze stejného důvodu jako u tří bloků výš.
     if (typeof joshUsesThisTurn === 'undefined') {
         const __gr4 = require('./goldRush.js');
@@ -233,6 +238,61 @@ const GEAR_VALUE = {
     // se počítá až podle toho, jestli je na koho ho pověsit (gearWantedPick).
     ZH_WANTED: 0,
 };
+
+// Kolik má vybavení cenu pro KONKRÉTNÍHO hráče (fáze 8). Tabulka výš je cena „pro
+// kohokoli"; tady se od ní odečte to, co by majiteli nepřineslo nic – stejná past jako
+// u boardCardValue (Vězení nepříteli bot nesundá, protože by mu pomohl). Ptá se jím
+// nákup i vynucené odhození cizího vybavení (to má cenu jen tehdy, když ho cíl využije).
+// Láhev/Komplic (gearModePick) a Wanted (gearWantedPick) se oceňují jinde, podle cíle.
+function gearValueFor(state, idx, card) {
+    const p = state.players[idx];
+    if (!p || !card) return 0;
+    // Duch (Město duchů) i stín (Stínoví pistolníci) na konci tahu odcházejí a vybavení
+    // před sebou ztratí – černá karta by se jim zaplatila za jediný tah, kdy nic nedělá.
+    if (card.border === 'black' && (p._ghost || p._shadow)) return 0;
+    const base = GEAR_VALUE[card.effect] || 0;
+    switch (card.effect) {
+        // Panák léčí – bez zranění by se za něj zaplatilo a efekt by vyšuměl.
+        case 'ZH_PANAK': return canHeal(p) ? base : 0;
+        // Union Pacific líže – bez karet v balíčku i odhozu by se platilo za nic.
+        case 'ZH_UNION_PACIFIC': return drawCardWorth(state, p, 4) ? base : 0;
+        // Rum léčí podle barev (ze 4 karet padnou v průměru skoro 3) – vyplatí se tím
+        // víc, čím víc životů chybí. Na plný život ho pravidla koupit nepustí.
+        case 'ZH_RUM': {
+            const miss = canHeal(p) ? p.maxHealth - p.health : 0;   // stín se neléčí
+            return miss >= 2 ? (p.health <= 2 ? 30 : 22) : (miss === 1 ? 8 : 0);
+        }
+        // Apache Kid je vůči kárům imunní sám – Kalumet by mu nepřidal nic.
+        case 'ZH_KALUMET': return hasAbility(p, 'Apache Kid') ? 0 : base;
+        // Limit je max(životy, 8): kdo má 8 a víc životů (Big Spencer), tomu pás pomůže
+        // až po pořádném zranění.
+        case 'ZH_NABOJOVY_PAS': return p.maxHealth >= 8 ? Math.round(base / 3) : base;
+        // Lucky Duke už vybírá ze dvou – třetí karta je menší zlepšení než druhá.
+        case 'ZH_PODKOVA': return hasAbility(p, 'Lucky Duke') ? Math.round(base / 2) : base;
+        default: return base;
+    }
+}
+
+// Šetření: bez něj bot utratí každý valoun za první levnou kartu a na drahé vybavení
+// (Boty, Krumpáč) nenašetří nikdy. Když v obchodě leží karta, která je o poznání lepší
+// (aspoň o SAVE_MARGIN) a chybí na ni nejvýš SAVE_GAP valounů, horší nákupy i drobné
+// výdaje (mísa, Raddie Snake, Josh McCloud) počkají. Šetří se jen na to, čemu chybí
+// VÝHRADNĚ valouny – kartu, kterou pravidla nepustí z jiného důvodu, by bot nekoupil
+// nikdy a valouny by mu jen ležely.
+const SAVE_GAP = 2;
+const SAVE_MARGIN = 8;
+function gearSaveFor(state, myIndex) {
+    const me = state.players[myIndex];
+    const nug = me.nuggets || 0;
+    let best = 0;
+    (state.gearRow || []).forEach((card, rowIdx) => {
+        if (!card || gearModesOf(card) || gearAimedBlack(card)) return;
+        if (gearBuyReason(state, myIndex, rowIdx) !== 'málo valounů') return;
+        if (gearCostFor(state, myIndex, card) - nug > SAVE_GAP) return;
+        best = Math.max(best, gearValueFor(state, myIndex, card));
+    });
+    return best;
+}
 
 const HEARTS = '♥️';
 const DIAMONDS = '♦️';
@@ -1201,6 +1261,9 @@ function decidePlay(state, myIndex, beliefs) {
     // jinak by bot posílal akci, kterou pravidla mlčky odmítnou – a hra jen botů by
     // se zasekla na tahu, který nic nemění.
     if (goldRushOn(state)) {
+        // Na co se šetří (0 = na nic): výdaj, který má menší cenu, počká.
+        const _saveFor = gearSaveFor(state, myIndex);
+        const spendOk = (val) => !_saveFor || val + SAVE_MARGIN > _saveFor;
         (state.gearRow || []).forEach((card, rowIdx) => {
             if (!card) return;
             // Láhev a Komplic: každý režim je samostatná nabídka se svým skóre. Server
@@ -1211,7 +1274,7 @@ function decidePlay(state, myIndex, beliefs) {
                     if (!gearBuyOk(state, myIndex, rowIdx, mode)) return;
                     const pick = gearModePick(state, myIndex, beliefs, mode,
                                               gearModeTargets(state, myIndex, mode));
-                    if (pick) consider(pick.score, { event: 'gear_buy', payload: { rowIdx, mode } });
+                    if (pick && spendOk(pick.score)) consider(pick.score, { event: 'gear_buy', payload: { rowIdx, mode } });
                 });
                 return;
             }
@@ -1221,21 +1284,11 @@ function decidePlay(state, myIndex, beliefs) {
             if (gearAimedBlack(card)) {
                 const pick = gearWantedPick(state, myIndex, beliefs,
                                             gearBlackTargets(state, myIndex, card));
-                if (pick) consider(pick.score, { event: 'gear_buy', payload: { rowIdx } });
+                if (pick && spendOk(pick.score)) consider(pick.score, { event: 'gear_buy', payload: { rowIdx } });
                 return;
             }
-            let val = GEAR_VALUE[card.effect] || 0;
-            // Panák léčí – bez zranění by se za něj zaplatilo a efekt by vyšuměl.
-            if (card.effect === 'ZH_PANAK' && !canHeal(me)) val = 0;
-            // Union Pacific líže – bez karet v balíčku i odhozu by se platilo za nic.
-            if (card.effect === 'ZH_UNION_PACIFIC' && !drawCardWorth(state, me, 4)) val = 0;
-            // Rum léčí podle barev (ze 4 karet padnou v průměru skoro 3) – vyplatí se tím
-            // víc, čím víc životů chybí. Na plný život ho pravidla koupit nepustí.
-            if (card.effect === 'ZH_RUM') {
-                const miss = canHeal(me) ? me.maxHealth - me.health : 0;   // stín se neléčí
-                val = miss >= 2 ? (me.health <= 2 ? 30 : 22) : (miss === 1 ? 8 : 0);
-            }
-            if (val > 0) consider(val, { event: 'gear_buy', payload: { rowIdx } });
+            const val = gearValueFor(state, myIndex, card);
+            if (val > 0 && spendOk(val)) consider(val, { event: 'gear_buy', payload: { rowIdx } });
         });
         // Pivo za valoun jen s PLNÝM životem: jinak je vyléčení cennější než zlato
         // (a Pivo na plný život stejně nejde zahrát, takže by v ruce jen leželo).
@@ -1250,8 +1303,10 @@ function decidePlay(state, myIndex, beliefs) {
             if (hostilityOf(state, myIndex, i, beliefs) <= ENEMY_EPS) return;
             (t.gear || []).forEach((g, gearIdx) => {
                 if (!gearForceOk(state, myIndex, i, gearIdx)) return;
-                const val = (GEAR_VALUE[g.effect] || 0) / 2;
-                if (val > 0) consider(val, { event: 'gear_force_discard', payload: { targetIdx: i, gearIdx } });
+                // Cena po MAJITELI: Kalumet Apache Kida nebo vybavení ducha nestojí
+                // za valouny – cíl z nich nic nemá, nebo o ně na konci tahu přijde sám.
+                const val = gearValueFor(state, i, g) / 2;
+                if (val > 0 && spendOk(val)) consider(val, { event: 'gear_force_discard', payload: { targetIdx: i, gearIdx } });
             });
         });
         // Placené vybavení (fáze 3). Obojí je laciná vata na konec tahu – nákupy nového
@@ -1259,7 +1314,8 @@ function decidePlay(state, myIndex, beliefs) {
         // Rýžovací mísa: karta za valoun. S Batohem si bot drží 2 valouny na záchranu
         // posledního života – jinak by je prorýžoval a pak umřel s Batohem před sebou.
         const _keep = hasGearFor(state, myIndex, 'ZH_BATOH') ? 2 : 0;
-        if (gearPanOk(state, myIndex) && (me.nuggets || 0) - 1 >= _keep && drawCardWorth(state, me, 1)) {
+        if (gearPanOk(state, myIndex) && (me.nuggets || 0) - 1 >= _keep && drawCardWorth(state, me, 1)
+            && spendOk(11)) {
             consider(11, { event: 'gear_pan', payload: {} });
         }
         // Batoh ve svém tahu jen s málo životy (léčení jako každé jiné). Jinak si bot
@@ -1276,7 +1332,7 @@ function decidePlay(state, myIndex, beliefs) {
         const _save = hasGearFor(state, myIndex, 'ZH_BATOH') ? 2 : 0;
         // Raddie Snake: valoun za kartu, až 2× za tah. Stejná cena i hodnota jako
         // Rýžovací mísa, takže i stejné skóre.
-        if (raddieSnakeOk(state, myIndex) && _nug - 1 >= _save && drawCardWorth(state, me, 1)) {
+        if (raddieSnakeOk(state, myIndex) && _nug - 1 >= _save && drawCardWorth(state, me, 1) && spendOk(11)) {
             consider(11, { event: 'raddie_snake', payload: {} });
         }
         // Josh McCloud: 2 valouny za vrchní kartu balíčku vybavení. Je to nákup naslepo,
@@ -1285,7 +1341,7 @@ function decidePlay(state, myIndex, beliefs) {
         // balíček vybavení donekonečna a tah by nikdy neskončil (hnědé karty se vracejí
         // pod balíček, takže se nevyčerpá) – stejná past jako u RECYCLE_CAP.
         if (joshMcCloudOk(state, myIndex) && _nug - JOSH_COST >= _save &&
-            joshUsesThisTurn(state, myIndex) < JOSH_BOT_CAP) {
+            joshUsesThisTurn(state, myIndex) < JOSH_BOT_CAP && spendOk(12)) {
             consider(12, { event: 'josh_mccloud', payload: {} });
         }
         // Jacky Murieta: 2 valouny za BANG! navíc. Vyplatí se JEN když je limit už
@@ -1787,5 +1843,6 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { pendingActor, decideBotAction, roleHostility, rankEnemies, pickCharacter,
                        CHAR_RANK, chooseCharacter, cardDrawGain, shootTargets, allyRisk,
                        keepScore, computeBeliefs, chooseTargetCardArea, boardCardValue,
-                       weaponValue, keepCharacterChance, decideKeepCharacter };
+                       weaponValue, keepCharacterChance, decideKeepCharacter,
+                       gearValueFor, gearSaveFor };
 }

@@ -477,7 +477,7 @@ Všech osm postav
 má, takže `WILD_WEST_READY` je dnes celý seznam a zůstává jen jako pojistka pro další
 rozšíření.
 
-## Rozšíření Zlatá horečka (Gold Rush) — hotové fáze 0–7 z 8
+## Rozšíření Zlatá horečka (Gold Rush) — hotové
 
 Pravidlový podklad je [docs/zlata-horecka.md](docs/zlata-horecka.md) (texty všech 24 karet
 s cenami, 8 postav, oficiální FAQ Q01–Q15, sken karet dV Giochi), implementační plán
@@ -494,7 +494,9 @@ kupuje se z obchodu, vybavení leží před hráčem a Pivo jde vyměnit za valo
 druhů karet vybavení (24 kusů) i všech 8 postav je hotových**, takže `GEAR_READY`
 i `GOLD_RUSH_READY` jsou dnes celé seznamy a zůstávají jen jako pojistka pro další
 rozšíření (vzor `WILD_WEST_READY`). **Fáze 7 (varianta Stínoví pistolníci) je hotová
-taky** – zbývá jen fáze 8 (nákupní politika bota a invarianty rozložení).
+taky**, a **fáze 8** (nákupní politika bota: ocenění vybavení po majiteli `gearValueFor`
+a šetření na lepší kartu `gearSaveFor` v core/botPolicy.js; invarianty rozložení rubu
+vybavení) uzavřela celé rozšíření.
 
 - **Stínoví pistolníci** = vlastní přepínač **`options.shadowGunslingers`**, nezávislý na
   rozšíření (R14; pokročilá volba na S5, zaškrtávátko na S11 a S16), mixin

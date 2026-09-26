@@ -378,6 +378,10 @@ const HighNoonMixin = {
             g.board = [];
             g.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
         }
+        // Zlatá horečka: co si duch za svůj tah koupil, leží před ním jako před každým
+        // hráčem – a odchodem ze hry jde pod balíček vybavení stejně jako při vyřazení
+        // (Vulture Sam ho nedostává). Bez toho by zůstalo ležet před mrtvým napořád.
+        this._gearDropAll(idx);
 
         this.players.forEach((p, i) => {
             if (i === idx || p.health <= 0) return;
