@@ -165,7 +165,7 @@ function botGameOptions(exps, hnExtra, shadows) {
 // Položka seznamu přichází ze serveru (listItem v server/rooms.js):
 // { id, name, maxPlayers, playerCount, players, leader, next, expansions: [klíč], botGame }.
 
-// Bot se pozná podle prefixu jména (server/bots.js dává „🤖 Bot 1"); ikonu kreslí řádek sám.
+// Bot se pozná podle prefixu jména (server/bots.js dává „🤖 Kulhavý Pete"); ikonu kreslí řádek sám.
 function isBotName(name) {
     return /^🤖/.test(String(name || ''));
 }

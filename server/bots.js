@@ -15,6 +15,16 @@ const registerGameHandlers = require('./handlers.game.js');
 const registerCharacterHandlers = require('./handlers.characters.js');
 const registerNextGameHandlers = require('./handlers.nextgame.js');
 
+// Jména botů – westernové přezdívky. Schválně se nekryjí s postavami, kartami ani rolemi
+// (žádný „Šerif X" ani „Lucky Duke"), aby jméno u stolu nemátlo. S prefixem „🤖 " se musí
+// vejít do NAME_MAX (18 znaků, core/menuModel.js) – hlídá test.
+const BOT_NAMES = [
+    'Kulhavý Pete', 'Tichý Bill', 'Rychlý Eddie', 'Starý Hank', 'Prašný Joe',
+    'Whiskey Jack', 'Bručoun Mike', 'Kostnatý Ned', 'Ospalý Walt', 'Dlouhán Luke',
+    'Kaktus Charlie', 'Ostruha Molly', 'Mrštná Sue', 'Prachová Annie', 'Zrzavá Kate',
+    'Kovboj Clem', 'Pokerový Phil', 'Hrbatý Gus', 'Kojot Zeke', 'Bourbon Betty',
+];
+
 module.exports = function installBotService(ctx) {
     const botSockets = new Map();   // socketId -> fake socket
     let botSeq = 1;
@@ -61,14 +71,20 @@ module.exports = function installBotService(ctx) {
         attachBotSocket(id);
 
         const idx = room.players.length;
-        // Číslujeme podle pořadí botů (Bot 1, Bot 2…), ne podle místa; bez duplicit
-        // (po odebrání se uvolněné číslo zase použije).
+        // Náhodné jméno z BOT_NAMES, které u stolu ještě nikdo nemá (ani člověk); po
+        // odebrání se jméno uvolní. Prefix „🤖" je povinný – podle něj klient pozná bota
+        // (isBotName v core/menuModel.js). Po vyčerpání seznamu se čísluje (Bot 1, Bot 2…).
         let botName = name;
         if (!botName) {
-            const taken = new Set(room.players.filter(p => p.isBot).map(p => p.name));
-            let num = 1;
-            while (taken.has(`🤖 Bot ${num}`)) num++;
-            botName = `🤖 Bot ${num}`;
+            const taken = new Set(room.players.map(p => p.name));
+            const free = BOT_NAMES.map(n => `🤖 ${n}`).filter(n => !taken.has(n));
+            if (free.length) {
+                botName = free[Math.floor(Math.random() * free.length)];
+            } else {
+                let num = 1;
+                while (taken.has(`🤖 Bot ${num}`)) num++;
+                botName = `🤖 Bot ${num}`;
+            }
         }
         room.players.push({
             socketId: id, playerIdx: idx, name: botName,
@@ -437,3 +453,5 @@ module.exports = function installBotService(ctx) {
     });
     return ctx;
 };
+
+module.exports.BOT_NAMES = BOT_NAMES;

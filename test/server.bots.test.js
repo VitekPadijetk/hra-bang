@@ -144,17 +144,25 @@ test('rejoin se špatným/cizím tokenem vrátí rejoin_failed', () => {
     assert.equal(s.emits.find(e => e.ev === 'room_joined'), undefined);
 });
 
-test('createBot čísluje boty podle počtu, ne podle místa; číslo se po odebrání uvolní', () => {
+test('createBot dává botům westernová jména s prefixem 🤖, bez duplicit; po vyčerpání čísluje', () => {
+    const { BOT_NAMES } = require('../server/bots.js');
+    const { clampName } = require('../core/menuModel.js');
+    for (const n of BOT_NAMES) assert.equal(clampName(`🤖 ${n}`), `🤖 ${n}`, `jméno „${n}" je moc dlouhé`);
+    assert.equal(new Set(BOT_NAMES).size, BOT_NAMES.length);
+
     const ctx = buildCtx();
-    const room = { id: 'g1', players: [{ socketId: 'H', playerIdx: 0, name: 'Človíček' }], gameState: new GameState(), maxPlayers: 5 };
+    // Člověk se jmenuje jako jeden z botů – bot to jméno dostat nesmí.
+    const room = { id: 'g1', players: [{ socketId: 'H', playerIdx: 0, name: `🤖 ${BOT_NAMES[0]}` }], gameState: new GameState(), maxPlayers: 99 };
     ctx.rooms.set('g1', room);
-    const a = ctx.createBot(room);
-    const b = ctx.createBot(room);
-    assert.equal(a.name, '🤖 Bot 1');   // ne „Bot 2" podle místa
-    assert.equal(b.name, '🤖 Bot 2');
-    ctx.removeBot(room, a.socketId);
-    const c = ctx.createBot(room);
-    assert.equal(c.name, '🤖 Bot 1');   // uvolněné číslo se znovu použije
+    const bots = BOT_NAMES.slice(1).map(() => ctx.createBot(room));
+    const names = bots.map(b => b.name);
+    assert.equal(new Set(names).size, names.length);
+    for (const n of names) assert.ok(n.startsWith('🤖 ') && BOT_NAMES.includes(n.slice(3)), n);
+
+    // Seznam vyčerpán → číslování; uvolněné jméno se znovu použije.
+    assert.equal(ctx.createBot(room).name, '🤖 Bot 1');
+    ctx.removeBot(room, bots[0].socketId);
+    assert.equal(ctx.createBot(room).name, bots[0].name);
 });
 
 test('po konci hry se bot sám přihlásí do další hry (next_join)', () => {
