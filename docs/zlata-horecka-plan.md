@@ -850,10 +850,9 @@ Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `
   vyřazen, takže tah navíc nezahraje. Nákup to zakazoval dopředu (`gearCardReason`), ale
   Josh McCloud si tu kartu může líznout naslepo – pojistka proto přibyla i do
   `_gearExtraTurnCheck`.
-- **Portréty 042–049 zatím chybí** (dodají se abecedně jako další čísla). Loader je
-  registrovaný (`EXPANSION_LOADERS.zlata_horecka` + `normalizeCharTextures(scene, 42, 49)`),
-  takže se karty postav dotáhnou samy, jakmile soubory přibudou; do té doby jsou
-  placeholder, přesně jako art vybavení před fází 4.
+- **Portréty 042–049 jsou dodané** (abecedně podle characters.json; číslo souboru musí
+  sedět s `id`, ne s pořadím dodání). Načítá je `EXPANSION_LOADERS.zlata_horecka`
+  + `normalizeCharTextures(scene, 42, 49)`.
 - **Klient dostal chybějící větev Miláčka Valentýna.** Odhoz karty po kartě (bug 35) měl
   fázi, predikát i handler, ale `decideCardClick` vrátil intent `VALENTINE_DISCARD`,
   který v `view/board.js` nikdo neobsluhoval – klik tedy v prohlížeči nic nedělal.

@@ -484,8 +484,8 @@ s cenami, 8 postav, oficiální FAQ Q01–Q15, sken karet dV Giochi), implementa
 [docs/zlata-horecka-plan.md](docs/zlata-horecka-plan.md) — karta po kartě, s háky, pořadím
 prací (§9) a rozhodnutími R1–R16. **Art všech 15 karet vybavení a rub balíčku je ve hře**
 (`assets/zlata_horecka_cards/<art>.webp`, `assets/other_cards/zlata_horecka/zlata_horecka_back.webp`;
-jména karet v datech jsou podle něj). **Portréty 8 postav (042–049) zatím chybí** – loader
-je ale registrovaný, takže se dotáhnou samy, jakmile soubory přibudou (§2.8).
+jména karet v datech jsou podle něj). **Portréty 8 postav (042–049) jsou ve hře taky**
+(`assets/characters/0NN.webp`, číslo = `id` v characters.json, tedy abecedně).
 
 **Hotová je fáze 0 (měna), fáze 1 (obchod), fáze 2 (pasivní černé vybavení), fáze 3
 (placené černé vybavení), fáze 4 (hnědé karty s volbou), fáze 5 (Wanted) a fáze 6
