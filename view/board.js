@@ -3288,7 +3288,7 @@ function drawSpectatorPlayer(ctx) {
 
         const handCount = player.hand?.length || 0;
         if (handCount > 0 && !App.sacaHandHide?.has(0)) {
-            const handY = 1065;
+            const handY = L.specHandY;
             const hSpacing = Math.min(cW * 0.35, 32);
             const totalSpread = (handCount - 1) * hSpacing;
             for (let h = 0; h < handCount; h++) {

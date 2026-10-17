@@ -1820,8 +1820,7 @@ function _kitSpecFlyToHand(slot, delay = 0, slotBump = 0) {
     const total = handLen + slotBump + 1;
     const to = getHandSlotPos(kitIdx, visLen + slotBump, total);           // dosedne na koncový VIDITELNÝ slot
     // Karta dosedá do RUKY (u kompaktní řady soupeřů je vějíř menší než vyložené karty).
-    const scale = handCardScale(currentLayout(), (state?.players?.length || 2) - 1,
-        kitIdx === (myIndex === null ? 0 : myIndex));
+    const scale = _renderHandScale(kitIdx);   // divákova nula = specScale (bug 77)
     const angle = _kitSpecAngleFor(kitIdx);
     renderUI();   // skryj nově přibylou kartu v ruce hned (než dosedne sprite)
     gameScene.tweens.add({ targets: sp, x: to.x, y: to.y, scaleX: scale, scaleY: scale,

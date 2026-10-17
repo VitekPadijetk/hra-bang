@@ -108,6 +108,10 @@ module.exports = function installAnimService(ctx) {
         if (!roomAlive(room)) return;
         if (handsOpen(room) && !fromShuffledHand(ownerData)) { emitAnim(room, ownerData); return; }
         holdForSacaSteal(room, ownerData);
+        // Divák hry jen botů vidí všechny ruce lícem (redakce je pro něj vypnutá, viz
+        // broadcastRoom v server/rooms.js) – s rubovou variantou by mu karta doletěla
+        // rubem a s příchodem stavu přeskočila na líc, místo aby se za letu přetočila (bug 77).
+        const specData = room.options?.botGame ? ownerData : othersData;
         if (Array.isArray(ownerPlayerIdx)) {
             const owners = new Set(ownerPlayerIdx);
             const seenIds = new Set();
@@ -123,7 +127,7 @@ module.exports = function installAnimService(ctx) {
                 const s = io.sockets.sockets.get(rp.socketId);
                 if (s) s.emit('card_animation', othersData);
             });
-            io.to(room.id + '_spectators').emit('card_animation', othersData);
+            io.to(room.id + '_spectators').emit('card_animation', specData);
             return;
         }
         const ownerSocketId = room.players.find(rp => rp.playerIdx === ownerPlayerIdx)?.socketId;
@@ -142,7 +146,7 @@ module.exports = function installAnimService(ctx) {
             const s = io.sockets.sockets.get(rp.socketId);
             if (s) s.emit('card_animation', othersData);
         });
-        io.to(room.id + '_spectators').emit('card_animation', othersData);
+        io.to(room.id + '_spectators').emit('card_animation', specData);
     }
 
     function emitDeathAnim(room, gs, deadIdx) {

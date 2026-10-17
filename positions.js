@@ -107,6 +107,34 @@ function getPlayerHandPos(playerIdx) {
     return { x: anchor.x, y: anchor.y };
 }
 
+// ── Divák: spodní hráč (seat 0) ──────────────────────────────────────────────
+// Zrcadlí drawSpectatorPlayer ve view/board.js (bug 77 – dřív se mířilo přibližně
+// na střed, takže karta dosedla jinam, než pak ležela). Kreslí se v měřítku specScale
+// a jako soupeř: bez Colta .45, karta role jen u odkrytých rolí.
+function _specHandSlotPos(slotIndex, len, L) {
+    const cW = 325 * L.specScale;
+    const hSpacing = Math.min(cW * 0.35, 32);
+    const totalSpread = (len - 1) * hSpacing;
+    return { x: L.centerX - totalSpread / 2 + slotIndex * hSpacing, y: L.specHandY };
+}
+// `boardIdx` má sémantiku spodního hráče (0 = slot zbraně, k ≥ 1 = board[k − 1]),
+// převádí se na index do pásu, jak ho skládá drawSpectatorPlayer.
+function _specBoardPos(player, boardIdx, L) {
+    const s = L.specScale, cW = 325 * s, cH = 500 * s, g = 8;
+    const roleSlot = !!state.mode3p || (player?.health <= 0) || !!player?._ghost || !!player?._shadow;
+    const hasW = !!(player?.weapon && player.weapon.id !== -1);
+    const off = roleSlot ? 1 : 0;
+    const allLen = off + (hasW ? 1 : 0) + (player?.board?.length || 0)
+        + (player?._greygoryChars?.length || 0);
+    const i = boardIdx === 0 ? off : off + (hasW ? 1 : 0) + boardIdx - 1;
+    const firstRowN = Math.max(1, Math.min(Math.max(allLen, i + 1), 3));
+    const groupW = (firstRowN + 1) * cW + firstRowN * g;
+    const groupLeft = L.centerX - groupW / 2;
+    const col = i < firstRowN ? i : i - firstRowN;
+    return { x: groupLeft + (firstRowN - 1 - col) * (cW + g) + cW / 2,
+             y: i < firstRowN ? L.specLivesY : L.specLivesY - (cH + g) };
+}
+
 // Pozice konkrétního slotu v ruce: kam dosedne karta s indexem `slotIndex`, když
 // bude v ruce celkem `totalCards` karet. MUSÍ zrcadlit rozložení ruky ve
 // view/board.js (drawMyArea pro spodního hráče, drawOpponents fan pro soupeře).
@@ -119,8 +147,8 @@ function getHandSlotPos(playerIdx, slotIndex, totalCards) {
     const L = _L();
 
     if (playerIdx === view) {
-        // Divák (myIndex === null) má spodního hráče vystředěného jinak → přibližně.
-        if (myIndex === null) return getPlayerHandPos(playerIdx);
+        // Divák (myIndex === null) má spodního hráče vystředěného jinak (drawSpectatorPlayer).
+        if (myIndex === null) return _specHandSlotPos(slotIndex, len, L);
         // Zrcadlí drawMyArea: vodorovný pás dole od handStartX do handEndX, Y = handY
         // (na desktopu je handY = myBaseY, na mobilu má ruka vlastní řadu pod stolem).
         return { x: _myHandSlotX(L, slotIndex, len), y: L.handY };
@@ -153,8 +181,8 @@ function getBoardCardPos(playerIdx, boardIdx) {
     const scaleMe = L.scaleMe;
 
     if (playerIdx === view) {
-        // Divák: spodní hráč (seat 0) má desku vystředěnou dole (drawSpectatorPlayer) – přibližně.
-        if (myIndex === null) return { x: L.centerX, y: L.specLivesY };
+        // Divák: spodní hráč (seat 0) má desku vystředěnou dole (drawSpectatorPlayer).
+        if (myIndex === null) return _specBoardPos(player, boardIdx, L);
         const myBaseY = L.myBaseY, roleX = L.livesX + L.roleOffX;
         const myCardW = 325 * scaleMe;
         const boardCardH = 500 * scaleMe;

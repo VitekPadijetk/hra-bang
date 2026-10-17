@@ -115,9 +115,33 @@ test('getPlayerHandPos (divák): soupeři se počítají z pohledu seat 0', () =
     assert.deepEqual(getPlayerHandPos(1), { x: 31.5, y: 540 });
 });
 
-test('getBoardCardPos (divák): spodní hráč má desku vystředěnou dole', () => {
+// Zrcadlí drawSpectatorPlayer: měřítko specScale (0.27 → karta 87.75 px), mezera 8,
+// skupina (karty první řady + karta životů) vystředěná na 960, karty rostou doleva.
+test('getBoardCardPos (divák): spodní hráč má desku vystředěnou dole (bug 77)', () => {
     setWorld([{ health: 4, board: [] }, {}, {}], null);
-    assert.deepEqual(getBoardCardPos(0, 0), { x: 960, y: 900 });
+    // prázdný stůl: první karta by ležela hned vlevo od karty životů
+    assert.deepEqual(getBoardCardPos(0, 0), { x: 912.125, y: 900 });
+});
+
+test('getBoardCardPos (divák): bez Colta – board[0] bez zbraně sedí na prvním slotu', () => {
+    setWorld([{ health: 4, board: [{ id: 1 }, { id: 2 }] }, {}, {}], null);
+    // 2 karty → skupina 3 × 87.75 + 2 × 8 = 279.25, levý okraj 820.375
+    const a = getBoardCardPos(0, 1), b = getBoardCardPos(0, 2);
+    assert.deepEqual(a, { x: 820.375 + 95.75 + 43.875, y: 900 });
+    assert.deepEqual(b, { x: 820.375 + 43.875, y: 900 });
+});
+
+test('getBoardCardPos (divák): čtvrtá karta jde do druhé řady', () => {
+    setWorld([{ health: 4, weapon: { id: 9 }, board: [{ id: 1 }, { id: 2 }, { id: 3 }] }, {}, {}], null);
+    const p = getBoardCardPos(0, 3);   // board[2] = 4. karta v pásu
+    assert.strictEqual(p.y, 900 - (135 + 8));
+});
+
+test('getHandSlotPos (divák): spodní hráč má vějíř vystředěný jako drawSpectatorPlayer', () => {
+    setWorld([{ health: 4, hand: [{}, {}, {}] }, {}, {}], null);
+    const sp = Math.min(87.75 * 0.35, 32);
+    assert.deepEqual(getHandSlotPos(0, 0, 3), { x: 960 - sp, y: 1065 });
+    assert.deepEqual(getHandSlotPos(0, 2, 3), { x: 960 + sp, y: 1065 });
 });
 
 // ── getBoardCardPos: moje stolní karty ───────────────────────────────────────

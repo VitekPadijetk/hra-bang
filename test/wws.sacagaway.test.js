@@ -159,6 +159,26 @@ test('emitAnimPrivate jde pod Sacagaway veřejně – kromě krádeže ze zamíc
     assert.ok(room._wwsBlockUntil > Date.now(), 'boti se o gesto podrží');
 });
 
+test('emitAnimPrivate: divák hry jen botů dostává variantu s ID karty (bug 77)', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0');
+    const ctx = { io, broadcastRoomDelayed() {} };
+    installAnimService(ctx);
+    const gs = mkGame([{ role: 'Outlaw' }, { role: 'Outlaw' }]);
+    const spec = (room) => emits.filter(e => e.scope === 'to:' + room.id + '_spectators'
+                                            && e.ev === 'card_animation').pop();
+    // Hra botů: ruce vidí divák lícem → karta se musí za letu přetočit, potřebuje ID.
+    const bots = { id: 'b1', gameState: gs, options: { botGame: true },
+                   players: [{ socketId: 's0', playerIdx: 0 }] };
+    ctx.emitAnimPrivate(bots, 0, { type: 'draw', playerIdx: 0, cardId: 7 }, { type: 'draw', playerIdx: 0 });
+    assert.equal(spec(bots).payload.cardId, 7);
+    // Běžná hra: divák ruce nevidí → ID nedostane.
+    const human = { id: 'h1', gameState: gs, options: {},
+                    players: [{ socketId: 's0', playerIdx: 0 }] };
+    ctx.emitAnimPrivate(human, 0, { type: 'draw', playerIdx: 0, cardId: 8 }, { type: 'draw', playerIdx: 0 });
+    assert.equal(spec(human).payload.cardId, undefined);
+});
+
 // ── Časování (core/wwsAnim.js) ──────────────────────────────────────────────
 
 test('sacaFlipMs: vlna obchází stůl, prázdné ruce ji nezdrží ani nezrychlí', () => {

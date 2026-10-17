@@ -749,6 +749,9 @@ function _renderSideAngle(playerIdx) {
 }
 function _renderSideScale(playerIdx) {
     const L = currentLayout();
+    // Divák: spodního hráče kreslí drawSpectatorPlayer menší (specScale) než vlastní
+    // zónu hráče u stolu – karta by jinak dosedla velká a pak skočila (bug 77).
+    if (myIndex === null && playerIdx === 0) return L.specScale;
     return (playerIdx === (myIndex === null ? 0 : myIndex))
         ? L.scaleMe : oppScale(L, (state?.players?.length || 2) - 1);
 }
@@ -756,6 +759,7 @@ function _renderSideScale(playerIdx) {
 // má měřítko vyložených karet), u kompaktní řady soupeřů na mobilu je vějíř menší.
 function _renderHandScale(playerIdx) {
     const L = currentLayout();
+    if (myIndex === null && playerIdx === 0) return L.specScale;   // divák – viz _renderSideScale
     return handCardScale(L, (state?.players?.length || 2) - 1,
         playerIdx === (myIndex === null ? 0 : myIndex));
 }
@@ -856,10 +860,8 @@ function _deathFlyToVulture(it, o, n) {
     const { isMine, isVulture, vid, baseLen, incoming, ang, sc, scHand, holdTries } = o;
     const fc = getCardTex(it.id);
     const endAngle = _renderSideAngle(vid);
-    // Pozor: divák kreslí i spodního hráče v soupeřově měřítku (drawSpectatorPlayer),
-    // proto ne _renderHandScale – ta by mu pro seat 0 vrátila měřítko mojí ruky.
-    const endScale = handCardScale(currentLayout(), (state?.players?.length || 2) - 1,
-        myIndex !== null && vid === myIndex);
+    // Divák kreslí spodního hráče v měřítku specScale – to už _renderHandScale ví (bug 77).
+    const endScale = _renderHandScale(vid);
     const startScale = it.kind === 'hand' ? scHand : sc;   // z vějíře ruky vs. ze stolu
     const to = getHandSlotPos(vid, baseLen + n, baseLen + incoming);
     // Karta se u Sama odkryje PŘESNĚ při dosednutí spritu: v jeho ruce už leží (nastavil ji
@@ -956,12 +958,9 @@ function _deathRoleStartPos(pid) {
     return { x: anchor.x, y: stageTop() - 320 };               // 'top'
 }
 
-// Velikost, ve které karta role u hráče leží. Pozor: divák kreslí i spodního hráče
-// v soupeřově měřítku (drawSpectatorPlayer), proto ne _renderSideScale.
+// Velikost, ve které karta role u hráče leží.
 function _deathRoleEndScale(pid) {
-    const L = currentLayout();
-    return (myIndex !== null && pid === myIndex)
-        ? L.scaleMe : oppScale(L, (state?.players?.length || 2) - 1);
+    return _renderSideScale(pid);   // divákova nula = specScale (bug 77)
 }
 
 // `role` chodí v datech animace, ne ze stavu: stav se aplikuje až ZA celou cinematikou
@@ -1417,8 +1416,12 @@ function getMyPlayedCardPos(playerIdx, cardId) {
         // upřednostni a spotřebuj (jednorázově), jinak zkus dohledat v aktuální ruce.
         const stashed = App.playedCardFromPos[cardId];
         if (stashed) { delete App.playedCardFromPos[cardId]; return stashed; }
+    }
+    // Ruku vidím lícem (moje, Sacagaway, divák hry botů) → karta odlétá ze svého slotu,
+    // ne ze středu vějíře (bug 77).
+    if (cardId != null) {
         const hand = state?.players?.[playerIdx]?.hand || [];
-        const idx = hand.findIndex(c => c.id === cardId);
+        const idx = hand.findIndex(c => c && c.id === cardId);
         if (idx !== -1) return getHandSlotPos(playerIdx, idx, hand.length);
     }
     return getPlayerHandPos(playerIdx);
@@ -1527,8 +1530,9 @@ function playSacaFlip(data) {
     const view = myIndex === null ? 0 : myIndex;
     const total = state.players?.length || 1;
     const D = SACA_FLIP;
+    // Přetáčí se všechny CIZÍ ruce – u diváka tedy i spodní hráč (bug 77).
     const hands = (data.hands || [])
-        .filter(h => h && h.playerIdx !== view)
+        .filter(h => h && h.playerIdx !== myIndex)
         .sort((a, b) => ((a.playerIdx - view + total) % total) - ((b.playerIdx - view + total) % total));
     hands.forEach((h, order) => {
         const idx = h.playerIdx;
@@ -1565,9 +1569,8 @@ function playSacaFlip(data) {
 // se k oběti nejdřív musí doletět, u Ragtime/Jesseho odlétá hned).
 // Vrací true, když gesto řízení převzalo (krádež spustí odloženě).
 function _sacaStealGesture(victimIdx) {
-    const view = myIndex === null ? 0 : myIndex;
     const hand = state?.players?.[victimIdx]?.hand || [];
-    return handsOpen() && victimIdx !== view && hand.length > 0 &&
+    return handsOpen() && victimIdx !== myIndex && hand.length > 0 &&
            hand.every(c => c && c.id != null);
 }
 
