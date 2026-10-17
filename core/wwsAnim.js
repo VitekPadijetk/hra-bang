@@ -209,7 +209,7 @@ const GREYGORY_OFFER_ZOOM = {
 // portréty proto přeletí po oblouku na místo toho druhého a stav dorazí, až doletí.
 const SEAT_SWAP = {
     preMs:  120,   // pauza, ať je vidět, odkud se startuje
-    flyMs:  620,   // let po oblouku na sedadlo toho druhého
+    flyMs:  760,   // let po oblouku na nové sedadlo (u vlastní výměny se posouvá celý okruh)
     tailMs: 160,   // doznění, ať stav nedorazí přesně na hranu dosednutí
     lift:   0.28,  // výška oblouku jako podíl vzdálenosti mezi sedadly
     grow:   1.35,  // o kolik portrét v nejvyšším bodě oblouku naroste

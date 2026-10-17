@@ -110,6 +110,11 @@ const App = {
     // postavou (blikající zvýraznění, ~8 s) a vlastní Verou (bez zvýraznění, ~2 s).
     // Naplňuje renderGameBoard, čte scene.update(). Prvky: { sprite, selfTex, copyTex }.
     veraPortraits: [],
+    // Lady Růže z Texasu (bug 75): sedadla, jejichž hráč právě mění místo – deska je
+    // nekreslí, letí jen portréty (playSeatSwap). null = nic se nestěhuje.
+    seatSwapHide: null,
+    seatSwapSprites: [],
+    seatSwapTimer: null,
     // Postava útočníka, který u jediného cíle vyžaduje víc než jedno Vedle!
     // (Slab the Killer) – v update() bliká. Naplňuje renderGameBoard (view/board.js).
     attackPulse: [],

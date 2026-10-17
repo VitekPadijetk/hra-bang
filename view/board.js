@@ -611,6 +611,9 @@ function drawOpponents(ctx) {
         // Ostatní konzumenti kotev mají fallback, tady by `anchor.side` níž hru shodil –
         // radši soupeře nevykreslit než ztuhnout na hnědé obrazovce.
         if (!anchor) continue;
+        // Lady Růže z Texasu: hráč právě mění místo – letí jen jeho portrét (playSeatSwap
+        // v net/handlers.js), karty se znovu objeví s novým stavem na novém sedadle (bug 75).
+        if (App.seatSwapHide && App.seatSwapHide.has(actualIdx)) continue;
 
         const panicInRange = selectedState.action !== 'Panika!' ||
             computeDistance(state, myIndex, actualIdx) <= 1;
@@ -3190,6 +3193,7 @@ function drawMyArea(ctx) {
 // ── Divácký pohled na hráče 0 (dolní pozice) ─────────────────────────────────
 function drawSpectatorPlayer(ctx) {
     const { me, getTex, getCharTex, L } = ctx;
+    if (App.seatSwapHide && App.seatSwapHide.has(0)) return;   // Lady Růže – viz drawOpponents
 
         const player = me;
         const isCurrent = state.currentPlayerIndex === 0;

@@ -2005,12 +2005,18 @@ function playRolePeek(data) {
 // „Během svého tahu si může každý hráč vyměnit místo s hráčem po své pravici a ten
 //  tak přeskočí svůj nejbližší tah."
 //
-// Sedadlo je v celém projektu index do `players`, takže výměna přeskládá stůl naráz –
-// a tomu, kdo se stěhuje sám, se dokonce pootočí celý okruh (deska se kreslí z jeho
-// pohledu). Bez cinematiky by to byl skok, který nejde přečíst; oba portréty proto
-// přeletí po oblouku na místo toho druhého a nový stav dorazí, teprve až doletí
-// (fronta animací ho drží, viz `seatSwapMs`). Oblouky mají opačné vyklenutí, takže
-// se postavy vyhnou jedna druhé a je vidět, že si jdou po ose vyměnit místo.
+// Sedadlo je v celém projektu index do `players`, takže výměna přeskládá stůl naráz.
+// Bez cinematiky by to byl skok, který nejde přečíst; nový stav proto dorazí, teprve
+// až dojede (fronta animací ho drží, viz `seatSwapMs`). Dvě podoby (bug 75):
+//   • měním se JÁ (nebo se mnou) – deska se kreslí z mého pohledu, takže já zůstávám
+//     dole a o jedno místo se posune CELÝ okruh soupeřů; partner výměny přejde z jedné
+//     strany na druhou obloukem „za mými zády".
+//   • mění se dva jiní (i pro diváka) – jejich portréty si přeletí po protilehlých
+//     obloucích na místo toho druhého.
+// Kdo se stěhuje, tomu karty, ruka i karta životů na začátku zmizí (`App.seatSwapHide`,
+// čte drawOpponents / drawSpectatorPlayer) – letí jen portrét. Vše se znovu objeví
+// s novým stavem už na novém místě; sprity portrétů do té doby drží cíl
+// (`_seatSwapRelease` v _applyRoomUpdate).
 //
 // Cache klíčované indexem se přitom ZAHAZUJÍ, ne přemapovávají: staví se od nuly při
 // každém renderu desky, kdežto klouzání karet (`cardSlides`) by po výměně táhlo karty
@@ -2021,28 +2027,61 @@ function playSeatSwap(data) {
     const pa = state.players && state.players[a];
     const pb = state.players && state.players[b];
     if (!pa || !pb || a === b) return;
+    _seatSwapRelease(false);
 
     App.healthAnims = {};
     App.veraPortraits = [];
     App.attackPulse = [];
     App.vultureSplitIdx = null;
     if (typeof resetBoardSlides === 'function') resetBoardSlides();
-    renderUI();
 
     const D = SEAT_SWAP;
-    const posA = getPlayerHandPos(a), posB = getPlayerHandPos(b);
-    const angA = _renderSideAngle(a), angB = _renderSideAngle(b);
+    const total = state.players.length;
+    const view = myIndex === null ? 0 : myIndex;
+    const mine = myIndex !== null && (a === myIndex || b === myIndex);
+    // Kdo kam: [hráč, staré sedadlo, nové sedadlo]. Nový pohled = moje NOVÉ sedadlo.
+    const moves = [];
+    let newView = view;
+    if (mine) {
+        const partner = a === myIndex ? b : a;
+        newView = partner;
+        for (let j = 0; j < total; j++) {
+            if (j === myIndex) continue;
+            moves.push({ p: state.players[j], from: j, to: j === partner ? myIndex : j, partner: j === partner });
+        }
+    } else {
+        moves.push({ p: pa, from: a, to: b }, { p: pb, from: b, to: a });
+    }
+    App.seatSwapHide = new Set(moves.map(m => m.from));
+    App.seatSwapSprites = [];
+    renderUI();
 
-    // Jeden portrét po oblouku. `sign` určuje, na kterou stranu se let vyklene –
-    // dvojice ho dostane opačný, takže si sprity nejdou hlavou proti sobě.
-    const fly = (from, to, angFrom, angTo, scFrom, scTo, charName, sign, depth) => {
-        const tex = _niCharTex(charName);
-        const spr = gameScene.add.image(from.x, from.y, tex).setScale(scFrom)
-                              .setAngle(angFrom).setDepth(depth);
-        // Řídicí bod kvadratické Bézierovy křivky: střed spojnice posunutý kolmo na ni.
-        const cx = (from.x + to.x) / 2 - (to.y - from.y) * D.lift * sign;
-        const cy = (from.y + to.y) / 2 + (to.x - from.x) * D.lift * sign;
-        const aim = nearestAngle360(angFrom, angTo);
+    const center = { x: 960, y: 540 };
+    moves.forEach((m, k) => {
+        const from = getSeatPortraitPos(m.p, m.from, view);
+        const to = getSeatPortraitPos(m.p, m.to, newView);
+        const tex = _niCharTex(m.p.character);
+        const spr = gameScene.add.image(from.x, from.y, tex).setScale(from.scale)
+                              .setAngle(from.angle).setDepth(880 + k);
+        App.seatSwapSprites.push(spr);
+        // Řídicí bod kvadratické Bézierovy křivky.
+        let cx, cy;
+        if (m.partner) {
+            // Z jedné strany na druhou „za mými zády" – oblouk pod spodním okrajem.
+            cx = (from.x + to.x) / 2;
+            cy = stageBottom() + 120;
+        } else if (mine) {
+            // Posun okruhu o jedno místo: mírně vyklenutý ven od středu stolu.
+            const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+            cx = mx + (mx - center.x) * 0.25;
+            cy = my + (my - center.y) * 0.25;
+        } else {
+            // Dva jiní: protilehlé oblouky, ať si nejdou hlavou proti sobě.
+            const sign = k === 0 ? 1 : -1;
+            cx = (from.x + to.x) / 2 - (to.y - from.y) * D.lift * sign;
+            cy = (from.y + to.y) / 2 + (to.x - from.x) * D.lift * sign;
+        }
+        const aim = nearestAngle360(from.angle, to.angle);
         const proxy = { t: 0 };
         gameScene.tweens.add({
             targets: proxy, t: 1, duration: D.flyMs, delay: D.preMs, ease: 'Cubic.easeInOut',
@@ -2051,20 +2090,25 @@ function playSeatSwap(data) {
                 const t = proxy.t, u = 1 - t;
                 spr.x = u * u * from.x + 2 * u * t * cx + t * t * to.x;
                 spr.y = u * u * from.y + 2 * u * t * cy + t * t * to.y;
-                // Nad stolem portrét povyroste a před dosednutím se zase srovná do
-                // měřítka CÍLOVÉHO sedadla (na mobilu se soupeři a moje zóna liší).
-                const grow = 1 + (D.grow - 1) * Math.sin(Math.PI * t);
-                spr.setScale((scFrom + (scTo - scFrom) * t) * grow);
-                spr.setAngle(angFrom + (aim - angFrom) * t);
+                // Nad stolem portrét povyroste (jen ten, kdo opravdu mění místo – posun
+                // okruhu je jen změna pohledu) a před dosednutím se srovná do měřítka
+                // CÍLOVÉHO sedadla (na mobilu se soupeři a spodní místo liší).
+                const grow = (mine && !m.partner) ? 1 : 1 + (D.grow - 1) * Math.sin(Math.PI * t);
+                spr.setScale((from.scale + (to.scale - from.scale) * t) * grow);
+                spr.setAngle(from.angle + (aim - from.angle) * t);
             },
-            onComplete: () => { if (spr.active) spr.destroy(); }
         });
-    };
+    });
+    // Pojistka: kdyby stav nedorazil (odpojení), nenech stůl napořád bez soupeřů.
+    App.seatSwapTimer = gameScene.time.delayedCall(seatSwapMs() + 4000, () => _seatSwapRelease());
+}
 
-    fly(posA, posB, angA, angB, _renderSideScale(a), _renderSideScale(b),
-        pa.character, 1, 880);
-    fly(posB, posA, angB, angA, _renderSideScale(b), _renderSideScale(a),
-        pb.character, -1, 881);
+// Konec cinematiky výměny míst: pryč s portréty, deska zase kreslí všechna sedadla.
+function _seatSwapRelease(rerender = true) {
+    if (App.seatSwapTimer) { App.seatSwapTimer.remove(false); App.seatSwapTimer = null; }
+    (App.seatSwapSprites || []).forEach(spr => { if (spr && spr.active) spr.destroy(); });
+    App.seatSwapSprites = [];
+    if (App.seatSwapHide) { App.seatSwapHide = null; if (rerender && gameScene) renderUI(); }
 }
 
 function _playCardAnim(data) {
@@ -3567,6 +3611,8 @@ function _applyRoomUpdate(payload) {
     else if (!payload.assetsWaiting && (payload.players || []).length < payload.maxPlayers) App.startPressed = false;
     roomState = payload;
     state = payload.gameState;
+    // Lady Růže: nový stav = sedadla už jsou prohozená, portréty cinematiky můžou zmizet.
+    if (App.seatSwapHide) _seatSwapRelease(false);   // překreslí se níž s novým stavem
     registerCardTexAliases(state);   // creative karty: id -> id upečené textury
     // Karty právě odlétající z ruky (hraná/odhazovaná, panika/CB) drž mimo ruce, dokud
     // animace běží – server je mohl dočasně vrátit do ruky a znovu rozeslat, jinak by

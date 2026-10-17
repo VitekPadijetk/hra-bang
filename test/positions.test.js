@@ -1,7 +1,7 @@
 const { test, before, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getDeadRoleCardPos, getOpponentAnchors,
+    getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getSeatPortraitPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
 const {
     computeStage, resolveLayout, LAYOUT_PROFILES, oppScale, eventPileSlots, eventPileLift, gearSlot,
@@ -912,4 +912,23 @@ test('moje dvojice sedí ve slotu tlačítka schopnosti', () => {
     const a = getGreygoryCardPos(0, 0);
     assert.equal(a.y, L.btnAbilY);
     assert.equal(a.angle, 0);
+});
+
+// ── Lady Růže z Texasu: kam míří portréty při výměně míst (bug 75) ───────────
+test('getSeatPortraitPos: pozice závisí jen na vzdálenosti sedadla od pohledu', () => {
+    setWorld([{ health: 4 }, { health: 4, maxHealth: 4 }, { health: 4 }, { health: 4 }], 0);
+    const p = state.players[1];
+    // posun pohledu i sedadla o jedno = totéž místo na desce (okruh se jen pootočí)
+    assert.deepEqual(getSeatPortraitPos(p, 2, 1), getSeatPortraitPos(p, 1, 0));
+    assert.equal(getSeatPortraitPos(p, 1, 0).angle, 90, 'soused po směru sedí vlevo');
+    assert.equal(getSeatPortraitPos(p, 3, 0).angle, -90, 'soused proti směru sedí vpravo');
+    assert.equal(getSeatPortraitPos(p, 2, 0).angle, 180, 'protější nahoře');
+});
+
+test('getSeatPortraitPos: spodní sedadlo diváka sedí na kartě životů drawSpectatorPlayer', () => {
+    setWorld([{ health: 4, maxHealth: 4, board: [] }, {}, {}], null);
+    const pos = getSeatPortraitPos(state.players[0], 0, 0);
+    assert.equal(pos.angle, 0);
+    assert.equal(pos.scale, 0.27);
+    assert.equal(pos.x, 960, 'bez vyložených karet stojí karta životů uprostřed');
 });

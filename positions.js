@@ -298,6 +298,36 @@ function _oppPortraitPos(player, anchor, L, scaleOpp) {
     return { x: anchor.x - group / 2 + cardW / 2, y: anchor.y + off };   // 'top'
 }
 
+// Kde by stál PORTRÉT hráče `player`, kdyby seděl na sedadle `seatIdx` a stůl se
+// kreslil z pohledu sedadla `viewIdx` – i hypoteticky (Lady Růže z Texasu: cinematika
+// výměny míst míří na sedadla, která hráči obsadí teprve se stavem, a tomu, kdo se
+// stěhuje sám, se pootočí celý okruh). Vrací i úhel a měřítko, ve kterých se tam kreslí.
+// Spodní sedadlo umí jen u diváka (drawSpectatorPlayer); hráč u stolu se dole nehýbe.
+function getSeatPortraitPos(player, seatIdx, viewIdx) {
+    if (!state || !player) return { x: 960, y: 540, angle: 0, scale: 0.3 };
+    const L = _L();
+    const total = state.players.length;
+    const d = (seatIdx - viewIdx + total) % total;
+    if (d === 0) {
+        const s = L.specScale, cW = 325 * s, g = 8;
+        const roleSlot = !!state.mode3p || player.health <= 0 || !!player._ghost || !!player._shadow;
+        const allLen = (roleSlot ? 1 : 0) + ((player.weapon && player.weapon.id !== -1) ? 1 : 0)
+            + (player.board?.length || 0) + (player._greygoryChars?.length || 0);
+        const firstRowN = Math.min(allLen, 3);
+        const groupLeft = L.centerX - ((firstRowN + 1) * cW + firstRowN * g) / 2;
+        const track = _livesTrack(player.maxHealth, s);
+        return { x: groupLeft + firstRowN * (cW + g) + cW / 2,
+                 y: L.specLivesY - track.step * _livesSlot(track, player.health),
+                 angle: 0, scale: s };
+    }
+    const anchor = getOpponentAnchors(total)[d - 1];
+    if (!anchor) return { x: 960, y: 540, angle: 0, scale: 0.3 };
+    const scaleOpp = _oppScale(L, total - 1);
+    const c = _oppPortraitPos(player, anchor, L, scaleOpp);
+    const angle = anchor.side === 'left' ? 90 : anchor.side === 'right' ? -90 : anchor.side === 'top' ? 180 : 0;
+    return { x: c.x, y: c.y, angle, scale: scaleOpp };
+}
+
 // Kam u vyřazeného hráče dosedne jeho odhalená karta role: je to display-slot 0
 // jeho skupiny (viz displayCards v drawOpponents), tj. o jednu pozici PŘED prvním
 // „logickým" boardIdx – proto boardIdx = −1 (getBoardCardPos mrtvému připočítává +1).
@@ -334,5 +364,5 @@ function getLuckySlotPos(i, count) {
 
 // Izomorfní: v prohlížeči globály, v Node/testech require('./positions.js').
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getDeadRoleCardPos, getStoreSlotPos, getLuckySlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
+    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getSeatPortraitPos, getDeadRoleCardPos, getStoreSlotPos, getLuckySlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
 }
