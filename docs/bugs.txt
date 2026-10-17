@@ -5,7 +5,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
 
 - Čísla jsou TRVALÁ. Nikdy se nepřečíslovávají a hotová čísla se neuvolňují —
   odkazuju se na ně v commitech i v zadání session.
-- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 72
+- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 78
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -96,13 +96,19 @@ Q — boti a server              24, 46, 53   HOTOVO
 
 OTEVŘENÉ
 --------
-- 71 když mám lucky duke a poslední karta zbývá v balíčku, po kliknutí na něj se momentálně nic neobjeví, začne míchání a pak obě karty, mělo by to být tak, že po kliknutí se objeví první karta, začne míchání, až doběhne, tak se ukáže i druhá
+- 73 šlo by implementovat do hry nějaký nástroj (i jakoby na web), kde by šel nahlásit bug a nějak pak třeba by se dostal na tento PC (bylo-li by to bezpečné)? taky by někde ve hře mohlo být menu, zkus vymyslet co by tam krom tohoto mohlo být - ještě i 76
+- 74 pro zachování konzistentnosti, když si dávám panák, tak když ho chci dát sobě, nebudu na to mít extra tlačítko, ale klasicky se mi zvýrazní postava jako všem ostatním a to bude to "tlačítko"
+- 75 u lady růže když se někdo mění, tak by ta animace mohla být trošku propracovanější (např. že ty karty zmizí když se začnou měnit a nebude to vypadat divně). Třeba když se já měním s někým nebo někdo se mnou tak by se (pro mě) mohli vyměnit jakoby ostatní, tím, že přesunu na jiné místo, tak se všichni jakoby o 1 posunou. Zkus to vymyslet
+- 76 v nějakém tom menu by pouze pro game leadera mohlo být tlačítko pozastavit hru a to by prostě zastavilo hru, dokud by to neodblokoval, všichni (včetně GL) by si jen mohli prohlížet, zvětšovat, i třeba shop otevřít, ale nikdo by nemohl hru posouvat kupředu
+- 77 při sledování (minimálně hry botů) se karty nepřetáčejí a někdy nezmenšují, největší problém je u hráče dole
 
 HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 71 když mám lucky duke a poslední karta zbývá v balíčku, po kliknutí na něj se momentálně nic neobjeví, začne míchání a pak obě karty, mělo by to být tak, že po kliknutí se objeví první karta, začne míchání, až doběhne, tak se ukáže i druhá → oprava: c701716 (odkrytí jde cestou Kita Carlsona – luckyDukeState.anim + dealRevealRow: první karta, míchání, druhá; boty drží flushLuckyDeal)
+- 72 pokud se dává karta johnu painovi, tak se během animace nezmenší → oprava: c701716 (cílová velikost byla natvrdo 0.4/0.3, teď velikost karet v ruce příjemce – totéž u druhé karty Black Jacka)
 - 70 bug 67 "když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit" stále není opraven. Když si líznu jednu kartu, tak je animace pak se objeví v ruce, ale druhá má jen animaci a v ruce se objeví až jakmile se ukáže DZ karta → oprava: ca49012 (stav po prvním líznutí odchází s odkladem 350 ms, takže při rychlém dvojkliku až za cinematikou; klient stagoval jen poslední kartu, obě mířily na stejný slot a první překryla druhou. Server teď posílá stageCards = všechny karty líznuté v té fázi)
 - 69 někde bych měl vidět počet valounů, které mám (ne jen v obchodu) → oprava: 912b1f3 (štítek valounů byl vedle mého jména, které na desktopu sedí pod kartou role za spodním okrajem jeviště 16:9 – teď leží v levém horním rohu mé karty role a ukazuje i nulu)
 - 67 když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit → oprava: 0ca0801 (odkrytí karty jde do fronty hned za líznutím a stav čeká až za ním; prohodit pořadí nejde kvůli Sacagaway a Heleně Zontero, které stav dřív dostat nesmí. Majitel proto dostane k animaci i DATA karty a položí si ji do ruky rovnou – stav ji za cinematikou jen potvrdí)
