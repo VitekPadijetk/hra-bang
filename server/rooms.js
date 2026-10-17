@@ -145,6 +145,8 @@ module.exports = function installRoomService(ctx) {
             // Čeká se, až budou mít všichni v cache art zapnutého rozšíření (lobby o tom
             // dá vědět, ať se leader nediví, že se po kliknutí na START nic neděje).
             assetsWaiting: !!room.assetsWaiting,
+            // Pauza (bug 76) – klient podle ní ukazuje lištu „Hra je pozastavená".
+            paused: room.paused || null,
             gameState: base,
         };
     }

@@ -3517,6 +3517,8 @@ socket.on('action_rejected', (info) => {
     // Výjimka: běží-li cinematika vyřazení, UI zůstane zamčené až do jejího konce
     // (jinak by ji odemkl právě ten zahozený dvojklik, který smrt spustil).
     if (Object.keys(App.deathSeq).length === 0) App.blockInput = false;
+    // Pauza (bug 76): klik nic neudělal, tak ať je vidět proč.
+    if (info?.paused) showToast('Hra je pozastavená', 'Pokračovat může jen game leader.');
     clog('warn', 'akce zahozena serverem: ' + (info?.event || '?'), { reason: info?.reason });
     if (gameScene) renderUI();
 });

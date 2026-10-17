@@ -82,6 +82,8 @@ require('./server/rooms.js')(ctx);
 require('./server/gamelog.js')(ctx);  // strukturovaný herní log (JSONL na hru + konzole) – před vším ostatním
 require('./server/ledger.js')(ctx);   // ledger chování (dedukce rolí boty) – před handlery
 require('./server/guard.js')(ctx);    // autorizace akcí na hráče (ctx.guardedOn) – před registrací handlerů
+require('./server/reports.js')(ctx);  // hlášení chyb ze hry → reports/ (+ /admin/reports s tokenem)
+ctx.mountAdminRoutes(app);
 const { rooms, makeRoom, roomPayload, broadcastRoom, broadcastRoomDelayed,
         broadcastLobbyList, getLobbyList, getGameList, findRoomBySocket,
         leaveRoom, glog } = ctx;
@@ -97,6 +99,7 @@ const registerNextGameHandlers = require('./server/handlers.nextgame.js');
 const registerGameHandlers = require('./server/handlers.game.js');
 const registerCharacterHandlers = require('./server/handlers.characters.js');
 const registerDebugHandlers = require('./server/handlers.debug.js');
+const registerMenuHandlers = require('./server/handlers.menu.js');
 
 // ── Connection ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
@@ -147,6 +150,7 @@ io.on('connection', (socket) => {
     registerGameHandlers(socket, ctx, withRoom);
     registerCharacterHandlers(socket, ctx, withRoom);
     registerDebugHandlers(socket, ctx, withRoom);
+    registerMenuHandlers(socket, ctx);
 });
 
 

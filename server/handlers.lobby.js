@@ -257,7 +257,9 @@ module.exports = function registerLobbyHandlers(socket, ctx, withRoom) {
         // Kdo promluví, ztrácí 1 život. Zpráva projde normálně (karta mluvení zakazuje
         // pod pokutou, ne úplně) a nic se nepotvrzuje. Divák není hráč, takže ho
         // promluvení nestojí nic.
-        if (p) ctx.applyGagPenalty?.(room, p.playerIdx);
+        // Během pauzy (bug 76) se mluví zadarmo – pauza je od toho, aby se dalo domluvit,
+        // a klikaný zásah by stejně nešel odklikat (guard drží všechny herní akce).
+        if (p && !room.paused) ctx.applyGagPenalty?.(room, p.playerIdx);
     });
 
     // Odezva serveru pro debug obrazovku (S16): klient posílá vlastní razítko a měří,

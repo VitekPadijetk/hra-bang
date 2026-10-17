@@ -242,6 +242,10 @@ module.exports = function installBotService(ctx) {
         // Výběr postav během intra ale běží normálně (řídí ho také policy).
         if (room._introPlaying && realTurn && !introConfirmPending) return;
 
+        // Pauza (bug 76): boti stojí jako všichni ostatní. Po odblokování je
+        // rozhýbe handler pause_game (server/handlers.menu.js).
+        if (room.paused) return;
+
         // Divoký západ – Hřbitov / Helena Zontero: role se přerozdaly a každý hráč si tu
         // svou potvrzuje (`room._rolePeekConfirm`, viz startRolePeekConfirm v server/anim.js).
         // Dokud potvrzení nedojdou všechna, hra se nehne – přesně jako rozdávání rolí
@@ -344,7 +348,8 @@ module.exports = function installBotService(ctx) {
         if (!ctx.rooms.has(room.id)) return;     // místnost rozpuštěna → nic nedělej
         const gs = room.gameState;
         if (!gs) return;
-
+        // Tick naplánovaný ještě před pauzou (scheduleBotTick ji už nepustí dál).
+        if (room.paused) return;
 
         // Po konci hry: boti se rovnou přihlásí do navazující hry (lidský leader ji
         // pak může spustit; u hry jen botů je to neškodné – divák stejně jen odejde).

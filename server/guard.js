@@ -86,11 +86,22 @@ module.exports = function installActionGuard(ctx) {
 
     // Náhrada za socket.on pro herní handlery: stejná signatura, jen akci nejdřív
     // prožene guardem. Eventy mimo oba seznamy propouští beze změny.
+    // Pauza (bug 76, server/handlers.menu.js): dokud ji game leader neodblokuje, hru
+    // neposune nikdo – ani hráč na tahu, ani Sid Ketchum mimo pořadí, ani debug hra.
+    // Propouští se jen dotaz, který stav nemění.
+    const PAUSE_OK = new Set(['get_taken_names']);
+
     function guardedOn(socket) {
         return function on(event, cb) {
             socket.on(event, (payload) => {
                 const room = ctx.findRoomBySocket(socket.id);
                 const gs = room && room.gameState;
+                if (room && gs && room.paused && !PAUSE_OK.has(event)) {
+                    const seat = room.players.find(p => p.socketId === socket.id)?.playerIdx;
+                    ctx.glog.reject(room, ctx.glog.actorLabel(gs, seat), event, 'hra je pozastavená');
+                    socket.emit('action_rejected', { event, reason: 'hra je pozastavená', paused: true });
+                    return;
+                }
                 // Mimo místnost/hru guard neřeší nic (handler stejně skončí ve withRoom).
                 // Debug hra: jeden socket legitimně ovládá všechna místa → přeskoč.
                 if (room && gs && !gs.isDebug) {

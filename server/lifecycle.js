@@ -61,6 +61,7 @@ module.exports = function installLifecycle(ctx) {
     }
 
     function startGame(room) {
+        room.paused = null;   // pauza (bug 76) nepřechází do nové hry
         const gs = room.gameState;
         gs.cardData = cardData;
         gs.dodgeCityCardData = dodgeCityCardData;
@@ -120,6 +121,7 @@ module.exports = function installLifecycle(ctx) {
     }
 
     function startNextGame(room) {
+        room.paused = null;
         const gs = room.gameState;
         const playerNames = room.players.map(p => p.name);
         const prevSurvivorChars = {};

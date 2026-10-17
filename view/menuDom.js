@@ -1024,10 +1024,16 @@ function _ovEnsureRoot() {
 function renderMenuOverlays() {
     const root = _ovEnsureRoot();
     root.dataset.theme = menuTheme();
-    const html = _ovBanner() + _ovToast() + _ovConn() + _ovBoot() + _ovRotate();
+    // Lišta pauzy a herní menu (view/gameMenu.js, načítá se až po tomhle souboru –
+    // první volání přijde ještě před ním, proto typeof).
+    const game = typeof _ovGameMenu === 'function' ? _ovPause() + _ovGameMenu() : '';
+    const html = game + _ovBanner() + _ovToast() + _ovConn() + _ovBoot() + _ovRotate();
     if (html === _ovLastHtml) return;
     _ovLastHtml = html;
+    const hadFocus = !!document.activeElement && root.contains(document.activeElement) &&
+        document.activeElement.matches('textarea');
     root.innerHTML = html;
+    if (typeof gameMenuAfterRender === 'function') gameMenuAfterRender(root, hadFocus);
 }
 
 // G1 — vyšla nová verze (otisk kódu ze server/version.js). Prohlížeč drží starý JS

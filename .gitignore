@@ -78,3 +78,5 @@ Thumbs.db
 *.psb
 /assets/set*.jpg
 /assets/sken_*.jpg
+# Hlášení chyb ze hry (server/reports.js)
+reports/

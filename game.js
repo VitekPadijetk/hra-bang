@@ -2971,19 +2971,17 @@ function renderUI() {
         specBack.setDepth(500);
     }
 
-    // Lídrovské „Ukončit hru" jen pro hrajícího lídra – ne pro diváka (ten už má
-    // „Opustit sledování"; navíc cancel_game divákovi botí hry stejně nefunguje).
-    if (roomState && roomState.leaderSocketId === socket.id && !state?.winner && !App.spectating) {
-        const { bg: cancelBtn } = themeButton(gameScene, stageLeft() + 30, stageTop() + 30, 210, 48, '✕  Ukončit hru', {
-            origin: [0, 0], fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030,
-            stroke: THEME.color.dangerNum, fontSize: '18px',
-            onClick: () => {
-                if (confirm('Opravdu chceš ukončit hru? Všichni hráči se vrátí do menu.')) {
-                    socket.emit('cancel_game');
-                }
-            },
+    // Herní menu (view/gameMenu.js): pauza (lídr), nahlášení chyby, celá obrazovka
+    // a lídrovské „Ukončit hru", které tu dřív stálo jako samostatné tlačítko. Leží
+    // v jeho rohu a má jeho rozměr (debug řada i sloupec pod ním s tím počítají);
+    // divák ho má vedle „Opustit sledování".
+    if (roomState && !state?.winner) {
+        const mx = App.spectating ? stageLeft() + 30 + 260 + 12 : stageLeft() + 30;
+        const { bg: menuBtn } = themeButton(gameScene, mx, stageTop() + 30, 210, 48, '☰  Menu', {
+            origin: [0, 0], fontSize: '18px',
+            onClick: () => openGameMenu(),
         });
-        cancelBtn.setDepth(500);
+        menuBtn.setDepth(500);
     }
 
     // Konec hry (S12), účast v další hře (S13) a statistiky (S14) kreslí HTML vrstva.

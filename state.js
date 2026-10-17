@@ -40,6 +40,12 @@ const App = {
     banner: false,     // G1: na server se nahrála nová verze
     conn: null,        // G2: ztracené spojení, { attempt }
     toast: null,       // G3: chybová hláška, { title, hint } (sama zmizí)
+    // Herní menu ☰ (view/gameMenu.js): null | 'main' | 'report'; koncept a stav hlášení chyby.
+    gameMenu: null,
+    bugDraft: '',
+    bugSending: false,
+    bugSent: false,
+    bugError: null,
     // Debug obrazovka (S16): odezva serveru, otisk běžícího kódu a kruhový log zpráv
     // ze socketu (net/handlers.js). Bez debug obrazovky je nikdo nečte.
     pingMs: null,

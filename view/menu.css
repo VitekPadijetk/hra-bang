@@ -774,6 +774,31 @@ button.bu-seat { width: 100%; text-align: left; cursor: pointer; }
 .bu-pulse span:nth-child(3) { animation-delay: .4s; }
 @keyframes bu-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
+/* Herní menu ☰ a lišta pauzy (view/gameMenu.js, bugy 73 a 76). */
+.bu-gm { max-width: 380px; max-height: calc(100% - 8px); overflow-y: auto; box-sizing: border-box; }
+@media (max-height: 480px) { .bu-gm { padding: 14px 18px; } .bu-gm-text { min-height: 70px; } .bu-gm-list { gap: 7px; margin-top: 10px; } }
+.bu-gm-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.bu-gm-list .bu-btn { margin-top: 0; padding: 12px 16px; font-size: 17px; }
+.bu-gm-text {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 14px; resize: vertical;
+  min-height: 120px; font-family: inherit; font-size: 16px; line-height: 1.4; text-align: left;
+}
+.bu-gm-err { margin-top: 8px; font-size: 15px; color: var(--bad); }
+.bu-pause {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 9px;
+  border: 1px solid var(--goldHi); background: linear-gradient(var(--panel), var(--bg)); box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
+.bu-pause-ico { flex: none; font-size: 18px; color: var(--gold); }
+.bu-pause-txt { min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: .02em; color: var(--text); }
+.bu-pause-btn {
+  flex: none; min-height: 36px; padding: 6px 14px; border-radius: 7px; cursor: pointer;
+  font-size: 15px; font-weight: 600; border: 1px solid var(--goldHi);
+  background: linear-gradient(var(--goldHi), var(--gold)); color: var(--onGold);
+}
+.bu-pause-btn:hover { filter: brightness(1.06); }
+
 /* S0 — načítání. Přes celou plochu: plátno je do sestavení scény prázdné. */
 .bu-boot {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
