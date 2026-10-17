@@ -39,6 +39,18 @@ function isLocalHost(req) {
 // bandwidth. Den je kompromis: pokryje „hrajeme dnes večer ještě jednou" a zároveň
 // se změněný art projeví nejpozději druhý den. Delší platnost by chtěla verzi v URL,
 // kterou tu bez build stepu nemáme.
+// Statika servíruje celý kořen projektu, ale herní logy a hlášení chyb do něj nepatří:
+// logs/*.jsonl obsahují plné snímky stavu (skryté role, ruce, pořadí balíčku) a reports/
+// totéž. Ven jdou jen přes /admin s tokenem (server/reports.js).
+app.use((req, res, next) => {
+    // Normalizace kvůli „/x/../logs/…" a „%2e%2e" – statika si cestu takhle rozřeší taky.
+    let p;
+    try { p = require('path').posix.normalize(decodeURIComponent(req.path).replace(/\\/g, '/')); }
+    catch (_) { res.status(400).end(); return; }
+    if (/^\/(logs|reports)(\/|$)/i.test(p)) { res.status(404).end(); return; }
+    next();
+});
+
 app.use(express.static(__dirname, {
     setHeaders(res, filePath) {
         if (filePath.replace(/\\/g, '/').includes('/assets/')) {
