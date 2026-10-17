@@ -3667,7 +3667,8 @@ function drawPhaseOverlays(ctx) {
 
             // Marky se při výběru ZÁMĚRNĚ nezvýrazňují (blikání na obou kartách mate) –
             // pulz proběhne až na vybrané kartě uprostřed obrazovky, viz playLuckyDukeResult.
-            if (isMyCheck) {
+            // revealLocked: dokud se karty rozdávají / míchá se uprostřed, nevybírá se.
+            if (isMyCheck && !App.revealLocked) {
                 cSprite.setInteractive({ useHandCursor: true });
                 cSprite.setTint(0xddffdd);
                 cSprite.on('pointerover', () => { cSprite.setScale(_slot.scale * 1.11); cSprite.setTint(0xffff44); });

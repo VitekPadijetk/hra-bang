@@ -463,7 +463,11 @@ const CharactersMixin = {
     startLuckyDukeCheck(checkContext) {
         const p = this.players[checkContext.playerIdx];
         const want = this._checkRevealCount(p);
-        const hadEnough = this.deck._drawPile.length >= want;
+        const deckBefore = this.deck._drawPile.length;
+        const hadEnough = deckBefore >= want;
+        // Zamíchalo se už PŘED odkrýváním (jiné líznutí v téže akci)? Pak to míchání
+        // nepatří řadě a nesmí ho spolknout _revealAnim – jde starou cestou.
+        const shuffledBefore = !!this.deck._reshuffleOccurred;
         const cards = [];
         for (let i = 0; i < want; i++) {
             const c = this.deck.draw({ toDiscard: true });
@@ -472,11 +476,19 @@ const CharactersMixin = {
         // Došly OBĚ hromádky – nemá se z čeho vybírat. (Míň karet, než chtěl, je
         // legální stav: vybírá se z toho, co zbylo.)
         if (!cards.length) return;
-        if (this.deck._reshuffleOccurred && !hadEnough) {
+        // Balíček došel uprostřed odkrývání (bug 71): stejně jako u Kita Carlsona si
+        // rozdání řady i míchání uprostřed přehraje klient (první karta → míchání →
+        // druhá), stav odejde hned. Dřív celý stav čekal na míchání a obě karty se
+        // objevily až po něm.
+        let anim = null;
+        if (!shuffledBefore) {
+            anim = this._revealAnim(deckBefore, cards.length);
+        } else if (!hadEnough) {
             this.deck._reshuffleWasProactive = false;
         }
         this.luckyDukeState = {
             cards,
+            anim,
             // Čím výběr vznikl – jen popisek pro UI („Lucky Duke – vybírá kartu"
             // × „Podkova – vybírá kartu"). Pravidlově je to jedna a tatáž cesta.
             via: hasAbility(p, "Lucky Duke") ? 'Lucky Duke' : 'Podkova',

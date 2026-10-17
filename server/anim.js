@@ -617,6 +617,21 @@ module.exports = function installAnimService(ctx) {
         room.gameState?._dorothySettle?.();
     }
 
+    // ── Lucky Duke / Podkova: rozdání odkrytých karet (a míchání uprostřed) ──────
+    // Sejmutí se spouští z mnoha akcí (balíček, barel, Vendeta…), takže se boti drží
+    // tady, jednou za odkrytí – stejně jako u Kita Carlsona v handlers.game.js.
+    function flushLuckyDeal(room) {
+        const gs = room.gameState;
+        const ld = gs && gs.phase === 'LUCKY_DUKE' ? gs.luckyDukeState : null;
+        if (!ld || !ld.anim || room._luckyDealSeen === ld) return;
+        room._luckyDealSeen = ld;
+        const t = revealCinematicMs(ld.anim, (ld.cards || []).length, 'kit');
+        room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + t.pickReady);
+        if (t.shuffleEnd > 0) {
+            room._reshuffleBlockUntil = Math.max(room._reshuffleBlockUntil || 0, Date.now() + t.shuffleEnd);
+        }
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
     // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost
     // a teprve za ní (poslední krok startu tahu) může přijít Miláček Valentýn.
@@ -630,6 +645,7 @@ module.exports = function installAnimService(ctx) {
         flushWwsRoles(room);
         flushGreygory(room);
         flushJohnPain(room);
+        flushLuckyDeal(room);
     }
 
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,

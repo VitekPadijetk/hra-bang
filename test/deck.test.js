@@ -124,3 +124,28 @@ test('Hokynářství s méně kartami než hráčů: rozdá, co je, a poslední 
     assert.equal(g.players[0].hand.length, 1);
     assert.equal(g.phase, 'PLAY');
 });
+
+// Bug 71: Lucky Duke s poslední kartou v balíčku – první karta se odkryje, pak se
+// zamíchá, teprve pak druhá. Rozdání si řídí klient (luckyDukeState.anim jako
+// u Kita Carlsona), takže legacy reshuffle_anim se stavem odloženým o 5,7 s neodchází.
+test('Lucky Duke: balíček dojde uprostřed odkrývání → anim blocking, dealtBefore 1', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Lucky Duke' }, { role: 'Outlaw' }]);
+    const last = mkCard(CardType.BANG, { name: 'last' });
+    g.deck.cards = [last];
+    g.deck.discardPile = [mkCard(CardType.BEER), mkCard(CardType.MISSED), mkCard(CardType.PANIC)];
+    g.startLuckyDukeCheck({ reason: 'JAIL', playerIdx: 0, boardIdx: 0, checksLeft: 1, active: false });
+    assert.equal(g.phase, 'LUCKY_DUKE');
+    assert.equal(g.luckyDukeState.cards.length, 2);
+    assert.equal(g.luckyDukeState.cards[0], last);
+    assert.equal(g.luckyDukeState.anim.mode, 'blocking');
+    assert.equal(g.luckyDukeState.anim.dealtBefore, 1);
+    assert.equal(g.deck._reshuffleOccurred, false);   // míchání převzala cinematika řady
+});
+
+test('Lucky Duke: dost karet → anim none, nic se nemíchá', () => {
+    const g = mkGame([{ role: 'Sheriff', character: 'Lucky Duke' }, { role: 'Outlaw' }]);
+    g.deck.cards = [mkCard(CardType.BANG), mkCard(CardType.BEER), mkCard(CardType.MISSED)];
+    g.deck.discardPile = [mkCard(CardType.PANIC)];
+    g.startLuckyDukeCheck({ reason: 'JAIL', playerIdx: 0, boardIdx: 0, checksLeft: 1, active: false });
+    assert.equal(g.luckyDukeState.anim.mode, 'none');
+});

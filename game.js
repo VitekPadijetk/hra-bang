@@ -1344,7 +1344,9 @@ function startCheckReveal(check) {
         const jpMine = _jp === myIndex && myIndex !== null;
         const jpHand = state.players[_jp].hand || [];
         const jpTo = getHandSlotPos(_jp, jpHand.length, jpHand.length + 1);
-        const jpScale = jpMine ? 0.4 : 0.3;
+        // Velikost karty v JEHO ruce (bug 72) – ne natvrdo 0.4/0.3: na mobilu je vějíř
+        // soupeře 0.155, takže karta doletěla skoro dvakrát větší a zmenšila se až skokem.
+        const jpScale = _renderHandScale(_jp);
         if (jpMine) App.pendingDrawIds.add(check.card.id);   // skryj v ruce do doletu (staging)
         const jpDelay = 450 + 3000;
         gameScene.tweens.add({ targets: sprite, x: jpTo.x, y: jpTo.y, scaleY: jpScale,
@@ -1419,7 +1421,7 @@ function startBlackJackReveal(ds) {
     const isOwner = playerIdx === myIndex && myIndex !== null;
     const hand = state.players[playerIdx]?.hand ?? [];
     const handTarget = getHandSlotPos(playerIdx, hand.length, hand.length + 1);
-    const endScale = isOwner ? 0.4 : 0.3;
+    const endScale = _renderHandScale(playerIdx);   // velikost karty v jeho ruce (viz bug 72)
     // Opuštěný důl: druhá karta Black Jacka JE lízání ve fázi 1, takže se pod dolem
     // bere z odhozu (lícem nahoru) – vzlétni odtamtud a nepřeklápěj.
     const _from = minePhase1Pos();
@@ -1851,22 +1853,24 @@ function startLuckyDukeDeal() {
     App.luckyDealIds = new Set(cards.map(c => c.id));
     App.luckyRevealCards = cards.map((c, i) => ({ id: c.id, x: _slot(i).x, y: _slot(i).y }));
     renderUI();
-    // Karty odcházejí z VRCHU balíčku a v jeho velikosti (PILE_SCALE) – ne ze středu
-    // hromádky a o kus menší, jinak to vypadá, že se v balíčku „objevují" zevnitř.
-    // Vrch se bere hned teď: stav už obě karty z balíčku odebral.
-    const _from = deckTopPos();
     // Během výběru se marky ZÁMĚRNĚ nezvýrazňují – karty jsou dvě a blikání na obou
     // rozptyluje. Pulz přijde až na vybrané kartě uprostřed obrazovky, přesně jako
     // u běžného sejmutí (viz playLuckyDukeResult).
-    cards.forEach((card, i) => {
-        setTimeout(() => {
-            if (!gameScene) return;
-            animateCardFlip(_from.x, _from.y, _slot(i).x, _slot(i).y, 'card_back', getCardTex(card.id),
-                { flip: true, startScale: PILE_SCALE, endScale: slotScale, duration: 420,
-                  onComplete: () => { App.luckyDealIds.delete(card.id); renderUI(); } });
-        }, i * 160);
+    // Rozdává se stejně jako odkrytá řada Kita Carlsona: když balíček uprostřed dojde,
+    // přiletí nejdřív to, co v něm bylo, pak se zamíchá a teprve pak zbytek (bug 71).
+    dealRevealRow(cards.length, state.luckyDukeState.anim, LUCKY_TEMPO, (i) => {
+        const card = cards[i];
+        if (!card) return;
+        // Karty odcházejí z VRCHU balíčku a v jeho velikosti (PILE_SCALE) – ne ze středu
+        // hromádky a o kus menší, jinak to vypadá, že se v balíčku „objevují" zevnitř.
+        const _from = deckTopPos();
+        animateCardFlip(_from.x, _from.y, _slot(i).x, _slot(i).y, 'card_back', getCardTex(card.id),
+            { flip: true, startScale: PILE_SCALE, endScale: slotScale, duration: 420,
+              onComplete: () => { App.luckyDealIds.delete(card.id); renderUI(); } });
     });
 }
+// Tempo MUSÍ sedět s REVEAL_TEMPO.kit v server/anim.js (flushLuckyDeal drží boty).
+const LUCKY_TEMPO = { start: 0, stagger: 160, fly: 420 };
 
 // Lucky výsledek: NEvybraná karta odletí ze svého slotu rovnou do odhozu, vybraná se
 // přesune doprostřed obrazovky a odtud je to ÚPLNĚ KLASICKÉ sejmutí – zvětší se, zabliká
@@ -1882,6 +1886,9 @@ const LD_TO_DISCARD_MS = 400;  // sestup do odhozu
 function playLuckyDukeResult(chosenId) {
     const reveal = App.luckyRevealCards || [];
     App.luckyRevealCards = null;
+    App.dealDeckCount = null;    // konec rozdávání (dealRevealRow) → balíček zase podle stavu
+    if (!App.revealShuffleRunning) App.revealShuffling = false;
+    App.revealLocked = false;
     if (!gameScene || !reveal.length) return;
     const dp = state?.deck?.discardPile || [];
     const chosenIdResolved = (chosenId !== undefined && chosenId !== null)
