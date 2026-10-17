@@ -590,8 +590,8 @@ vybavení) uzavřela celé rozšíření.
     umí tři karty, geometrie je sdílená v `getLuckySlotPos`, [positions.js](positions.js)).
 - **Fáze `GEAR_TARGET`** (Panák: „hráč dle tvé volby, i ty"; cílené režimy Láhve a Komplice;
   Wanted: „na libovolného hráče") je jediná fáze, kterou obchod má — nákup sám fází NENÍ
-  (rozhodnutí R6). Cíl se vybírá klikem na postavu soupeře (stejný vzor jako Pokrevní
-  bratři); na SEBE je tlačítko, protože vlastní portrét se v mojí zóně neklika.
+  (rozhodnutí R6). Cíl se vybírá klikem na postavu (stejný vzor jako Pokrevní
+  bratři) – i SEBE si hráč vybere klikem na vlastní portrét (`gearSelfPick` v drawMyArea, bug 74).
 - **Hnědé karty s volbou (fáze 4): Láhev a Komplic.** „Může být zahrána jako Panika!, Pivo
   nebo BANG!" / „…jako Hokynářství, Duel nebo Cat Balou." Dodatek „NEPOVAŽUJE SE za tu
   kartu" znamená, že se na ně nevztahuje nic, co se ptá na kartu samotnou: limit 1× BANG!/tah,

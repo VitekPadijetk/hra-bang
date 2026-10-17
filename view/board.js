@@ -649,8 +649,8 @@ function drawOpponents(ctx) {
         const bloodValid = isBloodMine && (state.pendingBlood.targets || []).includes(actualIdx);
         // Zlatá horečka – Panák: „hráč dle tvé volby (i ty) si doplní 1 život." Cíl se
         // vybírá klikem na postavu; seznam platných cílů posílá server (pendingGearTarget
-        // .targets), ať se klient s pravidly nerozejde. Sebe si hráč vybere tlačítkem
-        // (viz drawMyArea) – vlastní portrét se v mojí zóně neklika.
+        // .targets), ať se klient s pravidly nerozejde. Sebe si hráč vybere klikem na
+        // vlastní postavu (gearSelfPick v drawMyArea, bug 74).
         const isGearTargetMine = state.phase === 'GEAR_TARGET' && !App.blockInput &&
             state.pendingGearTarget?.playerIdx === myIndex;
         const gearTargetValid = isGearTargetMine &&
@@ -1726,9 +1726,16 @@ function drawMyArea(ctx) {
         // smí sáhnout na můj vlastní stůl – obojí se cílí klikem na moji postavu.
         const lvkSelfMode = !!selectedState.lvk && selectedState.lvk.cardId != null &&
             !App.blockInput && lvkTargetOk(state, me, myIndex, myIndex);
+        // Zlatá horečka – Panák / Wanted / cílené režimy Láhve a Komplice: sebe si hráč
+        // vybírá klikem na vlastní postavu, stejně jako ostatní (bug 74 – dřív tlačítko).
+        // Zvýrazňuje se stejnou řečí jako soupeři v drawOpponents: zelená = platný cíl,
+        // červená = ne (třeba Panák na plný život).
+        const gearSelfPick = state.phase === 'GEAR_TARGET' && !App.blockInput &&
+            state.pendingGearTarget?.playerIdx === myIndex;
+        const gearSelfValid = gearSelfPick && (state.pendingGearTarget.targets || []).includes(myIndex);
         const charNeedsCursor = (selectedState.action === "PLAY_BLUE" && selectedState.cardIndex !== null)
             || selectedState.action === 'SHOOT'
-            || healSelfMode || lvkSelfMode
+            || healSelfMode || lvkSelfMode || gearSelfValid
             || (['Panika!', 'Cat Balou'].includes(selectedState.action) && me.board.length > 0);
         charImg.setInteractive({ useHandCursor: charNeedsCursor });
         charImg._zoomKey = 'char:' + myIndex;
@@ -1740,6 +1747,18 @@ function drawMyArea(ctx) {
             charImg.on('pointerdown', () => {
                 socket.emit('discard_extra_choose', { cardIdx: selectedState.cardIndex, targetIdx: myIndex });
                 selectedState = { cardIndex: null, action: null };
+                App.blockInput = true;
+                renderUI();
+            });
+        }
+
+        if (gearSelfPick) {
+            charImg.setTint(gearSelfValid ? 0x88ff88 : 0xff6666);
+            charImg.on('pointerover', () => { if (gearSelfValid) { charImg.setTint(0x00ff00); charImg.setScale(myLivesScale * 1.1); } });
+            charImg.on('pointerout', () => { charImg.setScale(myLivesScale); charImg.setTint(gearSelfValid ? 0x88ff88 : 0xff6666); });
+            charImg.on('pointerdown', () => {
+                if (!gearSelfValid || App.blockInput) return;
+                socket.emit('gear_target', { targetIdx: myIndex });
                 App.blockInput = true;
                 renderUI();
             });
@@ -2908,28 +2927,6 @@ function drawMyArea(ctx) {
             if (App.blockInput) { _bbSkip.setAlpha(0.45); _bbSkip.disableInteractive(); }
         }
 
-        // ── Zlatá horečka – Panák: „hráč dle tvé volby (i ty)" ──────────────────
-        // Ostatní se vybírají klikem na postavu (drawOpponents); vlastní portrét se
-        // v mojí zóně neklika, takže na sebe je tlačítko. Kreslí se jen tehdy, když
-        // jsem mezi platnými cíli (tedy když mám co léčit).
-        // Wanted („zahraj na libovolného hráče", FAQ Q07) se smí vyložit i před sebe –
-        // tlačítko je tedy totéž, jen se nechlubí životem, který nedoplní.
-        if (state.phase === "GEAR_TARGET" && state.pendingGearTarget?.playerIdx === myIndex &&
-            (state.pendingGearTarget.targets || []).includes(myIndex)) {
-            const _gtSelfLabel = state.pendingGearTarget.card ? '🎯 PŘED SEBE' : '🥃 SOBĚ +1 ❤';
-            const { bg: _selfBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 300, L.btnH, _gtSelfLabel, {
-                fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum,
-                textColor: THEME.color.gold, fontSize: '22px',
-                onClick: () => {
-                    if (App.blockInput) return;
-                    App.blockInput = true;
-                    socket.emit('gear_target', { targetIdx: myIndex });
-                    renderUI();
-                },
-            });
-            if (App.blockInput) { _selfBtn.setAlpha(0.45); _selfBtn.disableInteractive(); }
-        }
-
         // ── Zlatá horečka: zrušit nabité „donutit odhodit vybavení" ─────────────
         if (selectedState.gearForce) {
             const { bg: _gfBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH, 'ODHOZENÍ: zrušit ↩', {
@@ -3413,8 +3410,8 @@ function drawPhaseOverlays(ctx) {
     }
 
     // ── Zlatá horečka – Panák / Láhev / Komplic: banner s výzvou k výběru cíle ──
-    // Zaplaceno je, teď se jen vybírá, na koho karta půjde (klik na postavu soupeře;
-    // sobě tlačítkem 🥃 SOBĚ, jen u Panáku). Režim Láhve / Komplice je v titulku, ať je
+    // Zaplaceno je, teď se jen vybírá, na koho karta půjde (klik na postavu – i vlastní,
+    // bug 74). Režim Láhve / Komplice je v titulku, ať je
     // vidět, CO se na cíl zahraje – kartou z ruky to není.
     if (state.phase === "GEAR_TARGET" && state.pendingGearTarget) {
         const _pg = state.pendingGearTarget;
@@ -3430,10 +3427,10 @@ function drawPhaseOverlays(ctx) {
             mAdd(l1, 206);
             let l2 = gameScene.add.text(960, 112,
                 _pg.card
-                    ? 'Klikni na hráče, před kterého kartu vyložíš (i na sebe – tlačítkem)'
+                    ? 'Klikni na hráče, před kterého kartu vyložíš (i na sebe)'
                     : (_pg.mode
                         ? 'Klikni na hráče, na kterého ji zahraješ (zvýraznění jsou platné cíle)'
-                        : 'Klikni na hráče, kterému doplníš 1 život'),
+                        : 'Klikni na hráče, kterému doplníš 1 život (i na sebe)'),
                 { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
             mAdd(l2, 206);
         } else {
