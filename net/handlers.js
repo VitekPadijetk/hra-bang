@@ -2236,11 +2236,18 @@ function _playCardAnim(data) {
             // dosednutí se odkryje. Stav ji za cinematikou jen potvrdí (je to plný snímek,
             // takže se nic rozejít nemůže) a `holdUntil` v animateDrawToMyHand je tím rovnou
             // splněné – sprite tedy na cíli neparkuje přes celou cinematiku.
-            const _stageHand = data.stageCard && myIndex !== null && data.playerIdx === myIndex
+            // Server posílá VŠECHNY karty líznuté v téhle fázi (bug 70): při rychlém
+            // dvojkliku nemáme ve stavu ani tu předchozí – stav po ní odešel až po tomhle
+            // líznutí, tedy taky za cinematikou. Bez ní by obě karty mířily na stejný slot
+            // a sprite předchozí by tu poslední překryl. Co už ve stavu je, přeskočíme.
+            const _stageHand = data.stageCards && myIndex !== null && data.playerIdx === myIndex
                 ? state.players?.[myIndex]?.hand : null;
-            if (_stageHand && !_stageHand.some(c => c.id === data.stageCard.id)) {
-                _stageHand.push(data.stageCard);
-                registerCardTexAliases(state);
+            if (_stageHand) {
+                let _staged = false;
+                data.stageCards.forEach(sc => {
+                    if (sc && !_stageHand.some(c => c.id === sc.id)) { _stageHand.push(sc); _staged = true; }
+                });
+                if (_staged) registerCardTexAliases(state);
             }
             // Majitel: reveal flip do finálního slotu + staging (objeví se po dosednutí).
             // Pod dolem bez překlápění (faceUp) – karta z odhozu už lícem nahoru je.

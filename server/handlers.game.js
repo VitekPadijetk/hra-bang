@@ -129,11 +129,17 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     // si ji položí do ruky rovnou se startem letu (staging jako u karty,
                     // která ve stavu už je); stav ji za cinematikou jen potvrdí. Jde to jen
                     // MAJITELI (emitAnimPrivate), ostatním pořád letí jen rub.
+                    // Posílají se VŠECHNY karty líznuté v téhle fázi, ne jen poslední (bug 70):
+                    // stav po předchozím líznutí odchází s odkladem 350 ms, takže při rychlém
+                    // dvojkliku odejde až po tomhle líznutí – tedy taky až za cinematikou.
+                    // Klient by pak měl v ruce jen poslední kartu, předchozí by mu chyběla
+                    // a obě by mířily na stejný slot. Co už ve stavu má, přeskočí.
                     const revealPending = !!(gs._pendingWwsReveal || gs._pendingHighNoonReveal ||
                                              gs._pendingFistfulReveal);
+                    const stageCards = revealPending && drawnBefore >= 0
+                        ? hand.slice(-Math.min(hand.length, drawnBefore + 1)) : undefined;
                     emitAnimPrivate(room, playerIdx,
-                        { type: 'draw', playerIdx, cardId: drawnId,
-                          stageCard: revealPending ? drawn : undefined },
+                        { type: 'draw', playerIdx, cardId: drawnId, stageCards },
                         { type: 'draw', playerIdx });
                 }
             }

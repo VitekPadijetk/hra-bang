@@ -424,9 +424,10 @@ test('chat v debug hře mluví za sedadlo, na které se čeká', () => {
 // Bug 67: za posledním líznutím Dostavníku / Wells Farga jde do fronty cinematika
 // odkrytí karty Divokého západu (4,6 s) a stav čeká až za ní – karta by se majiteli
 // objevila v ruce teprve po ní. Server mu proto k poslednímu líznutí přibalí i DATA
-// karty (`stageCard`) a klient si ji položí do ruky rovnou. Ostatním jde pořád jen rub,
-// takže se nic neprozradí.
-test('poslední líznutí Dostavníku nese majiteli i data karty (stageCard)', () => {
+// karet (`stageCards`) a klient si je položí do ruky rovnou. Bug 70: posílají se VŠECHNY
+// karty líznuté v té fázi – při rychlém dvojkliku stav po prvním líznutí ještě neodešel.
+// Ostatním jde pořád jen rub, takže se nic neprozradí.
+test('poslední líznutí Dostavníku nese majiteli data všech líznutých karet (stageCards)', () => {
     const { ctx, mkSocket } = mkEnv();
     const s = mkSocket('s1');
     const anims = [];
@@ -447,11 +448,11 @@ test('poslední líznutí Dostavníku nese majiteli i data karty (stageCard)', (
 
     const draws = anims.filter(a => a.type === 'draw');
     assert.equal(draws.length, 2);
-    assert.equal(draws[0].stageCard, undefined, 'první líznutí nic nestaguje – stav dorazí včas');
+    assert.equal(draws[0].stageCards, undefined, 'první líznutí nic nestaguje – karta události se ještě neotočila');
     assert.ok(gs.activeWws, 'druhé líznutí kartu události otočilo');
-    assert.ok(draws[1].stageCard, 'poslední líznutí nese data karty');
-    assert.equal(draws[1].stageCard.id, draws[1].cardId);
-    assert.ok(me.hand.some(c => c.id === draws[1].stageCard.id), 'a je to opravdu karta v jeho ruce');
+    const ids = (draws[1].stageCards || []).map(c => c.id);
+    assert.deepEqual(ids, [draws[0].cardId, draws[1].cardId], 'nese obě líznuté karty v pořadí');
+    ids.forEach(id => assert.ok(me.hand.some(c => c.id === id), 'a jsou to opravdu karty v jeho ruce'));
 });
 
 // ── Další hra: účast (S12 / S13, docs/menu-ui-plan.md D8) ──────────────────────
