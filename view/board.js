@@ -561,10 +561,11 @@ function drawLivesCounter(track, player, x, y) {
 // Až dorazí ikona valounu (assets/other_cards/valoun.webp, plán §2.8), nahradí emoji.
 //
 // Nula se nekreslí vůbec – bez zapnutého rozšíření (a na začátku hry s ním) by jinak
-// u každého hráče visela nula.
-function drawNuggets(player, x, y, originX = 1, originY = 0) {
+// u každého hráče visela nula. Výjimkou je MŮJ štítek (`showZero`): kolik valounů mám,
+// potřebuju vědět i při nule, jinak nepoznám, jestli na nákup nemám, nebo se nic nekreslí.
+function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false) {
     const n = (player && player.nuggets) || 0;
-    if (!n) return null;
+    if (!n && !showZero) return null;
     const txt = gameScene.add.text(x, y, '💰' + n,
         { fontFamily: THEME.fontUI, fontSize: '17px', color: '#ffd24d', fontStyle: 'bold',
           backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 5, y: 3 } })
@@ -1562,6 +1563,16 @@ function drawMyArea(ctx) {
             roleImg.on('pointerover', () => startCardZoom(roleTex, 'role:' + myIndex));
             roleImg.on('pointerout', scheduleZoomFade);
         }
+        // Zlatá horečka: moje valouny (bug 69). Štítek vedle jména tu nestačí – jméno sedí
+        // na desktopu POD kartou role, tedy za spodním okrajem jeviště 16:9, takže počet
+        // valounů nebyl vidět nikde kromě obchodu. Leží proto v levém horním rohu karty
+        // role (ta je vidět vždycky) a kreslí se i nula, dokud je rozšíření zapnuté.
+        if (goldRushOn(state)) {
+            const _roleSrc = gameScene.textures.exists(roleTex)
+                ? gameScene.textures.get(roleTex).getSourceImage() : null;
+            const _rw = (_roleSrc?.width || 250) * scaleMe, _rh = (_roleSrc?.height || 389) * scaleMe;
+            drawNuggets(me, roleX - _rw / 2 + 4, myBaseY - _rh / 2 + 4, 0, 0, true);
+        }
 
         {
             const isCurrentMe = state.currentPlayerIndex === myIndex;
@@ -1573,7 +1584,6 @@ function drawMyArea(ctx) {
                   backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 7, y: 4 } })
                 .setOrigin(0.5, 0);
             gameScene.cardsSprites.add(myNameTxt);
-            drawNuggets(me, myNameTxt.x - myNameTxt.width / 2 - 5, myNameTxt.y);
             if (isWaitingMe && _myWaiting.text) {
                 let myStTxt = gameScene.add.text(roleX, myBaseY + L.myStatusOffY, '⏳ ' + _myWaiting.text,
                     { fontSize: '16px', color: '#ffcc44',
