@@ -557,12 +557,18 @@ const GoldRushMixin = {
         const want = RUM_FLIPS + this._checkRevealCount(p) - 1;
         // Otočené karty leží, dokud se neotočí všechny, NA STOLE – do odhozu jdou až potom.
         // Kdyby šly hned, domíchání balíčku uprostřed (došel by) by je vrátilo zpátky.
+        // Balíček může dojít uprostřed otáčení – míchání pak převezme cinematika Rumu
+        // (první karty → míchání → zbytek), stejně jako u odkryté řady Kita Carlsona.
+        // Zamíchalo-li se už dřív v téže akci, to míchání řadě nepatří a jde starou cestou.
+        const deckBefore = this.deck._drawPile.length;
+        const shuffledBefore = !!this.deck._reshuffleOccurred;
         const cards = [];
         for (let k = 0; k < want; k++) {
             const c = this.deck.draw({ toDiscard: true });
             if (!c) break;   // došly obě hromádky – počítá se z toho, co se otočilo
             cards.push(c);
         }
+        const shuffle = shuffledBefore ? null : this._revealAnim(deckBefore, cards.length);
         cards.forEach(c => this.deck.discard(c));
         const suits = new Set(cards.map(c => this._effSuit(c)).filter(Boolean));
         const healed = this._heal(p, suits.size);
@@ -573,6 +579,7 @@ const GoldRushMixin = {
             type: 'gear_rum', playerIdx,
             cards: cards.map(c => ({ id: c.id, name: c.name, suit: c.suit, value: c.value })),
             suits: suits.size, healed,
+            shuffle,
         };
         this.logEvent('gear', { act: 'rum', who: p.name,
                                 cards: cards.map(c => `${c.value}${this._effSuit(c)}`).join(' '),

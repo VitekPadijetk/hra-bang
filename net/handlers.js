@@ -3065,16 +3065,31 @@ function playGearRum(data) {
     const cards = data.cards || [];
     const n = cards.length;
     if (!n) return;
-    const from = deckTopPos();
     const pileSc = currentLayout().scaleDeck;   // velikost karty v balíčku i v odhozu
     const sprites = [];
     let stateIn = false;
-    onNextState(() => { stateIn = true; });
+    // Balíček došel uprostřed otáčení (`data.shuffle`, viz _gearRum): míchání si
+    // přehrává tahle cinematika – nejdřív se otočí, co v balíčku bylo, pak se zamíchá
+    // a teprve pak se otočí zbytek (u 'proactive' se míchá, zatímco řada leží). Stav
+    // dorazí až za celou cinematikou, takže balíček kreslíme podle vlastního počtu
+    // (App.dealDeckCount) a hromádku po dobu míchání schováme (revealShuffling).
+    const sh = data.shuffle;
+    const shuffles = !!(sh && (sh.mode === 'blocking' || sh.mode === 'proactive'));
+    if (shuffles) { App.dealDeckCount = state?.deck?.cards?.length ?? 0; renderUI(); }
+    onNextState(() => {
+        stateIn = true;
+        if (shuffles) { App.dealDeckCount = null; App.revealShuffling = false; }
+    });
 
     cards.forEach((c, i) => {
         const x = rumSlotX(i, n), y = D.rowY;
-        gameScene.time.delayedCall(i * D.staggerMs, () => {
+        gameScene.time.delayedCall(rumFlipAtMs(i, n, sh), () => {
             if (!gameScene) return;
+            const from = deckTopPos();
+            if (shuffles && App.dealDeckCount !== null) {
+                App.dealDeckCount = Math.max(0, App.dealDeckCount - 1);
+                renderUI();   // hromádka o kartu nižší
+            }
             const spr = gameScene.add.image(from.x, from.y, 'card_back')
                 .setScale(pileSc).setDepth(820 + i).setAlpha(0.98);
             sprites[i] = spr;
@@ -3089,18 +3104,36 @@ function playGearRum(data) {
         });
     });
 
+    if (shuffles) {
+        gameScene.time.delayedCall(rumShuffleAtMs(n, sh), () => {
+            if (!gameScene || stateIn) return;
+            // Do balíčku se zamíchá CELÝ odhoz (sejmutí si vrchní kartu nenechává,
+            // viz Deck.draw s toDiscard) – sbírá se lícem nahoru, ať je přetočení vidět.
+            const faceIds = (state?.deck?.discardPile || []).map(c => c.id);
+            if (state?.deck) state.deck.discardPile = [];
+            App.revealShuffling = true;
+            renderUI();
+            playReshuffleCinematic(sh.shuffleCount || 20, { faceIds, depthBase: 5, onDone: () => {
+                App.revealShuffling = false;
+                if (!stateIn) App.dealDeckCount = sh.shuffleCount || 0;
+                if (gameScene) renderUI();
+            } });
+        });
+    }
+
     // Popisek výsledku visí od chvíle, kdy dosedne poslední karta, do odletu řady.
-    const landStart = rumLandStartMs(n);
+    const landStart = rumLandStartMs(n, sh);
+    const lastLand = rumFlipAtMs(n - 1, n, sh) + D.flyMs;
     const barvy = data.suits === 1 ? 'barva' : (data.suits >= 2 && data.suits <= 4 ? 'barvy' : 'barev');
     const who = state.players?.[data.playerIdx]?.name || '';
     const label = `🥃 Rum${who ? ' – ' + who : ''}: ${data.suits} ${barvy} → +${data.healed || 0} ❤`;
-    gameScene.time.delayedCall((n - 1) * D.staggerMs + D.flyMs, () => {
+    gameScene.time.delayedCall(lastLand, () => {
         if (!gameScene) return;
         const cap = gameScene.add.text(960, D.rowY - 500 * D.scale / 2 - 34, label,
             { fontFamily: THEME.fontUI, fontSize: '28px', fontStyle: 'bold', color: THEME.color.gold,
               backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 16, y: 6 } })
             .setOrigin(0.5).setDepth(830);
-        gameScene.time.delayedCall(D.holdMs, () => { if (cap.active) cap.destroy(); });
+        gameScene.time.delayedCall(landStart - lastLand, () => { if (cap.active) cap.destroy(); });
     });
 
     // Odlet do odhozu v pořadí otáčení – poslední otočená dosedne navrch, jako ve stavu.
@@ -3274,7 +3307,7 @@ function _animDurationMs(data) {
     // Fistful – Ranč: celá vyměňovaná dávka je jedna položka fronty (karty po jedné).
     if (data.type === 'ranch_discard') return ranchDiscardMs((data.cardIds || []).length);
     // Zlatá horečka – Rum: řada otočených karet uprostřed stolu, pak do odhozu.
-    if (data.type === 'gear_rum') return rumRevealMs((data.cards || []).length);
+    if (data.type === 'gear_rum') return rumRevealMs((data.cards || []).length, data.shuffle);
     // Divoký západ – Helena Zontero a obě půlky přerozdání rolí (Hřbitov i Helena).
     // `role_peek` trvá stejně u všech, i u těch, kdo si ho nepřehrají (role: null) –
     // jinak by se fronty klientů rozešly a stav by u každého dorazil jindy.

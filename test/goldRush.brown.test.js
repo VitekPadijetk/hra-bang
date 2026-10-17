@@ -17,7 +17,7 @@ const { mkGame, give, board, topDeck, CardType, Suits } = require('./_helpers.js
 const GR = require('../core/goldRush.js');
 const { decideBotAction } = require('../core/botPolicy.js');
 const { waitingStatus } = require('../core/pending.js');
-const { rumRevealMs, rumSlotX } = require('../core/goldRushAnim.js');
+const { rumRevealMs, rumSlotX, rumFlipAtMs, RUM_ANIM } = require('../core/goldRushAnim.js');
 
 before(() => { console.log = () => {}; });
 
@@ -344,6 +344,38 @@ test('Rum: došel balíček uprostřed otáčení – otočené karty se zpátky
     assert.equal(ids.length, 4);
     assert.equal(new Set(ids).size, 4, 'žádná karta se neotočila dvakrát');
     assert.equal(g.players[0].health, 4);
+});
+
+test('Rum: došel balíček uprostřed – míchání převezme cinematika (2 karty → míchání → zbytek)', () => {
+    const g = mkZH();
+    shop(g, ['ZH_RUM']);
+    g.players[0].nuggets = 3;
+    g.players[0].health = 1;
+    g.deck.cards = [];
+    [Suits.HEARTS, Suits.SPADES].forEach(s => topDeck(g, s));
+    g.deck.discardPile.push({ id: 801, name: 'X', type: CardType.BANG, suit: Suits.DIAMONDS, value: '5' });
+    g.deck.discardPile.push({ id: 802, name: 'Y', type: CardType.BANG, suit: Suits.CLUBS, value: '5' });
+    g.gearBuy(0, 0);
+    const sh = g._gearRumReveal.shuffle;
+    assert.equal(sh.mode, 'blocking');
+    assert.equal(sh.dealtBefore, 2);
+    // Legacy reshuffle_anim (a 5,7s odklad stavu) se neposílá – míchá cinematika Rumu.
+    assert.equal(g.deck._reshuffleOccurred, false);
+    // Třetí karta vyletí až po míchání, cinematika je o něj delší.
+    assert.ok(rumFlipAtMs(2, 4, sh) >= rumFlipAtMs(1, 4, sh) + RUM_ANIM.shuffleMs);
+    assert.ok(rumRevealMs(4, sh) >= rumRevealMs(4) + RUM_ANIM.shuffleMs);
+});
+
+test('Rum: karet dost → bez míchání, časování beze změny', () => {
+    const g = mkZH();
+    shop(g, ['ZH_RUM']);
+    g.players[0].nuggets = 3;
+    g.players[0].health = 1;
+    for (let i = 0; i < 6; i++) topDeck(g, Suits.HEARTS);
+    g.gearBuy(0, 0);
+    const sh = g._gearRumReveal.shuffle;
+    assert.equal(sh.mode, 'none');
+    assert.equal(rumRevealMs(4, sh), rumRevealMs(4));
 });
 
 // ── ZLATÁ HOREČKA ────────────────────────────────────────────────────────────

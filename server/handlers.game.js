@@ -1177,7 +1177,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (bought && rum && rum.cards.length) {
                 emitAnim(room, rum);
                 room._revealBlockUntil = Math.max(room._revealBlockUntil || 0,
-                                                  Date.now() + rumRevealMs(rum.cards.length));
+                                                  Date.now() + rumRevealMs(rum.cards.length, rum.shuffle));
             }
             // Komplic jako Hokynářství: rozdává stejně jako karta, takže i čekání na
             // dojezd míchací cinematiky je stejné jako u play_card.
@@ -1314,7 +1314,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (rum && rum.cards.length) {
                 emitAnim(room, rum);
                 room._revealBlockUntil = Math.max(room._revealBlockUntil || 0,
-                                                  Date.now() + rumRevealMs(rum.cards.length));
+                                                  Date.now() + rumRevealMs(rum.cards.length, rum.shuffle));
             }
             if (gs.phase === 'STORE') {
                 const t = ctx.storeCinematicMs?.(gs);
