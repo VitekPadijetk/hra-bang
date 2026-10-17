@@ -5,7 +5,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
 
 - Čísla jsou TRVALÁ. Nikdy se nepřečíslovávají a hotová čísla se neuvolňují —
   odkazuju se na ně v commitech i v zadání session.
-- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 69
+- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 71
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -96,14 +96,15 @@ Q — boti a server              24, 46, 53   HOTOVO
 
 OTEVŘENÉ
 --------
-- 69 někde bych měl vidět počet valounů, které mám (ne jen v obchodu)
-- 70 bug 67 "když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit" stále není opraven. Když si líznu jednu kartu, tak je animace pak se objeví v ruce, ale druhá má jen animaci a v ruce se objeví až jakmile se ukáže DZ karta
+- 71 když mám lucky duke a poslední karta zbývá v balíčku, po kliknutí na něj se momentálně nic neobjeví, začne míchání a pak obě karty, mělo by to být tak, že po kliknutí se objeví první karta, začne míchání, až doběhne, tak se ukáže i druhá
 
 HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 70 bug 67 "když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit" stále není opraven. Když si líznu jednu kartu, tak je animace pak se objeví v ruce, ale druhá má jen animaci a v ruce se objeví až jakmile se ukáže DZ karta → oprava: ca49012 (stav po prvním líznutí odchází s odkladem 350 ms, takže při rychlém dvojkliku až za cinematikou; klient stagoval jen poslední kartu, obě mířily na stejný slot a první překryla druhou. Server teď posílá stageCards = všechny karty líznuté v té fázi)
+- 69 někde bych měl vidět počet valounů, které mám (ne jen v obchodu) → oprava: 912b1f3 (štítek valounů byl vedle mého jména, které na desktopu sedí pod kartou role za spodním okrajem jeviště 16:9 – teď leží v levém horním rohu mé karty role a ukazuje i nulu)
 - 67 když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit → oprava: 0ca0801 (odkrytí karty jde do fronty hned za líznutím a stav čeká až za ním; prohodit pořadí nejde kvůli Sacagaway a Heleně Zontero, které stav dřív dostat nesmí. Majitel proto dostane k animaci i DATA karty a položí si ji do ruky rovnou – stav ji za cinematikou jen potvrdí)
 - 68 pokud uncle will zkusí použít během želízek kartu, která není té barvy, hra se zasekne. Už když vybírá kterou kartu odhodí, neměly by být zvýrazněny ty karty co nejsou v barvě co si vybral. Může totiž takto zahrát jen kartu jako hokynářství co má tu barvu → oprava: f8f20be (server kartu odmítal správně, jenže klik už zamkl UI a odmítnutá akce nový stav nevyvolá. Nové sdílené predikáty willPayOk/willOffer v core/playability.js – ptá se jimi server, klientské zvýraznění i klik a bot; karty mimo barvu zašednou a tlačítko se bez platné karty nenabídne. K tomu action_rejected jako pojistka)
 - 24 uncle will bot by někdy mohl zahrát hokynářství (nemusí vždy samozřejmě) → oprava: 87dcaeb (schopnost měl bot podmíněnou přebytkem karet, který si nestihne nahromadit – druhá větev: zaplatí i kartou, o kterou stejně nestojí (dynamit bez rozumného směru, Vězení bez cíle, veteš). Skóre zůstává nízké, takže se to stane, až když není nic lepšího; k tomu chyběl dotaz na _lawLocked, který server dělá)
