@@ -96,10 +96,8 @@ Q — boti a server              24, 46, 53   HOTOVO
 
 OTEVŘENÉ
 --------
-- 73 šlo by implementovat do hry nějaký nástroj (i jakoby na web), kde by šel nahlásit bug a nějak pak třeba by se dostal na tento PC (bylo-li by to bezpečné)? taky by někde ve hře mohlo být menu, zkus vymyslet co by tam krom tohoto mohlo být - ještě i 76
 - 74 pro zachování konzistentnosti, když si dávám panák, tak když ho chci dát sobě, nebudu na to mít extra tlačítko, ale klasicky se mi zvýrazní postava jako všem ostatním a to bude to "tlačítko"
 - 75 u lady růže když se někdo mění, tak by ta animace mohla být trošku propracovanější (např. že ty karty zmizí když se začnou měnit a nebude to vypadat divně). Třeba když se já měním s někým nebo někdo se mnou tak by se (pro mě) mohli vyměnit jakoby ostatní, tím, že přesunu na jiné místo, tak se všichni jakoby o 1 posunou. Zkus to vymyslet
-- 76 v nějakém tom menu by pouze pro game leadera mohlo být tlačítko pozastavit hru a to by prostě zastavilo hru, dokud by to neodblokoval, všichni (včetně GL) by si jen mohli prohlížet, zvětšovat, i třeba shop otevřít, ale nikdo by nemohl hru posouvat kupředu
 - 77 při sledování (minimálně hry botů) se karty nepřetáčejí a někdy nezmenšují, největší problém je u hráče dole
 
 HOTOVÉ
@@ -107,6 +105,8 @@ HOTOVÉ
 
 (formát: "- 17 text bugu … → oprava: <hash>")
 
+- 76 v nějakém tom menu by pouze pro game leadera mohlo být tlačítko pozastavit hru a to by prostě zastavilo hru, dokud by to neodblokoval, všichni (včetně GL) by si jen mohli prohlížet, zvětšovat, i třeba shop otevřít, ale nikdo by nemohl hru posouvat kupředu → oprava: 1f62a3b (room.paused; guard během pauzy zahodí každou herní akci a boti stojí, prohlížení, zvětšování, obchod i chat jdou dál – pod Roubíkem zadarmo. Nastoupí mezi akcemi, rozběhnuté cinematiky doběhnou; v intru a při výběru postav nejde)
+- 73 šlo by implementovat do hry nějaký nástroj (i jakoby na web), kde by šel nahlásit bug a nějak pak třeba by se dostal na tento PC (bylo-li by to bezpečné)? taky by někde ve hře mohlo být menu, zkus vymyslet co by tam krom tohoto mohlo být - ještě i 76 → oprava: 1f62a3b (menu ☰ ve hře – HTML vrstva view/gameMenu.js: pauza, nahlásit chybu, celá obrazovka, ukončit hru. Hlášení se ukládá na serveru do reports/ i s odkazem na herní log a snímkem stavu; z nasazeného serveru je stáhne tools/pull-reports.js přes /admin/reports, který existuje jen s BANG_ADMIN_TOKEN), e5ccf02 (cestou nalezeno: logs/ šly stáhnout přes statiku i se skrytými rolemi)
 - 71 když mám lucky duke a poslední karta zbývá v balíčku, po kliknutí na něj se momentálně nic neobjeví, začne míchání a pak obě karty, mělo by to být tak, že po kliknutí se objeví první karta, začne míchání, až doběhne, tak se ukáže i druhá → oprava: c701716 (odkrytí jde cestou Kita Carlsona – luckyDukeState.anim + dealRevealRow: první karta, míchání, druhá; boty drží flushLuckyDeal; Rum měl totéž → f2ab82b)
 - 72 pokud se dává karta johnu painovi, tak se během animace nezmenší → oprava: c701716 (cílová velikost byla natvrdo 0.4/0.3, teď velikost karet v ruce příjemce – totéž u druhé karty Black Jacka)
 - 70 bug 67 "když použiju dostavník/wells fargo, poslední karta co si lížu se objeví v ruce až po odhalení karty DZ. Čili po animaci této karty by se měla v ruce hned objevit" stále není opraven. Když si líznu jednu kartu, tak je animace pak se objeví v ruce, ale druhá má jen animaci a v ruce se objeví až jakmile se ukáže DZ karta → oprava: ca49012 (stav po prvním líznutí odchází s odkladem 350 ms, takže při rychlém dvojkliku až za cinematikou; klient stagoval jen poslední kartu, obě mířily na stejný slot a první překryla druhou. Server teď posílá stageCards = všechny karty líznuté v té fázi)
