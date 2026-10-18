@@ -121,9 +121,11 @@ io.on('connection', (socket) => {
     }
 
     // Ingress lidských akcí: jen když v místnosti běží logovaná hra (room._logStream).
-    // Aktér = seat vlastnící socket, ale u herních akcí ho zpřesníme přes pendingActor
-    // (v debug módu sdílí všechny seaty jeden socket). Boti jdou přes fake socket (bots.js),
-    // takže onAny je nezdvojuje. Logování nikdy neshodí server.
+    // Aktér = seat vlastnící socket. Jen v debug hře (jeden socket = všechna místa) ho
+    // zpřesníme přes pendingActor – v běžné hře by tím cizí akce (chat, hlášení chyby,
+    // pauza, opožděný klik, který guard zahodí) skončila připsaná tomu, na koho se čeká.
+    // Boti jdou přes fake socket (bots.js), takže onAny je nezdvojuje. Logování nikdy
+    // neshodí server.
     socket.onAny((event, payload) => {
         try {
             if (event === 'client_log') return;   // řeší dedikovaný handler níže (glog.clientLog)
@@ -132,7 +134,9 @@ io.on('connection', (socket) => {
             const gs = room.gameState;
             const p = room.players.find(pl => pl.socketId === socket.id);
             let idx = p ? p.playerIdx : null;
-            try { const pa = pendingActor(gs); if (pa) idx = pa.idx; } catch (_) { /* ignore */ }
+            if (gs && gs.isDebug) {
+                try { const pa = pendingActor(gs); if (pa) idx = pa.idx; } catch (_) { /* ignore */ }
+            }
             glog.action(room, idx != null ? glog.actorLabel(gs, idx) : socket.id, event, payload);
         } catch (_) { /* logování nesmí shodit server */ }
     });

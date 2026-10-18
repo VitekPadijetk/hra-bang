@@ -5,7 +5,11 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
 
 - Čísla jsou TRVALÁ. Nikdy se nepřečíslovávají a hotová čísla se neuvolňují —
   odkazuju se na ně v commitech i v zadání session.
-- Nový bug připiš na konec sekce OTEVŘENÉ. Další volné číslo: 78
+- OTEVŘENÉ bugy se sem už NEPÍŠOU. Hráči je hlásí ze hry (menu ☰ → Nahlásit chybu)
+  a leží v soukromém repu VitekPadijetk/hra-bang-reports (naklonované do reports/,
+  aktualizace `git -C reports pull`): reports/*.json = text + snímek stavu,
+  logs/*.jsonl.gz = herní log k hlášení. Sem se zapisuje až HOTOVÝ bug – dostane
+  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 78
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
