@@ -13,17 +13,26 @@
 //     prostředí BANG_ADMIN_TOKEN (bez ní, nebo s kratší než 16 znaků, endpoint
 //     neexistuje – odpoví 404). Stahuje se nástrojem tools/pull-reports.js.
 //     Token chodí jen v hlavičce Authorization (ne v URL – ta končí v logech proxy).
+//   • Hosting s dočasným diskem (Render free: každý deploy i uspání po 15 min smaže
+//     reports/ i logs/) → hlášení se navíc ZRCADLÍ do soukromého GitHub repozitáře:
+//     BANG_REPORTS_REPO=vlastník/repo + BANG_REPORTS_TOKEN (fine-grained token jen na
+//     to repo, Contents: Read and write). Zapíše se reports/<soubor>.json a herní log
+//     zabalený gzipem jako logs/<soubor>.jsonl.gz. Na PC pak stačí `git pull` toho repa.
+//     Repo hry je veřejné, proto ne Issues ani soubory v něm – snímek nese skryté role.
 //
 // Factory installReports(ctx) vystaví `ctx.saveBugReport(socket, payload)` a
 // `ctx.mountAdminRoutes(app)`.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { snapshotState } = require('../core/gameLog.js');
 const { cleanReportText, cleanReportContext, reportFileName, allowReport,
         REPORT_FILE_RE, REPORT_FILES_MAX } = require('../core/bugReport.js');
 
 const LOG_FILE_RE = /^[A-Za-z0-9_-]{1,160}\.jsonl$/;
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const MIRROR_LOG_MAX = 25 * 1024 * 1024;   // zabalený log nad tohle se nezrcadlí (limit API)
 
 module.exports = function installReports(ctx, opts = {}) {
     const reportsDir = opts.reportsDir || path.join(__dirname, '..', 'reports');
@@ -32,6 +41,51 @@ module.exports = function installReports(ctx, opts = {}) {
     // Razítka hlášení podle spojení (rate limit). Odpojený socket se tu jen přestane
     // objevovat; záznamů je nejvýš pár na spojení, takže se úklid nevyplatí řešit.
     const history = new Map();
+    const fetchFn = opts.fetch || globalThis.fetch;
+    const mirrorRepo = typeof env.BANG_REPORTS_REPO === 'string' && REPO_RE.test(env.BANG_REPORTS_REPO.trim())
+        ? env.BANG_REPORTS_REPO.trim() : null;
+    const mirrorToken = typeof env.BANG_REPORTS_TOKEN === 'string' ? env.BANG_REPORTS_TOKEN.trim() : '';
+    const mirrorOn = !!(mirrorRepo && mirrorToken && fetchFn);
+
+    // Jeden soubor do repa přes Contents API (vytvoření nového souboru – jména jsou
+    // unikátní podle času, takže se nikdy nepřepisuje a nepotřebuje se sha).
+    async function putToRepo(repoPath, buf, message) {
+        const res = await fetchFn(`https://api.github.com/repos/${mirrorRepo}/contents/${repoPath}`, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${mirrorToken}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+                'User-Agent': 'hra-bang-server',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ message, content: buf.toString('base64') }),
+        });
+        if (!res.ok) throw new Error(`GitHub ${repoPath}: HTTP ${res.status}`);
+    }
+
+    // Zrcadlení běží na pozadí – hráč dostane potvrzení hned, server na GitHub nečeká.
+    // Vrací promise jen kvůli testům. Nejdřív hlášení (to je důležitější), pak log.
+    async function mirrorReport(file, json, logPath) {
+        if (!mirrorOn) return false;
+        const stem = file.replace(/\.json$/, '');
+        try {
+            await putToRepo(`reports/${file}`, Buffer.from(json), `hlášení ${stem}`);
+        } catch (e) {
+            ctx.glog?.error?.('bug_report_mirror', e);
+            return false;
+        }
+        if (logPath) {
+            try {
+                const gz = zlib.gzipSync(fs.readFileSync(logPath));
+                if (gz.length <= MIRROR_LOG_MAX) await putToRepo(`logs/${stem}.jsonl.gz`, gz, `log k hlášení ${stem}`);
+            } catch (e) {
+                ctx.glog?.error?.('bug_report_mirror', e);
+            }
+        }
+        ctx.glog?.system?.(`🐞 hlášení zrcadleno do ${mirrorRepo}: ${file}`);
+        return true;
+    }
 
     // Místnost, ke které hlášení patří: hráč, nebo divák (ten je jen v socket.io
     // kanálu <roomId>_spectators, findRoomBySocket ho nevidí – viz server/rooms.js).
@@ -90,14 +144,19 @@ module.exports = function installReports(ctx, opts = {}) {
             client: cleanReportContext(payload && payload.context),
         };
         const file = reportFileName(new Date(now), room && room.id);
+        const json = JSON.stringify(report, null, 2);
+        let savedLocally = true;
         try {
-            fs.writeFileSync(path.join(reportsDir, file), JSON.stringify(report, null, 2));
+            fs.writeFileSync(path.join(reportsDir, file), json);
         } catch (e) {
             ctx.glog?.error?.('bug_report', e, room);
-            return { ok: false, error: 'Hlášení se nepodařilo uložit.' };
+            savedLocally = false;
         }
+        // Bez lokálního zápisu stačí zrcadlo (dočasný disk ho stejně brzy smaže).
+        if (!savedLocally && !mirrorOn) return { ok: false, error: 'Hlášení se nepodařilo uložit.' };
         ctx.glog?.system?.(`🐞 hlášení chyby: reports/${file}`, { roomId: room ? room.id : null });
-        return { ok: true, file };
+        const mirrored = mirrorReport(file, json, room && room._logPath);
+        return { ok: true, file, mirrored };
     }
 
     // ── /admin – stažení hlášení na vývojový PC ─────────────────────────────────
@@ -139,6 +198,7 @@ module.exports = function installReports(ctx, opts = {}) {
         app.get('/admin/reports/:file', gate, (req, res) => sendFile(reportsDir, req.params.file, REPORT_FILE_RE, res));
         app.get('/admin/logs/:file', gate, (req, res) => sendFile(logsDir, req.params.file, LOG_FILE_RE, res));
         if (adminOn) ctx.glog?.system?.('🐞 /admin/reports zapnuto (BANG_ADMIN_TOKEN)');
+        if (mirrorOn) ctx.glog?.system?.(`🐞 hlášení se zrcadlí do GitHub repa ${mirrorRepo}`);
     }
 
     Object.assign(ctx, { saveBugReport, mountAdminRoutes });

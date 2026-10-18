@@ -256,3 +256,71 @@ test('/admin: jméno souboru se nedá použít k úniku z adresáře', () => {
     }
     assert.equal(call(app.routes['/admin/logs/:file'], { headers: auth, params: { file: '../package.json' } }).code, 404);
 });
+
+// ── Zrcadlo do soukromého GitHub repa (Render free má dočasný disk) ──────────
+
+function fakeFetch(status = 201) {
+    const calls = [];
+    const fn = async (url, init) => { calls.push({ url, init, body: JSON.parse(init.body) }); return { ok: status < 300, status }; };
+    fn.calls = calls;
+    return fn;
+}
+
+test('zrcadlo: bez BANG_REPORTS_REPO/TOKEN se na GitHub nic neposílá', async () => {
+    const env = mkEnv();
+    const f = fakeFetch();
+    // mkEnv instaluje bez fetch – druhá instalace se stejnými adresáři, jen s fetch
+    installReports(env.ctx, { reportsDir: path.join(env.dir, 'reports'), logsDir: path.join(env.dir, 'logs'), env: {}, fetch: f });
+    const res = env.ctx.saveBugReport(env.sock(1), { text: 'něco se rozbilo' });
+    assert.equal(res.ok, true);
+    assert.equal(await res.mirrored, false);
+    assert.equal(f.calls.length, 0);
+});
+
+test('zrcadlo: hlášení i zabalený log jdou do soukromého repa', async () => {
+    const env = mkEnv();
+    const f = fakeFetch();
+    const zlib = require('node:zlib');
+    installReports(env.ctx, {
+        reportsDir: path.join(env.dir, 'reports'), logsDir: path.join(env.dir, 'logs'), fetch: f,
+        env: { BANG_REPORTS_REPO: 'Vitek/hra-bang-reports', BANG_REPORTS_TOKEN: 'github_pat_x' },
+    });
+    fs.mkdirSync(path.join(env.dir, 'logs'), { recursive: true });
+    env.room._logPath = path.join(env.dir, 'logs', 'g1.jsonl');
+    fs.writeFileSync(env.room._logPath, '{"ev":"a"}\n{"ev":"b"}\n');
+    const res = env.ctx.saveBugReport(env.sock(2), { text: 'karta zmizela z ruky' });
+    assert.equal(await res.mirrored, true);
+    assert.equal(f.calls.length, 2);
+    const [rep, log] = f.calls;
+    assert.equal(rep.url, `https://api.github.com/repos/Vitek/hra-bang-reports/contents/reports/${res.file}`);
+    assert.equal(rep.init.method, 'PUT');
+    assert.equal(rep.init.headers.Authorization, 'Bearer github_pat_x');
+    assert.equal(JSON.parse(Buffer.from(rep.body.content, 'base64')).text, 'karta zmizela z ruky');
+    assert.equal(log.url.endsWith(`/contents/logs/${res.file.replace(/\.json$/, '')}.jsonl.gz`), true);
+    assert.equal(zlib.gunzipSync(Buffer.from(log.body.content, 'base64')).toString(), '{"ev":"a"}\n{"ev":"b"}\n');
+});
+
+test('zrcadlo: chyba GitHubu hráči hlášení nezkazí (lokální kopie zůstává)', async () => {
+    const env = mkEnv();
+    const f = fakeFetch(403);
+    installReports(env.ctx, {
+        reportsDir: path.join(env.dir, 'reports'), logsDir: path.join(env.dir, 'logs'), fetch: f,
+        env: { BANG_REPORTS_REPO: 'Vitek/r', BANG_REPORTS_TOKEN: 't' },
+    });
+    const res = env.ctx.saveBugReport(env.sock(1), { text: 'něco se rozbilo' });
+    assert.equal(res.ok, true);
+    assert.equal(await res.mirrored, false);
+    assert.equal(fs.readdirSync(path.join(env.dir, 'reports')).length, 1);
+});
+
+test('zrcadlo: nesmyslné jméno repa zrcadlo nezapne', async () => {
+    const env = mkEnv();
+    const f = fakeFetch();
+    installReports(env.ctx, {
+        reportsDir: path.join(env.dir, 'reports'), logsDir: path.join(env.dir, 'logs'), fetch: f,
+        env: { BANG_REPORTS_REPO: '../evil?x=1', BANG_REPORTS_TOKEN: 't' },
+    });
+    const res = env.ctx.saveBugReport(env.sock(1), { text: 'něco se rozbilo' });
+    assert.equal(await res.mirrored, false);
+    assert.equal(f.calls.length, 0);
+});
