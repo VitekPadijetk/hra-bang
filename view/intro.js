@@ -27,21 +27,12 @@ function _iAdd(obj) {
     return obj;
 }
 
-// Leader může ukončit hru i během intra (cinematika role/postav/rozdávání).
-function _introLeaderEndButton() {
+// Herní menu ☰ i během intra (cinematika role/postav/rozdávání) – stejné tlačítko jako
+// ve hře (drawGameMenuButton, game.js); lídr v něm najde „Ukončit hru", pauza se
+// během intra nenabízí (server ji tam odmítá).
+function _introMenuButton() {
     if (!gameScene || typeof roomState === 'undefined' || !roomState) return;
-    if (roomState.leaderSocketId !== socket.id) return;
-    // Stejný vzhled jako lídrovské „Ukončit hru" ve hře (game.js) – themeButton.
-    const { bg } = themeButton(gameScene, stageLeft() + 30, stageTop() + 30, 210, 48, '✕  Ukončit hru', {
-        origin: [0, 0], fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030,
-        stroke: THEME.color.dangerNum, fontSize: '18px',
-        onClick: () => {
-            if (confirm('Opravdu chceš ukončit hru? Všichni hráči se vrátí do menu.')) {
-                socket.emit('cancel_game');
-            }
-        },
-    });
-    bg.setDepth(1200);
+    drawGameMenuButton(1200);
 }
 
 // Vykreslí jednu „umístěnou" položku intra – kartu (obrázek) nebo jmenovku (text).
@@ -162,15 +153,22 @@ function _introStackTopY(y, n) {
     return y - (Math.max(1, n) - 1) * INTRO_PILE_PX / 2;
 }
 
-function _animateIntroShuffle(cx, cy, tex, scale, N, tiltDeck, onComplete, onSettled) {
+// Půlky balíčku se při míchání rozestoupí o tolik šířky karty. Výchozí 0,6 je pro
+// balíček, který se míchá sám; ve fázi balíčků se jich míchá víc vedle sebe (rozteč
+// 160 px) a s 0,6 by se půlky sousedů překrývaly.
+const INTRO_CUT_SIDE_BY_SIDE = 0.22;
+
+// opts.keep    = neuklízej sprity předchozí animace (běží souběžná míchání)
+// opts.cutFrac = jak daleko se půlky rozestoupí (násobek šířky karty, výchozí 0,6)
+function _animateIntroShuffle(cx, cy, tex, scale, N, tiltDeck, onComplete, onSettled, opts = {}) {
     if (!gameScene || !gameScene.introSprites) {
         if (onSettled) onSettled();
         if (onComplete) onComplete();
         return;
     }
 
-    // Vyčisti předchozí intro animaci
-    _clearIntroSprites();
+    // Vyčisti předchozí intro animaci (souběžná míchání si sprity navzájem nechávají)
+    if (!opts.keep) _clearIntroSprites();
 
     const safeTex = gameScene.textures.exists(tex) ? tex : 'card_back';
     const layers  = shuffleLayers(N);
@@ -179,7 +177,7 @@ function _animateIntroShuffle(cx, cy, tex, scale, N, tiltDeck, onComplete, onSet
     const totalMs = shuffleDurationMs(N);
     const topY    = _introStackTopY(cy, N);
     const cardW   = 325 * scale;
-    const cutX    = cardW * 0.6;          // půlky se rozestoupí, ale zůstanou u sebe
+    const cutX    = cardW * (opts.cutFrac ?? 0.6);   // půlky se rozestoupí, ale zůstanou u sebe
     const tilt    = tiltDeck ? 0.10 : 0;
     const D0      = 200;                  // nad statickými balíčky (10..89), pod revealem
 
@@ -1182,7 +1180,10 @@ function renderIntroScene() {
     // nekreslíme staticky – reprezentuje ho míchací animace. Jakmile animace
     // doběhne (shuffleAnimDone), statický balíček se hned ukáže (žádné prázdné
     // místo mezi koncem míchání a začátkem rozdávání).
-    const shuffling = (which) => sub === which && !s.shuffleAnimDone;
+    // Ve fázi balíčků se jich míchá víc NARÁZ, takže `sub` (poslední beat) nestačí –
+    // tam má každé míchání vlastní příznak (`shufflingDecks`, _introShuffleDeck).
+    const shuffling = (which) => (s.shufflingDecks && which in s.shufflingDecks)
+        ? s.shufflingDecks[which] : (sub === which && !s.shuffleAnimDone);
     if (s.roleCount > 0 && !shuffling('shuffle_roles'))
         _drawIntroStack(INTRO_ROLE_DECK.x, INTRO_ROLE_DECK.y, 'role_card_back', s.roleCount, 0.30);
     if (s.charCount > 0 && !shuffling('shuffle_chars'))
@@ -1253,7 +1254,7 @@ function renderIntroScene() {
         _renderKeepChoice();
     }
 
-    _introLeaderEndButton();
+    _introMenuButton();
 }
 
 // ── Role reveal ───────────────────────────────────────────────────────────────
@@ -1384,7 +1385,7 @@ function _renderIntroCharSelect() {
         _iAdd(btn);
     }
 
-    _introLeaderEndButton();
+    _introMenuButton();
 }
 
 // Potvrzení výběru postavy: spustí usazovací animaci (vybraná postava se zmenší z

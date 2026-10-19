@@ -49,7 +49,8 @@ function _gmMain() {
     const st = roomState.gameState;
     const live = !st.winner;
     const rows = [];
-    if (leader && live && roomState.roomPhase === 'playing') {
+    const intro = typeof _introActive === 'function' && _introActive();
+    if (leader && live && roomState.roomPhase === 'playing' && !intro) {
         rows.push(roomState.paused
             ? '<button class="bu-btn primary block" data-act="gmResume">▶ Pokračovat ve hře</button>'
             : '<button class="bu-btn block" data-act="gmPause">⏸ Pozastavit hru</button>');

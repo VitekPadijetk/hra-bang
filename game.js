@@ -2342,7 +2342,7 @@ const EXPANSION_LOADERS = {
 function loadExpansionAssets(scene, exp) {
     if (!scene || !EXPANSION_LOADERS[exp]) return;
     // Už načtené (jiná hra ve stejné relaci) – jen znovu potvrď serveru připravenost.
-    if (ExpansionAssets[exp] === 'done') { try { socket.emit('expansion_ready', { exp }); } catch (_) {} return; }
+    if (ExpansionAssets[exp] === 'done') { _reportExpansionReady(exp); return; }
     if (ExpansionAssets[exp]) return;
     ExpansionAssets[exp] = 'loading';
     _expQueue.push(exp);
@@ -2371,6 +2371,21 @@ function _pumpExpansionQueue(scene) {
     scene.load.start();
 }
 
+// Ohlášení `expansion_ready` serveru – jednou za (místnost, socket, rozšíření).
+// loadExpansionAssets se volá při KAŽDÉM room_update, takže bez téhle paměti šlo
+// s každým stavem hry 5 zpráv navíc a zaplnily herní log. Server si připravenost
+// pamatuje podle socket.id v místnosti (room._assetsReady, server/lifecycle.js), proto
+// je obojí v klíči: po reconnectu (nové id) nebo v jiné místnosti se ohlásí znovu.
+// Bez místnosti (menu) se nic nepamatuje – server zprávu bez místnosti zahodí.
+const _expReported = new Set();
+function _reportExpansionReady(exp) {
+    const roomId = typeof roomState !== 'undefined' && roomState ? roomState.roomId : null;
+    const key = roomId ? `${roomId}|${socket.id}|${exp}` : null;
+    if (key && _expReported.has(key)) return;
+    try { socket.emit('expansion_ready', { exp }); } catch (_) { return; /* offline */ }
+    if (key) _expReported.add(key);
+}
+
 // Jakmile jsou v cache KLÍČOVÉ textury rozšíření (rub balíčku a spol.), řekni to serveru –
 // ten na ně čeká se startem hry, aby nikomu neproblikl placeholder. Zbytek artu se
 // dotahuje dál na pozadí. Po limitu se ohlásí tak jako tak (soubor může chybět natrvalo).
@@ -2380,7 +2395,7 @@ function _reportWhenCritical(scene, exp, keys) {
         const ready = keys.every(k => scene.textures.exists(k));
         if (ready || waited > 40000) {
             if (!ready) clog('warn', 'Klíčové textury rozšíření chybí, hlásím připravenost i tak', { exp, keys });
-            try { socket.emit('expansion_ready', { exp }); } catch (_) { /* offline */ }
+            _reportExpansionReady(exp);
             return;
         }
         waited += 250;
@@ -2840,6 +2855,18 @@ function mAdd(obj, depth = 201) {
     return obj;
 }
 
+// Tlačítko herního menu ☰ (view/gameMenu.js) v levém horním rohu. Kreslí ho deska
+// i intro (view/intro.js), aby roh vypadal od rozdávání až do konce hry stejně –
+// dřív tam intro mělo vlastní lídrovské „Ukončit hru".
+function drawGameMenuButton(depth) {
+    const mx = App.spectating ? stageLeft() + 30 + 260 + 12 : stageLeft() + 30;
+    const { bg: menuBtn } = themeButton(gameScene, mx, stageTop() + 30, 210, 48, '☰  Menu', {
+        origin: [0, 0], fontSize: '18px',
+        onClick: () => openGameMenu(),
+    });
+    menuBtn.setDepth(depth);
+}
+
 function renderUI() {
     // Celoplošné vrstvy (S0/S1/G1–G3) žijí mimo scénu i mimo obrazovky menu – překresli
     // je dřív, než se renderUI bez scény vrátí (viz view/menuDom.js).
@@ -2974,14 +3001,7 @@ function renderUI() {
     // a lídrovské „Ukončit hru", které tu dřív stálo jako samostatné tlačítko. Leží
     // v jeho rohu a má jeho rozměr (debug řada i sloupec pod ním s tím počítají);
     // divák ho má vedle „Opustit sledování".
-    if (roomState && !state?.winner) {
-        const mx = App.spectating ? stageLeft() + 30 + 260 + 12 : stageLeft() + 30;
-        const { bg: menuBtn } = themeButton(gameScene, mx, stageTop() + 30, 210, 48, '☰  Menu', {
-            origin: [0, 0], fontSize: '18px',
-            onClick: () => openGameMenu(),
-        });
-        menuBtn.setDepth(500);
-    }
+    if (roomState && !state?.winner) drawGameMenuButton(500);
 
     // Konec hry (S12), účast v další hře (S13) a statistiky (S14) kreslí HTML vrstva.
     if (state?.winner) {
