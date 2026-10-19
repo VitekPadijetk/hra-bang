@@ -229,6 +229,25 @@ test('emitIntroRole pošle roli soukromě jen danému hráči', () => {
 // ── Rozšíření High Noon: intro beat s balíčkem událostí ──────────────────────
 // Balíček se zamíchá po zamíchání hracích karet a Pravé poledne se pak zasune vespod.
 // Časovače se přeskočí přes fake setTimeout (voláme callbacky hned).
+// Časovače s virtuálními hodinami: callbacky běží v pořadí svého času a každý emit
+// dostane `t` = čas, kdy odešel. Tím jde ověřit, co jde NARÁZ a co až po čem.
+function runWithClock(fn, emits) {
+    const realSetTimeout = global.setTimeout;
+    let now = 0, seq = 0;
+    const q = [];
+    const tag = () => { for (const e of emits) if (e.t === undefined) e.t = now; };
+    global.setTimeout = (cb, ms) => { q.push({ at: now + (ms || 0), seq: seq++, cb }); return 0; };
+    try {
+        fn(); tag();
+        while (q.length) {
+            q.sort((a, b) => a.at - b.at || a.seq - b.seq);
+            const it = q.shift();
+            now = it.at; it.cb(); tag();
+        }
+    } finally { global.setTimeout = realSetTimeout; }
+}
+const introAt = (emits, sub) => emits.find(e => e.scope === 'socket:s0' && e.ev === 'intro_phase' && e.payload.sub === sub);
+
 function runWithInstantTimers(fn) {
     const realSetTimeout = global.setTimeout;
     let depth = 0;
@@ -247,13 +266,15 @@ test('introStartDeckPhase se zapnutým High Noon zamíchá balíček událostí 
     };
     const ctx = { io, broadcastRoom() {}, glog: noopGlog };
     installIntroService(ctx);
-    runWithInstantTimers(() => ctx.introStartDeckPhase(room));
+    runWithClock(() => ctx.introStartDeckPhase(room), emits);
 
     const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase').map(e => e.payload.sub);
     assert.ok(subs.includes('highnoon_top'), 'chybí sejmutí vrchní karty (Pravé poledne)');
     assert.ok(subs.includes('shuffle_highnoon'), 'chybí míchání balíčku událostí');
     assert.ok(subs.includes('highnoon_bottom'), 'chybí zasunutí Pravého poledne');
+    // Hrací balíček jde jako první zpráva (uklízí sprity), ale ve STEJNÝ okamžik.
     assert.ok(subs.indexOf('shuffle_deck') < subs.indexOf('highnoon_top'), 'nejdřív hrací balíček');
+    assert.equal(introAt(emits, 'highnoon_top').t, introAt(emits, 'shuffle_deck').t, 'míchá se naráz s hracím balíčkem');
     // Pořadí beatů: kompletní balíček → sejmutí vrchní → míchání zbytku → vespod.
     assert.ok(subs.indexOf('highnoon_top') < subs.indexOf('shuffle_highnoon'), 'nejdřív se ukáže vrchní karta');
     assert.ok(subs.indexOf('shuffle_highnoon') < subs.indexOf('highnoon_bottom'), 'míchá se před zasunutím');
@@ -265,7 +286,7 @@ test('introStartDeckPhase se zapnutým High Noon zamíchá balíček událostí 
     assert.equal(hn.payload.hnCount, 13);
 });
 
-test('introStartDeckPhase pošle beaty všech tří balíčků za sebou', () => {
+test('introStartDeckPhase míchá všechny tři balíčky událostí naráz', () => {
     const { io, addSocket, emits } = mkIo();
     addSocket('s0'); addSocket('s1');
     const room = mkRoom();
@@ -278,20 +299,49 @@ test('introStartDeckPhase pošle beaty všech tří balíčků za sebou', () => 
     };
     const ctx = { io, broadcastRoom() {}, glog: noopGlog };
     installIntroService(ctx);
-    runWithInstantTimers(() => ctx.introStartDeckPhase(room));
+    runWithClock(() => ctx.introStartDeckPhase(room), emits);
 
     const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase').map(e => e.payload.sub);
     ['wws_top', 'shuffle_wws', 'wws_bottom'].forEach(sub =>
         assert.ok(subs.includes(sub), `chybí beat ${sub}`));
-    // Trojice beatů jde za sebou a Divoký západ až úplně nakonec (míchání se nesmí krýt).
-    assert.ok(subs.indexOf('highnoon_bottom') < subs.indexOf('fistful_top'), 'Fistful až po High Noonu');
-    assert.ok(subs.indexOf('fistful_bottom') < subs.indexOf('wws_top'), 'Divoký západ až po Fistfulu');
+    // Všechny tři trojice beatů jdou souběžně a s hracím balíčkem (dřív za sebou, >20 s).
+    const t0 = introAt(emits, 'shuffle_deck').t;
+    ['highnoon_top', 'fistful_top', 'wws_top'].forEach(sub =>
+        assert.equal(introAt(emits, sub).t, t0, `${sub} naráz s hracím balíčkem`));
+    assert.equal(introAt(emits, 'shuffle_fistful').t, introAt(emits, 'shuffle_highnoon').t);
+    assert.equal(introAt(emits, 'shuffle_wws').t, introAt(emits, 'shuffle_highnoon').t);
     assert.ok(subs.indexOf('wws_top') < subs.indexOf('shuffle_wws'));
     assert.ok(subs.indexOf('shuffle_wws') < subs.indexOf('wws_bottom'));
-    assert.ok(subs.indexOf('wws_bottom') < subs.indexOf('deal_cards'), 'rozdává se až potom');
+    // Rozdává se až po posledním zasunutí (u každého balíčku i jeho míchání doběhne).
+    const deal = introAt(emits, 'deal_cards').t;
+    ['highnoon_bottom', 'fistful_bottom', 'wws_bottom'].forEach(sub =>
+        assert.ok(introAt(emits, sub).t < deal, `${sub} před rozdáváním`));
+    assert.ok(deal - t0 < 9000, `fáze míchání trvá ${deal - t0} ms`);
     // Beaty nesou PLNÝ počet karet – klient si sám odečte odloženou kartu.
     const top = emits.find(e => e.ev === 'intro_phase' && e.payload.sub === 'wws_top');
     assert.equal(top.payload.wwsCount, 10);
+});
+
+test('introStartDeckPhase rozdává s rozestupem, který posílá klientovi', () => {
+    const { io, addSocket, emits } = mkIo();
+    addSocket('s0'); addSocket('s1');
+    const room = mkRoom();
+    room.gameState = {
+        players: [{ role: 'Sheriff', hand: [], _baseHealth: 4 }, { role: 'Outlaw', hand: [], _baseHealth: 3 }],
+        deck: { cards: [] },
+    };
+    const ctx = { io, broadcastRoom() {}, glog: noopGlog };
+    installIntroService(ctx);
+    runWithClock(() => ctx.introStartDeckPhase(room), emits);
+    const deals = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase' && e.payload.sub === 'deal_cards_to');
+    assert.equal(deals.length, 2);
+    const gap = deals[0].payload.gap;
+    assert.ok(gap > 0 && gap < 200, 'rozdává se svižněji než dřív (200 ms na kartu)');
+    // Druhý hráč dostává až po kartách prvního (4 karty × rozestup + pauza).
+    assert.ok(deals[1].t - deals[0].t >= 4 * gap);
+    // Konec intra až po doletu poslední karty (klient: (n-1)*gap + 320 ms let + přesun balíčku).
+    const done = introAt(emits, 'done');
+    assert.ok(done.t - deals[1].t >= 2 * gap + 320 + 350 + 600);
 });
 
 test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', () => {
@@ -314,7 +364,7 @@ test('introStartDeckPhase bez rozšíření beat s událostmi vůbec nepošle', 
     assert.ok(subs.includes('deal_cards'));
 });
 
-test('introStartDeckPhase se Zlatou horečkou zamíchá balíček vybavení hned za hracími kartami', () => {
+test('introStartDeckPhase se Zlatou horečkou zamíchá balíček vybavení naráz s hracími kartami', () => {
     const { io, addSocket, emits } = mkIo();
     addSocket('s0'); addSocket('s1');
     const room = mkRoom();
@@ -329,12 +379,12 @@ test('introStartDeckPhase se Zlatou horečkou zamíchá balíček vybavení hned
     };
     const ctx = { io, broadcastRoom() {}, glog: noopGlog };
     installIntroService(ctx);
-    runWithInstantTimers(() => ctx.introStartDeckPhase(room));
+    runWithClock(() => ctx.introStartDeckPhase(room), emits);
 
     const subs = emits.filter(e => e.scope === 'socket:s0' && e.ev === 'intro_phase').map(e => e.payload.sub);
     assert.ok(subs.includes('shuffle_gear'), 'chybí míchání balíčku vybavení');
     assert.ok(subs.indexOf('shuffle_deck') < subs.indexOf('shuffle_gear'), 'nejdřív hrací balíček');
-    assert.ok(subs.indexOf('shuffle_gear') < subs.indexOf('highnoon_top'), 'balíčky událostí až po vybavení');
+    assert.equal(introAt(emits, 'shuffle_gear').t, introAt(emits, 'shuffle_deck').t, 'vybavení se míchá naráz s hracím balíčkem');
     assert.ok(subs.indexOf('shuffle_gear') < subs.indexOf('deal_cards'), 'rozdává se až potom');
     const gear = emits.find(e => e.ev === 'intro_phase' && e.payload.sub === 'shuffle_gear');
     assert.equal(gear.payload.gearCount, 9);

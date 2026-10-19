@@ -270,9 +270,10 @@ module.exports = function installIntroService(ctx) {
     // Rozšíření A Fistful of Cards a Divoký západ mají úplně stejnou choreografii jako
     // High Noon, jen jiné místo na stole a jinou odkládanou kartu (Fistful of Cards /
     // Divoký západ místo Pravého poledne).
-    // Beaty všech balíčků jdou ZA SEBOU, ne současně: _animateIntroShuffle (view/intro.js)
-    // si na začátku uklidí předchozí intro sprity a `shuffling()` porovnává jediný `sub`,
-    // takže dvě míchání naráz by si navzájem smazala karty.
+    // Všechny balíčky (hrací, vybavení i tři balíčky událostí) se míchají NARÁZ – za sebou
+    // to při všech rozšířeních trvalo přes 20 s. Klient to unese, protože si každé míchání
+    // drží vlastní příznak (`shufflingDecks`, view/intro.js renderIntroScene) a míchání
+    // za hracím balíčkem po sobě sprity neuklízí (`keep`, _animateIntroShuffle).
     const EVENT_DECK_SUB = { ff: 'fistful', wws: 'wws', hn: 'highnoon' };
     function eventDeckBeats(room, deck, count, at) {
         if (!count) return 0;
@@ -297,6 +298,11 @@ module.exports = function installIntroService(ctx) {
         return shuffleDurationMs(count) + SHUFFLE_PAD_MS;
     }
 
+    // Rozdávání počátečních rukou: odstup mezi kartami jednomu hráči a pauza před dalším.
+    // Klient rozestup karet bere z payloadu (`gap`), aby se s časováním serveru nerozešel.
+    const DEAL_GAP_MS = 130;
+    const DEAL_PLAYER_PAUSE_MS = 150;
+
     function introStartDeckPhase(room) {
         const gs = room.gameState;
         const n = room.players.length;
@@ -319,26 +325,26 @@ module.exports = function installIntroService(ctx) {
         // jinak by se ještě letící karty zničily a probliklo by to (postavy zmizí).
         const slideInDur = (n - 1) * 80 + 520 + 350; // + buffer na síť/handoff do placedCards
         setTimeout(() => {
+            // Hrací balíček jde PRVNÍ: jeho míchání na klientu uklidí sprity slide-inu,
+            // ostatní beaty téhož okamžiku si je už nechávají (viz EVENT_DECK_SUB výš).
+            // Socket.io drží pořadí zpráv, takže dorazí i v tomhle pořadí.
             emitIntro(room, { sub: 'shuffle_deck', deckCount });
 
-            // Délka míchací animace balíčku na klientu (_animateIntroShuffle).
-            // Rozdávat se začne AŽ PO zamíchání, ne během něj.
-            const deckShuffleDelay = shuffleDurationMs(deckCount) + SHUFFLE_PAD_MS;
+            // Ostatní balíčky se míchají SOUČASNĚ s hracím (každý na svém místě stolu).
+            // Balíček vybavení (Zlatá horečka) má jediný beat; balíčky událostí (High Noon,
+            // Fistful of Cards, Divoký západ) trojici: šerif sejme vrchní kartu (ukáže se
+            // vedle), zbytek zamíchá a odloženou kartu dá vespod. Bez rozšíření je počet 0
+            // a beaty se úplně přeskočí. Rozdávat se začne, až doběhne to nejdelší.
+            const hnCount = gs.eventDeck?.length || 0;
+            const ffCount = gs.ffDeck?.length || 0;
+            const wwsCount = gs.wwsDeck?.length || 0;
+            const deckShuffleDelay = Math.max(
+                shuffleDurationMs(deckCount) + SHUFFLE_PAD_MS,
+                gearDeckBeat(room, gearIntroCount(gs), 0),
+                eventDeckBeats(room, 'hn', hnCount, 0),
+                eventDeckBeats(room, 'ff', ffCount, 0),
+                eventDeckBeats(room, 'wws', wwsCount, 0));
             setTimeout(() => {
-                // Rozšíření High Noon: šerif sejme z kompletního balíčku vrchní kartu
-                // (Pravé poledne, ukáže se vedle), zbytek zamíchá a odloženou kartu dá
-                // vespod. Bez rozšíření je hnCount 0 a beaty se úplně přeskočí.
-                // Fistful of Cards má stejnou trojici beatů a jede AŽ ZA High Noonem.
-                // Balíček vybavení (Zlatá horečka) se míchá ještě před nimi – hned za
-                // hracími kartami, ke kterým patří.
-                const hnCount = gs.eventDeck?.length || 0;
-                const ffCount = gs.ffDeck?.length || 0;
-                const wwsCount = gs.wwsDeck?.length || 0;
-                const gearDelay = gearDeckBeat(room, gearIntroCount(gs), 0);
-                const hnDelay = eventDeckBeats(room, 'hn', hnCount, gearDelay);
-                const ffDelay = eventDeckBeats(room, 'ff', ffCount, gearDelay + hnDelay);
-                const wwsDelay = eventDeckBeats(room, 'wws', wwsCount, gearDelay + hnDelay + ffDelay);
-                setTimeout(() => {
                 emitIntro(room, { sub: 'deal_cards', order: cardOrder });
 
                 let t = 0;
@@ -357,9 +363,9 @@ module.exports = function installIntroService(ctx) {
                         const rp = room.players[pidx];
                         const ps = rp && io.sockets.sockets.get(rp.socketId);
                         if (ps) ps.emit('intro_my_cards', { cards: handIds });
-                        emitIntro(room, { sub: 'deal_cards_to', toPlayerIdx: pidx, count: cnt, isLast });
+                        emitIntro(room, { sub: 'deal_cards_to', toPlayerIdx: pidx, count: cnt, isLast, gap: DEAL_GAP_MS });
                     }, t);
-                    t += cnt * 200 + 300;
+                    t += cnt * DEAL_GAP_MS + DEAL_PLAYER_PAUSE_MS;
                 });
 
                 // done až po doletu všech karet + animaci přesunu balíčku na herní pozici
@@ -370,8 +376,6 @@ module.exports = function installIntroService(ctx) {
                     emitIntro(room, { sub: 'done' });
                     broadcastRoom(room); // phase=DRAW
                 }, doneDelay);
-                }, gearDelay + hnDelay + ffDelay + wwsDelay);
-
             }, deckShuffleDelay);
         }, slideInStart + slideInDur);
     }

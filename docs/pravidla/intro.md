@@ -58,11 +58,22 @@ animací. Úklid je odložený (`App.introDoneToken` ho zruší, kdyby mezitím 
   (`INTRO_PLAY_DECK.x + 160`). Že je jeho herní pozice (`HN_PILE_X`) blíž se dorovná
   tím, že jeho závěrečný přesun je kratší, ne jinou roztečí na stole.
 - **Balíček vybavení Zlaté horečky** leží o krok napravo od High Noonu
-  (`INTRO_GEAR_DECK`, zrcadlově k Divokému západu) a má **jediný beat** `shuffle_gear` –
-  hned za hracími kartami, před balíčky událostí. Kartu „vespod" nemá a obchod (3 karty
+  (`INTRO_GEAR_DECK`, zrcadlově k Divokému západu) a má **jediný beat** `shuffle_gear`.
+  Kartu „vespod" nemá a obchod (3 karty
   lícem vzhůru) se nevykládá, protože na desce neleží (otevírá se oknem). Míchá se proto
   jen to, co pak ukazuje deska (`gearDeck` + `gearPile`, jako `drawGearPile`), a na konci
   sjede na `gearDeckSlot()` spolu s balíčky událostí.
+- **Všechny balíčky se míchají NARÁZ** (`introStartDeckPhase`, server/intro.js): hrací,
+  vybavení i trojice beatů každého balíčku událostí startují ve stejný okamžik a rozdává se,
+  až doběhne to nejdelší (dřív šly za sebou a se všemi rozšířeními to trvalo přes 20 s).
+  Klient to unese dvěma věcmi: každé míchání drží vlastní příznak
+  `_introState.shufflingDecks[sub]` (`_introShuffleDeck`, net/handlers.js – `shuffling()`
+  v renderIntroScene se ptá jím, ne posledním `sub`) a po sobě nic neuklízí
+  (`_animateIntroShuffle(…, { keep: true })`). Úklid spritů předchozí fáze dělá JEN
+  `shuffle_deck`, proto ho server posílá jako první zprávu. Půlky se rozestupují míň
+  (`INTRO_CUT_SIDE_BY_SIDE`), jinak by se sousední balíčky (rozteč 160 px) překrývaly.
+- **Rozestup rozdávaných karet posílá server** (`deal_cards_to.gap`, `DEAL_GAP_MS`), klient
+  ho jen čte – časování obou stran se tak nerozejde.
 
 ## Intro navazující hry
 

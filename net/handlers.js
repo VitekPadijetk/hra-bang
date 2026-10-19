@@ -413,20 +413,15 @@ socket.on('intro_phase', (data) => {
         }
     }
 
+    // Od téhle chvíle se balíčky míchají NARÁZ (hrací, vybavení i události – server/intro.js),
+    // takže každé míchání nese vlastní příznak v `shufflingDecks` (view/intro.js) a jen to
+    // první (hrací balíček) uklízí sprity předchozí fáze. Půlky se rozestupují míň
+    // (INTRO_CUT_SIDE_BY_SIDE), aby se sousední balíčky (rozteč 160 px) nepřekrývaly.
     else if (sub === 'shuffle_deck') {
         _introState.deckCount = data.deckCount;
         _introState.charCount = 0;
-        _introState.shuffleAnimDone = false;
         _clearIntroSprites();
-        if (gameScene) {
-            _animateIntroShuffle(
-                INTRO_PLAY_DECK.x, INTRO_PLAY_DECK.y,
-                'card_back', 0.30,
-                data.deckCount, true, // tiltDeck=true pro balíček
-                null,
-                () => { if (_introState) { _introState.shuffleAnimDone = true; renderUI(); } }
-            );
-        }
+        _introShuffleDeck('shuffle_deck', INTRO_PLAY_DECK, 'card_back', data.deckCount);
         renderUI();
     }
 
@@ -434,17 +429,7 @@ socket.on('intro_phase', (data) => {
     // kartu „vespod" nemá a obchod na stole neleží (otevírá se oknem).
     else if (sub === 'shuffle_gear') {
         _introState.gearCount = data.gearCount || 0;
-        _introState.shuffleAnimDone = false;
-        _clearIntroSprites();
-        if (gameScene) {
-            _animateIntroShuffle(
-                INTRO_GEAR_DECK.x, INTRO_GEAR_DECK.y,
-                'zh_back', 0.30,
-                Math.max(1, data.gearCount || 0), true,
-                null,
-                () => { if (_introState) { _introState.shuffleAnimDone = true; renderUI(); } }
-            );
-        }
+        _introShuffleDeck('shuffle_gear', INTRO_GEAR_DECK, 'zh_back', Math.max(1, data.gearCount || 0));
         renderUI();
     }
 
@@ -452,7 +437,7 @@ socket.on('intro_phase', (data) => {
     // kompletní a šerif z něj sejme vrchní kartu (Pravé poledne / Fistful of Cards /
     // Divoký západ). Ta jen kousek přelétne vedle, otočí se lícem nahoru a zůstane ležet
     // ve stejné velikosti jako balíčky, ať je vidět, která karta se míchat nebude.
-    // Všechny tři balíčky mají STEJNÉ beaty a jedou za sebou (server/intro.js) – `which`
+    // Všechny tři balíčky mají STEJNÉ beaty a jedou souběžně (server/intro.js) – `which`
     // říká, o který jde, zbytek popisuje introEventCfg (view/intro.js).
     else if (sub === 'highnoon_top' || sub === 'fistful_top' || sub === 'wws_top') {
         const which = sub === 'fistful_top' ? 'ff' : sub === 'wws_top' ? 'wws' : 'hn';
@@ -485,22 +470,8 @@ socket.on('intro_phase', (data) => {
         const count = data.wwsCount ?? data.ffCount ?? data.hnCount ?? 0;
         _introState[which + 'Count'] = 0;        // hromádku zastupuje míchací animace
         _introState[which + 'Total'] = count;
-        _introState.shuffleAnimDone = false;
-        _clearIntroSprites();
-        if (gameScene) {
-            _animateIntroShuffle(
-                C.deck.x, C.deck.y,
-                C.back, 0.30,
-                Math.max(1, count - 1), true,   // bez odložené karty
-                null,
-                () => {
-                    if (!_introState) return;
-                    _introState.shuffleAnimDone = true;
-                    _introState[which + 'Count'] = Math.max(0, (_introState[which + 'Total'] || 1) - 1);
-                    renderUI();
-                }
-            );
-        }
+        _introShuffleDeck(sub, C.deck, C.back, Math.max(1, count - 1),   // bez odložené karty
+            () => { _introState[which + 'Count'] = Math.max(0, (_introState[which + 'Total'] || 1) - 1); });
         renderUI();
     }
 
@@ -683,7 +654,7 @@ socket.on('intro_phase', (data) => {
                         });
                     }, 350);
                 }
-            }, i * 200);
+            }, i * (data.gap ?? 200));
         }
     }
 
@@ -3297,6 +3268,25 @@ function startDeckCardReveal(card, playerIdx, D, opts = {}) {
 // další položku (další animaci nebo aplikaci stavu). MUSÍ sedět s `duration` použitým
 // v _playCardAnim; když se změní délka letu, srovnej i tady, jinak vznikne mezera nebo
 // překryv. Nesedící číslo frontu nikdy nezasekne – jen posune pacing.
+// Míchání jednoho balíčku ve fázi balíčků intra (hrací, vybavení, události). Jedou NARÁZ,
+// proto si každé drží vlastní příznak `shufflingDecks[sub]` (dokud platí, statickou
+// hromádku zastupuje animace – renderIntroScene) a po sobě nic neuklízí (`keep`).
+// `onSettled` = co se má stát se stavem intra, až hromádka dosedne.
+function _introShuffleDeck(sub, pos, tex, n, onSettled) {
+    if (!_introState) return;
+    _introState.shufflingDecks = _introState.shufflingDecks || {};
+    _introState.shufflingDecks[sub] = true;
+    const settled = () => {
+        if (!_introState) return;
+        if (_introState.shufflingDecks) _introState.shufflingDecks[sub] = false;
+        if (onSettled) onSettled();
+        renderUI();
+    };
+    if (!gameScene) { settled(); return; }
+    _animateIntroShuffle(pos.x, pos.y, tex, 0.30, n, true, null, settled,
+        { keep: true, cutFrac: INTRO_CUT_SIDE_BY_SIDE });
+}
+
 const ANIM_MS = {
     // Líznutí frontu ZÁMĚRNĚ nedrží (0). Kartu, která ještě letí, drží v ruce skrytou
     // vlastní staging (App.pendingDrawIds + holdUntil v animateDrawToMyHand), takže stav
