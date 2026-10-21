@@ -143,3 +143,20 @@ Pivo** – Salón, Whisky, Čutora, Tequila i Sid Ketchum léčí dál.
 pro server, klientské tlačítko i bota; `drawCard('liquor')` se navíc ptá znovu v okamžiku
 akce (`options` je jen snímek z okamžiku, kdy fáze začala).
 
+
+## Odložená líznutí po 1 kartě se slévají do jedné fáze lízání
+
+Bart Cassidy, Boty, Madam Yto a Úhyb mají každý vlastní klikací fázi na 1 kartu
+(`BART_DRAW`/`BOOTS_DRAW`/`YTO_DRAW`/`UHYB_DRAW`). Když jich ve frontě odložených akcí stojí
+**víc za sebou pro téhož hráče** (Bart + Boty za jeden zásah…), `_processSpecialQueue`
+(logic/characters.js, tabulka `QUEUED_DRAW_LABEL`) je slije do JEDNÉ běžné fáze lízání na
+N karet (`drawPhaseState.queuedDraw` = čím se líže, pro popisek v core/pending.js). Ta jde
+naklikat rychle za sebou (`pendingDrawCount`) místo „klik, čekej na stav, klik".
+
+- Bere se jen **souvislý úsek ze začátku fronty**, takže se pořadí vůči ostatním akcím
+  (El Gringo, jiný hráč, Suzy) nemění. Jedno samotné líznutí zůstává ve své fázi.
+- **Suzy Lafayette se neslévá** – prázdná ruka se posuzuje až PO ostatních líznutích
+  (`_pruneSuzyQueue`), sloučená by si lízla navíc.
+- Fáze končí větví kill-rewardu v `_finishDraw` (`isKillReward`) – návrat do přerušené fáze.
+- Dynamit tím sloučený není a být nemá: zásahy se klikají po jednom a fronta se odbaví po
+  každém z nich, aby Bart mohl zahrát Pivo z právě líznuté karty.

@@ -101,10 +101,15 @@ test('Boty + Bart Cassidy: dvě líznutí za jeden zásah (schopnost i vybavení
 
     g.handleDamage(0, 1);
     assert.deepEqual(g.specialActionQueue.map(a => a.type), ['GEAR_BOOTS_DRAW', 'BART_DRAW']);
+    // Obě líznutí se slijí do jedné fáze lízání na 2 karty (rychlé klikání, viz
+    // _processSpecialQueue) – dřív to byly dvě fáze za sebou, každá s čekáním na stav.
     g._processSpecialQueue();
-    g.bootsDraw(0);
-    assert.equal(g.phase, 'BART_DRAW');
-    g.bartCassidyDraw(0);
+    assert.equal(g.phase, 'DRAW');
+    assert.equal(g.drawPhaseState.cardsNeeded, 2);
+    assert.deepEqual(g.drawPhaseState.queuedDraw, ['Boty', 'Bart Cassidy']);
+    g.drawCard('deck');
+    assert.equal(g.phase, 'DRAW');
+    g.drawCard('deck');
     assert.equal(g.players[0].hand.length, 2);
     assert.equal(g.phase, 'PLAY');
 });

@@ -3,6 +3,14 @@
 // `_processSpecialQueue`/`_resumeAfterSpecial` řídí frontu odložených schopností.
 // Připojuje se na GameState.prototype. Viz „Mixin pattern" v CLAUDE.md.
 (function () {
+// Odložená líznutí po 1 kartě, která se při souběhu slévají do jedné fáze lízání
+// (viz _processSpecialQueue). Hodnota = čím se líže, pro popisek čekání (core/pending.js).
+const QUEUED_DRAW_LABEL = {
+    BART_DRAW: 'Bart Cassidy',
+    GEAR_BOOTS_DRAW: 'Boty',
+    YTO_DRAW: 'Madam Yto',
+    UHYB_DRAW: 'Úhyb',
+};
 const CharactersMixin = {
     checkSuzyLafayette(player) {
         if (player && hasAbility(player, "Suzy Lafayette") && player.hand.length === 0 && player.health > 0) {
@@ -192,6 +200,31 @@ const CharactersMixin = {
         }
 
         const action = this.specialActionQueue.shift();
+        // Víc líznutí po jedné kartě za sebou pro téhož hráče (Bart Cassidy za každý
+        // život z dynamitu, Bart + Boty za jeden zásah, Madam Yto za víc Piv, Úhyb…)
+        // se slévá do JEDNÉ fáze lízání na N karet – jde naklikat rychle za sebou jako
+        // fáze 1, místo „klik, čekej na stav, klik". Bere se jen souvislý úsek ze
+        // začátku fronty, takže se pořadí vůči ostatním akcím nemění. Suzy Lafayette
+        // se neslévá: prázdná ruka se posuzuje až PO ostatních líznutích (_pruneSuzyQueue).
+        // Fáze končí cestou kill-rewardu (_finishDraw → návrat do přerušené fáze).
+        if (QUEUED_DRAW_LABEL[action.type]) {
+            const kinds = [action.type];
+            while (this.specialActionQueue.length && QUEUED_DRAW_LABEL[this.specialActionQueue[0].type]
+                   && this.specialActionQueue[0].playerIdx === action.playerIdx) {
+                kinds.push(this.specialActionQueue.shift().type);
+            }
+            if (kinds.length > 1) {
+                this._setDrawPhase({
+                    active: true, playerIdx: action.playerIdx,
+                    cardsNeeded: kinds.length, cardsDrawn: 0,
+                    options: ['deck'], isStartOfTurn: false,
+                    isKillReward: true,
+                    queuedDraw: [...new Set(kinds.map(k => QUEUED_DRAW_LABEL[k]))],
+                });
+                this.phase = "DRAW";
+                return true;
+            }
+        }
         if (action.type === 'BART_DRAW') {
             this.pendingBartDraw = { playerIdx: action.playerIdx };
             this.phase = "BART_DRAW";

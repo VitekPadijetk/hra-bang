@@ -146,6 +146,12 @@ function waitingStatus(state) {
     if (pa.kind === 'RESPOND' && state.pendingResponse?.sourceCard) {
         text = 'brání se proti ' + _sourceLabel(state.pendingResponse);
     }
+    // Sloučená odložená líznutí (Bart Cassidy, Boty, Madam Yto, Úhyb – viz
+    // _processSpecialQueue v logic/characters.js) běží jako běžná fáze lízání.
+    if (pa.kind === 'DRAW' && state.drawPhaseState?.queuedDraw?.length) {
+        const n = state.drawPhaseState.cardsNeeded;
+        text = `${state.drawPhaseState.queuedDraw.join(' + ')} – líže ${n} ${n < 5 ? 'karty' : 'karet'}`;
+    }
     // Víc Vulture Samů si dělí karty vyřazeného hráče (viz logic/characters.js).
     if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isVultureSplit) {
         text = 'Vulture Sam – dělí karty vyřazeného';

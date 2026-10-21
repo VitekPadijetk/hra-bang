@@ -28,7 +28,7 @@ něj se chyba zopakuje.
 | [fistful-pravo-a-strelba.md](docs/pravidla/fistful-pravo-a-strelba.md) | Právo západu (vynucená karta zamyká tah), Odstřelovač, Odražená střela |
 | [high-noon.md](docs/pravidla/high-noon.md) | High Noon: Město duchů (duch se vrací na tah), Daltonové, Požehnání/Prokletí, Nová identita, Želízka |
 | [pocty-hracu.md](docs/pravidla/pocty-hracu.md) | Hra pro 3 hráče (odkryté role, cíle v kruhu) a pro 8 hráčů (dva odpadlíci) |
-| [postavy.md](docs/pravidla/postavy.md) | Slab the Killer, dělení karet mezi víc Vulture Samů, Lucky Duke, odkrytá řada Kita a Clause, Claus / Uncle Will / Johnny Kisch, Pivo při dvou hráčích, Pálenka |
+| [postavy.md](docs/pravidla/postavy.md) | Slab the Killer, dělení karet mezi víc Vulture Samů, slévání odložených líznutí (Bart/Boty/Yto/Úhyb), Lucky Duke, odkrytá řada Kita a Clause, Claus / Uncle Will / Johnny Kisch, Pivo při dvou hráčích, Pálenka |
 | [intro.md](docs/pravidla/intro.md) | Intro cinematika: co drží pozice, rozdávání rolí a postav, intro navazující hry |
 | [rozlozeni.md](docs/pravidla/rozlozeni.md) | Mobilní profil (kompaktní soupeři) a pás vyložených karet |
 | [sit-a-assety.md](docs/pravidla/sit-a-assety.md) | Redakce stavu (co klient smí vidět) a bandwidth (WebP, komprese, cache) |
