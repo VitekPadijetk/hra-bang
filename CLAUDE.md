@@ -712,3 +712,14 @@ vybavení) uzavřela celé rozšíření.
 - Jedna z karet vybavení se česky jmenuje **taky „Zlatá horečka"** (Gold Rush, cena 5).
 - `CardType.EQUIPMENT = 'Vybavení'` už nesou **Hledí a Mustang**, takže karty Zlaté horečky
   se v kódu jmenují **`gear`** (`player.gear`), ne „vybavení".
+
+## Rozšíření Údolí stínů (Valley of Shadows) — v plánu
+
+Zatím **nic není implementováno**; v menu je jen neklikatelná karta „již brzy"
+(`MENU_EXPANSIONS_SOON` v core/menuModel.js – schválně mimo `MENU_EXPANSIONS`, takže se
+klíč `udoli_stinu` nedostane do `options.expansions`). Pravidla obou vydání (české Albi je
+originál a u devíti karet se liší od mezinárodního) jsou v
+[docs/udoli-stinu.md](docs/udoli-stinu.md), plán karta po kartě s háky, rozhodnutími R1–R15
+a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
+**Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
+(= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.
