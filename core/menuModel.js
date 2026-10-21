@@ -81,7 +81,7 @@ const MENU_EXPANSIONS = [
 // Schválně MIMO MENU_EXPANSIONS: do emptyExpansions() ani do options.expansions, které čte
 // server, se tak nedostanou. Až rozšíření půjde zapnout, přestěhuje se o řádek výš.
 const MENU_EXPANSIONS_SOON = [
-    { key: 'udoli_stinu', label: 'Údolí stínů', hint: 'Nové karty a 8 postav' },
+    { key: 'udoli_stinu', label: 'Údolí stínů', hint: '16 karet a 5 postav' },
 ];
 
 // Výchozí (všechna vypnutá) sada příznaků rozšíření – pro všechny obrazovky i reset po založení.

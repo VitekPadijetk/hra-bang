@@ -721,5 +721,8 @@ klíč `udoli_stinu` nedostane do `options.expansions`). Pravidla obou vydání 
 originál a u devíti karet se liší od mezinárodního) jsou v
 [docs/udoli-stinu.md](docs/udoli-stinu.md), plán karta po kartě s háky, rozhodnutími R1–R15
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
+**Rozhodnuto uživatelem:** česká mechanika podle Dynamite Boxu 2023, ale jen **5 postav**
+původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
+pauza na reakci jen když reagovat jde, art dodá uživatel.
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.

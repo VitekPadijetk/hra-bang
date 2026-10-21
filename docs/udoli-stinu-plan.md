@@ -5,21 +5,27 @@ vydáních, upřesnění z českých pravidel 3. vydání a Dynamite Boxu, ofici
 a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_box_cz.pdf`,
 `us_rules_eng.pdf` a přehled karet `us_karty_dvgiochi.webp`.
 
-**Stav: návrh (2026-10-21), nic není implementováno.** V menu je jen neklikatelná karta
-„Údolí stínů · již brzy" (`MENU_EXPANSIONS_SOON` v [core/menuModel.js](../core/menuModel.js)).
+**Stav: plán schválený (2026-10-21), nic není implementováno.** V menu je jen neklikatelná
+karta „Údolí stínů · již brzy" (`MENU_EXPANSIONS_SOON` v [core/menuModel.js](../core/menuModel.js)).
 Výchozí stav: `npm test` = **1697 testů, 0 chyb**, 19 sad.
 
-> **Dvě rozhodnutí plán potřebuje od uživatele dřív, než se začne** (§10, otázky Q1 a Q2):
-> **které vydání** se implementuje (česká a mezinárodní mechanika se u devíti karet liší)
-> a jestli smí hra **prozradit, že někdo drží kartu hranou mimo tah** (Útěk, Obětavý skok).
-> Plán je napsaný pro doporučenou variantu (česká mechanika podle Dynamite Boxu, pauza jen
-> když reagovat jde); kde by jiná volba něco měnila, je to u karty výslovně napsané.
+> **Rozhodnutí uživatele (2026-10-21), viz §10:**
+> 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
+>    vydání** (Colorado Bill, Evelyn Shebang, Henry Block, Limonádový Jim, Mick Defender).
+>    Tři bonusové postavy Dynamite Boxu (Black Flower, Spot-Burst Ringer, Tuco the
+>    Franciscan) přijdou později v mini-rozšíření **Nejhledanější** spolu s Annie Versary
+>    a Emilianem – podklady k nim jsou v příloze A, aby se neztratily.
+> 2. **Pauza na reakci jen tehdy, když reagovat jde** (R4).
+> 3. **Art dodá uživatel** – do té doby štítky (§2.14).
+>
+> Kde by jiné vydání něco měnilo, zůstává to u karty poznamenané kurzívou („*Při jiném
+> vydání…*") – jen jako stopa pro případ, že by se to někdy chtělo přepnout.
 
 ---
 
 ## 0. V čem je tohle rozšíření jiné než všechna dosavadní
 
-Údolí stínů je **nejblíž Dodge City**: 16 karet do hlavního balíčku a 8 postav do výběru,
+Údolí stínů je **nejblíž Dodge City**: 16 karet do hlavního balíčku a 5 postav do výběru,
 žádný nový balíček, žádná měna, nic nového na stole. Žádná z karet ale nesedí celá do
 existující mašinerie — přidávají **čtyři mechanismy, které hra zatím nemá**:
 
@@ -45,11 +51,11 @@ věci (Henry Block, Obětavý skok) přijdou na konec.
 
 | # | Věc | Rozhodnutí plánu | Proč |
 |---|---|---|---|
-| **R1** | Které vydání | **Česká mechanika (Albi) ve znění Dynamite Boxu 2023** – viz Q1. | Projekt má „zdroj pravdy = český text na artu" a české vydání je originál. Dynamite Box je nejnovější český tisk, jediný s **osmi** postavami, a u tří karet (Colorado Bill, Duch, Obětavý skok) sjednocuje výklad s mezinárodním. |
+| **R1** | Které vydání | **Česká mechanika (Albi) ve znění Dynamite Boxu 2023, 5 postav původního českého vydání** – rozhodl uživatel (§10). | Projekt má „zdroj pravdy = český text na artu" a české vydání je originál. Dynamite Box je nejnovější český tisk a u tří karet (Colorado Bill, Duch, Obětavý skok) sjednocuje výklad s mezinárodním. Jeho tři bonusové postavy patří do budoucího mini-rozšíření Nejhledanější (příloha A). |
 | **R2** | Jmenný prostor | Rozšíření = `options.expansions.udoli_stinu` (klíč už drží karta „již brzy"), data `cards.udoli_stinu.json`, mixin `logic/valley.js`, zrcadlo `core/valley.js`, prefix v kódu **`vos`** (`_vosOn`, `VOS_READY`, `pendingVos…`). | **Nikdy `shadow` ani `ghost`.** `_shadow` je varianta Stínoví pistolníci (Zlatá horečka) a `_ghost` je duch Města duchů (High Noon) — česky „Údolí stínů" a „Stínoví pistolníci", „Duch" a „duch" by se v kódu pletly. Karta Duch je v kódu **`DUCH`** / `hasDuchCard(p)`. |
 | **R3** | Identita karty | Nové `CardType` s českým jménem (žádné z 15 jmen v datech nekoliduje – ověřeno). Zbraně Lemat a Brokovnice jsou `CardType.WEAPON` s **`effect`** (`VOS_LEMAT`, `VOS_SHOTGUN`). | Zbraně se dnes poznávají podle jména (`weapon.name.includes("Volcanic")`), což je křehké; `effect` už `initializeStandardDeck` přenáší. |
-| **R4** | Okno reakce | **Pauza jen tehdy, když reagovat JDE** (cíl drží Útěk / Mick má kartu Vedle! / někdo drží Obětavý skok) – viz Q2. Kdo drží Obětavý skok, se ostatním **neukazuje** (redakce, §2.12). | Pauza na každé Panice a každém zásahu by hru zbrzdila pro všechny. Cena: že se hra zastavila, prozrazuje, že kartu někdo má. U fyzické hry to prozradí zaváhání stejně. |
-| **R5** | „Karta BANG!" | Jediný predikát **`isBangCardPlay`** (zahrání, které je kartou BANG! nebo se jako karta BANG! počítá: pravý BANG!, Calamity Janet, Lemat, Black Flower, Zúčtování). **Není** jí Kulomet, Roztříštěná kulka, Tomahawk ani žádný bang-efekt (Úder, Springfield…), výstřel Henryho, Evelyn ani Opětovné palby. Ptá se jím Odměna, Brokovnice, Colorado Bill a Dvojitá rána. | Oficiální obecné pravidlo dV („LeMat, Calamity Janet – ano; Gatling, Fanning – ne") a Dynamite Box („pouze na karty BANG! jako takové"). Jeden dotaz místo čtyř kopií, stejně jako `playsAsBang`. |
+| **R4** | Okno reakce | **Pauza jen tehdy, když reagovat JDE** (cíl drží Útěk / Mick má kartu Vedle! / někdo drží Obětavý skok) – rozhodl uživatel (§10). Kdo drží Obětavý skok, se ostatním **neukazuje** (redakce, §2.12). | Pauza na každé Panice a každém zásahu by hru zbrzdila pro všechny. Cena: že se hra zastavila, prozrazuje, že kartu někdo má. U fyzické hry to prozradí zaváhání stejně. |
+| **R5** | „Karta BANG!" | Jediný predikát **`isBangCardPlay`** (zahrání, které je kartou BANG! nebo se jako karta BANG! počítá: pravý BANG!, Calamity Janet, Lemat, Zúčtování – a později Black Flower). **Není** jí Kulomet, Roztříštěná kulka, Tomahawk ani žádný bang-efekt (Úder, Springfield…), výstřel Henryho, Evelyn ani Opětovné palby. Ptá se jím Odměna, Brokovnice, Colorado Bill a Dvojitá rána. | Oficiální obecné pravidlo dV („LeMat, Calamity Janet – ano; Gatling, Fanning – ne") a Dynamite Box („pouze na karty BANG! jako takové"). Jeden dotaz místo čtyř kopií, stejně jako `playsAsBang`. |
 | **R6** | Výstřely navíc | Fronta **`_vosShots`** – výstřel se zapíše a odpálí, až efekt, který ho vyvolal, **celý doběhne** (fáze PLAY, prázdná fronta odložených akcí). Vzor: Roubík (`_drainGag`). | Pravidlo „nejdřív doběhne efekt zahrané karty". Kdyby Opětovná palba vystřelila uprostřed Kulometu, přepsala by `pendingResponse` dalšího cíle. |
 | **R7** | Henry Block | **Výjimka z R6**: Henryho BANG! se vyhodnotí **dřív, než karta odejde** (oficiální upřesnění dV), a když zloděj umře, karta zůstává Henrymu. Spouští se **jednou za akci**, ne za kartu. | Doslova list pravidel dV a odpověď ilsilvano. Proto potřebuje „pozastavenou akci" (§2.9). |
 | **R8** | Dvojitá rána | Dva životy = **dva klikané zásahy s útočníkem** (vzor dynamit, ale přes `handleDamage`). | Pivo na posledním životě, Obětavý skok, Bart Cassidy, El Gringo, valouny i Teren Kill pak fungují **na každý život zvlášť**, přesně jako u dynamitu. |
@@ -59,14 +65,14 @@ věci (Henry Block, Obětavý skok) přijdou na konec.
 | **R12** | Strana „po levici" | Tornádo předává **dalšímu hráči ve hře po směru** (`i+1`, přeskakuje vyřazené, ducha Duchem bere), **bez ohledu na Zlatou horečku** z High Noonu. | Stejná dohoda jako u Lady Růže („po pravici" = `i−1`) a FAQ H3 (efekty karet jdou po směru). |
 | **R13** | Molly Stark | Líže za karty, které mimo tah **dobrovolně zahraje** (Útěk, Obětavý skok, Opětovná palba, Vedle! Micka), **ne** za vynucený odhoz (Divoká banda, Poker, Brokovnice, Tornádo). | Dnešní `_mollyPlayedOutOfTurn` je postavený na „dobrovolně zahranou/odhozenou kartu" (FAQ Dodge City). |
 | **R14** | Postavy do ostré hry | Jako u Divokého západu: `VOS_READY` roste s fázemi, v debug hře jdou vybrat všechny. Karty totéž: **`VOS_CARDS_READY`** (vzor `GEAR_READY`) – do balíčku jdou jen karty s hotovým efektem. | Osvědčené. Karta bez efektu v ruce = karta, kterou bot zkouší hrát a server mlčky odmítá. |
-| **R15** | Jména postav | **Česká jména z Albi** jako identita v kódu (`"Limonádový Jim"`, `"Spot-Burst Ringer"`, `"Tuco the Franciscan"`, ostatní stejná). | Hráč je vidí v UI; identita postavy je v tomhle kódu jméno (`hasAbility(p, "…")`). Při Q1 = mezinárodní by se použila jména dV. |
+| **R15** | Jména postav | **Česká jména z Albi** jako identita v kódu: Colorado Bill, Evelyn Shebang, Henry Block, **Limonádový Jim**, Mick Defender. | Hráč je vidí v UI; identita postavy je v tomhle kódu jméno (`hasAbility(p, "…")`). Karta 1. vydání má „Evelyn the Bang", pravidla 3. vydání i Dynamite Box „Evelyn Shebang" – bere se to, co bude na dodaném artu. |
 
 ---
 
 ## 1. Co rozšíření obsahuje
 
-**16 hracích karet** (10 hnědých, 6 modrých – z toho 2 zbraně a 2× Duch) a **8 postav**
-(7× 4 životy, Tuco 5). Texty, barvy a hodnoty jsou v [podkladu §2–3](udoli-stinu.md#2-hrací-karty-16).
+**16 hracích karet** (10 hnědých, 6 modrých – z toho 2 zbraně a 2× Duch) a **5 postav**
+(všechny 4 životy). Texty, barvy a hodnoty jsou v [podkladu §2–3](udoli-stinu.md#2-hrací-karty-16).
 
 | Karta | Mechanismus | Nová fáze | Fáze prací |
 |---|---|---|---|
@@ -88,9 +94,6 @@ věci (Henry Block, Obětavý skok) přijdou na konec.
 
 | Postava | Mechanismus | Nová fáze | Fáze prací |
 |---|---|---|---|
-| Tuco the Franciscan | +2 karty bez modrých karet | – | F2 |
-| Black Flower | 1×/tah ♣ jako BANG! navíc | – | F2 |
-| Spot-Burst Ringer | 1×/tah BANG! jako Kulomet | – | F2 |
 | Colorado Bill | sejmutí při BANG!, ♠ = nelze se vyhnout | – (CHECK_DRAW) | F2 |
 | Limonádový Jim | za cizí Pivo +1 život za kartu | `LEMONADE_OFFER` | F2 |
 | Evelyn Shebang | o kartu míň → BANG! na vzdálenost 1 | – (volba v DRAW) | F3 |
@@ -125,15 +128,15 @@ Nové hodnoty v `CardType` ([logic/entities.js](../logic/entities.js)): `FANNING
 palba', `ESCAPE` 'Útěk', `SAVED` 'Obětavý skok', `LAST_CALL` 'Poslední pivo', `POKER`
 'Poker', `TORNADO` 'Tornádo', `BANDIDOS` 'Divoká banda', `BOUNTY` 'Odměna', `RATTLESNAKE`
 'Chřestýš', `DUCH` 'Duch'. Do `BLUE_CARD_TYPES` ([core/cardRules.js](../core/cardRules.js))
-patří Odměna, Chřestýš a Duch (zbraně tam už jsou) – na tom stojí José Delgado, Daltonové
-i Tuco.
+patří Odměna, Chřestýš a Duch (zbraně tam už jsou) – na tom stojí José Delgado a Daltonové
+(a později Tuco z Nejhledanějších).
 
-Postavy: `characters.json` id **50–57** abecedně (Black Flower 50, Colorado Bill 51, Evelyn
-Shebang 52, Henry Block 53, Limonádový Jim 54, Mick Defender 55, Spot-Burst Ringer 56, Tuco
-the Franciscan 57) → portréty `assets/characters/050–057.webp`. `VALLEY_CHARACTERS`
-a `VOS_READY` v `logic/entities.js`, Tuco do `HIGH_HEALTH_CHARS` (5) v
-[core/roles.js](../core/roles.js#L78), všech osm do `CHAR_RANK`
-([core/botPolicy.js](../core/botPolicy.js#L594) – test hlídá, že žádná postava nechybí).
+Postavy: `characters.json` id **50–54** abecedně (Colorado Bill 50, Evelyn Shebang 51,
+Henry Block 52, Limonádový Jim 53, Mick Defender 54) → portréty
+`assets/characters/050–054.webp`. `VALLEY_CHARACTERS` a `VOS_READY` v `logic/entities.js`,
+všech pět do `CHAR_RANK` ([core/botPolicy.js](../core/botPolicy.js#L594) – test hlídá, že
+žádná postava nechybí). Všechny mají 4 životy, takže [core/roles.js](../core/roles.js#L78)
+se nemění.
 
 ### 2.2 Zapnutí
 
@@ -142,7 +145,7 @@ a `VOS_READY` v `logic/entities.js`, Tuco do `HIGH_HEALTH_CHARS` (5) v
   `_deckDataFor` ([logic/setup.js](../logic/setup.js)) přidá karty filtrované přes
   `VOS_CARDS_READY`, `_characterPool` postavy z `VOS_READY` (debug: všechny).
 - Menu: až bude první hratelná sada (konec F1), karta se přestěhuje z
-  `MENU_EXPANSIONS_SOON` do `MENU_EXPANSIONS` (hint např. „16 karet a 8 postav; karty
+  `MENU_EXPANSIONS_SOON` do `MENU_EXPANSIONS` (hint např. „16 karet a 5 postav; karty
   hrané mimo tah a Duch") a s ní test „každé rozšíření, které zná server, má kartu".
   Do té doby jen debug hra (S16) – ta čte `App.debugExpansions` pod stejnými klíči.
 - `rooms.js` (`_cardData` pro katalog Zuřivé Doroty) dostane `vosCardData` taky –
@@ -153,15 +156,15 @@ a `VOS_READY` v `logic/entities.js`, Tuco do `HIGH_HEALTH_CHARS` (5) v
 - **`logic/valley.js`** (`ValleyMixin`, vzor „Mixin pattern" v CLAUDE.md): všechno, co
   nemá domov jinde – fronta výstřelů, okna reakcí, hromadné volby, Duch, Henry.
 - **`core/valley.js`** – izomorfní predikáty, na které se ptá server, klient i bot:
-  `vosOn`, `isBangCardPlay`, `lematBangOk`, `blackFlowerOk`, `spotBurstOk`,
-  `vosEvadable`/`evadeOptions`, `saveEligible`, `hasDuchCard`, `fanningTargets`,
+  `vosOn`, `isBangCardPlay`, `lematBangOk`, `vosEvadable`/`evadeOptions`, `saveEligible`, `hasDuchCard`, `fanningTargets`,
   `evelynTargets`, `tornadoPickOk`, `pokerPickOk`, `bandidosPickOk`. Načte se v
   `index.html` před `core/playability.js`.
 
 ### 2.4 „Je to karta BANG!?" — R5
 
 `isBangCardPlay(state, me, card, mode)` vrací true pro zahrání, které **je kartou BANG!**:
-`playsAsBang` (pravý BANG!, Calamity Janet, Zúčtování) + Lemat + Black Flower. Volá se
+`playsAsBang` (pravý BANG!, Calamity Janet, Zúčtování) + Lemat (Black Flower se sem přidá
+s Nejhledanějšími). Volá se
 **v okamžiku zahrání** a výsledek si útok nese v `pendingResponse.bangCard` (vedle
 `bangEffect`) až do konce obrany – Odměna a Brokovnice se ptají až při zásahu, kdy
 karta už leží v odhozu.
@@ -329,8 +332,9 @@ function canHeal(p)  { return isInPlay(p) && !p._shadow && !hasDuchCard(p) && p.
    **Belle Star** ducha nevyřazuje (žádná oficiální odpověď; jinak by duchové mizeli každý
    její tah).
 8. Schopnost postavy: podle Dynamite Boxu **zůstává** (Bill Noface líže 5, Chuck Wengam
-   nemůže, Vera Custer smí kopírovat). Při Q1 = 3. vydání doslova by `abilitiesOf` vracel
-   pro ducha prázdno – jeden řádek v `hasAbility` (core/distance.js).
+   nemůže, Vera Custer smí kopírovat). *Text karty 3. vydání („bez schopností") by
+   znamenal prázdné `abilitiesOf` pro ducha – jeden řádek v `hasAbility` (core/distance.js),
+   kdyby dodaný art nesl tohle znění.*
 
 ### 2.12 Redakce stavu
 
@@ -343,7 +347,7 @@ function canHeal(p)  { return isInPlay(p) && !p._shadow && !hasDuchCard(p) && p.
 | `_vosSuspended.args` u Jesse Jonese | nic tajného (karta z ruky se bere náhodně až po výstřelu) |
 
 `pendingEvade` je veřejné – cíl je známý z toho, že se na něj zahrálo. Co prozrazuje
-samotná pauza, je R4/Q2.
+samotná pauza, uživatel přijal (R4).
 
 ### 2.13 Klient
 
@@ -356,8 +360,7 @@ karet jako Dodge City, Duch leží před vyřazeným hráčem. Přibude:
   `BANDIDOS_DISCARD` (BANG!, nebo 2 karty), `SHOTGUN_DISCARD`; `POKER_TAKE` = řada
   vyložených karet uprostřed (vzor Rum);
 - **přepínače při výběru karty** (slot tlačítek schopností, vzor `💥 ZAHRÁT JAKO BANG!`):
-  Lemat / Black Flower („jako BANG!"), Spot-Burst Ringer („jako Kulomet"), Dvojitá rána
-  („+ Dvojitá rána" u vybrané karty BANG!);
+  Lemat („jako BANG!") a Dvojitá rána („+ Dvojitá rána" u vybrané karty BANG!);
 - **dvoukrokové míření** Roztříštěné kulky (první cíl → zvýraznění povolených druhých);
 - volba Evelyn ve fázi lízání (tlačítko „Vystřelit místo karty" + klik na cíl);
 - **Duch:** vyřazený hráč s Duchem se kreslí jako hrající (stejně jako duch Města duchů),
@@ -372,8 +375,9 @@ Render neumím ověřit – po každé fázi s UI požádám o kontrolu v prohl�
 
 Vzor Dodge City (`EXPANSION_LOADERS.dodge_city` v [game.js:2214](../game.js#L2214)):
 art **15 karet** do `assets/card_art/udoli_stinu/<art>.webp` (Duch 2× stejný art), značka
-supa `assets/card_marks/udoli_stinu.webp`, portréty `assets/characters/050–057.webp`,
-vše `.webp` (`tools/webp.js --quality=70`). `buildCardTextures` z artu + barvy + hodnoty
+supa `assets/card_marks/udoli_stinu.webp`, portréty `assets/characters/050–054.webp`,
+vše `.webp` (`tools/webp.js --quality=70`). **Art dodá uživatel** (rozhodnuto); jména
+souborů artu se doplní do dat podle toho, co dorazí, pravidla se na ně neptají. `buildCardTextures` z artu + barvy + hodnoty
 + značky upeče líc. **Do dodání artu** se líc kreslí jako čitelný štítek z dat (jméno +
 text karty, vzor `buildGearTextures` Zlaté horečky), takže se dá hrát bez obrázků.
 
@@ -387,7 +391,7 @@ text karty, vzor `buildGearTextures` Zlaté horečky), takže se dá hrát bez o
 | Poslední pivo | `cardEffects` v `playCard` ([logic/play.js:37](../logic/play.js#L37)) | `nativePlayInTurn` |
 | Chřestýš | `handleStartOfTurnChecks` / `_applyCheckResult` ([logic/checks.js](../logic/checks.js)) | větev CHECK_DRAW už má |
 | Odměna | konec obrany v `handleResponse` (zásah) | – |
-| Lemat, Black Flower | `playBang` ([logic/play.js:131](../logic/play.js#L131)) + `isBangCardPlay` | `lematBangOk`, `blackFlowerOk` v `cardPlayability` |
+| Lemat | `playBang` ([logic/play.js:131](../logic/play.js#L131)) + `isBangCardPlay` | `lematBangOk` v `cardPlayability` |
 | Brokovnice | konec obrany → fronta `SHOTGUN_DISCARD` | `pendingActor` + větev bota |
 | Opětovná palba | `playsAsMissed` + `handleResponse` → `_vosShots` | `playsAsMissed` |
 | Roztříštěná kulka | `playBang`-like vstup se dvěma cíli → `_vosShots` | `fanningTargets` |
@@ -396,8 +400,6 @@ text karty, vzor `buildGearTextures` Zlaté horečky), takže se dá hrát bez o
 | Duch | `isInPlay`/`canHeal`, `nextTurn`, `evaluateWinner`, settle hák | `hasDuchCard` všude |
 | Útěk, Mick | tři helpery §2.8 + platná odpověď v RESPOND | `vosEvadable`, `evadeOptions` |
 | Obětavý skok | tři brány §2.10 | `saveEligible` |
-| Tuco | `_drawCountFor` ([logic/draw.js:85](../logic/draw.js#L85)) | – |
-| Spot-Burst Ringer | `_advanceMassAttack` s kartou BANG! | `spotBurstOk` |
 | Colorado Bill | `playBang` → sejmutí (CHECK_DRAW, reason `COLORADO`) → `_beginBangResolution(… unavoidable)` | `pendingResponse.unavoidable` čte `cardPlayability` |
 | Limonádový Jim | trychtýř na kartu Pivo `_madamYtoOnBeer` ([logic/goldRush.js:903](../logic/goldRush.js#L903)) → přejmenovat na `_onBeerCardPlayed` | větev bota |
 | Evelyn | `_getDrawOptions` ([logic/draw.js:112](../logic/draw.js#L112)) + `_drawCountFor` | `evelynTargets` |
@@ -423,7 +425,6 @@ Sejmutí jde existující cestou (`pendingCheckDraw.rattlesnakeIdx` → CHECKING
 `RATTLESNAKE`), takže se veze Lucky Duke, Podkova, John Pain i cinematika; barva přes
 `_effSuit` (Požehnání = nikdy, Prokletí = vždy). ♠ → klikaný zásah bez útočníka (§2.6),
 pak fáze lízání. Karta **zůstává**. Laso ji vypíná. Duch se nesnímá (nemůže ztratit život).
-Tuco s Chřestýšem před sebou bonus nemá (modrá karta zůstává).
 
 **Odměna** — vyloží se před libovolného hráče. Zasáhne-li ho někdo **kartou BANG!**
 (R5, `pendingResponse.bangCard`), střelec si lízne 1 kartu (fronta `KILL_REWARD` s 1
@@ -437,7 +438,7 @@ El Gringo.
 (R5): počítá se do limitu (Willy the Kid ji smí použít víckrát), spouští Odměnu, Colorado
 Billa, Slaba. V duelu ne (dV: „jen při střelbě"). UI i predikát sdílí se Zúčtováním:
 `showdownBangOk` se zobecní na `altBangOk(state, me, myIndex, card)` = Zúčtování **nebo**
-Lemat **nebo** Black Flower – karta si vlastní akci ponechává, jako BANG! jde přepínačem.
+Lemat (později i Black Flower) – karta si vlastní akci ponechává, jako BANG! jde přepínačem.
 Laso Lemat vypíná (zbraň je karta na stole – stejně jako Volcanic).
 
 **Brokovnice** (zbraň, dostřel 1) — zásah **kartou BANG!** od majitele Brokovnice →
@@ -475,13 +476,13 @@ El Gringo 2× (za každý život – jeho text; fanoušci se přou).
 **1 kartu BANG!** (`playsAsBang` – Calamity, Zúčtování; Lemat ne, není jejich tah) **nebo
 2 libovolné karty**; s 1 kartou odhodí ji, bez karet nic. Q♦ → Apache Kid (i Kalumet)
 vynechán jako u kárových Indiánů. Henry ani Útěk/Mick se neuplatní.
-*Při Q1 = mezinárodní:* všichni včetně hráče, volba „2 karty, nebo 1 život" (bez karet
+*Mezinárodní vydání:* všichni včetně hráče, volba „2 karty, nebo 1 život" (bez karet
 život).
 
 **Tornádo** — **každý ve hře** včetně hráče (bez Tornáda v ruce) vybere v `TORNADO_PICK`
 2 karty (1, má-li jednu; 0 → přeskočen) pro souseda po levici (R12). Přesun až po volbě
 posledního, naráz, jednou animací. Suzy až po přesunu. Henry, Útěk/Mick, Molly – ne.
-*Při Q1 = mezinárodní:* každý odhodí 1 kartu a lízne 2 – stejný tok, jen jiný konec.
+*Mezinárodní vydání:* každý odhodí 1 kartu a lízne 2 – stejný tok, jen jiný konec.
 
 **Poker** — **všichni ostatní** s kartou v ruce vyloží v `POKER_PICK` 1 kartu lícem dolů
 (skrytě, §2.7). Po posledním odhalení naráz; **není-li mezi nimi Eso** (vytištěná hodnota
@@ -504,29 +505,17 @@ nechá, když ji zachrání jiný).
 
 ## 5. Postavy po jedné
 
-**Tuco the Franciscan** (5 životů) — v `_drawCountFor` +2, pokud **v okamžiku fáze lízání**
-nemá před sebou modrou kartu (`isBlueCard` na stole + skutečná zbraň). Zelené karty
-a vybavení Zlaté horečky modré nejsou. Vězení/Dynamit, které ho úspěšným sejmutím opustily,
-mu bonus neberou (DB). Kit Carlson / Black Jack z toho berou základ (vzor Krumpáč).
-
-**Black Flower** — 1×/tah (`p._vosFlowerTurn === turnId`) smí kartu **♣** (`_effSuit` –
-pod Požehnáním žádná, pod Prokletím žádná) zahrát jako **BANG! navíc**: do limitu se
-nepočítá, smí i bez předchozího BANG! (dV). Je to karta BANG! (R5 – „zahraná jako karta
-BANG!"). Kazatel ji zakazuje (hraje kartu jako BANG!).
-
-**Spot-Burst Ringer** — 1×/tah smí **kartu BANG!** (pravý BANG!, Calamity se svým Vedle!;
-ne přes Lemat – dV) zahrát jako **Kulomet**: `_advanceMassAttack(…, GATLING)` se suitem
-karty, `_massAttackName = 'Bang! (Spot-Burst Ringer)'`. Do limitu se nepočítá; Odměna,
-Colorado, Brokovnice ne (Kulomet). Kárový BANG! Apache Kida míjí (dV). Kazatel to
-zakazuje (je to karta BANG!).
+Jen pět postav původního českého vydání (rozhodnutí uživatele). Tři bonusové postavy
+Dynamite Boxu jsou v příloze A.
 
 **Colorado Bill** (znění Dynamite Boxu) — po zahrání karty BANG! (R5) sejme
 (`CHECK_DRAW`, reason `COLORADO`, Lucky Duke/Podkova/John Pain se vezou) **před**
 barelem. ♠ (`_effSuit`) → `_beginBangResolution(…, { unavoidable: true })`: žádný
 Barel, Jourdonnais, Vedle!, Opětovná palba ani Útěk; **zůstává** Pivo na posledním životě
 a Obětavý skok (BANG! neruší, jen zachraňují život). Dvojitá rána s ♠ = 2 životy.
-*Při Q1 = 3. vydání doslova:* Bill smí sejmout až **po** zahraném Vedle!, ♠ = Vedle!
-propadá a cíl ztrácí život – jiný hák (konec obrany), stejné sejmutí.
+*Karta 1. vydání:* Bill smí sejmout až **po** zahraném Vedle!, ♠ = Vedle! propadá a cíl
+ztrácí život – jiný hák (konec obrany), stejné sejmutí. Kdyby dodaný art nesl tohle znění,
+je to změna jednoho háku.
 
 **Limonádový Jim** — trychtýř na kartu Pivo ([`_madamYtoOnBeer`](../logic/goldRush.js#L903),
 volaný ze všech tří cest: `playCard`, `beerLastLifeSave`, `beerForNugget`) se přejmenuje
@@ -538,7 +527,7 @@ za +1 život, nebo odmítne. Salón, Whisky, Poslední pivo ani Láhev kartou Pi
 přibude možnost „o kartu méně → BANG! na hráče ve vzdálenosti ≤ 1" (`computeDistance`,
 bez zbraně). `cardsNeeded − 1` (Žízeň → 0, Příjezd vlaku → 2 – DB), výstřel do `_vosShots`
 (odpálí se po fázi lízání). Bang-efekt, ne karta BANG!; BANG! smí hrát dál normálně.
-Bez cíle ve vzdálenosti 1 se možnost nenabízí. *Při Q1 = mezinárodní:* 0–2 karty méně,
+Bez cíle ve vzdálenosti 1 se možnost nenabízí. *Mezinárodní vydání:* 0–2 karty méně,
 každá na jiný cíl v dostřelu zbraně.
 
 **Mick Defender** — §2.8: v `EVADE_OFFER` smí místo Útěku zahrát kartu, kterou pustí
@@ -563,9 +552,8 @@ z pendingActor má větev"). Cílí se přes `beliefs` jako všude:
 - **POKER_TAKE** – 2 nejlepší podle `keepScore`. **LEMONADE_OFFER** – zraněný + karta
   s nízkou hodnotou.
 - **PLAY:** Chřestýš a Odměna na nepřítele, Duch na mrtvého **spojence** (role je odhalená),
-  Tornádo/Divoká banda/Poker jen když nepřátelé mají karty, Lemat/Black Flower nejhorší
-  kartou, když chybí BANG!, Spot-Burst jen když nepřátel je v okruhu víc než spojenců,
-  Roztříštěná kulka jen když povinný druhý cíl není spojenec, Dvojitá rána k BANG! na
+  Tornádo/Divoká banda/Poker jen když nepřátelé mají karty, Lemat nejhorší kartou, když
+  chybí BANG!, Roztříštěná kulka jen když povinný druhý cíl není spojenec, Dvojitá rána k BANG! na
   nepřítele, Opětovná palba přednostně před Vedle! proti nepříteli.
 - **DRAW (Evelyn)** – použít, když je ve vzdálenosti 1 nepřítel.
 
@@ -605,7 +593,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 |---|---|---|
 | **F0** | Data, `CardType`, `BLUE_CARD_TYPES`, characters.json + životy + `CHAR_RANK`, mixin a zrcadlo (kostra), `VOS_CARDS_READY`/`VOS_READY` prázdné, loader a štítky místo artu, debug přepínač | nic nemění pravidla, dá se ověřit samotné |
 | **F1** | Tomahawk, Poslední pivo, Chřestýš, Odměna, Lemat (+ `altBangOk`), Brokovnice (+ `SHOTGUN_DISCARD`), `isBangCardPlay`; **menu: karta „již brzy" → zapínací** | jen existující mašinerie; po F1 se dá rozšíření hrát |
-| **F2** | Tuco, Black Flower, Spot-Burst Ringer, Colorado Bill, Limonádový Jim | postavy bez nových mechanismů |
+| **F2** | Colorado Bill, Limonádový Jim (+ `LEMONADE_OFFER`) | postavy bez nových mechanismů |
 | **F3** | Fronta výstřelů + `_afterVosShot` + zabiják; Opětovná palba, Roztříštěná kulka, Evelyn; klikané zásahy s útočníkem → Dvojitá rána | první nový mechanismus, na kterém stojí F7 |
 | **F4** | Divoká banda, Tornádo, Poker (+ redakce, animace) | samostatné, vzor Daltonové |
 | **F5** | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
@@ -618,39 +606,55 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 
 ## 9. Co plán vědomě nedělá
 
-- **Časovaná okna** („reaguj do 3 s"). Okno čeká na klik jako každá jiná fáze (Q2 B by to
-  změnila).
+- **Časovaná okna** („reaguj do 3 s"). Okno čeká na klik jako každá jiná fáze; uživatel
+  zvolil pauzu jen tehdy, když reagovat jde.
 - **Obě vydání naráz** jako volbu v menu. Jde to (rozdíly jsou v predikátech), ale
   zdvojnásobí to testy; přidat se dá později.
+- **Tři bonusové postavy Dynamite Boxu** (Black Flower, Spot-Burst Ringer, Tuco the
+  Franciscan) – patří do mini-rozšíření Nejhledanější (příloha A).
 - **Kombinace s Velkou vlakovou loupeží** (Ironhorse v DB) – rozšíření ve hře není.
 - Změnu toho, **kdo je zabiják v Duelu** – mimo rozsah (§2.5).
 
 ---
 
-## 10. Otevřené otázky pro uživatele
+## 10. Rozhodnutí uživatele (2026-10-21)
 
-**Q1 – Které vydání?** *(mění Tornádo, Divokou bandu, Evelyn, Útěk/Micka, Lemat,
-Brokovnici, Obětavý skok, Colorado Billa a Ducha)*
-- **A (doporučeno): česká mechanika podle Dynamite Boxu 2023** – Tornádo předává 2 karty
-  doleva, Divoká banda „BANG!, nebo 2 karty", Evelyn o 1 kartu méně na vzdálenost 1,
-  Útěk/Mick jen na jediný cíl, Lemat kromě Vedle!, Brokovnice jen s kartou BANG!;
-  Colorado sejme při každém BANG!, Duch si nechává schopnost, Obětavý skok bere 2 karty
-  z ruky nebo z balíčku. Všech 8 postav.
-- B: české 3. vydání doslova (texty na kartách) – Colorado až po Vedle!, Duch bez
-  schopnosti, Obětavý skok jen při záchraně před vyřazením a jen z ruky; 3 bonusové
-  postavy převzaté z Dynamite Boxu.
-- C: mezinárodní dV Giochi 2014.
-
-Souvisí s artem: jaký art dodáš, takový text bude hráč vidět – měl by sedět s pravidly.
-
-**Q2 – Smí pauza prozradit, že někdo drží kartu hranou mimo tah?**
-- **A (doporučeno):** hra se zastaví jen když reagovat jde. Rychlé; ostatní poznají, že
-  *někdo* Obětavý skok drží (kdo, se neukazuje), resp. že cíl má Útěk / Mick kartu Vedle!.
-- B: krátké okno při **každé** ztrátě života a každé kartě na jediný cíl, i bez držitele
-  (nic neprozradí, ale každý zásah zdrží o pár sekund – boti nečekají, lidé ano).
+| Otázka | Odpověď |
+|---|---|
+| **Q1** – které vydání | **Česká mechanika podle Dynamite Boxu 2023, ale jen 5 postav původního českého vydání** (Colorado Bill, Evelyn Shebang, Henry Block, Limonádový Jim, Mick Defender). Tornádo předává 2 karty doleva, Divoká banda „BANG!, nebo 2 karty", Evelyn o 1 kartu méně na vzdálenost 1, Útěk/Mick jen na jediný cíl, Lemat kromě Vedle!, Brokovnice jen s kartou BANG!; Colorado sejme při každém BANG!, Duch si nechává schopnost, Obětavý skok bere 2 karty z ruky nebo z balíčku. Bonusové postavy → mini-rozšíření Nejhledanější (příloha A). |
+| **Q2** – pauza na reakci | **Jen tehdy, když reagovat jde.** Ostatní poznají, že *někdo* Obětavý skok drží (kdo, se neukazuje), resp. že cíl má Útěk / Mick kartu Vedle!. |
+| **Q3** – art | **Dodá uživatel** (16 karet, značka rozšíření, 5 portrétů). Do té doby štítky. Text na dodaném artu je zdroj pravdy – kdyby se u Colorado Billa, Ducha nebo Obětavého skoku lišil od Dynamite Boxu, přepne se podle něj (u karet je to poznamenané). |
 
 **Drobnosti rozhodnuté plánem (stačí říct, kdyby to mělo být jinak):** Henry Block
 jednou za akci (R7); Molly Stark jen za dobrovolné zahrání (R13); Poslední pivo pod
 Reverendem jde (není to Pivo); Big Spencer Opětovnou palbu hrát nesmí; Belle Star Ducha
 nevyřazuje, Laso ano; Chřestýš a Odměna smí i před sebe; Dvojitá rána dává El Gringovi
 dvě krádeže.
+
+---
+
+## Příloha A — bonusové postavy Dynamite Boxu (pro mini-rozšíření Nejhledanější)
+
+**Do Údolí stínů nepatří** (rozhodnutí uživatele): přijdou později v mini-rozšíření
+**Nejhledanější** spolu s Annie Versary a Emilianem. Tady jen to, co už rešerše zjistila,
+ať se to nemusí hledat znovu. Texty a upřesnění jsou v [podkladu §3, §4.2 a §5](udoli-stinu.md#3-postavy-8);
+**český text karet nebyl nalezen** (podklad má jen neoficiální návrh).
+
+**Tuco the Franciscan** (dV: Tuco Franziskaner, **5 životů**, šerif 6 → druhá karta
+životů, `HIGH_HEALTH_CHARS`) — v `_drawCountFor` ([logic/draw.js:85](../logic/draw.js#L85))
++2, pokud **v okamžiku fáze lízání** nemá před sebou modrou kartu (`isBlueCard` na stole
++ skutečná zbraň). Zelené karty a vybavení Zlaté horečky modré nejsou. Vězení/Dynamit, které
+ho úspěšným sejmutím opustily, mu bonus neberou (Dynamite Box); Chřestýš zůstává, takže
+bonus bere. Kit Carlson / Black Jack z toho berou základ (vzor Krumpáč).
+
+**Black Flower** (4 životy) — 1×/tah (`p._vosFlowerTurn === turnId`) smí kartu **♣**
+(`_effSuit` – pod Požehnáním ani Prokletím žádná) zahrát jako **BANG! navíc**: do limitu se
+nepočítá, smí i bez předchozího BANG! (dV). Je to karta BANG! (R5 – „zahraná jako karta
+BANG!"), takže ji přidat do `isBangCardPlay` a `altBangOk`. Kazatel ji zakazuje.
+
+**Spot-Burst Ringer** (dV: Der Spot – Burst Ringer, 4 životy) — 1×/tah smí **kartu BANG!**
+(pravý BANG!, Calamity se svým Vedle!; ne přes Lemat – dV) zahrát jako **Kulomet**:
+`_advanceMassAttack(…, GATLING)` se suitem karty, `_massAttackName = 'Bang! (Spot-Burst
+Ringer)'`. Do limitu se nepočítá; Odměna, Colorado, Brokovnice ne (Kulomet). Kárový BANG!
+Apache Kida míjí (dV). Kazatel to zakazuje. Bot: jen když je v okruhu víc nepřátel než
+spojenců.
