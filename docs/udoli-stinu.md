@@ -92,7 +92,7 @@ Pro dynamit vybuchují Roztříštěná kulka (2♠) a Duch 9♠ (rozsah 2–9 �
 Životy pěti českých postav jsou z nábojů na fotkách karet, tří bonusových z karet dV
 (Tuco jako jediný 5, šerif tedy 6).
 
-> **Rozhodnutí uživatele (2026-10-21):** do Údolí stínů jdou jen **první pět postav**
+> **Rozhodnutí uživatele (2026-10-21):** do Údolí stínů jdou jen **prvních pět postav**
 > (původní české vydání). Black Flower, Spot-Burst Ringer a Tuco the Franciscan přijdou
 > později v mini-rozšíření **Nejhledanější** spolu s Annie Versary a Emilianem.
 
