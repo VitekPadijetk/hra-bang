@@ -74,6 +74,16 @@ test('MENU_EXPANSIONS: každé rozšíření, které zná server, má kartu s n�
     assert.ok(M.MENU_EXPANSIONS.every(x => x.label && x.hint));
 });
 
+test('MENU_EXPANSIONS_SOON: chystané rozšíření se nedá zapnout ani poslat serveru', () => {
+    const keys = M.MENU_EXPANSIONS_SOON.map(x => x.key);
+    assert.ok(keys.includes('udoli_stinu'));
+    for (const k of keys) {
+        assert.ok(!M.MENU_EXPANSIONS.some(x => x.key === k), `${k} je zároveň zapínatelné`);
+        assert.ok(!(k in M.emptyExpansions()), `${k} by šlo do options.expansions`);
+    }
+    assert.ok(M.MENU_EXPANSIONS_SOON.every(x => x.label && x.hint));
+});
+
 test('přibalené karty: jen High Noon bez Fistfulu', () => {
     assert.equal(M.hnExtraVisible({ high_noon: true }), true);
     assert.equal(M.hnExtraVisible({ high_noon: true, fistful: true }), false);

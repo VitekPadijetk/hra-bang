@@ -310,9 +310,18 @@ function _menuShadowToggle(act, on) {
         `<span>Stínoví pistolníci <span class="bu-label-aside">— vyřazení se na svůj tah vracejí jako stín</span></span></button>`;
 }
 
+// Chystané rozšíření: stejná karta, ale bez data-act a `disabled` – klik nic nepošle.
+function _menuSoonCard(e) {
+    return `<button class="bu-check soon" disabled aria-disabled="true" title="Rozšíření se připravuje">` +
+        `<span class="bu-box"></span>` +
+        `<span class="bu-check-txt"><span class="bu-check-name">${e.label}<span class="bu-soon">již brzy</span></span>` +
+        `<span class="bu-check-hint">${e.hint}</span></span></button>`;
+}
+
 function _menuExpansionGrid(act, exps) {
     return '<div class="bu-checks">' +
         MENU_EXPANSIONS.map(e => _menuCheck('bu-check', act, e.key, e.label, e.hint, !!exps[e.key])).join('') +
+        MENU_EXPANSIONS_SOON.map(_menuSoonCard).join('') +
         '</div>';
 }
 

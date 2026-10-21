@@ -77,6 +77,13 @@ const MENU_EXPANSIONS = [
     { key: 'zlata_horecka', label: 'Zlatá horečka', hint: 'Zlaté valouny za zranění a obchod s 24 kartami vybavení' },
 ];
 
+// Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".
+// Schválně MIMO MENU_EXPANSIONS: do emptyExpansions() ani do options.expansions, které čte
+// server, se tak nedostanou. Až rozšíření půjde zapnout, přestěhuje se o řádek výš.
+const MENU_EXPANSIONS_SOON = [
+    { key: 'udoli_stinu', label: 'Údolí stínů', hint: 'Nové karty a 8 postav' },
+];
+
 // Výchozí (všechna vypnutá) sada příznaků rozšíření – pro všechny obrazovky i reset po založení.
 function emptyExpansions() {
     const out = {};
@@ -696,7 +703,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         esc, czPlural, waitingGamesLabel, runningGamesLabel, waitingGamesCount,
         initialsOf, NAME_MAX, clampName, nameError,
-        MENU_EXPANSIONS, emptyExpansions, ADVANCED_OPTIONS, hnExtraVisible, visibleAdvancedOptions,
+        MENU_EXPANSIONS, MENU_EXPANSIONS_SOON, emptyExpansions, ADVANCED_OPTIONS, hnExtraVisible, visibleAdvancedOptions,
         advancedSummary, playerCountNote, playersLabel, botsLabel, expansionsLabel,
         ROOM_NAME_MAX, defaultRoomName, createGameBlocker, createGameSummary,
         botGameSummary, botGameOptions,
