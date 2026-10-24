@@ -767,16 +767,18 @@ Postava **Evelyn Shebang** = volba `'evelyn'` v `options` fáze lízání (`evel
 `evelynTargets`, `drawCard('evelyn', cíl)` → `evelynShoot`). UI: přepínač „+ DVOJITÁ
 RÁNA" nad slotem schopností, dvoukrokové míření kulky (`_vosFanningRole`), tlačítko
 Evelyn ve slotu schopností; výstřel z ruky posílá jen `emitPlayBang` (view/board.js).
-Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art: null` do dodání),
-postavy id 50–54 v characters.json (`portrait: false` do dodání), mixin
+Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art` = slug v
+`assets/card_art/udoli_stinu/`), postavy id 50–54 v characters.json, mixin
 [logic/valley.js](logic/valley.js), zrcadlo [core/valley.js](core/valley.js) (`vosOn`,
 **`VOS_CARDS_READY`** = druhy, které smí do balíčku, `VOS_MARK_READY`, `hasDuchCard`
 a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van Kliff –
 hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
 Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (postavy zatím
-tři z pěti, karty devět z patnácti). **Art se kreslí jako štítek, dokud nedorazí**: karta bez artu, ale s `text`,
-jde přes `paintCardLabel`, postava s `portrait: false` přes `buildPortraitLabels` (game.js);
-dodání = soubor do složky + vyplnit `art` / smazat `portrait: false` / `VOS_MARK_READY = true`.
+tři z pěti, karty devět z patnácti). **Art všech 15 karet i 5 portrétů je dodaný**
+(`assets/card_art/udoli_stinu/*.webp`, `assets/characters/050–054.webp`); chybí jen
+**značka supa** (`assets/card_marks/udoli_stinu.webp`, dodání = soubor + `VOS_MARK_READY = true`).
+Štítky zůstávají jako záloha: karta bez artu, ale s `text`, jde přes `paintCardLabel`,
+postava s `portrait: false` přes `buildPortraitLabels` (game.js).
 Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js`, `test/vos.characters.test.js`,
 `test/vos.shots.test.js` (F3) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
 karta opravdu hrála), „(F2)" (stůl plný jedné postavy) a „(F3)" (karty F3 + stůl plný
@@ -786,7 +788,7 @@ originál a u devíti karet se liší od mezinárodního) jsou v
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
 **Rozhodnuto uživatelem:** česká mechanika podle Dynamite Boxu 2023, ale jen **5 postav**
 původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
-pauza na reakci jen když reagovat jde, art dodává uživatel průběžně (co chybí, kreslí se
+pauza na reakci jen když reagovat jde, art dodává uživatel (co chybí, kreslí se
 jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
 text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F4
 (Divoká banda, Tornádo, Poker – sekvenční skryté volby, redakce, animace).

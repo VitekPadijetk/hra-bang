@@ -48,11 +48,14 @@ if (!Number.isFinite(QUALITY) || QUALITY < 1 || QUALITY > 100) {
     process.exit(1);
 }
 
+// Ikony prohlížeče musí zůstat PNG (WebP tam nejde, viz tools/favicon.js) – --replace by je smazal.
+const KEEP_PNG = new Set(['favicon-32.png', 'apple-touch-icon.png']);
+
 function walk(dir, out = []) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) walk(p, out);
-        else if (/\.png$/i.test(e.name)) out.push(p);
+        else if (/\.png$/i.test(e.name) && !KEEP_PNG.has(e.name)) out.push(p);
     }
     return out;
 }

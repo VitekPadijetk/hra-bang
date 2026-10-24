@@ -399,6 +399,9 @@ jako dnešní art: **karta 650×1000 px** (bez barvy a hodnoty v rohu – ty se 
 | `assets/card_marks/udoli_stinu.webp` | symbol supa |
 | `assets/characters/050.webp` … `054.webp` | Colorado Bill, Evelyn Shebang, Henry Block, Limonádový Jim, Mick Defender |
 
+**Stav dodání (2026-10-24):** všech 15 artů karet a 5 portrétů je ve hře; chybí jen
+značka supa (`VOS_MARK_READY` zůstává `false`).
+
 **Art chodí průběžně**, takže chybějící soubor nesmí nic rozbít ani zdržet:
 
 - Karta v datech nese `text` (český text karty) a `art`. Loader stahuje jen karty

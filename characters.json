@@ -49,9 +49,9 @@
   {"id": 47, "name": "Pretty Luzena"},
   {"id": 48, "name": "Raddie Snake"},
   {"id": 49, "name": "Simeon Picos"},
-  {"id": 50, "name": "Colorado Bill", "portrait": false},
-  {"id": 51, "name": "Evelyn Shebang", "portrait": false},
-  {"id": 52, "name": "Henry Block", "portrait": false},
-  {"id": 53, "name": "Limonádový Jim", "portrait": false},
-  {"id": 54, "name": "Mick Defender", "portrait": false}
+  {"id": 50, "name": "Colorado Bill"},
+  {"id": 51, "name": "Evelyn Shebang"},
+  {"id": 52, "name": "Henry Block"},
+  {"id": 53, "name": "Limonádový Jim"},
+  {"id": 54, "name": "Mick Defender"}
 ]
