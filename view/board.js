@@ -777,6 +777,11 @@ function drawOpponents(ctx) {
             const isShoot = selectedState.action === 'SHOOT';
             const isDuel = selectedState.action === 'Duel';
             const isJail = selectedState.action === 'Vězení';
+            // Údolí stínů – Chřestýš / Odměna: před libovolného hráče (i šerifa), jen ne
+            // dvakrát stejné jméno. Jediný zdroj pravdy je vosPlaceTargetOk (core/valley.js).
+            const isPlace = (selectedState.action === 'Chřestýš' || selectedState.action === 'Odměna') &&
+                !!_selCard;
+            const placeOk = isPlace && vosPlaceTargetOk(state, actualIdx, _selCard);
             // Dodge City „odhoď další kartu" – volba cíle PŘED zaplacením: Tequila (DE_HEAL)
             // léčí zvoleného hráče, Springfield (DE_BANG) na něj vystřelí bang-efekt.
             const deMode =
@@ -789,6 +794,7 @@ function drawOpponents(ctx) {
                 (isShoot && _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ||
                 isDuel ||
                 (isJail && player.role !== "Sheriff" && !(player.board||[]).some(c => c.type === "Vězení")) ||
+                placeOk ||
                 (deMode && deValid)
             );
             // Jediné setInteractive s korektním kurzorem (opakované volání by kurzor nepřepsalo).
@@ -804,6 +810,8 @@ function drawOpponents(ctx) {
                     const alreadyJailed = (player.board || []).some(c => c.type === "Vězení");
                     const isSheriff = player.role === "Sheriff";
                     sprite.setTint((!alreadyJailed && !isSheriff) ? 0x88ff88 : 0xff6666);
+                } else if (isPlace) {
+                    sprite.setTint(placeOk ? 0x88ff88 : 0xff6666);
                 } else if (isCurrent) {
                     sprite.setTint(0x88ff88);
                 } else if (isWaiting) {
@@ -840,6 +848,20 @@ function drawOpponents(ctx) {
                     }
                     return;
                 }
+                if (isPlace && selectedState.cardIndex !== null) {
+                    if (!placeOk || App.blockInput) {
+                        sprite.setTint(0xff2222);
+                        gameScene.time.delayedCall(300, () => renderUI());
+                        return;
+                    }
+                    const capturedIdx = selectedState.cardIndex;
+                    socket.emit('play_special', { attackerIdx: myIndex, targetIdx: actualIdx, cardIdx: capturedIdx });
+                    optimisticRemoveCard(capturedIdx);
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                    return;
+                }
                 if (['Duel', 'Vězení'].includes(selectedState.action) && selectedState.cardIndex !== null) {
                     if (selectedState.action === 'Vězení') {
                         const alreadyJailed = (player.board || []).some(c => c.type === "Vězení");
@@ -872,6 +894,9 @@ function drawOpponents(ctx) {
                     const isSheriff = player.role === "Sheriff";
                     sprite.setTint((!alreadyJailed && !isSheriff) ? 0x00ff00 : 0xff0000);
                     sprite.setScale(scaleOpp * 1.1);
+                } else if (isPlace) {
+                    sprite.setTint(placeOk ? 0x00ff00 : 0xff0000);
+                    sprite.setScale(scaleOpp * 1.1);
                 } else if (!['SHOOT','Duel','Vězení'].includes(selectedState.action)) {
                     if (isCurrent) sprite.setTint(0xaaffaa);
                 }
@@ -885,7 +910,8 @@ function drawOpponents(ctx) {
                 else if (selectedState.action === 'Vězení') {
                     const aj = (player.board || []).some(c => c.type === "Vězení");
                     sprite.setTint((!aj && player.role !== "Sheriff") ? 0x88ff88 : 0xff6666);
-                } else if (isCurrent) sprite.setTint(0x88ff88);
+                } else if (isPlace) sprite.setTint(placeOk ? 0x88ff88 : 0xff6666);
+                else if (isCurrent) sprite.setTint(0x88ff88);
                 else if (isWaiting) sprite.setTint(WAIT_TINT);
                 else sprite.clearTint();
             });
@@ -1539,8 +1565,9 @@ function drawMyArea(ctx) {
     // takže se to přepíná tlačítkem, a to POVINNĚ u všech karet (bug 30). I karta bez
     // vlastní akce (Vedle!, Úhyb, druhý Barel) se proto jen vybere a čeká na tlačítko:
     // dřív mířila rovnou a klik na vlastní postavu z ní udělal výstřel do sebe (bug 34).
+    // Údolí stínů – Lemat dělá z karty BANG! stejným přepínačem (altBangOk).
     const _showdownCan = !!_selHandCard && !_sniperCan &&
-        showdownBangOk(state, me, myIndex, _selHandCard);
+        altBangOk(state, me, myIndex, _selHandCard);
     // Fistful – Odražená střela: v obraně nejde o život, ale o konkrétní vyloženou kartu.
     const _ricoDefend = (state.phase === "RESPOND" && state.pendingResponse?.active &&
         state.pendingResponse.targetIdx === myIndex) ? (state.pendingResponse.ricochet || null) : null;
@@ -1698,8 +1725,10 @@ function drawMyArea(ctx) {
         // Dynamit – info o zbývajících hitech
         if (isMyDynamiteDamage) {
             const pdd = state.pendingDynamiteDamage;
+            // Klikaný zásah nemusí být dynamit (Údolí stínů – Chřestýš).
+            const ddIcon = pdd.source === 'RATTLESNAKE' ? '🐍 Chřestýš –' : '💥';
             const ddTxt = gameScene.add.text(livesX, myBaseY + L.myHintOffY,
-                `💥 ${pdd.hitsLeft}× klikni na Životy`,
+                `${ddIcon} ${pdd.hitsLeft}× klikni na Životy`,
                 { fontSize: '19px', color: '#ff8800', backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 8, y: 4 } })
                 .setOrigin(0.5);
             gameScene.cardsSprites.add(ddTxt);
@@ -1733,12 +1762,16 @@ function drawMyArea(ctx) {
         // vybírá klikem na vlastní postavu, stejně jako ostatní (bug 74 – dřív tlačítko).
         // Zvýrazňuje se stejnou řečí jako soupeři v drawOpponents: zelená = platný cíl,
         // červená = ne (třeba Panák na plný život).
+        // Údolí stínů – Chřestýš / Odměna smí i před mě (klik na vlastní postavu).
+        const _placeCard = (selectedState.action === 'Chřestýš' || selectedState.action === 'Odměna') &&
+            selectedState.cardIndex != null ? me.hand[selectedState.cardIndex] : null;
+        const placeSelfMode = !!_placeCard && !App.blockInput && vosPlaceTargetOk(state, myIndex, _placeCard);
         const gearSelfPick = state.phase === 'GEAR_TARGET' && !App.blockInput &&
             state.pendingGearTarget?.playerIdx === myIndex;
         const gearSelfValid = gearSelfPick && (state.pendingGearTarget.targets || []).includes(myIndex);
         const charNeedsCursor = (selectedState.action === "PLAY_BLUE" && selectedState.cardIndex !== null)
             || selectedState.action === 'SHOOT'
-            || healSelfMode || lvkSelfMode || gearSelfValid
+            || healSelfMode || lvkSelfMode || gearSelfValid || placeSelfMode
             || (['Panika!', 'Cat Balou'].includes(selectedState.action) && me.board.length > 0);
         charImg.setInteractive({ useHandCursor: charNeedsCursor });
         charImg._zoomKey = 'char:' + myIndex;
@@ -1749,6 +1782,19 @@ function drawMyArea(ctx) {
             charImg.setTint(0x88ff88);
             charImg.on('pointerdown', () => {
                 socket.emit('discard_extra_choose', { cardIdx: selectedState.cardIndex, targetIdx: myIndex });
+                selectedState = { cardIndex: null, action: null };
+                App.blockInput = true;
+                renderUI();
+            });
+        }
+
+        if (placeSelfMode) {
+            charImg.setTint(0x88ff88);
+            charImg.on('pointerdown', () => {
+                if (App.blockInput) return;
+                const capturedIdx = selectedState.cardIndex;
+                socket.emit('play_special', { attackerIdx: myIndex, targetIdx: myIndex, cardIdx: capturedIdx });
+                optimisticRemoveCard(capturedIdx);
                 selectedState = { cardIndex: null, action: null };
                 App.blockInput = true;
                 renderUI();
@@ -2396,9 +2442,14 @@ function drawMyArea(ctx) {
                 const _isDutchPick = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "DUTCH_DISCARD" && state.pendingDutchDiscard?.playerIdx === myIndex;
                 if (_isDutchPick) cSprite.setTint(0xffff44);
+                // Údolí stínů – Brokovnice: odhazuje se karta „dle svého výběru" → svítí celá ruka.
+                const _isShotgunPick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "SHOTGUN_DISCARD" && state.pendingShotgun?.playerIdx === myIndex;
+                if (_isShotgunPick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
-                                       _isGrinnerPick || _isValentinePick || _isDutchPick || _isLawForced;
+                                       _isGrinnerPick || _isValentinePick || _isDutchPick ||
+                                       _isShotgunPick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2589,6 +2640,15 @@ function drawMyArea(ctx) {
                             // Zlatá horečka – Dutch Will: odhoz jedné z právě líznutých karet
                             // (pořád fáze 1). Taky povinný, takže bez potvrzení.
                             socket.emit('dutch_discard', { cardId: intent.cardId });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
+                        case 'VOS_PICK':
+                            // Údolí stínů – Brokovnice: odhoz je povinný, bez potvrzení.
+                            // `playerIdx` hlídá server/guard.js proti opožděnému kliku.
+                            socket.emit('vos_pick', { cardIds: [intent.cardId], playerIdx: myIndex });
                             optimisticRemoveCard(intent.index);
                             selectedState = { cardIndex: null, action: null };
                             App.blockInput = true;
@@ -2788,7 +2848,8 @@ function drawMyArea(ctx) {
             // resp. vyměnit/přeskočit), takže by se Sid překrýval. Léčit může hned potom.
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
-                 'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE'].includes(state.phase)
+                 'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE',
+                 'SHOTGUN_DISCARD'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -3510,6 +3571,29 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_dName} – Dutch Will (odhazuje líznutou kartu)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Údolí stínů – Brokovnice: banner „odhoď kartu dle své volby" ─────────────
+    if (state.phase === "SHOTGUN_DISCARD" && state.pendingShotgun) {
+        const _sMine = state.pendingShotgun.playerIdx === myIndex;
+        const _sName = state.players[state.pendingShotgun.playerIdx]?.name || '?';
+        const _sBy = state.players[state.pendingShotgun.attackerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _sMine ? 0xff5555 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_sMine) {
+            let l1 = gameScene.add.text(960, 66, '🔫 Brokovnice – odhoď kartu z ruky',
+                { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, `Zasáhl tě ${_sBy} – kterou kartu odhodíš, vybíráš sám`,
+                { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_sName} – Brokovnice (odhazuje kartu)`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }

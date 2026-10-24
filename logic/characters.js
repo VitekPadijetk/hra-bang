@@ -171,6 +171,14 @@ const CharactersMixin = {
                 if (!isInPlay(this.players[a.playerIdx])) this.specialActionQueue.splice(i, 1);
                 continue;
             }
+            // Údolí stínů – Brokovnice: zasažený odhazuje kartu „pokud nějakou má". Zásah ho
+            // mohl vyřadit (pak mu karty uklidila smrt) a ruku mohl vyprázdnit i jiný
+            // efekt – fáze SHOTGUN_DISCARD by pak čekala na klik, který nikdo neudělá.
+            if (a.type === 'SHOTGUN_DISCARD') {
+                const t = this.players[a.playerIdx];
+                if (!isInPlay(t) || !t.hand.length) this.specialActionQueue.splice(i, 1);
+                continue;
+            }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
             if (!p || p.health <= 0 || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
@@ -195,7 +203,9 @@ const CharactersMixin = {
         // / _finishDraw (ty aktivní draw nastaví na false PŘED voláním, takže tenhle guard pustí).
         if (this.phase === "DRAW" && this.drawPhaseState?.active) return true;
 
-        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW") {
+        // (Fáze, které samy patří frontě, se jako „přerušená" nepamatují – po jejich konci
+        // by se hra vrátila do fáze, na kterou už nic nečeká.)
+        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW" && this.phase !== "SHOTGUN_DISCARD") {
             this.interruptedPhase = this.phase;
         }
 
@@ -256,6 +266,10 @@ const CharactersMixin = {
                 dynamiteIdx: null, jailIdx: null, reason: 'TEREN_KILL'
             };
             this.phase = "CHECK_DRAW";
+        } else if (action.type === 'SHOTGUN_DISCARD') {
+            // Údolí stínů – Brokovnice: zasažený odhodí kartu dle své volby (logic/valley.js).
+            this.pendingShotgun = { playerIdx: action.playerIdx, attackerIdx: action.attackerIdx };
+            this.phase = "SHOTGUN_DISCARD";
         } else if (action.type === 'VULTURE_SPLIT') {
             this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {
@@ -263,7 +277,9 @@ const CharactersMixin = {
                 active: true, playerIdx: action.playerIdx,
                 cardsNeeded: action.cardsNeeded, cardsDrawn: 0,
                 options: ['deck'], isStartOfTurn: false,
-                isKillReward: true
+                isKillReward: true,
+                // Popisek čekání („Odměna – líže 1 kartu"), když líznutí nese důvod.
+                ...(action.label ? { queuedDraw: [action.label] } : {})
             });
             this.phase = "DRAW";
         }

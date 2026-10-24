@@ -18,20 +18,48 @@ const ChecksMixin = {
         // ani nevybuchne a Vězení tah nebere. Obě karty zůstávají ležet a příští kolo
         // (až Laso vystřídá jiná událost) fungují zase normálně.
         const boardDead = this._boardDead();
-        const dynamiteIdx = boardDead ? -1 : p.board.findIndex(c => c.type === CardType.DYNAMITE);
+        // Dynamit, který v tomhle tahu už jednou zůstal ležet (nebylo komu ho poslat),
+        // se znovu nesnímá – sem se totiž vrací i klikaný zásah Chřestýše (níž).
+        const dynamiteIdx = (boardDead || this._dynamiteStayTurn === this.turnId) ? -1
+            : p.board.findIndex(c => c.type === CardType.DYNAMITE);
         const jailIdx = boardDead ? -1 : p.board.findIndex(c => c.type === CardType.JAIL);
+        const rattlesnakeIdx = this._rattlesnakePending(p);
 
-        if (dynamiteIdx !== -1 || jailIdx !== -1) {
+        if (dynamiteIdx !== -1 || jailIdx !== -1 || rattlesnakeIdx !== -1) {
             this.pendingCheckDraw = {
                 active: true,
                 playerIdx: this.currentPlayerIndex,
                 dynamiteIdx: dynamiteIdx !== -1 ? dynamiteIdx : null,
-                jailIdx: jailIdx !== -1 ? jailIdx : null
+                jailIdx: jailIdx !== -1 ? jailIdx : null,
+                ...(rattlesnakeIdx !== -1 ? { rattlesnakeIdx } : {})
             };
             this.phase = "CHECK_DRAW";
             return;
         }
 
+        this.startDrawPhase();
+    },
+
+    // Údolí stínů – Chřestýš: „Na začátku svého tahu hráč s kartou Chřestýš otočí kartu:
+    // jsou-li to piky ♠, ztrácí 1 život." Pořadí snímání je Dynamit → Vězení → Chřestýš
+    // (Dynamite Box) a karta po sejmutí ZŮSTÁVÁ ležet – proto si tah pamatuje, že už se
+    // na ni snímalo (`_vosSnakeTurn`), jinak by se po klikaném zásahu (který se vrací do
+    // handleStartOfTurnChecks) snímalo dokola. Laso ji vypíná jako každou kartu na stole.
+    // Vrací index karty na stole, nebo -1.
+    _rattlesnakePending(p) {
+        if (!p || this._boardDead() || p._vosSnakeTurn === this.turnId) return -1;
+        return p.board.findIndex(c => c.type === CardType.RATTLESNAKE);
+    },
+
+    // Po Dynamitu a Vězení: Chřestýš, nebo rovnou fáze lízání. Neúspěšné Vězení sem
+    // nevede (tah se přeskočí), takže se na Chřestýše pak už nesnímá (Dynamite Box).
+    _rattlesnakeOrDraw(playerIdx) {
+        const rattlesnakeIdx = this._rattlesnakePending(this.players[playerIdx]);
+        if (rattlesnakeIdx !== -1) {
+            this.pendingCheckDraw = { active: true, playerIdx, dynamiteIdx: null, jailIdx: null, rattlesnakeIdx };
+            this.phase = "CHECK_DRAW";
+            return;
+        }
         this.startDrawPhase();
     },
 
@@ -89,6 +117,29 @@ const ChecksMixin = {
             return;
         }
 
+        if (pcd.jailIdx === null && pcd.rattlesnakeIdx != null) {
+            // Údolí stínů – Chřestýš (až po Dynamitu a Vězení). Od teď je v tomhle tahu
+            // odbavený, ať se po zásahu nesnímá znovu (viz _rattlesnakePending).
+            p._vosSnakeTurn = this.turnId;
+            if (this._checkRevealCount(p) > 1) {
+                this.startLuckyDukeCheck({ reason: "RATTLESNAKE", playerIdx: pcd.playerIdx, boardIdx: pcd.rattlesnakeIdx, checksLeft: 1, active: false });
+                return;
+            }
+            const checkCard = this.deck.draw({ toDiscard: true });
+            this.deck.discard(checkCard);
+            const takerIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
+            this.phase = "CHECKING";
+            this.currentCheck = {
+                active: true,
+                reason: "RATTLESNAKE",
+                playerIdx: pcd.playerIdx,
+                card: checkCard,
+                boardIdx: pcd.rattlesnakeIdx,
+                johnPainIdx: takerIdx
+            };
+            return;
+        }
+
         if (pcd.jailIdx !== null) {
             if (this._checkRevealCount(p) > 1) {
                 this.startLuckyDukeCheck({ reason: "JAIL", playerIdx: pcd.playerIdx, boardIdx: pcd.jailIdx, checksLeft: 1, active: false });
@@ -114,13 +165,16 @@ const ChecksMixin = {
     // Vězením a pak lízáním – ale dynamit se v TOMTO tahu už znovu nekontroluje.
     _continueAfterDynamite(playerIdx) {
         const p = this.players[playerIdx];
+        // Zapamatuj si to: handleStartOfTurnChecks se v tomhle tahu může zavolat znovu
+        // (klikaný zásah Chřestýše) a dynamit se snímá jen jednou za tah.
+        this._dynamiteStayTurn = this.turnId;
         const jailIdx = p.board.findIndex(c => c.type === CardType.JAIL);
         if (jailIdx !== -1) {
             this.pendingCheckDraw = { active: true, playerIdx, dynamiteIdx: null, jailIdx };
             this.phase = "CHECK_DRAW";
             return;
         }
-        this.startDrawPhase();
+        this._rattlesnakeOrDraw(playerIdx);
     },
 
     _applyCheckResult(check) {
@@ -139,6 +193,7 @@ const ChecksMixin = {
         else if (check.reason === "JAIL") checkResult = (suit === Suits.HEARTS) ? 'srdce → hraje' : 'vězení → konec tahu';
         else if (check.reason === "VENDETTA") checkResult = (suit === Suits.HEARTS) ? 'srdce → tah navíc' : 'konec tahu';
         else if (check.reason === "TEREN_KILL") checkResult = (suit === Suits.SPADES) ? 'pik → vyřazen' : 'zůstává na 1 životě';
+        else if (check.reason === "RATTLESNAKE") checkResult = (suit === Suits.SPADES) ? 'pik → ztrácí život' : 'nic';
         else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
         this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${suit}`, result: checkResult });
 
@@ -182,7 +237,8 @@ const ChecksMixin = {
             this.lastAnimEvent = { type: 'board_to_discard', fromPlayerIdx: check.playerIdx, cardId: jailCard?.id, boardIdx: visualBoardIdx };
             this.deck.discard(jailCard);
             if (suit === Suits.HEARTS) {
-                this.startDrawPhase();
+                // Údolí stínů: po Vězení ještě Chřestýš (jinak rovnou lízání).
+                this._rattlesnakeOrDraw(check.playerIdx);
             } else {
                 // Vera Custer se z vězení nedostala → k volbě kopie (těsně před lízáním)
                 // se nedostane a stará kopie tady vyprší: pro tohle kolo je bez schopnosti.
@@ -191,6 +247,18 @@ const ChecksMixin = {
                 // hrát nemohl → nepenalizuje se (čte a nuluje to _zuzanaPenalty v nextTurn).
                 p._turnSkippedByJail = true;
                 this.nextTurn();
+            }
+        } else if (check.reason === "RATTLESNAKE") {
+            // Údolí stínů – Chřestýš: ♠ (podle _effSuit – Požehnání chrání vždy, Prokletí
+            // kousne vždy) = klikaný zásah BEZ útočníka. Chřestýš nemá majitele, takže
+            // zranění nikdo „nezpůsobil" (dV): žádný valoun, El Gringo ani zabiják.
+            // Karta zůstává ležet. Po zásahu se pokračuje do handleStartOfTurnChecks, které
+            // už ví, že Chřestýš i Dynamit jsou v tomhle tahu odbavené → fáze lízání.
+            if (suit === Suits.SPADES) {
+                this.pendingDynamiteDamage = { playerIdx: check.playerIdx, hitsLeft: 1, source: 'RATTLESNAKE' };
+                this.phase = "DYNAMITE_DAMAGE";
+            } else {
+                this.startDrawPhase();
             }
         } else if (check.reason === "VENDETTA") {
             // Fistful – Vendeta: ♥ podle _effSuit (Požehnání pomáhá, Prokletí zabíjí).
@@ -230,7 +298,7 @@ const ChecksMixin = {
                 // (Slab the Killer, Odstřelovač) tedy zbytek musí hráč ještě dohrát.
                 if (needed > 1 && (this.missesPlayed || 0) < 1 && check.sourceCard !== CardType.GATLING) {
                     this.missesPlayed = 0;
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet, needed - 1);
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet, needed - 1, check.vos || null);
                 } else {
                     if (check.sourceCard === CardType.GATLING || check.sourceCard === CardType.INDIANS) {
                         this._advanceMassAttack(check.playerIdx, check.attackerIdx, check.sourceCard);
@@ -253,13 +321,14 @@ const ChecksMixin = {
                         sourceCardName: check.sourceCardName,
                         bangEffect: check.bangEffect,
                         ricochet: check.ricochet,
-                        missesNeeded: check.missesNeeded
+                        missesNeeded: check.missesNeeded,
+                        ...(check.vos ? { vos: check.vos } : {})
                     };
                     this.phase = "BARREL_DRAW";
                 } else {
                     // Barel neuhnul → obrana pokračuje s PŮVODNÍM počtem karet Vedle!.
                     // Bez `missesNeeded` by Odstřelovač spadl na 1 (útočník Slab být nemusí).
-                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet, check.missesNeeded);
+                    this.waitForMissed(check.playerIdx, check.attackerIdx, check.sourceCard, check.bangEffect, check.sourceCardName, check.ricochet, check.missesNeeded, check.vos || null);
                 }
             }
         }

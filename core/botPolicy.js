@@ -100,6 +100,15 @@ if (typeof require === 'function') {
     if (typeof showdownBangOk === 'undefined') {
         globalThis.showdownBangOk = require('./playability.js').showdownBangOk;
     }
+    // Údolí stínů – Lemat (libovolná karta jako BANG!) a karty vykládané před hráče.
+    if (typeof altBangOk === 'undefined') {
+        globalThis.altBangOk = require('./playability.js').altBangOk;
+    }
+    if (typeof lematActive === 'undefined') {
+        const __vos = require('./valley.js');
+        globalThis.lematActive = __vos.lematActive;
+        globalThis.vosPlaceTargetOk = __vos.vosPlaceTargetOk;
+    }
     // Divoký západ – Lee Van Kliff: „je co opakovat, čím zaplatit a na koho".
     if (typeof lvkOffer === 'undefined') {
         const __pl3 = require('./playability.js');
@@ -210,6 +219,8 @@ const T = {
     WEAPON: 'Zbraň', EQUIPMENT: 'Vybavení', BARREL: 'Barel', DYNAMITE: 'Dynamit',
     JAIL: 'Vězení', PANIC: 'Panika!', CAT_BALOU: 'Cat Balou', DUEL: 'Duel',
     GATLING: 'Kulomet', INDIANS: 'Indiáni!', UHYB: 'Úhyb',
+    // Údolí stínů
+    LAST_CALL: 'Poslední pivo', RATTLESNAKE: 'Chřestýš', BOUNTY: 'Odměna',
 };
 // ── Zlatá horečka: co pro bota znamená koupené vybavení ──────────────────────
 // Ocenění musí být PO MAJITELI (stejná past jako u boardCardValue): karta má cenu jen
@@ -445,6 +456,11 @@ function weaponUnlocksTarget(state, myIndex, beliefs, weapon) {
 function weaponValue(w) {
     if (!w) return 0;
     if ((w.name || '').includes('Volcanic')) return 2.5;
+    // Údolí stínů: obě zbraně mají dostřel 1 jako Colt, ale umí víc – Lemat dělá
+    // z každé karty BANG!, Brokovnice bere zasaženému kartu. Bez příplatku by je bot
+    // nikdy nevyložil (nebyly by „lepší" než Colt).
+    if (w.effect === 'VOS_LEMAT') return 1.8;
+    if (w.effect === 'VOS_SHOTGUN') return 1.6;
     return weaponRange(w);
 }
 
@@ -455,6 +471,9 @@ function boardCardValue(card) {
     if (!card) return 0;
     if (card.type === T.DYNAMITE) return -3;
     if (card.type === T.JAIL) return -2;
+    // Údolí stínů: Chřestýš kouše majitele, Odměna láká střelce – obojí mu škodí.
+    if (card.type === T.RATTLESNAKE) return -2;
+    if (card.type === T.BOUNTY) return -1;
     if (card.type === T.BARREL) return 3;
     if (card.type === T.WEAPON) return weaponValue(card);
     if (card.green) return 2;
@@ -586,6 +605,9 @@ function keepScore(card) {
         case T.WEAPON: case T.BARREL: case T.EQUIPMENT: return 5;
         case T.BANG: case T.MISSED: case T.UHYB: return 6;
         case T.BEER: return 7;
+        case T.LAST_CALL: return 6;               // léčí jen ve vlastním tahu, ne záchrana
+        case T.RATTLESNAKE: return 3;
+        case T.BOUNTY: return 2;
         default: return 1;
     }
 }
@@ -807,6 +829,14 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
             const t = pick(i => alive(i) && i !== sheriffIdx && !(state.players[i].board || []).some(c => c.type === T.JAIL));
             return t === -1 ? null : special(t);
         }
+        // Údolí stínů – Chřestýš / Odměna: „před libovolného hráče", takže nouzově i před
+        // sebe (když jinde místo není, karta je přesto zahratelná – nativePlayInTurn).
+        case T.RATTLESNAKE:
+        case T.BOUNTY: {
+            const t = pick(i => i !== myIndex && vosPlaceTargetOk(state, i, card));
+            const tgt = t !== -1 ? t : (vosPlaceTargetOk(state, myIndex, card) ? myIndex : -1);
+            return tgt === -1 ? null : special(tgt);
+        }
         case T.DUEL: {
             const t = pick(alive);
             return t === -1 ? null : special(t);
@@ -871,12 +901,14 @@ function decidePlay(state, myIndex, beliefs) {
     // Je to náhrada za chybějící kartu Bang!, ne přednostní tah: skóre je nižší než
     // u čehokoli, co bot s kartou umí udělat jinak (`consider` bere maximum), a sáhne
     // jen po postradatelné kartě – zbraně, Piva ani karty za víc karet nevystřílí.
+    // Údolí stínů – Lemat dělá totéž (libovolná karta kromě Vedle! jako BANG!), jen se
+    // na rozdíl od Zúčtování počítá do limitu – altBangOk to hlídá.
     const _showdownShot = () => {
-        if (!eventActive(state, 'ZUCTOVANI')) return;
+        if (!eventActive(state, 'ZUCTOVANI') && !lematActive(state, me)) return;
         let cheap = -1;
         me.hand.forEach((c, i) => {
             if (cardPlayability(state, me, myIndex, c) !== true) return;
-            if (!showdownBangOk(state, me, myIndex, c)) return;
+            if (!altBangOk(state, me, myIndex, c)) return;
             if (!bangAtPlayerOk(state, me, myIndex, c)) return;   // vyčerpaný limit 1× Bang!/tah
             if (keepScore(c) > 4) return;
             if (cheap === -1 || keepScore(c) < keepScore(me.hand[cheap])) cheap = i;
@@ -933,6 +965,19 @@ function decidePlay(state, myIndex, beliefs) {
                 .find(e => e.idx !== sheriffIdx      // Vězení nesmí na (veřejného) šerifa
                     && !(state.players[e.idx].board || []).some(c => c.type === T.JAIL));
             if (tgt) consider(30,
+                { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
+            return;
+        }
+
+        // Údolí stínů – Chřestýš: snímá se na každém začátku tahu majitele, takže čím
+        // dřív leží před nepřítelem, tím víc kousne. Odměna je slabší (líže jen ten, kdo
+        // cíl kartou BANG! trefí), takže až za ním a jen na nepřítele, na kterého bot
+        // sám dostřelí.
+        if (action === T.RATTLESNAKE || action === T.BOUNTY) {
+            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e =>
+                vosPlaceTargetOk(state, e.idx, card) &&
+                (action === T.RATTLESNAKE || computeCanHit(state, myIndex, e.idx)));
+            if (tgt) consider(action === T.RATTLESNAKE ? 27 : 14,
                 { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
             return;
         }
@@ -1015,6 +1060,12 @@ function decidePlay(state, myIndex, beliefs) {
 
         if (card.type === T.BEER) {
             if (canHeal(me)) consider(me.health <= 1 ? 100 : (me.health <= 2 ? 30 : 6), intent);
+            return;
+        }
+        // Údolí stínů – Poslední pivo: léčí jako Pivo, jen jako záchrana mimo tah nejde –
+        // proto se vypije dřív (nemá smysl ho šetřit na poslední život).
+        if (card.type === T.LAST_CALL) {
+            if (canHeal(me)) consider(me.health <= 2 ? 32 : 9, intent);
             return;
         }
         if (card.type === T.SALOON) { if (canHeal(me)) consider(8, intent); return; }
@@ -1679,6 +1730,14 @@ function decideBotAction(state, myIndex, beliefs) {
             if (!me.hand.length) return null;
             const worst = me.hand.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
             return { event: 'grinner_give', payload: { cardId: worst.id } };
+        }
+
+        // Údolí stínů – Brokovnice: odhoz je povinný, jen se vybírá, co bolí nejmíň.
+        // Prázdnou ruku sem fronta neposílá (_pruneSuzyQueue takový krok zahodí).
+        case 'SHOTGUN_DISCARD': {
+            if (!me.hand.length) return null;
+            const worst = me.hand.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
+            return { event: 'vos_pick', payload: { cardIds: [worst.id], playerIdx: myIndex } };
         }
 
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom

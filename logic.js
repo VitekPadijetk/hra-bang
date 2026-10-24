@@ -70,6 +70,15 @@ if (typeof vosOn === 'undefined' && typeof require === 'function') {
     globalThis.vosDorothyOk = __vos.vosDorothyOk;
     globalThis.vosRepeatOk = __vos.vosRepeatOk;
 }
+// Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
+// globálů, takže by blok výš tyhle přeskočil.
+if (typeof shotgunActive === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.shotgunActive = __vos.shotgunActive;
+    globalThis.lematActive = __vos.lematActive;
+    globalThis.vosPlaceTargetOk = __vos.vosPlaceTargetOk;
+    globalThis.VOS_PLACE_TYPES = __vos.VOS_PLACE_TYPES;
+}
 
 // Čisté helpery rolí/výhry. V prohlížeči globály z core/*, v Node přes require.
 if (typeof rolesForPlayerCount === 'undefined' && typeof require === 'function') {
@@ -156,6 +165,14 @@ if (typeof bangCardFromHand === 'undefined' && typeof require === 'function') {
     globalThis.DOROTHY_AIMED = __pl.DOROTHY_AIMED;
     // „Jakou akci karta spustí ve vlastním tahu" (nad getActionForCard přidává Zúčtování).
     globalThis.turnActionForCard = __pl.turnActionForCard;
+}
+// Údolí stínů (F1): Lemat jako BANG! a „je to KARTA BANG!?" (R5). Samostatný guard –
+// blok výš hlídá bangCardFromHand, který si mohl natáhnout někdo dřív.
+if (typeof isBangCardPlay === 'undefined' && typeof require === 'function') {
+    const __pl = require('./core/playability.js');
+    globalThis.lematBangOk = __pl.lematBangOk;
+    globalThis.altBangOk = __pl.altBangOk;
+    globalThis.isBangCardPlay = __pl.isBangCardPlay;
 }
 
 // Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum, karta Zlatá horečka
@@ -319,6 +336,9 @@ class GameState {
         this.pendingGearMode = null;
         // Dutch Will: odhoz jedné z právě líznutých karet – fáze DUTCH_DISCARD.
         this.pendingDutchDiscard = null;
+        // Údolí stínů – Brokovnice: zasažený odhazuje kartu dle své volby – fáze
+        // SHOTGUN_DISCARD (fronta odložených akcí, viz logic/valley.js).
+        this.pendingShotgun = null;
         // Madam Yto: líznutí za zahrané Pivo – fáze YTO_DRAW (fronta odložených akcí).
         this.pendingYtoDraw = null;
         // Don Bell: sejmutí na konci vlastního tahu je v jednom tahu jen jednou.

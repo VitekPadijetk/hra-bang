@@ -64,6 +64,9 @@ function pendingActor(state) {
         // Zlatá horečka – Dutch Will: odhoz jedné z právě líznutých karet (fáze 1).
         case 'DUTCH_DISCARD':    return state.pendingDutchDiscard
             ? { idx: state.pendingDutchDiscard.playerIdx, kind: 'DUTCH_DISCARD' } : null;
+        // Údolí stínů – Brokovnice: zasažený odhazuje kartu dle své volby (fronta odložených akcí).
+        case 'SHOTGUN_DISCARD':  return state.pendingShotgun
+            ? { idx: state.pendingShotgun.playerIdx, kind: 'SHOTGUN_DISCARD' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -113,6 +116,7 @@ const _WAIT_LABELS = {
     GEAR_TARGET:           'vybírá, komu vybavení pomůže',
     GEAR_MODE:             'vybírá, jak vybavení zahraje',
     DUTCH_DISCARD:         'Dutch Will – odhazuje líznutou kartu',
+    SHOTGUN_DISCARD:       'Brokovnice – odhazuje kartu',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',
@@ -150,7 +154,11 @@ function waitingStatus(state) {
     // _processSpecialQueue v logic/characters.js) běží jako běžná fáze lízání.
     if (pa.kind === 'DRAW' && state.drawPhaseState?.queuedDraw?.length) {
         const n = state.drawPhaseState.cardsNeeded;
-        text = `${state.drawPhaseState.queuedDraw.join(' + ')} – líže ${n} ${n < 5 ? 'karty' : 'karet'}`;
+        text = `${state.drawPhaseState.queuedDraw.join(' + ')} – líže ${n} ${n === 1 ? 'kartu' : (n < 5 ? 'karty' : 'karet')}`;
+    }
+    // Klikaný zásah nese svůj zdroj – dynamit je jen jeden z nich (Údolí stínů: Chřestýš).
+    if (pa.kind === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.source === 'RATTLESNAKE') {
+        text = 'Chřestýš – ztrácí život';
     }
     // Víc Vulture Samů si dělí karty vyřazeného hráče (viz logic/characters.js).
     if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isVultureSplit) {
@@ -224,7 +232,7 @@ function describePendingResponse(state, viewerIdx) {
 // ── describePendingCheck — kontrolní líznutí (Barel/Jourdonnais, Dynamit, Vězení) ─
 // Vrací, CO se líže a PROČ, ať hráč u balíčku neklikne naslepo:
 //   { forMe, kind, playerIdx, title, detail, waitingName } | null
-// kind: 'BARREL' | 'JOURDONNAIS' | 'DYNAMITE' | 'JAIL'
+// kind: 'BARREL' | 'JOURDONNAIS' | 'DYNAMITE' | 'JAIL' | 'RATTLESNAKE' | …
 function describePendingCheck(state, viewerIdx) {
     const nameOf = (idx) => state.players[idx]?.name || '?';
 
@@ -297,6 +305,19 @@ function describePendingCheck(state, viewerIdx) {
             };
         }
         const isDynamite = pcd.dynamiteIdx !== null && pcd.dynamiteIdx !== undefined;
+        const isJail = pcd.jailIdx !== null && pcd.jailIdx !== undefined;
+        // Údolí stínů – Chřestýš: snímá se až po Dynamitu a Vězení (Dynamite Box).
+        if (!isDynamite && !isJail && pcd.rattlesnakeIdx != null) {
+            return {
+                forMe: pcd.playerIdx === viewerIdx,
+                kind: 'RATTLESNAKE',
+                playerIdx: pcd.playerIdx,
+                waitingName: nameOf(pcd.playerIdx),
+                short: 'Chřestýš',
+                title: '🐍 Chřestýš – lízni si kontrolní kartu',
+                detail: '♠ = ztrácíš 1 život, jinak nic (Chřestýš zůstává ležet)',
+            };
+        }
         return {
             forMe: pcd.playerIdx === viewerIdx,
             kind: isDynamite ? 'DYNAMITE' : 'JAIL',

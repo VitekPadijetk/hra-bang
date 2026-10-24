@@ -3,7 +3,7 @@
 // Izomorfní: v prohlížeči globál getActionForCard, v Node/testech require.
 //
 // Vrací jeden z: "SHOOT" | "PLAY_BLUE" | "PLAY_CARD" | název cílené karty
-// ("Panika!" | "Cat Balou" | "Duel" | "Vězení").
+// ("Panika!" | "Cat Balou" | "Duel" | "Vězení" | "Chřestýš" | "Odměna").
 
 // `character` je BUĎ jméno postavy, NEBO pole jmen (abilitiesOf) – Greygory Deck
 // (Divoký západ) má schopnosti dvou postav naráz, takže se sem Calamity Janet může
@@ -32,7 +32,8 @@ function getActionForCard(card, character) {
     if (card.type === "Bang!" || (isJanet && card.type === "Vedle!")) {
         return "SHOOT";
     }
-    if (["Panika!", "Cat Balou", "Duel", "Vězení"].includes(card.type)) {
+    // Údolí stínů: Chřestýš a Odměna se vykládají před cíl (libovolného hráče, i sebe).
+    if (["Panika!", "Cat Balou", "Duel", "Vězení", "Chřestýš", "Odměna"].includes(card.type)) {
         return card.type;
     }
     if (["Zbraň", "Barel", "Vybavení", "Dynamit"].includes(card.type)) {

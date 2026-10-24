@@ -31,6 +31,8 @@ module.exports = function installActionGuard(ctx) {
         'handcuffs_suit', 'new_identity_choose', 'greygory_choice',
         'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
         'grinner_give', 'valentine_discard',
+        // Údolí stínů – výběr karet z ruky (Brokovnice; v F4 Tornádo, Poker, Divoká banda).
+        'vos_pick',
         'sniper_choose', 'play_ricochet',
         'claus_give', 'uncle_will', 'flint_westwood', 'lee_van_kliff', 'lady_rose',
         'dorothy_command', 'dorothy_target', 'dorothy_cancel',
@@ -76,6 +78,14 @@ module.exports = function installActionGuard(ctx) {
         if (event === 'select_target_card' && payload && payload.targetIdx != null &&
             gs.pendingSelection && gs.pendingSelection.targetIdx !== payload.targetIdx) {
             return `výběr už běží u #${gs.pendingSelection.targetIdx}, klik mířil na #${payload.targetIdx}`;
+        }
+        // Údolí stínů – vos_pick nese, ZA KOHO se vybírá (`playerIdx`): u kolečka voleb
+        // (Tornádo, Poker…) by opožděný klik jinak vybral karty dalšímu v pořadí.
+        if (event === 'vos_pick' && payload && payload.playerIdx != null) {
+            const cur = pendingActor(gs);
+            if (cur && cur.idx !== payload.playerIdx) {
+                return `výběr už čeká na #${cur.idx}, klik mířil za #${payload.playerIdx}`;
+            }
         }
         const pa = pendingActor(gs);
         // pendingActor === null = přechodný/neznámý stav (např. SID_SAVE): nic

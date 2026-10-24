@@ -68,7 +68,7 @@ test('MENU_EXPANSIONS: každé rozšíření, které zná server, má kartu s n�
     // Klíče čte server v options.expansions (logic/setup.js); nové rozšíření bez karty
     // by v menu nešlo zapnout.
     const keys = M.MENU_EXPANSIONS.map(x => x.key);
-    for (const k of ['dodge_city', 'high_noon', 'fistful', 'divoky_zapad', 'zlata_horecka']) {
+    for (const k of ['dodge_city', 'high_noon', 'fistful', 'divoky_zapad', 'zlata_horecka', 'udoli_stinu']) {
         assert.ok(keys.includes(k), k);
     }
     assert.ok(M.MENU_EXPANSIONS.every(x => x.label && x.hint));
@@ -76,7 +76,8 @@ test('MENU_EXPANSIONS: každé rozšíření, které zná server, má kartu s n�
 
 test('MENU_EXPANSIONS_SOON: chystané rozšíření se nedá zapnout ani poslat serveru', () => {
     const keys = M.MENU_EXPANSIONS_SOON.map(x => x.key);
-    assert.ok(keys.includes('udoli_stinu'));
+    // Údolí stínů jde od fáze F1 zapnout normálně (plán §8).
+    assert.ok(!keys.includes('udoli_stinu'));
     for (const k of keys) {
         assert.ok(!M.MENU_EXPANSIONS.some(x => x.key === k), `${k} je zároveň zapínatelné`);
         assert.ok(!(k in M.emptyExpansions()), `${k} by šlo do options.expansions`);

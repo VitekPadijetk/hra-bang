@@ -209,6 +209,9 @@ const ResponseMixin = {
             this._advanceMassAttack(playerIdx, pr.originatorIdx, pr.sourceCard);
             this._processSpecialQueue();
         } else {
+            // Údolí stínů: Pivo / Sid / Batoh zachránily poslední život, ale ZÁSAH to byl –
+            // odměnu (Odměna) i odhoz (Brokovnice) to nepřebíjí (viz _vosOnBangHit).
+            this._vosOnBangHit(pr);
             this.phase = "PLAY";
             // Fistful of Cards: běží-li série zásahů, pošli hned další (viz logic/fistful.js).
             if (!this._afterFistfulHit()) this._processSpecialQueue();
@@ -271,6 +274,10 @@ const ResponseMixin = {
             if (this.pendingResponse.ricochet) {
                 this._ricochetDestroy(this.pendingResponse.ricochet);
             } else {
+                // Údolí stínů – zásah KARTOU BANG!: Brokovnice a Odměna jdou do fronty
+                // PŘED zraněním, tedy před Barta Cassidyho a El Gringa (pořadí dV:
+                // Brokovnice → Odměna → El Gringo) a dřív, než smrt uklidí stůl oběti.
+                this._vosOnBangHit(this.pendingResponse);
                 this.handleDamage(playerIdx, this.pendingResponse.originatorIdx);
 
                 // Zásah hráče vyřadil → líznutí za Úhyb už nemá kdo vybrat (stejná podmínka

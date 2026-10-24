@@ -1366,6 +1366,66 @@ test('20 her jen botů jede i s balíčkem samých Divokých západů', () => {
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci ani pod Divokým západem');
 });
 
+// Údolí stínů (fáze F1): karty jdou do HLAVNÍHO balíčku, takže tu není co „samého"
+// podstrčit jako u balíčků událostí – místo toho se data rozšíření namnoží (6 hotových
+// druhů × 6 kopií), ať se Chřestýš, Odměna, Lemat i Brokovnice v každé hře opravdu
+// dostanou ke slovu. Hlídá to, že se hra jen botů na nové fázi (SHOTGUN_DISCARD) ani
+// na novém sejmutí nezasekne, a že se karty doopravdy hrály (ne že by tiše chyběly).
+test('Údolí stínů (F1): hra jen botů doběhne 3–8 hráčů, samo i se vším, s nasyceným balíčkem', () => {
+    const vosData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+    const { VOS_CARDS_READY } = require('../core/valley.js');
+    let nid = 70000;
+    const rich = [];
+    for (let copy = 0; copy < 6; copy++) {
+        vosData.filter(c => VOS_CARDS_READY.includes(c.name)).forEach(c => rich.push({ ...c, id: nid++ }));
+    }
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
+    COMBOS.push({ n: 4, all: true }, { n: 7, all: true }, { n: 5, all: true }, { n: 8, all: true });
+
+    const seen = new Set();
+    try {
+        COMBOS.forEach(({ n, all }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = rich;
+            const opts = { expansions: { dodge_city: all, high_noon: all, fistful: all,
+                                         divoky_zapad: all, zlata_horecka: all, udoli_stinu: true } };
+            const tag = `${all ? 'vše' : 'jen ÚS'} (${n}p)`;
+            const room = { id: `vos${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e) return;
+                if (['play', 'special', 'bang'].includes(e.ev) && VOS_CARDS_READY.includes(e.card)) seen.add(e.card);
+                if (e.ev === 'check' && e.kind === 'RATTLESNAKE') seen.add('sejmutí Chřestýše');
+                if (e.ev === 'special' && e.card === 'Brokovnice' && e.taken) seen.add('odhoz Brokovnice');
+                if (e.ev === 'special' && e.card === 'Odměna' && e.msg) seen.add('líznutí za Odměnu');
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            assert.ok(gs.deck.cards.concat(...gs.players.map(p => p.hand)).some(c => c.exp === 'udoli_stinu'),
+                `${tag}: karty rozšíření jsou v balíčku`);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room);
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci s Údolím stínů');
+    for (const what of ['Tomahawk', 'Poslední pivo', 'Chřestýš', 'Odměna', 'Lemat', 'Brokovnice',
+                        'sejmutí Chřestýše', 'odhoz Brokovnice', 'líznutí za Odměnu']) {
+        assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
+    }
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

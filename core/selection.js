@@ -20,6 +20,7 @@
 //   { type: 'GRINNER_GIVE', index, cardId }           – Youl Grinner (Divoký západ): dej mu kartu
 //   { type: 'VALENTINE_DISCARD', index, cardId }      – Miláček Valentýn (Divoký západ): odhoď kartu z ruky
 //   { type: 'DUTCH_DISCARD', index, cardId }          – Dutch Will (Zlatá horečka): odhoď jednu z líznutých
+//   { type: 'VOS_PICK', index, cardId }               – Brokovnice (Údolí stínů): zasažený odhazuje kartu
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
@@ -54,6 +55,10 @@ if (typeof require === 'function') {
     }
     if (typeof eventActive === 'undefined') {
         globalThis.eventActive = require('./highNoon.js').eventActive;
+    }
+    // Údolí stínů – Lemat: karta, kterou jde zahrát už jen jako BANG!, čeká na přepínač.
+    if (typeof lematActive === 'undefined') {
+        globalThis.lematActive = require('./valley.js').lematActive;
     }
     // Divoký západ – Lee Van Kliff: čím se smí zaplatit opakování efektu.
     if (typeof lvkPayOk === 'undefined') {
@@ -103,6 +108,12 @@ function decideCardClick(ctx) {
     if (state.phase === "DUTCH_DISCARD" && state.pendingDutchDiscard?.playerIdx === myIndex) {
         return playable === true ? { type: 'DUTCH_DISCARD', index, cardId: card.id }
                                  : { type: 'UNPLAYABLE_FLASH' };
+    }
+
+    // Údolí stínů – Brokovnice: zasažený odhazuje kartu dle své volby (celá ruka je
+    // klikatelná, odhoz je povinný) – klik rovnou odhazuje, stejně jako u Valentýna.
+    if (state.phase === "SHOTGUN_DISCARD" && state.pendingShotgun?.playerIdx === myIndex) {
+        return { type: 'VOS_PICK', index, cardId: card.id };
     }
 
     // Divoký západ – Lee Van Kliff: nabitá schopnost čeká na kartu BANG!, kterou se
@@ -179,7 +190,9 @@ function decideCardClick(ctx) {
     // rovnou a klik na vlastní postavu z ní udělal výstřel do sebe (bug 30/34).
     // Vybere se proto BEZ akce: nic není klikatelné a čeká se na přepínač. Mimo Zúčtování
     // se nemění nic – akce je pořád ta vlastní (getActionForCard).
-    if (eventActive(state, 'ZUCTOVANI') && !nativePlayInTurn(state, me, myIndex, card)) {
+    // Totéž platí pro Lemat (Údolí stínů) – i on dělá z karty BANG! jen přepínačem.
+    if ((eventActive(state, 'ZUCTOVANI') || lematActive(state, me)) &&
+        !nativePlayInTurn(state, me, myIndex, card)) {
         return { type: 'SELECT', index, action: null };
     }
     return { type: 'SELECT', index, action: getActionForCard(card, abilitiesOf(me)) };

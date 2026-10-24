@@ -41,7 +41,7 @@ const SEAT_LIST_KEYS = new Set([
 // nabídka postav) a přemapovat se nesmí:
 const NOT_SEAT_KEYS = new Set([
     'boardIdx', 'fromBoardIdx', 'toBoardIdx', 'visBoardIdx', 'visualBoardIdx',
-    'dynamiteIdx', 'jailIdx', 'handIdx', 'cardIdx', 'cardIndex', 'cardIndices',
+    'dynamiteIdx', 'jailIdx', 'rattlesnakeIdx', 'handIdx', 'cardIdx', 'cardIndex', 'cardIndices',
     'targetCardIdx', 'extraCardIdx', 'charSelectIndex', 'stolenIndex', 'revealIdx',
     'keptIdxs', 'randomIdx', 'randomIndex',
     // Zlatá horečka: index do obchodu (gearRow) a do vybavení hráče (player.gear) –
@@ -1089,6 +1089,8 @@ const WildWestMixin = {
         if (!vosRepeatOk(card)) return null;
         switch (card.type) {
             case CardType.BEER:        return { effect: 'BEER',        aim: null };
+            // Údolí stínů – Poslední pivo: efekt = +1 život (není to karta Pivo).
+            case CardType.LAST_CALL:   return { effect: 'LAST_CALL',   aim: null };
             case CardType.SALOON:      return { effect: 'SALOON',      aim: null };
             case CardType.STORE:       return { effect: 'STORE',       aim: null };
             case CardType.STAGECOACH:  return { effect: 'STAGECOACH',  aim: null };
@@ -1208,6 +1210,11 @@ const WildWestMixin = {
                 // Tequila Joe: karta Pivo mu dá +2. Při dvou hráčích Pivo efekt nemá –
                 // pak se ale nedalo ani zahrát, takže tahle paměť vzniknout nemohla.
                 this._heal(p, hasAbility(p, "Tequila Joe") ? 2 : 1);
+                done();
+                return;
+            }
+            case 'LAST_CALL': {
+                this._heal(p, 1);
                 done();
                 return;
             }

@@ -55,6 +55,11 @@ const PlayMixin = {
                 this._madamYtoOnBeer(this.currentPlayerIndex);
                 return true;
             },
+            // Údolí stínů – Poslední pivo: +1 život ve svém tahu, a to i ve dvou hráčích
+            // („Lze hrát i ve hře 2 posledních hráčů"). Není to karta Pivo: Reverend, Madam
+            // Yto ani Tequila Joe (+2) se ho netýkají. Mimo tah se jako záchrana nehraje –
+            // tahle cesta je jen ve fázi PLAY hráče na tahu.
+            [CardType.LAST_CALL]: () => this._heal(player, 1) > 0,
             [CardType.SALOON]: () => {
                 // Léčí každého VE HŘE – při Městě duchů (High Noon) tedy i ducha, který si
                 // zrovna odbývá svůj tah (isInPlay, ne health > 0).
@@ -147,7 +152,12 @@ const PlayMixin = {
         // západu) drží playsAsBang – tímtéž predikátem se ptá klient i bot. Karty
         // s bang-EFEKTEM (Úder, Springfield, Derringer, zelené) kartami Bang! nejsou,
         // míří se ale stejně, takže jdou mimo něj.
-        if (!card.bangEffect && !playsAsBang(this, attacker, card)) return;
+        // Údolí stínů – Lemat: ve svém tahu libovolná karta (kromě Vedle!) jako BANG!.
+        // Stává se tím KARTOU BANG! (R5), takže jde stejnou cestou jako pravý BANG! – do
+        // limitu, pod Kazatelem zakázaná (lematBangOk to hlídá sám, i limit).
+        const viaLemat = !card.bangEffect && !playsAsBang(this, attacker, card) &&
+                         lematBangOk(this, attacker, attackerIdx, card);
+        if (!card.bangEffect && !playsAsBang(this, attacker, card) && !viaLemat) return;
 
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
@@ -171,13 +181,19 @@ const PlayMixin = {
             return;
         }
 
+        // Údolí stínů (R5): je to KARTA BANG!? Ptá se na to Odměna a Brokovnice až při
+        // zásahu, kdy karta leží v odhozu – proto se to zjistí TEĎ (před započtením do
+        // limitu, na který se lematBangOk ptá) a útok si to nese v `vos` až do zásahu.
+        const vos = (this._vosOn() && isBangCardPlay(this, attacker, attackerIdx, card))
+            ? { bangCard: true, shotgun: shotgunActive(this, attacker) } : null;
+
         if (!isEffect) attacker.bangsPlayedThisTurn++;
         attacker.stats.bangsFired++;
         this._trackCard(attackerIdx, card?.type || 'Bang!');
         // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty (i karty, která je
         // kartou Bang! jen pod Zúčtováním / u Calamity Janet, a bang-efektu Úderu).
         this._markBrownPlayed(attackerIdx, card, { asBang: true });
-        this.logEvent('bang', { who: attacker.name, target: target.name });
+        this.logEvent('bang', { who: attacker.name, target: target.name, card: card.name });
         this.deck.discard(attacker.hand.splice(cardIdx, 1)[0]);
         this.currentAttacker = attackerIdx;
         this.checkSuzyLafayette(attacker);
@@ -189,7 +205,7 @@ const PlayMixin = {
             return;
         }
 
-        this._beginBangResolution(attackerIdx, targetIdx, isEffect, card.name);
+        this._beginBangResolution(attackerIdx, targetIdx, isEffect, card.name, null, null, vos);
         this._processSpecialQueue();
     },
 
@@ -204,7 +220,9 @@ const PlayMixin = {
     // (Odstřelovač z Fistfulu = 2). null → spočítá se ze Slaba the Killer jako vždycky.
     // Protahuje se stejně jako `ricochet`, protože barelový check ho potřebuje na OBOU
     // stranách: při ♥ se za jednu kartu Vedle! počítá sám barel, jinak platí celé číslo.
-    _beginBangResolution(attackerIdx, targetIdx, isEffect = false, sourceName = null, ricochet = null, missesNeeded = null) {
+    // `vos` = kontext Údolí stínů ({ bangCard, shotgun } – Odměna a Brokovnice se ptají až
+    // při zásahu). Protahuje se stejně jako `ricochet`; bez rozšíření se do stavu nepíše.
+    _beginBangResolution(attackerIdx, targetIdx, isEffect = false, sourceName = null, ricochet = null, missesNeeded = null, vos = null) {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
         const needed = missesNeeded ||
@@ -240,7 +258,8 @@ const PlayMixin = {
                 sourceCardName: sourceName || CardType.BANG,
                 bangEffect: isEffect,
                 ricochet,
-                missesNeeded: needed
+                missesNeeded: needed,
+                ...(vos ? { vos } : {})
             };
             this.missesPlayed = 0;
             this.phase = "BARREL_DRAW";
@@ -254,7 +273,8 @@ const PlayMixin = {
                 sourceCardName: sourceName || CardType.BANG,
                 bangEffect: isEffect,
                 ricochet,
-                responded: []
+                responded: [],
+                ...(vos ? { vos } : {})
             };
             this.phase = "RESPOND";
             this.missesRequired = needed;
@@ -305,6 +325,29 @@ const PlayMixin = {
             }
             target.board.push(card);
             // Johnny Kisch (Fistful): vyložením Vězení odhodí všechna ostatní Vězení ve hře.
+            this._johnnyKischPurge(attIdx, card.name, card);
+            this.checkSuzyLafayette(attacker);
+            this._processSpecialQueue();
+            return;
+        }
+        else if (card.type === CardType.RATTLESNAKE || card.type === CardType.BOUNTY) {
+            // Údolí stínů – Chřestýš / Odměna: „polož před libovolného hráče" (i sebe,
+            // i šerifa), jen ne dvě karty stejného jména (vosPlaceTargetOk, core/valley.js).
+            if (!vosPlaceTargetOk(this, tarIdx, card)) {
+                attacker.hand.splice(cardIdx, 0, card);
+                this.checkSuzyLafayette(attacker);
+                return;
+            }
+            // Apache Kid: kárová karta na něj nemá efekt (pod Požehnáním/Prokletím
+            // rozhoduje platná barva, jako u Vězení).
+            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
+                this.deck.discard(card);
+                this.checkSuzyLafayette(attacker);
+                this._processSpecialQueue();
+                return;
+            }
+            target.board.push(card);
+            // Johnny Kisch (Fistful): vyložením odhodí stejnojmenné karty u stolu.
             this._johnnyKischPurge(attIdx, card.name, card);
             this.checkSuzyLafayette(attacker);
             this._processSpecialQueue();
@@ -368,7 +411,7 @@ const PlayMixin = {
         if (this.phase !== "BARREL_DRAW" || !this.pendingBarrelCheck?.active) return;
         const pbc = this.pendingBarrelCheck;
         this.pendingBarrelCheck = null;
-        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName, pbc.ricochet, pbc.missesNeeded, pbc.roulette);
+        this.startBarrelCheck(pbc.targetIdx, pbc.attackerIdx, pbc.checksLeft, pbc.reason, pbc.sourceCard, pbc.bangEffect, pbc.sourceCardName, pbc.ricochet, pbc.missesNeeded, pbc.roulette, pbc.vos || null);
     },
 
     // Vyloží kartu (modrou i zelenou) na stůl. Nelze mít 2 karty stejného jména (D7).
@@ -388,11 +431,12 @@ const PlayMixin = {
     },
 
     // `roulette` = sejmutí místo odhozu karty Vedle! v Ruské ruletě (Fistful, FAQ Q13).
-    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null, roulette = false) {
+    startBarrelCheck(targetIdx, attackerIdx, checksLeft, reason = "BARREL", sourceCard = null, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null, roulette = false, vos = null) {
         const target = this.players[targetIdx];
+        const vosCtx = vos ? { vos } : {};
 
         if (this._checkRevealCount(target) > 1) {
-            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette };
+            const checkContext = { reason, playerIdx: targetIdx, attackerIdx, checksLeft, boardIdx: null, active: false, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette, ...vosCtx };
             this.startLuckyDukeCheck(checkContext);
             return;
         }
@@ -403,7 +447,7 @@ const PlayMixin = {
         // _johnPainQueueCard) – odkrytá karta pak jde rovnou k němu, ne přes odhoz.
         const takerIdx = this._johnPainQueueCard(checkCard, targetIdx, { reveal: true });
         this.phase = "CHECKING";
-        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette, johnPainIdx: takerIdx };
+        this.currentCheck = { active: true, reason, playerIdx: targetIdx, attackerIdx, card: checkCard, checksLeft, sourceCard, sourceCardName, bangEffect, ricochet, missesNeeded, roulette, johnPainIdx: takerIdx, ...vosCtx };
     },
 
     resolveCardSelection(attackerIdx, targetCardArea, targetCardIdx) {
@@ -555,7 +599,7 @@ const PlayMixin = {
 
     // `missesNeeded` = explicitní počet karet Vedle! (Odstřelovač 2, zbytek po úspěšném
     // barelu 1). null → spočítá se ze Slaba the Killer.
-    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null) {
+    waitForMissed(targetIdx, attackerIdx, sourceCard = CardType.BANG, bangEffect = false, sourceCardName = null, ricochet = null, missesNeeded = null, vos = null) {
         const attacker = this.players[attackerIdx];
         this.pendingResponse = {
             active: true,
@@ -566,7 +610,8 @@ const PlayMixin = {
             sourceCardName: sourceCardName || sourceCard,
             bangEffect: bangEffect,
             ricochet,
-            responded: []
+            responded: [],
+            ...(vos ? { vos } : {})
         };
         if (!this.missesPlayed || this.missesPlayed === 0) {
             // Bang-efekt: Slabův bonus (2× Vedle!) neplatí → vždy 1.

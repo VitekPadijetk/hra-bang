@@ -69,6 +69,13 @@ if (typeof require === 'function') {
     if (typeof vosDorothyOk === 'undefined') {
         globalThis.vosDorothyOk = require('./valley.js').vosDorothyOk;
     }
+    // Údolí stínů (F1) – Lemat a karty vykládané před libovolného hráče.
+    if (typeof lematActive === 'undefined') {
+        const __vos = require('./valley.js');
+        globalThis.lematActive = __vos.lematActive;
+        globalThis.vosPlaceTargetOk = __vos.vosPlaceTargetOk;
+        globalThis.VOS_PLACE_TYPES = __vos.VOS_PLACE_TYPES;
+    }
 }
 
 // ── Co se počítá za kartu Bang! a co za kartu Vedle! ────────────────────────
@@ -154,6 +161,41 @@ function showdownBangOk(state, me, myIndex, card) {
     return ricochetAvailable(state, me, myIndex) || sniperOffer(state, me, myIndex, card);
 }
 
+// Údolí stínů – Lemat: „Ve svém tahu můžeš použít libovolnou kartu (kromě VEDLE!) z ruky
+// jako BANG!." Stejně jako u Zúčtování si karta svou vlastní akci ponechává a výstřel se
+// přepíná tlačítkem. Rozdíl: karta se tím STÁVÁ kartou BANG! (R5) – počítá se do limitu
+// (Willy the Kid smí víckrát, Dynamite Box), spouští Odměnu i Brokovnici a Kazatel ji
+// zakazuje. Jen „ve svém tahu" a jen při střelbě – v duelu ani proti Indiánům ne (dV).
+// „Kromě VEDLE!" = karta Vedle! (Calamity Janet ji smí jako BANG! zahrát i bez Lematu)
+// a Opětovná palba, která se jako karta Vedle! počítá (přibude v F3).
+function lematBangOk(state, me, myIndex, card) {
+    if (!lematActive(state, me)) return false;
+    if (!card || card._placeholder) return false;
+    if (!isPlayTurn(state, myIndex)) return false;
+    if (card.type === "Bang!" || card.type === "Vedle!" || card.type === "Opětovná palba") return false;
+    if (card.bangEffect && !card.green) return false;                         // Úder a spol. míří samy
+    if (preacherBlocks(state, me, myIndex, null)) return false;               // Kazatel – každá karta BANG!
+    return bangLimitFree(state, me) &&
+        !lawLocksOther(state, me, myIndex, card, { asBang: true });
+}
+
+// Smí se TOUHLE kartou vystřelit, i když to karta BANG! sama o sobě není? Zúčtování
+// (Divoký západ) nebo Lemat (Údolí stínů) – obojí je přepínač „ZAHRÁT JAKO BANG!".
+// Klient (tlačítko), bot i cardPlayability se ptají tímhle; server v playBang taky.
+function altBangOk(state, me, myIndex, card) {
+    return showdownBangOk(state, me, myIndex, card) || lematBangOk(state, me, myIndex, card);
+}
+
+// Údolí stínů (R5): je tohle zahrání KARTOU BANG!? Pravá karta BANG!, Calamity Janet,
+// Zúčtování a Lemat ano; bang-EFEKT (Úder, Tomahawk, Springfield…), Kulomet ani výstřel
+// bez karty ne. Ptá se na to Odměna, Brokovnice (a později Colorado Bill a Dvojitá rána),
+// a to V OKAMŽIKU ZAHRÁNÍ – útok si výsledek nese až do zásahu (`pendingResponse.vos`),
+// protože karta už tou dobou leží v odhozu. Volá se před započtením do limitu.
+function isBangCardPlay(state, me, myIndex, card) {
+    if (!card || card._placeholder || card.bangEffect) return false;
+    return playsAsBang(state, me, card) || lematBangOk(state, me, myIndex, card);
+}
+
 // Smí se karta zahrát ve své VLASTNÍ roli (Bang! střílí, Pivo léčí, modrá jde na stůl)?
 // Vytažené z cardPlayability kvůli Zúčtování (Divoký západ): pod ním je hratelná i karta,
 // jejíž vlastní akce zrovna nedává smysl (Vedle! ve svém tahu, druhá zelená téhož jména) –
@@ -228,6 +270,13 @@ function nativePlayInTurn(state, me, myIndex, card) {
         return true;
     }
     if (card.type === "Salon") return state.players.some(p => canHeal(p));
+    // Údolí stínů – Poslední pivo: +1 život ve svém tahu, a to i ve dvou hráčích. Není to
+    // karta Pivo, takže ho nebrzdí Reverend (High Noon) ani pravidlo „dva hráči".
+    if (card.type === "Poslední pivo") return canHeal(me);
+    // Údolí stínů – Chřestýš a Odměna: před libovolného hráče (i sebe, i šerifa), ne dvakrát.
+    if (VOS_PLACE_TYPES.includes(card.type)) {
+        return state.players.some((p, i) => vosPlaceTargetOk(state, i, card));
+    }
     if (["Zbraň","Barel","Vybavení","Dynamit"].includes(card.type)) {
         if (card.type === "Zbraň") { if (me.weapon?.id !== -1 && me.weapon?.name === card.name) return false; }
         else { if ((me.board||[]).some(c => c.name === card.name)) return false; }
@@ -245,6 +294,8 @@ function turnActionForCard(state, me, myIndex, card) {
     const action = getActionForCard(card, abilitiesOf(me));
     if (action === 'SHOOT') return action;
     if (eventActive(state, 'ZUCTOVANI') && !nativePlayInTurn(state, me, myIndex, card)) return 'SHOOT';
+    // Údolí stínů – Lemat: totéž pro kartu, která jde zahrát už jen jako BANG!.
+    if (lematBangOk(state, me, myIndex, card) && !nativePlayInTurn(state, me, myIndex, card)) return 'SHOOT';
     return action;
 }
 
@@ -268,6 +319,11 @@ function cardPlayability(state, me, myIndex, card) {
     // je to krok startu tahu, ne fáze 1 – proto stejně brzy jako obojí výš.
     if (state.phase === "VALENTINE_DISCARD") {
         return state.pendingValentine?.playerIdx === myIndex ? true : null;
+    }
+    // Údolí stínů – Brokovnice: zasažený odhodí kartu „dle svého výběru" – klikatelná je
+    // celá ruka a odhoz je povinný. Je to v cizím tahu, proto stejně brzy jako výš.
+    if (state.phase === "SHOTGUN_DISCARD") {
+        return state.pendingShotgun?.playerIdx === myIndex ? true : null;
     }
     // Zlatá horečka – Dutch Will: odhazuje JEDNU z právě líznutých karet, takže na rozdíl
     // od Valentýna není klikatelná celá ruka – jen ty, které přibyly ve fázi 1 (seznam
@@ -310,9 +366,9 @@ function cardPlayability(state, me, myIndex, card) {
         // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené, Vězení).
         if (judgeBlocksFor(state, card)) return false;
         if (nativePlayInTurn(state, me, myIndex, card)) return true;
-        // Divoký západ – Zúčtování: každá karta SMÍ jít jako Bang!, ale nemusí – proto
-        // se možnost jen přidává navrch vlastní akci karty (viz showdownBangOk).
-        return showdownBangOk(state, me, myIndex, card);
+        // Divoký západ – Zúčtování a Údolí stínů – Lemat: karta SMÍ jít jako Bang!, ale
+        // nemusí – proto se možnost jen přidává navrch vlastní akci karty (viz altBangOk).
+        return altBangOk(state, me, myIndex, card);
     }
     return null;
 }
@@ -853,7 +909,8 @@ function dorothyAsIf(state, commandedIdx) {
 }
 
 // Jakou akci poručená karta spustí (z pohledu poručeného) a potřebuje-li cíl.
-const DOROTHY_AIMED = ['SHOOT', 'Panika!', 'Cat Balou', 'Duel', 'Vězení'];
+// Údolí stínů: Chřestýš a Odměna se vykládají před cíl stejně jako Vězení.
+const DOROTHY_AIMED = ['SHOOT', 'Panika!', 'Cat Balou', 'Duel', 'Vězení', 'Chřestýš', 'Odměna'];
 
 function dorothyAction(state, commandedIdx, card) {
     const p = state.players[commandedIdx];
@@ -893,6 +950,10 @@ function dorothyTargets(state, commandedIdx, card) {
                 break;
             case 'Vězení':
                 if (q.role !== 'Sheriff' && !(q.board || []).some(c => c.type === 'Vězení')) out.push(i);
+                break;
+            case 'Chřestýš':
+            case 'Odměna':
+                if (vosPlaceTargetOk(sim, i, card)) out.push(i);
                 break;
             default:
                 break;
@@ -948,6 +1009,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        lawProtectedCard, lawHandcuffsSuit, willPayOk, willOffer,
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
                        playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, bigSpencerBlocked,
+                       lematBangOk, altBangOk, isBangCardPlay,
                        turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer,

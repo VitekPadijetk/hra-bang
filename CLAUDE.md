@@ -715,20 +715,35 @@ vybavení) uzavřela celé rozšíření.
 
 ## Rozšíření Údolí stínů (Valley of Shadows) — rozpracované
 
-**Hotová je fáze F0 (kostra)** – žádné pravidlo se zatím nemění. V menu je pořád jen
-neklikatelná karta „již brzy" (`MENU_EXPANSIONS_SOON` v core/menuModel.js – schválně mimo
-`MENU_EXPANSIONS`), zapnout jde jen v **debug hře S16** (`udoliStinu` v `debugStartPayload`).
+**Hotové jsou fáze F0 (kostra) a F1 (šest karet na existující mašinerii)** a rozšíření
+jde zapnout v menu jako každé jiné (`MENU_EXPANSIONS`, nápověda poctivě říká „rozpracované").
+F1 = **Tomahawk** (jen data – bang-efekt s dostřelem 2), **Poslední pivo** (`cardEffects`
+v `playCard`, není to karta Pivo), **Chřestýš** (sejmutí v `logic/checks.js` po Dynamitu
+a Vězení – `_rattlesnakePending`/`_rattlesnakeOrDraw`, ♠ = klikaný zásah se `source:
+'RATTLESNAKE'`; karta zůstává, takže si tah pamatuje `p._vosSnakeTurn` a dynamit, který
+zůstal ležet, `_dynamiteStayTurn`), **Odměna** a **Brokovnice** (`_vosOnBangHit` v
+logic/valley.js – volá se při zásahu z `handleResponse` i ze záchrany posledního života
+v `_advanceAfterLastLifeSave`; Brokovnice má fázi **`SHOTGUN_DISCARD`** z fronty odložených
+akcí a akci **`vos_pick`**) a **Lemat** (`lematBangOk` → `altBangOk` = Zúčtování NEBO
+Lemat, týž přepínač „ZAHRÁT JAKO BANG!"). Chřestýš a Odměna se vykládají přes
+`playSpecialCard` před LIBOVOLNÉHO hráče – jediný dotaz je `vosPlaceTargetOk` (core/valley.js).
+**„Je to karta BANG!?" (R5) = `isBangCardPlay`** (core/playability.js – ne core/valley.js,
+playability se na valley ptá sám, vznikl by kruh): zjišťuje se V OKAMŽIKU ZAHRÁNÍ
+v `playBang` a útok si výsledek nese jako **`vos = { bangCard, shotgun }`** stejnou cestou
+jako `ricochet` (pendingBarrelCheck → currentCheck → pendingResponse). Bez zapnutého
+rozšíření se klíč `vos` do stavu vůbec nepíše.
 Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art: null` do dodání),
 postavy id 50–54 v characters.json (`portrait: false` do dodání), mixin
 [logic/valley.js](logic/valley.js), zrcadlo [core/valley.js](core/valley.js) (`vosOn`,
 **`VOS_CARDS_READY`** = druhy, které smí do balíčku, `VOS_MARK_READY`, `hasDuchCard`
 a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van Kliff –
 hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
-Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (oboje zatím
-prázdné). **Art se kreslí jako štítek, dokud nedorazí**: karta bez artu, ale s `text`,
+Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (postavy zatím
+žádné, karty šest z patnácti). **Art se kreslí jako štítek, dokud nedorazí**: karta bez artu, ale s `text`,
 jde přes `paintCardLabel`, postava s `portrait: false` přes `buildPortraitLabels` (game.js);
 dodání = soubor do složky + vyplnit `art` / smazat `portrait: false` / `VOS_MARK_READY = true`.
-Testy: `test/vos.setup.test.js`. Pravidla obou vydání (české Albi je
+Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js` a zátěž „Údolí stínů (F1)"
+v `test/server.bots.test.js` (namnožená data, aby se každá karta opravdu hrála). Pravidla obou vydání (české Albi je
 originál a u devíti karet se liší od mezinárodního) jsou v
 [docs/udoli-stinu.md](docs/udoli-stinu.md), plán karta po kartě s háky, rozhodnutími R1–R15
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
@@ -736,7 +751,7 @@ a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md
 původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
 pauza na reakci jen když reagovat jde, art dodává uživatel průběžně (co chybí, kreslí se
 jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
-text na artu" z Divokého západu se na Údolí stínů nevztahuje. Plán je hotový, další krok
-je fáze F1.
+text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F2
+(Colorado Bill, Limonádový Jim).
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.

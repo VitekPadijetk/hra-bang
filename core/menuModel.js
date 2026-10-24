@@ -75,14 +75,16 @@ const MENU_EXPANSIONS = [
     { key: 'fistful', label: 'Fistful', hint: '15 karet událostí a 3 postavy; hraje se i vedle High Noonu' },
     { key: 'divoky_zapad', label: 'Divoký západ', hint: '10 karet událostí a 8 postav; otáčí je Dostavník a Wells Fargo' },
     { key: 'zlata_horecka', label: 'Zlatá horečka', hint: 'Zlaté valouny za zranění a obchod s 24 kartami vybavení' },
+    // Hratelné od fáze F1 (docs/udoli-stinu-plan.md §8) – karty přibývají po fázích,
+    // do balíčku jdou jen hotové (VOS_CARDS_READY), proto ta poctivá nápověda.
+    { key: 'udoli_stinu', label: 'Údolí stínů', hint: 'Rozpracované: zatím 6 z 15 druhů karet, postavy přibudou' },
 ];
 
 // Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".
 // Schválně MIMO MENU_EXPANSIONS: do emptyExpansions() ani do options.expansions, které čte
 // server, se tak nedostanou. Až rozšíření půjde zapnout, přestěhuje se o řádek výš.
-const MENU_EXPANSIONS_SOON = [
-    { key: 'udoli_stinu', label: 'Údolí stínů', hint: '16 karet a 5 postav' },
-];
+// (Teď žádné – Údolí stínů se v F1 přestěhovalo výš.)
+const MENU_EXPANSIONS_SOON = [];
 
 // Výchozí (všechna vypnutá) sada příznaků rozšíření – pro všechny obrazovky i reset po založení.
 function emptyExpansions() {
@@ -685,7 +687,7 @@ function debugStartPayload({ count, roles, exps, hnExtra, shadows }) {
         fistful: !!e.fistful,
         divokyZapad: !!e.divoky_zapad,
         zlataHorecka: !!e.zlata_horecka,
-        // Údolí stínů – zatím jen v debug hře (MENU_EXPANSIONS_SOON).
+        // Údolí stínů (debug server zná pod vlastním klíčem, viz server/handlers.debug.js).
         udoliStinu: !!e.udoli_stinu,
         shadowGunslingers: !!shadows,
     };

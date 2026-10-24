@@ -212,6 +212,11 @@ module.exports = function installBotService(ctx) {
                 const t = gs.pendingGearTarget?.targets?.[0];
                 return t == null ? null : { event: 'gear_target', payload: { targetIdx: t } };
             }
+            // Údolí stínů – Brokovnice: odhoz je povinný, odhodí se první karta v ruce.
+            case 'SHOTGUN_DISCARD': {
+                const c = gs.players[idx]?.hand?.[0];
+                return c ? { event: 'vos_pick', payload: { cardIds: [c.id], playerIdx: idx } } : null;
+            }
             // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
             case 'GRINNER_GIVE': {
                 const c = gs.players[idx]?.hand?.[0];

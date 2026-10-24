@@ -5,10 +5,11 @@ vydáních, upřesnění z českých pravidel 3. vydání a Dynamite Boxu, ofici
 a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_box_cz.pdf`,
 `us_rules_eng.pdf` a přehled karet `us_karty_dvgiochi.webp`.
 
-**Stav: plán schválený (2026-10-21), hotová je fáze F0 (kostra, 2026-10-24).** V menu je
-pořád jen neklikatelná karta „Údolí stínů · již brzy" (`MENU_EXPANSIONS_SOON` v
-[core/menuModel.js](../core/menuModel.js)), zapnout jde v debug hře S16.
-Po F0: `npm test` = **1714 testů, 0 chyb** (výchozí stav byl 1697).
+**Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra) a F1 (šest karet,
+2026-10-24).** Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v
+[core/menuModel.js](../core/menuModel.js)); do balíčku jde zatím 6 z 15 druhů karet
+a žádná postava.
+Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: **1752 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -710,6 +711,42 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
   nebo z balíčku; Duch si nechává postavu), ne podle starší karty – art pravidla nemění.
 
 ---
+
+### Co se ve fázi F1 odchýlilo od plánu (a proč)
+
+- **`lematBangOk`, `altBangOk` a `isBangCardPlay` sedí v core/playability.js**, ne
+  v core/valley.js: potřebují `isPlayTurn`, `bangLimitFree`, `lawLocksOther`
+  a `preacherBlocks`, a playability.js se na valley.js ptá sám (Doroty), takže by vznikl
+  kruh. V core/valley.js zůstalo to, co kruh nedělá: `lematActive`/`shotgunActive`
+  (zbraň podle `effect`, Laso ji vypíná) a `vosPlaceTargetOk` (Chřestýš, Odměna).
+- **Zásah = i záchrana posledního života.** Pivo / Sid Ketchum / Batoh v RESPOND zásah
+  nezruší, jen vrátí život – Odměna i Brokovnice proto platí i tam
+  (`_vosOnBangHit` volá i `_advanceAfterLastLifeSave`).
+- **Kontext útoku je `vos = { bangCard, shotgun }`** (§2.5 počítal s `vos` až pro frontu
+  výstřelů v F3). Zbraň se posuzuje při výstřelu, Odměna až při zásahu (leží na stole
+  cíle a může se mezitím změnit jen tam, kde to pravidla dovolují). Bez zapnutého
+  rozšíření se klíč do stavu nepíše vůbec, takže se staré snímky stavu nemění.
+- **Akce `vos_pick { cardIds, playerIdx }` existuje už teď**, i když ji zatím používá jen
+  Brokovnice (jedna karta) – F4 (Tornádo, Poker, Divoká banda) do ní jen přidá fáze.
+  Guard kontroluje `playerIdx` proti `pendingActor`.
+- **Dynamit, který zůstal ležet, se v tahu podruhé nesnímá** (`_dynamiteStayTurn`). Klikaný
+  zásah Chřestýše se vrací do `handleStartOfTurnChecks` (výchozí `resume`), a ten by jinak
+  sejmul znovu dynamit, který nebylo komu poslat.
+- **Odměna líže přes existující `KILL_REWARD`** s popiskem (`label: 'Odměna'` → „Odměna –
+  líže 1 kartu"); `waitingStatus` kvůli tomu umí i „1 kartu".
+- **Animace:** vyložení Chřestýše a Odměny letí jako Vězení (`jail_sequence`, i pod
+  Zuřivou Doroty), odhoz za Brokovnici jako `hand_to_discard`. Nová cinematika nevznikla.
+- **Doroty** smí poručit Chřestýše i Odměnu (cíl kdokoli kromě poručeného – stávající
+  pravidlo výběru cíle), Lee Van Kliff smí zopakovat Poslední pivo (`LAST_CALL`).
+- **Log výstřelu nese jméno karty** (`logEvent('bang', { …, card })`) – pomáhá hlášením
+  chyb a zátěž podle něj pozná, že se Tomahawk opravdu hrál.
+- **Zjištěno mimochodem:** server v `playBang` dostřel neověřuje (hlídá ho jen klient
+  a bot, i u základních karet). V F1 se to neměnilo; test Tomahawku proto ověřuje dostřel
+  sdíleným predikátem `computeCanHit` + `bangEffectReach`.
+- **Bot:** Chřestýš na nepřítele (27), Odměna na nepřítele v dostřelu (14), Poslední pivo
+  jako Pivo, jen se nešetří; Lemat a Brokovnice mají ve `weaponValue` příplatek (jinak by
+  na Colt nikdy nevyměnil); Lemat střílí „poslední možností" stejně jako Zúčtování.
+  V `SHOTGUN_DISCARD` odhazuje nejnižší `keepScore`.
 
 ## 9. Co plán vědomě nedělá
 

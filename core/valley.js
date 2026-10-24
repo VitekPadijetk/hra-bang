@@ -3,12 +3,18 @@
 // v Node přes require. Ptá se jím server (logic/valley.js), klient (view/*) i bot
 // (core/botPolicy.js) – kdyby se rozešli, server akci mlčky odmítne a hra botů se zasekne.
 //
-// Plán: docs/udoli-stinu-plan.md. Fáze F0 je jen KOSTRA – žádné pravidlo se tu zatím
-// nemění. Predikáty karet (isBangCardPlay, vosEvadable, saveEligible, fanningTargets, …)
-// přibývají s fázemi F1–F8.
+// Plán: docs/udoli-stinu-plan.md. Predikáty karet přibývají s fázemi F1–F8; ty, které
+// potřebují i core/playability.js (Lemat jako BANG!, „je to karta BANG!?"), sedí tam –
+// playability.js se na tenhle soubor ptá sám, takže by vznikl kruh.
 //
 // POZOR na jména (R2): v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani
 // `ghost` (= duch Města duchů). Karta Duch je `DUCH` / `hasDuchCard`.
+
+// Laso (Fistful) vypíná karty na stole – i zbraně Lemat a Brokovnice a modré karty
+// Chřestýš a Odměna. highNoon.js na valley.js nesahá, takže kruh nevzniká.
+if (typeof require === 'function' && typeof boardDeadFor === 'undefined') {
+    globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
+}
 
 // Zapnuté rozšíření? (Klíč drží menu i server: options.expansions.udoli_stinu.)
 function vosOn(state) {
@@ -19,7 +25,41 @@ function vosOn(state) {
 // Které DRUHY karet (jméno karty) už mají hotový efekt, a tedy smí do balíčku (R14,
 // vzor GEAR_READY ze Zlaté horečky). Karta bez efektu by ležela v ruce, bot by ji
 // zkoušel hrát a server mlčky odmítal. Roste s fázemi F1–F8.
-const VOS_CARDS_READY = [];
+const VOS_CARDS_READY = [
+    // F1 – jen existující mašinerie
+    'Tomahawk', 'Poslední pivo', 'Chřestýš', 'Odměna', 'Lemat', 'Brokovnice',
+];
+
+// ── Zbraně (F1) ──────────────────────────────────────────────────────────────
+// Zbraň se poznává podle `effect` (R3), ne podle jména. Laso ji vypíná jako každou
+// kartu na stole (stejně jako Volcanic).
+function _weaponOn(state, p, effect) {
+    return !!p && !!p.weapon && p.weapon.effect === effect && !boardDeadFor(state);
+}
+
+// Lemat: „Ve svém tahu můžeš použít libovolnou kartu (kromě VEDLE!) z ruky jako BANG!."
+function lematActive(state, p) { return _weaponOn(state, p, 'VOS_LEMAT'); }
+
+// Brokovnice: „Hráč zasažený kartou BANG! z této zbraně musí odhodit kartu z ruky."
+function shotgunActive(state, p) { return _weaponOn(state, p, 'VOS_SHOTGUN'); }
+
+// ── Karty vykládané před hráče (F1) ──────────────────────────────────────────
+// Chřestýš a Odměna: „Polož před libovolného hráče" – tedy i před sebe a před šerifa
+// (na rozdíl od Vězení). Jediná překážka je pravidlo „žádné dvě karty stejného jména
+// před jedním hráčem". Klient, bot i server se ptají tímhle predikátem.
+const VOS_PLACE_TYPES = ['Chřestýš', 'Odměna'];
+
+function vosPlaceTargetOk(state, targetIdx, card) {
+    if (!card || !VOS_PLACE_TYPES.includes(card.type)) return false;
+    const t = state && state.players && state.players[targetIdx];
+    if (!t || !isInPlay(t)) return false;
+    return !(t.board || []).some(c => c && c.name === card.name);
+}
+
+// Ve hře? (Shim pro Node – v prohlížeči je isInPlay globál z core/distance.js.)
+if (typeof require === 'function' && typeof isInPlay === 'undefined') {
+    globalThis.isInPlay = require('./distance.js').isInPlay;
+}
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
 // logic/setup.js) a do katalogu karet debug hry.
@@ -85,5 +125,6 @@ function vosRepeatOk(card) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { vosOn, VOS_CARDS_READY, vosReadyCards, VOS_MARK_READY, hasDuchCard,
-                       VOS_KINDS, vosDorothyOk, vosRepeatOk };
+                       VOS_KINDS, vosDorothyOk, vosRepeatOk,
+                       lematActive, shotgunActive, VOS_PLACE_TYPES, vosPlaceTargetOk };
 }

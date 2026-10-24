@@ -248,13 +248,18 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (isPanicCB) {
                 room._pendingPanicCard = { type: card.type === 'Panika!' ? 'panic_sequence' : 'catbalou_sequence',
                     attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id };
-            } else if (card?.type === 'Vězení') {
+            } else if (card?.type === 'Vězení' || card?.type === 'Chřestýš' || card?.type === 'Odměna') {
+                // Údolí stínů: Chřestýš a Odměna letí před cíl stejně jako Vězení.
                 emitAnim(room, { type: 'jail_sequence', attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id, boardIdx: jailBoardIdx });
             } else {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
             }
             // Cílené hostilní karty (Vězení/Panika/Cat Balou/Duel) → ledger chování (dedukce rolí).
             if (d.targetIdx != null && ['Vězení', 'Panika!', 'Cat Balou', 'Duel'].includes(card?.type)) {
+                ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
+            }
+            // Údolí stínů: Chřestýš a Odměna před CIZÍHO hráče jsou nepřátelské (před sebe ne).
+            if (d.targetIdx != null && d.targetIdx !== d.attackerIdx && ['Chřestýš', 'Odměna'].includes(card?.type)) {
                 ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
             }
             // Panika/Cat Balou nemusí vždy nastartovat výběr karty (Apache Kid je imunní
@@ -1002,6 +1007,21 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     // Divoký západ – Miláček Valentýn: hráč na tahu odhazuje ruku po jedné kartě
     // (klikáním, ne automatikou). Fáze skončí sama s poslední kartou a přejde do
     // lízání náhrad – klient i bot jedou stejnou cestou jako u Ruské rulety.
+    // Údolí stínů – výběr karet z ruky (zatím jen Brokovnice: zasažený odhodí kartu dle
+    // své volby; Tornádo, Poker a Divoká banda přibudou ve fázi F4). Aktér se čte ze
+    // stavu; `playerIdx` v payloadu hlídá guard proti opožděnému kliku.
+    on('vos_pick', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingShotgun?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            if (d && d.playerIdx != null && d.playerIdx !== idx) return;
+            const res = gs.vosPick(idx, d && d.cardIds);
+            if (!res) { broadcastRoom(room); return; }
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
     on('valentine_discard', (d) => {
         withRoom((room, p, gs) => {
             const idx = gs.pendingValentine?.playerIdx;
