@@ -775,8 +775,10 @@ a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van
 hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
 Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (postavy zatím
 tři z pěti, karty devět z patnácti). **Art všech 15 karet i 5 portrétů je dodaný**
-(`assets/card_art/udoli_stinu/*.webp`, `assets/characters/050–054.webp`); chybí jen
-**značka supa** (`assets/card_marks/udoli_stinu.webp`, dodání = soubor + `VOS_MARK_READY = true`).
+(`assets/card_art/udoli_stinu/*.webp`, `assets/characters/050–054.webp`) a s nimi
+**značka supa** (`assets/card_marks/udoli_stinu.webp`, `VOS_MARK_READY = true`). Značky rozšíření
+(býk i sup) mají **100×100 px** a pečou se v rozměru souboru × 0,5 (`MARK_LAYOUT.bullScale`, game.js),
+kotva pravý horní roh – jiný rozměr souboru = jiná velikost na kartě.
 Štítky zůstávají jako záloha: karta bez artu, ale s `text`, jde přes `paintCardLabel`,
 postava s `portrait: false` přes `buildPortraitLabels` (game.js).
 Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js`, `test/vos.characters.test.js`,

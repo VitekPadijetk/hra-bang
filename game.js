@@ -185,7 +185,8 @@ const MARK_LAYOUT = {
     valY: CARD_TEX_H * 0.96 + 12.5,
     suitY: CARD_TEX_H * 0.96 + 8,
     gap: CARD_TEX_W * 0.01,
-    // Symbol rozšíření (býk Dodge City) – pravý horní roh, kotva origin(1,0).
+    // Symbol rozšíření (býk Dodge City, sup Údolí stínů; soubor 100×100) – pravý horní roh,
+    // kotva origin(1,0).
     bullX: CARD_TEX_W * 0.97,
     bullY: CARD_TEX_H * 0.02,
     bullScale: CARD_TEX_W / 650

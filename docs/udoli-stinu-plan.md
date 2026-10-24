@@ -386,7 +386,7 @@ Render neumím ověřit – po každé fázi s UI požádám o kontrolu v prohl�
 Vzor Dodge City (`EXPANSION_LOADERS.dodge_city` v [game.js:2214](../game.js#L2214)):
 `buildCardTextures` upeče líc z artu + barvy + hodnoty + značky rozšíření. Formát stejný
 jako dnešní art: **karta 650×1000 px** (bez barvy a hodnoty v rohu – ty se pečou zvlášť),
-**značka 80×80 px** s průhledností, **portrét 650×1000 px**, vše `.webp`
+**značka 100×100 px** (stejně jako býk Dodge City, zvětšený kvůli supovi) s průhledností, **portrét 650×1000 px**, vše `.webp`
 (`tools/webp.js --quality=70`, značka bezeztrátově).
 
 | Soubor | Co |
@@ -399,8 +399,8 @@ jako dnešní art: **karta 650×1000 px** (bez barvy a hodnoty v rohu – ty se 
 | `assets/card_marks/udoli_stinu.webp` | symbol supa |
 | `assets/characters/050.webp` … `054.webp` | Colorado Bill, Evelyn Shebang, Henry Block, Limonádový Jim, Mick Defender |
 
-**Stav dodání (2026-10-24):** všech 15 artů karet a 5 portrétů je ve hře; chybí jen
-značka supa (`VOS_MARK_READY` zůstává `false`).
+**Stav dodání (2026-10-24):** všech 15 artů karet, 5 portrétů i značka supa
+(`VOS_MARK_READY = true`) jsou ve hře.
 
 **Art chodí průběžně**, takže chybějící soubor nesmí nic rozbít ani zdržet:
 

@@ -158,7 +158,7 @@ function vosReadyCards(data) {
 // Je dodaná značka rozšíření (symbol supa, assets/card_marks/udoli_stinu.webp)? Art
 // chodí průběžně (§2.14) – dokud soubor není, loader ho nestahuje (žádné 404) a karty
 // se pečou bez značky. Dodání = soubor do složky + tady `true`.
-const VOS_MARK_READY = false;
+const VOS_MARK_READY = true;
 
 // Leží před hráčem karta Duch? Stav Ducha se ODVOZUJE z karty na stole (R10), žádný
 // příznak – kartu umí sebrat deset různých cest a odvozený stav se nemůže rozejít.
