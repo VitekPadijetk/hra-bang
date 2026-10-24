@@ -179,6 +179,13 @@ const CharactersMixin = {
                 if (!isInPlay(t) || !t.hand.length) this.specialActionQueue.splice(i, 1);
                 continue;
             }
+            // Údolí stínů – Limonádový Jim: nabídka čeká na jeho rozhodnutí. Mezitím mohl
+            // odejít ze hry, doléčit se (Pivo zahrál on sám jako záchranu, Salón…) nebo
+            // přijít o karty – pak by nabídka neměla smysl a čekala by zbytečně.
+            if (a.type === 'LEMONADE_OFFER') {
+                if (!lemonadeEligible(this.players[a.playerIdx])) this.specialActionQueue.splice(i, 1);
+                continue;
+            }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
             if (!p || p.health <= 0 || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
@@ -205,7 +212,7 @@ const CharactersMixin = {
 
         // (Fáze, které samy patří frontě, se jako „přerušená" nepamatují – po jejich konci
         // by se hra vrátila do fáze, na kterou už nic nečeká.)
-        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW" && this.phase !== "SHOTGUN_DISCARD") {
+        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW" && this.phase !== "SHOTGUN_DISCARD" && this.phase !== "LEMONADE_OFFER") {
             this.interruptedPhase = this.phase;
         }
 
@@ -270,6 +277,11 @@ const CharactersMixin = {
             // Údolí stínů – Brokovnice: zasažený odhodí kartu dle své volby (logic/valley.js).
             this.pendingShotgun = { playerIdx: action.playerIdx, attackerIdx: action.attackerIdx };
             this.phase = "SHOTGUN_DISCARD";
+        } else if (action.type === 'LEMONADE_OFFER') {
+            // Údolí stínů – Limonádový Jim: odhodí kartu za +1 život, nebo odmítne
+            // (lemonadeChoice, logic/valley.js).
+            this.pendingLemonade = { playerIdx: action.playerIdx, beerByIdx: action.beerByIdx };
+            this.phase = "LEMONADE_OFFER";
         } else if (action.type === 'VULTURE_SPLIT') {
             this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {
@@ -436,6 +448,18 @@ const CharactersMixin = {
         if (c) this.players[playerIdx].hand.push(c);
         this.pendingBootsDraw = null;
         this._resumeAfterSpecial();
+    },
+
+    // ── Trychtýř na KARTU Pivo ───────────────────────────────────────────────
+    // Volají ho všechny tři cesty, kudy se karta Pivo hraje: `playCard` (léčení),
+    // `beerLastLifeSave` (záchrana posledního života – RESPOND, dynamit, Pravé poledne)
+    // a `beerForNugget` (Pivo za valoun, Zlatá horečka). Nikdo jiný – Salón, Whisky,
+    // Poslední pivo ani Láhev zahraná jako Pivo kartou Pivo nejsou. Volá se až ve
+    // chvíli, kdy je jisté, že se Pivo doopravdy zahrálo, a reakce jdou frontou
+    // odložených akcí („nejdřív doběhne efekt zahrané karty").
+    _onBeerCardPlayed(playerIdx) {
+        this._madamYtoOnBeer(playerIdx);   // Zlatá horečka – líznutí (i za vlastní Pivo)
+        this._lemonadeOnBeer(playerIdx);   // Údolí stínů – Limonádový Jim (jen za cizí)
     },
 
     // Zlatá horečka – Madam Yto: „Pokaždé, když je zahráno Pivo, lízne si 1 kartu."

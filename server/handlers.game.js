@@ -1022,6 +1022,21 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Údolí stínů – Limonádový Jim: za cizí Pivo odhodí kartu za +1 život (`cardId`),
+    // nebo nabídku odmítne (`cardId: null`). Aktér se čte ze stavu; `playerIdx`
+    // v payloadu hlídá guard proti opožděnému kliku (víc Jimů přes Veru Custer).
+    on('vos_lemonade', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingLemonade?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            if (d && d.playerIdx != null && d.playerIdx !== idx) return;
+            const res = gs.lemonadeChoice(idx, d ? (d.cardId ?? null) : null);
+            if (!res) { broadcastRoom(room); return; }
+            if (res.card) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
     on('valentine_discard', (d) => {
         withRoom((room, p, gs) => {
             const idx = gs.pendingValentine?.playerIdx;

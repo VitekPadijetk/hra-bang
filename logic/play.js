@@ -49,10 +49,10 @@ const PlayMixin = {
                 // duchů ale ano) – jinak se Pivo vůbec nezahraje.
                 const gain = hasAbility(player, "Tequila Joe") ? 2 : 1;
                 if (this._heal(player, gain) <= 0) return false;
-                // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si
-                // 1 kartu." Až TEĎ, kdy je jisté, že se Pivo doopravdy zahrálo (vrátí-li
-                // efekt false, karta zůstává v ruce).
-                this._madamYtoOnBeer(this.currentPlayerIndex);
+                // Reakce na KARTU Pivo (Madam Yto, Limonádový Jim – trychtýř
+                // _onBeerCardPlayed). Až TEĎ, kdy je jisté, že se Pivo doopravdy
+                // zahrálo (vrátí-li efekt false, karta zůstává v ruce).
+                this._onBeerCardPlayed(this.currentPlayerIndex);
                 return true;
             },
             // Údolí stínů – Poslední pivo: +1 život ve svém tahu, a to i ve dvou hráčích
@@ -205,6 +205,15 @@ const PlayMixin = {
             return;
         }
 
+        // Údolí stínů – Colorado Bill: „Když zahraješ kartu BANG!, sejmi." Sejmutí jde
+        // PŘED obranou (i před Barelem) – rozhoduje, jestli se dá vůbec bránit. Karta
+        // BANG! je to podle R5 (`vos.bangCard`), takže bang-efekty ani Kulomet sem nejdou.
+        if (vos && hasAbility(attacker, "Colorado Bill")) {
+            this._startColorado(attackerIdx, targetIdx, isEffect, card.name, vos);
+            this._processSpecialQueue();
+            return;
+        }
+
         this._beginBangResolution(attackerIdx, targetIdx, isEffect, card.name, null, null, vos);
         this._processSpecialQueue();
     },
@@ -246,6 +255,11 @@ const PlayMixin = {
             barrelChecksLeft = 1;
             barrelReason = "BARREL";
         }
+
+        // Údolí stínů – Colorado Bill sejmul piky: BANG! nejde zrušit, takže se na Barel
+        // (ani Jourdonnaise) vůbec nesnímá – rovnou RESPOND, kde zbývá jen schytat zásah
+        // nebo zachránit poslední život (viz vosUnavoidable, core/valley.js).
+        if (vos && vos.unavoidable) barrelChecksLeft = 0;
 
         if (barrelChecksLeft > 0) {
             this.pendingBarrelCheck = {

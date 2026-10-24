@@ -1962,7 +1962,8 @@ function drawMyArea(ctx) {
             hasAbility(state.players[_origIdx], "Belle Star");
         const isRespondMiss = (state.phase === 'RESPOND' && state.pendingResponse?.active &&
             state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
-            !_belleIgnoresBoard && !boardDeadFor(state))
+            !_belleIgnoresBoard && !boardDeadFor(state) &&
+            !vosUnavoidable(state))   // Údolí stínů – Colorado Bill ♠: BANG! nejde zrušit
             // Fistful – Ruská ruleta: odhodit se smí i zelená Vedle!-karta ze stolu.
             // Chová se stejně (klikatelná, nešediví se), jen se posílá jiná akce – zdroj
             // pravdy „co se počítá" je rouletteDiscardable (core/playability.js).
@@ -2446,10 +2447,14 @@ function drawMyArea(ctx) {
                 const _isShotgunPick = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "SHOTGUN_DISCARD" && state.pendingShotgun?.playerIdx === myIndex;
                 if (_isShotgunPick) cSprite.setTint(0xffff44);
+                // Údolí stínů – Limonádový Jim: za cizí Pivo smí odhodit libovolnou kartu.
+                const _isLemonadePick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "LEMONADE_OFFER" && state.pendingLemonade?.playerIdx === myIndex;
+                if (_isLemonadePick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
                                        _isGrinnerPick || _isValentinePick || _isDutchPick ||
-                                       _isShotgunPick || _isLawForced;
+                                       _isShotgunPick || _isLemonadePick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2654,6 +2659,15 @@ function drawMyArea(ctx) {
                             App.blockInput = true;
                             renderUI();
                             return;
+                        case 'VOS_LEMONADE':
+                            // Údolí stínů – Limonádový Jim: klik na kartu = odhodit ji za
+                            // +1 život (banner nahoře to říká, odmítnutí je tlačítko).
+                            socket.emit('vos_lemonade', { cardId: intent.cardId, playerIdx: myIndex });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
                         case 'SID_STAGE':
                             selectedState.sidKetchum = { stagedIdx: intent.index, stagedId: intent.cardId };
                             renderUI();
@@ -2849,7 +2863,7 @@ function drawMyArea(ctx) {
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
                  'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE',
-                 'SHOTGUN_DISCARD'].includes(state.phase)
+                 'SHOTGUN_DISCARD', 'LEMONADE_OFFER'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -2989,6 +3003,23 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _bbSkip.setAlpha(0.45); _bbSkip.disableInteractive(); }
+        }
+
+        // ── Údolí stínů – Limonádový Jim: odmítnout nabídku ──────────────────────
+        // Karta se odhazuje klikem v ruce (viz VOS_LEMONADE), tady je jen „nechci".
+        // Sedí v místě „Ukončit tah" – mimo fázi PLAY se nekreslí, takže je slot volný.
+        if (state.phase === "LEMONADE_OFFER" && state.pendingLemonade?.playerIdx === myIndex) {
+            const { bg: _lmSkip } = themeButton(gameScene, L.btnEndX, L.btnEndY, 280, L.btnH, 'NE, DĚKUJI ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('vos_lemonade', { cardId: null, playerIdx: myIndex });
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _lmSkip.setAlpha(0.45); _lmSkip.disableInteractive(); }
         }
 
         // ── Zlatá horečka: zrušit nabité „donutit odhodit vybavení" ─────────────
@@ -3411,8 +3442,11 @@ function drawPhaseOverlays(ctx) {
                     _rcName ? `⚔️ Odražená střela${_from} – ${_rcName}!` : `⚔️ ${d.sourceLabel}${_from}!${_more}`,
                     { fontSize: '34px', color: '#ff6666', fontStyle: 'bold' }).setOrigin(0.5);
                 mAdd(l1, 206);
+                // Údolí stínů – Colorado Bill sejmul piky: nic se zahrát nedá (jen zachránit
+                // poslední život – Pivo / Sid / Batoh, to nabízí ruka a tlačítka samy).
                 let l2 = gameScene.add.text(960, 112,
-                    _rcName ? `Zahraj ${d.need}, nebo klikni na své životy a nech kartu zničit`
+                    d.unavoidable ? '🎯 Colorado Bill sejmul ♠ – tenhle BANG! nejde zrušit, klikni na své životy'
+                    : _rcName ? `Zahraj ${d.need}, nebo klikni na své životy a nech kartu zničit`
                             : `Zahraj ${d.need}, nebo klikni na své životy a schytej zásah`,
                     { fontSize: '23px', color: '#ffdddd' }).setOrigin(0.5);
                 mAdd(l2, 206);
@@ -3594,6 +3628,29 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_sName} – Brokovnice (odhazuje kartu)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Údolí stínů – Limonádový Jim: banner „odhoď kartu za +1 život?" ──────────
+    if (state.phase === "LEMONADE_OFFER" && state.pendingLemonade) {
+        const _lMine = state.pendingLemonade.playerIdx === myIndex;
+        const _lName = state.players[state.pendingLemonade.playerIdx]?.name || '?';
+        const _lBy = state.players[state.pendingLemonade.beerByIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _lMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_lMine) {
+            let l1 = gameScene.add.text(960, 66, '🍋 Limonádový Jim – odhodíš kartu za +1 ❤️?',
+                { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, `${_lBy} zahrál Pivo – klikni na kartu, kterou odhodíš, nebo „Ne, děkuji"`,
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_lName} – Limonádový Jim (za Pivo si může doplnit život)`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }

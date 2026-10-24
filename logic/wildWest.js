@@ -31,6 +31,8 @@ const SEAT_KEYS = new Set([
     '_dorothyOwnerIdx', 'johnPainIdx', 'announcedIdx',
     '_firstDeadIdx', '_deadPlayerIdx', '_deathAnimPlayerIdx', '_mollyDeferredIdx',
     '_terenDyingIdx', '_pendingDeathReveal', '_winClaim3p',
+    // Údolí stínů – Limonádový Jim: kdo zahrál Pivo (jen pro banner nabídky).
+    'beerByIdx',
 ]);
 // Klíč, jehož hodnota je POLE sedadel (fronty, pořadí, seznamy):
 const SEAT_LIST_KEYS = new Set([

@@ -217,6 +217,8 @@ module.exports = function installBotService(ctx) {
                 const c = gs.players[idx]?.hand?.[0];
                 return c ? { event: 'vos_pick', payload: { cardIds: [c.id], playerIdx: idx } } : null;
             }
+            // Údolí stínů – Limonádový Jim: nabídku jde vždycky odmítnout.
+            case 'LEMONADE_OFFER': return { event: 'vos_lemonade', payload: { cardId: null, playerIdx: idx } };
             // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
             case 'GRINNER_GIVE': {
                 const c = gs.players[idx]?.hand?.[0];

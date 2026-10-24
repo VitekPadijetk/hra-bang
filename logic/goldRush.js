@@ -651,8 +651,9 @@ const GoldRushMixin = {
         this._markBrownPlayed(playerIdx, card);   // Divoký západ – Lee Van Kliff
         this.logEvent('gear', { act: 'beer_nugget', who: p.name });
         this.checkSuzyLafayette(p);
-        // Madam Yto: „nezáleží, jestli šlo Pivo na život, nebo na valoun" (dodatek).
-        this._madamYtoOnBeer(playerIdx);
+        // Reakce na KARTU Pivo – Madam Yto: „nezáleží, jestli šlo Pivo na život, nebo na
+        // valoun" (dodatek); Limonádový Jim taky (zahrál kartu Pivo).
+        this._onBeerCardPlayed(playerIdx);
         this._processSpecialQueue();
         return card;
     },
@@ -892,9 +893,10 @@ const GoldRushMixin = {
 
     // ── Madam Yto ────────────────────────────────────────────────────────────
     // „Pokaždé, když je zahráno Pivo, lízne si 1 kartu z balíčku." Nezáleží, kdo ho
-    // zahrál (i ona sama) ani jestli šlo na život, nebo na valoun – proto je to trychtýř
-    // volaný ze VŠECH TŘÍ cest karty Pivo: `playCard` (léčení), `beerLastLifeSave`
-    // (záchrana posledního života) a `beerForNugget` (Pivo za valoun, Zlatá horečka).
+    // zahrál (i ona sama) ani jestli šlo na život, nebo na valoun – proto ji volá
+    // trychtýř `_onBeerCardPlayed` (logic/characters.js) ze VŠECH TŘÍ cest karty Pivo:
+    // `playCard` (léčení), `beerLastLifeSave` (záchrana posledního života)
+    // a `beerForNugget` (Pivo za valoun, Zlatá horečka).
     // Neplatí pro Whisky, Salón ani Láhev – ty kartou Pivo nejsou, takže sem nechodí.
     //
     // Líznutí jde do FRONTY odložených akcí (vlastní fáze `YTO_DRAW`, vzor Boty a Bart

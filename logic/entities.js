@@ -116,8 +116,10 @@ const VALLEY_CHARACTERS = [
 ];
 
 // …a podmnožina, která už MÁ schopnost (vzor WILD_WEST_READY). Roste po fázích
-// implementace (F2, F3, F6, F7); do té doby se dají vybrat jen v debug hře.
-const VOS_READY = [];
+// implementace (F3, F6, F7); do té doby se dají vybrat jen v debug hře.
+const VOS_READY = [
+    "Colorado Bill", "Limonádový Jim",   // F2
+];
 
 class Card {
     constructor(id, name, type, suit, value, props = {}) {

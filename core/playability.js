@@ -76,6 +76,10 @@ if (typeof require === 'function') {
         globalThis.vosPlaceTargetOk = __vos.vosPlaceTargetOk;
         globalThis.VOS_PLACE_TYPES = __vos.VOS_PLACE_TYPES;
     }
+    // Údolí stínů (F2) – Colorado Bill: pikový BANG! nejde zrušit.
+    if (typeof vosUnavoidable === 'undefined') {
+        globalThis.vosUnavoidable = require('./valley.js').vosUnavoidable;
+    }
 }
 
 // ── Co se počítá za kartu Bang! a co za kartu Vedle! ────────────────────────
@@ -325,6 +329,13 @@ function cardPlayability(state, me, myIndex, card) {
     if (state.phase === "SHOTGUN_DISCARD") {
         return state.pendingShotgun?.playerIdx === myIndex ? true : null;
     }
+    // Údolí stínů – Limonádový Jim: za cizí Pivo smí odhodit LIBOVOLNOU kartu za +1 život
+    // (odmítnout jde tlačítkem). Klikatelná je celá ruka kromě vynucené karty Práva
+    // západu (zrcadlo _lawProtected) – to se ale týká jen jeho vlastního tahu.
+    if (state.phase === "LEMONADE_OFFER") {
+        if (state.pendingLemonade?.playerIdx !== myIndex) return null;
+        return !lawProtectedCard(state, me, myIndex, card);
+    }
     // Zlatá horečka – Dutch Will: odhazuje JEDNU z právě líznutých karet, takže na rozdíl
     // od Valentýna není klikatelná celá ruka – jen ty, které přibyly ve fázi 1 (seznam
     // nese `pendingDutchDiscard.cardIds`). Je to jeho vlastní fáze 1, ale sedí tady
@@ -349,7 +360,8 @@ function cardPlayability(state, me, myIndex, card) {
         if (card.type === "Pivo" && me.health === 1 && _aliveForBeer > 2 && !state.pendingResponse.ricochet)
             return !beerBlockedFor(state);
         // Co se počítá za Vedle! (Elena Fuente, Zúčtování) řeší playsAsMissed.
-        if (req === "Vedle!") return playsAsMissed(state, me, card);
+        // Údolí stínů – Colorado Bill sejmul piky: tenhle BANG! nejde zrušit ničím.
+        if (req === "Vedle!") return playsAsMissed(state, me, card) && !vosUnavoidable(state);
         // Kazatel (High Noon): Bang! nesmí hráč zahrát ani jako reakci ve svém tahu (FAQ H2).
         if (req === "Bang!")  return playsAsBang(state, me, card) && !preacherBlocks(state, me, myIndex, card);
         return false;

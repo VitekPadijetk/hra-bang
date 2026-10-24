@@ -21,6 +21,7 @@
 //   { type: 'VALENTINE_DISCARD', index, cardId }      – Miláček Valentýn (Divoký západ): odhoď kartu z ruky
 //   { type: 'DUTCH_DISCARD', index, cardId }          – Dutch Will (Zlatá horečka): odhoď jednu z líznutých
 //   { type: 'VOS_PICK', index, cardId }               – Brokovnice (Údolí stínů): zasažený odhazuje kartu
+//   { type: 'VOS_LEMONADE', index, cardId }           – Limonádový Jim (Údolí stínů): odhoz za +1 život
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
@@ -114,6 +115,13 @@ function decideCardClick(ctx) {
     // klikatelná, odhoz je povinný) – klik rovnou odhazuje, stejně jako u Valentýna.
     if (state.phase === "SHOTGUN_DISCARD" && state.pendingShotgun?.playerIdx === myIndex) {
         return { type: 'VOS_PICK', index, cardId: card.id };
+    }
+
+    // Údolí stínů – Limonádový Jim: klik na kartu = odhodit ji za +1 život (odmítnutí je
+    // tlačítko). Vynucenou kartu Práva západu odhodit nejde – ta je `playable === false`.
+    if (state.phase === "LEMONADE_OFFER" && state.pendingLemonade?.playerIdx === myIndex) {
+        return playable === true ? { type: 'VOS_LEMONADE', index, cardId: card.id }
+                                 : { type: 'UNPLAYABLE_FLASH' };
     }
 
     // Divoký západ – Lee Van Kliff: nabitá schopnost čeká na kartu BANG!, kterou se

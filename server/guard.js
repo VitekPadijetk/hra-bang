@@ -31,8 +31,9 @@ module.exports = function installActionGuard(ctx) {
         'handcuffs_suit', 'new_identity_choose', 'greygory_choice',
         'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
         'grinner_give', 'valentine_discard',
-        // Údolí stínů – výběr karet z ruky (Brokovnice; v F4 Tornádo, Poker, Divoká banda).
-        'vos_pick',
+        // Údolí stínů – výběr karet z ruky (Brokovnice; v F4 Tornádo, Poker, Divoká banda)
+        // a nabídka Limonádového Jima (odhoz za +1 život, nebo odmítnutí).
+        'vos_pick', 'vos_lemonade',
         'sniper_choose', 'play_ricochet',
         'claus_give', 'uncle_will', 'flint_westwood', 'lee_van_kliff', 'lady_rose',
         'dorothy_command', 'dorothy_target', 'dorothy_cancel',
@@ -81,7 +82,7 @@ module.exports = function installActionGuard(ctx) {
         }
         // Údolí stínů – vos_pick nese, ZA KOHO se vybírá (`playerIdx`): u kolečka voleb
         // (Tornádo, Poker…) by opožděný klik jinak vybral karty dalšímu v pořadí.
-        if (event === 'vos_pick' && payload && payload.playerIdx != null) {
+        if ((event === 'vos_pick' || event === 'vos_lemonade') && payload && payload.playerIdx != null) {
             const cur = pendingActor(gs);
             if (cur && cur.idx !== payload.playerIdx) {
                 return `výběr už čeká na #${cur.idx}, klik mířil za #${payload.playerIdx}`;

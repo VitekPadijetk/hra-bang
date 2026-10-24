@@ -26,9 +26,9 @@ const ResponseMixin = {
 
             this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
-            // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+            // Reakce na KARTU Pivo (Madam Yto, Limonádový Jim – _onBeerCardPlayed).
             // Do fronty se musí dostat DŘÍV, než ji některá z cest níž dobere.
-            this._madamYtoOnBeer(playerIdx);
+            this._onBeerCardPlayed(playerIdx);
 
             // Dynamit je tu rozložený na 3 zásahy po 1 (klikání), pravidla ho berou jako
             // -3 najednou. Aby to vyšlo stejně, Joeův druhý život zruší i další zásah
@@ -55,9 +55,9 @@ const ResponseMixin = {
 
             this.deck.discard(p.hand.splice(cardIdx, 1)[0]);
             this.checkSuzyLafayette(p);
-            // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+            // Reakce na KARTU Pivo (Madam Yto, Limonádový Jim – _onBeerCardPlayed).
             // Do fronty se musí dostat DŘÍV, než ji některá z cest níž dobere.
-            this._madamYtoOnBeer(playerIdx);
+            this._onBeerCardPlayed(playerIdx);
             if (gain > 1) p.health = Math.min(p.health + gain - 1, p.maxHealth);
 
             this.pendingNoonDamage = null;
@@ -79,9 +79,9 @@ const ResponseMixin = {
             // kde se odložené náhrady uvolní.
             this._mollyPlayedOutOfTurn(playerIdx, pr.sourceCard === CardType.DUEL);
             this.checkSuzyLafayette(p);
-            // Zlatá horečka – Madam Yto: „pokaždé, když je zahráno Pivo, lízne si 1 kartu."
+            // Reakce na KARTU Pivo (Madam Yto, Limonádový Jim – _onBeerCardPlayed).
             // Do fronty se musí dostat DŘÍV, než ji některá z cest níž dobere.
-            this._madamYtoOnBeer(playerIdx);
+            this._onBeerCardPlayed(playerIdx);
 
             // Zásah se nikdy neaplikuje (hráč zůstává na 1 HP) → přebytek je čisté léčení.
             if (gain > 1) p.health = Math.min(p.health + gain - 1, p.maxHealth);
@@ -333,6 +333,11 @@ const ResponseMixin = {
             // zvolené barvy (stejný výklad jako u Kazatele, FAQ H2). Platí to ale jen na
             // karty Z RUKY – zelená Vedle!-karta už leží ve hře a barvou se neomezuje.
             if (isValid && !fromBoard && this._suitBlocked(playerIdx, card)) isValid = false;
+
+            // Údolí stínů – Colorado Bill sejmul piky: tenhle BANG! nejde zrušit žádnou
+            // kartou (z ruky ani zelenou ze stolu). Zbývá schytat zásah, nebo zachránit
+            // poslední život – to jde jinými cestami (beerLastLifeSave, Sid, Batoh).
+            if (isValid && vosUnavoidable(this)) isValid = false;
 
             if (!isValid) return;
 

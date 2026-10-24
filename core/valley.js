@@ -60,6 +60,31 @@ function vosPlaceTargetOk(state, targetIdx, card) {
 if (typeof require === 'function' && typeof isInPlay === 'undefined') {
     globalThis.isInPlay = require('./distance.js').isInPlay;
 }
+if (typeof require === 'function' && typeof canHeal === 'undefined') {
+    globalThis.canHeal = require('./distance.js').canHeal;
+}
+
+// ── Postavy (F2) ─────────────────────────────────────────────────────────────
+// Colorado Bill: „Když zahraješ kartu BANG!, sejmi. Pokud je sejmutá karta piková ♠,
+// nelze tento BANG! zrušit." Po pikovém sejmutí nese útok `vos.unavoidable` (protahuje
+// se stejně jako zbytek kontextu `vos`, viz _beginBangResolution v logic/play.js).
+// Nezrušitelný = žádná karta Vedle! (ani zelená ze stolu, ani Úhyb, Elena, Calamity),
+// žádný Barel ani Jourdonnais. Záchrana posledního života (Pivo, Sid, Batoh) BANG!
+// neruší, jen vrací život – ta zůstává. Ptá se server (handleResponse), klient
+// (cardPlayability, zelené karty ve view/board.js) i bot – kdyby se rozešli, bot by
+// posílal Vedle!, které server mlčky odmítne, a hra by se zasekla.
+function vosUnavoidable(state) {
+    const pr = state && state.pendingResponse;
+    return !!(pr && pr.vos && pr.vos.unavoidable);
+}
+
+// Limonádový Jim: „Vždy, když některý z hráčů zahraje kartu PIVO, může si Jim za
+// odhození libovolné karty doplnit 1 život." Nabídka má smysl jen tomu, kdo je ve hře,
+// má co odhodit a má kam léčit (canHeal: ne plné životy, ne stín). Ptá se server při
+// nabídce i při pročištění fronty (logic/valley.js).
+function lemonadeEligible(p) {
+    return !!p && isInPlay(p) && canHeal(p) && (p.hand || []).length > 0;
+}
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
 // logic/setup.js) a do katalogu karet debug hry.
@@ -126,5 +151,6 @@ function vosRepeatOk(card) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { vosOn, VOS_CARDS_READY, vosReadyCards, VOS_MARK_READY, hasDuchCard,
                        VOS_KINDS, vosDorothyOk, vosRepeatOk,
-                       lematActive, shotgunActive, VOS_PLACE_TYPES, vosPlaceTargetOk };
+                       lematActive, shotgunActive, VOS_PLACE_TYPES, vosPlaceTargetOk,
+                       vosUnavoidable, lemonadeEligible };
 }

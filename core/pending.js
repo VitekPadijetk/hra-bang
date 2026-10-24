@@ -67,6 +67,9 @@ function pendingActor(state) {
         // Údolí stínů – Brokovnice: zasažený odhazuje kartu dle své volby (fronta odložených akcí).
         case 'SHOTGUN_DISCARD':  return state.pendingShotgun
             ? { idx: state.pendingShotgun.playerIdx, kind: 'SHOTGUN_DISCARD' } : null;
+        // Údolí stínů – Limonádový Jim: za cizí Pivo odhodí kartu za +1 život, nebo odmítne.
+        case 'LEMONADE_OFFER':   return state.pendingLemonade
+            ? { idx: state.pendingLemonade.playerIdx, kind: 'LEMONADE_OFFER' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -117,6 +120,7 @@ const _WAIT_LABELS = {
     GEAR_MODE:             'vybírá, jak vybavení zahraje',
     DUTCH_DISCARD:         'Dutch Will – odhazuje líznutou kartu',
     SHOTGUN_DISCARD:       'Brokovnice – odhazuje kartu',
+    LEMONADE_OFFER:        'Limonádový Jim – rozmýšlí, jestli si za kartu doplní život',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',
@@ -149,6 +153,8 @@ function waitingStatus(state) {
     let text = _WAIT_LABELS[pa.kind] || '';
     if (pa.kind === 'RESPOND' && state.pendingResponse?.sourceCard) {
         text = 'brání se proti ' + _sourceLabel(state.pendingResponse);
+        // Údolí stínů – Colorado Bill sejmul piky: bránit se vlastně nejde.
+        if (state.pendingResponse.vos?.unavoidable) text += ' (nejde zrušit)';
     }
     // Sloučená odložená líznutí (Bart Cassidy, Boty, Madam Yto, Úhyb – viz
     // _processSpecialQueue v logic/characters.js) běží jako běžná fáze lízání.
@@ -196,6 +202,10 @@ function describePendingResponse(state, viewerIdx) {
     const attacker = pr.originatorIdx == null ? null : state.players[pr.originatorIdx];
     const target = state.players[pr.targetIdx];
 
+    // Údolí stínů – Colorado Bill sejmul piky: BANG! nejde zrušit (viz vosUnavoidable).
+    // Hráč může jen schytat zásah (nebo zachránit poslední život), výzva to musí říct.
+    const unavoidable = !!(pr.vos && pr.vos.unavoidable);
+
     let need;
     if (pr.requiredCard === 'Vedle!') {
         const total = state.missesRequired || 1;
@@ -226,6 +236,7 @@ function describePendingResponse(state, viewerIdx) {
         requiredCard: pr.requiredCard,
         need,
         ricochet,
+        unavoidable,
     };
 }
 
@@ -268,6 +279,20 @@ function describePendingCheck(state, viewerIdx) {
 
     if (state.phase === 'CHECK_DRAW' && state.pendingCheckDraw?.active) {
         const pcd = state.pendingCheckDraw;
+        // Údolí stínů – Colorado Bill: sejmutí hned po zahrání karty BANG!, ještě před
+        // obranou cíle. Rozehraný BANG! nese `pcd.colorado` (komu míří).
+        if (pcd.reason === 'COLORADO') {
+            const tName = nameOf(pcd.colorado?.targetIdx);
+            return {
+                forMe: pcd.playerIdx === viewerIdx,
+                kind: 'COLORADO',
+                playerIdx: pcd.playerIdx,
+                waitingName: nameOf(pcd.playerIdx),
+                short: 'Colorado Bill',
+                title: '🎯 Colorado Bill – lízni si kontrolní kartu',
+                detail: `♠ = BANG! na hráče ${tName} nejde zrušit (žádné Vedle!, Barel ani Jourdonnais)`,
+            };
+        }
         // Fistful – Vendeta: sejmutí na KONCI tahu (nemá kartu na stole, jen důvod).
         if (pcd.reason === 'VENDETTA') {
             return {

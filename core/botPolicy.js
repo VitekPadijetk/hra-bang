@@ -109,6 +109,10 @@ if (typeof require === 'function') {
         globalThis.lematActive = __vos.lematActive;
         globalThis.vosPlaceTargetOk = __vos.vosPlaceTargetOk;
     }
+    // Údolí stínů (F2) – Colorado Bill: pikový BANG! nejde zrušit.
+    if (typeof vosUnavoidable === 'undefined') {
+        globalThis.vosUnavoidable = require('./valley.js').vosUnavoidable;
+    }
     // Divoký západ – Lee Van Kliff: „je co opakovat, čím zaplatit a na koho".
     if (typeof lvkOffer === 'undefined') {
         const __pl3 = require('./playability.js');
@@ -1472,8 +1476,11 @@ function decideBotAction(state, myIndex, beliefs) {
             // Kazatel (High Noon): ve svém tahu nesmí hráč zahrát Bang! ani jako odpověď
             // v duelu (FAQ H2) – server by kartu odmítl a bot by to zkoušel donekonečna.
             // Želízka (High Noon): ve vlastním tahu (duel) projde jen zvolená barva.
+            // Údolí stínů – Colorado Bill sejmul piky: BANG! nejde zrušit ničím – server by
+            // každé Vedle! (i zelené ze stolu) mlčky odmítl a bot by ho posílal dokola.
+            const _unavoidable = vosUnavoidable(state);
             const isDodge = (c) => !suitBlockedFor(state, myIndex, c) && (req === T.MISSED
-                ? playsAsMissed(state, me, c)
+                ? (playsAsMissed(state, me, c) && !_unavoidable)
                 : (!preacherBlocks(state, me, myIndex, c) && playsAsBang(state, me, c)));
             const dodgeIdx = me.hand.findIndex(isDodge);
             if (dodgeIdx !== -1) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: dodgeIdx } };
@@ -1485,7 +1492,7 @@ function decideBotAction(state, myIndex, beliefs) {
             const belleIgnores = state.pendingResponse.originatorIdx === state.currentPlayerIndex
                 && hasAbility(attacker, 'Belle Star');
             // Laso (Fistful) ruší karty na stole úplně stejně – a ze stejného důvodu.
-            if (req === T.MISSED && !belleIgnores && !boardDeadFor(state)) {
+            if (req === T.MISSED && !belleIgnores && !boardDeadFor(state) && !_unavoidable) {
                 const greenMiss = (me.board || []).find(c => c.green && c.activate === 'miss'
                     && c._playedTurn !== state.turnId);
                 if (greenMiss) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null, boardCardId: greenMiss.id } };
@@ -1738,6 +1745,22 @@ function decideBotAction(state, myIndex, beliefs) {
             if (!me.hand.length) return null;
             const worst = me.hand.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
             return { event: 'vos_pick', payload: { cardIds: [worst.id], playerIdx: myIndex } };
+        }
+
+        // Údolí stínů – Limonádový Jim: za cizí Pivo „odhoď kartu, doplň 1 život". Karta za
+        // život se vyplatí, když je karta málo cenná (keepScore ≤ 4: Vězení, Hokynářství,
+        // Panika…), nebo když jde do tuhého (≤ 2 životy) – tehdy padne cokoli kromě Piva,
+        // které by si léčení stejně dalo samo. Odmítnout jde vždycky, takže se nezasekne.
+        case 'LEMONADE_OFFER': {
+            const decline = { event: 'vos_lemonade', payload: { cardId: null, playerIdx: myIndex } };
+            const pool = me.hand.filter(c => c && !lawProtectedCard(state, me, myIndex, c));
+            if (!pool.length || !canHeal(me)) return decline;
+            const worst = pool.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
+            const v = keepScore(worst);
+            if (v <= 4 || (me.health <= 2 && worst.type !== T.BEER)) {
+                return { event: 'vos_lemonade', payload: { cardId: worst.id, playerIdx: myIndex } };
+            }
+            return decline;
         }
 
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom

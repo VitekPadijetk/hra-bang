@@ -76,8 +76,11 @@ const ChecksMixin = {
         // žádná karta na stole, jen důvod – jinak jede úplně stejnou cestou jako
         // Dynamit/Vězení, takže se zdarma veze i Lucky Duke a klientská cinematika.
         if (pcd.reason) {
+            // Údolí stínů – Colorado Bill: sejmutí nese rozehraný BANG! (komu, čím, kontext
+            // `vos`), aby ho výsledek mohl dohrát (viz _coloradoResult, logic/valley.js).
+            const extra = pcd.colorado ? { colorado: pcd.colorado } : {};
             if (this._checkRevealCount(p) > 1) {
-                this.startLuckyDukeCheck({ reason: pcd.reason, playerIdx: pcd.playerIdx, boardIdx: null, checksLeft: 1, active: false });
+                this.startLuckyDukeCheck({ reason: pcd.reason, playerIdx: pcd.playerIdx, boardIdx: null, checksLeft: 1, active: false, ...extra });
                 return;
             }
             const checkCard = this.deck.draw({ toDiscard: true });
@@ -92,7 +95,8 @@ const ChecksMixin = {
                 playerIdx: pcd.playerIdx,
                 card: checkCard,
                 boardIdx: null,
-                johnPainIdx: takerIdx
+                johnPainIdx: takerIdx,
+                ...extra
             };
             return;
         }
@@ -194,6 +198,7 @@ const ChecksMixin = {
         else if (check.reason === "VENDETTA") checkResult = (suit === Suits.HEARTS) ? 'srdce → tah navíc' : 'konec tahu';
         else if (check.reason === "TEREN_KILL") checkResult = (suit === Suits.SPADES) ? 'pik → vyřazen' : 'zůstává na 1 životě';
         else if (check.reason === "RATTLESNAKE") checkResult = (suit === Suits.SPADES) ? 'pik → ztrácí život' : 'nic';
+        else if (check.reason === "COLORADO") checkResult = (suit === Suits.SPADES) ? 'pik → BANG! nejde zrušit' : 'BANG! jako obvykle';
         else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
         this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${suit}`, result: checkResult });
 
@@ -260,6 +265,10 @@ const ChecksMixin = {
             } else {
                 this.startDrawPhase();
             }
+        } else if (check.reason === "COLORADO") {
+            // Údolí stínů – Colorado Bill: ♠ (podle _effSuit – Požehnání nikdy, Prokletí
+            // vždy) = rozehraný BANG! nejde zrušit. Viz _coloradoResult (logic/valley.js).
+            this._coloradoResult(check, suit === Suits.SPADES);
         } else if (check.reason === "VENDETTA") {
             // Fistful – Vendeta: ♥ podle _effSuit (Požehnání pomáhá, Prokletí zabíjí).
             // `_vendettaDone` je nastavené od začátku sejmutí, takže se nextTurn zeptat

@@ -79,6 +79,12 @@ if (typeof shotgunActive === 'undefined' && typeof require === 'function') {
     globalThis.vosPlaceTargetOk = __vos.vosPlaceTargetOk;
     globalThis.VOS_PLACE_TYPES = __vos.VOS_PLACE_TYPES;
 }
+// Údolí stínů (F2): Colorado Bill (nezrušitelný BANG!) a Limonádový Jim.
+if (typeof vosUnavoidable === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.vosUnavoidable = __vos.vosUnavoidable;
+    globalThis.lemonadeEligible = __vos.lemonadeEligible;
+}
 
 // Čisté helpery rolí/výhry. V prohlížeči globály z core/*, v Node přes require.
 if (typeof rolesForPlayerCount === 'undefined' && typeof require === 'function') {
@@ -339,6 +345,9 @@ class GameState {
         // Údolí stínů – Brokovnice: zasažený odhazuje kartu dle své volby – fáze
         // SHOTGUN_DISCARD (fronta odložených akcí, viz logic/valley.js).
         this.pendingShotgun = null;
+        // Údolí stínů – Limonádový Jim: „odhoď kartu za +1 život" za cizí Pivo – fáze
+        // LEMONADE_OFFER (fronta odložených akcí, viz logic/valley.js).
+        this.pendingLemonade = null;
         // Madam Yto: líznutí za zahrané Pivo – fáze YTO_DRAW (fronta odložených akcí).
         this.pendingYtoDraw = null;
         // Don Bell: sejmutí na konci vlastního tahu je v jednom tahu jen jednou.

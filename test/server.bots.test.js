@@ -1426,6 +1426,64 @@ test('Údolí stínů (F1): hra jen botů doběhne 3–8 hráčů, samo i se vš
     }
 });
 
+// Údolí stínů (fáze F2): celý stůl jedné postavy, ať se schopnost v každé hře ozve
+// mnohokrát. Colorado Bill přidává sejmutí do každé karty BANG! (a nezrušitelný útok,
+// na který bot nesmí posílat Vedle!), Limonádový Jim novou fázi LEMONADE_OFFER, na
+// kterou se čeká u cizího hráče uprostřed cizího tahu.
+test('Údolí stínů (F2): stůl plný Coloradů Billů / Limonádových Jimů doběhne 3–8 hráčů', () => {
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const seen = { colorado: 0, spade: 0, unavoidable: 0, jimTook: 0, jimNo: 0 };
+    try {
+        for (const name of ['Colorado Bill', 'Limonádový Jim']) {
+            for (let k = 0; k < 8; k++) {
+                const n = 3 + (k % 6);
+                const gs = new GameState();
+                gs.cardData = cardData;
+                gs.dodgeCityCardData = dodgeCityCardData;
+                gs.highNoonCardData = highNoonCardData;
+                gs.fistfulCardData = fistfulCardData;
+                gs.wwsCardData = wwsCardData;
+                gs.gearCardData = gearCardData;
+                gs.vosCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+                const opts = { expansions: { udoli_stinu: true, dodge_city: k % 2 === 0,
+                                             high_noon: k % 3 === 0, fistful: k % 4 === 0,
+                                             zlata_horecka: k % 5 === 0 } };
+                const room = { id: 'vosf2' + name.length + '_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+                ctx.rooms.set(room.id, room);
+                gs._onEvent = (e) => {
+                    if (!e) return;
+                    if (e.ev === 'check' && e.kind === 'COLORADO') {
+                        seen.colorado++;
+                        if (String(e.result).startsWith('pik')) seen.spade++;
+                    }
+                    if (e.ev === 'special' && e.card === 'Limonádový Jim') {
+                        if (e.taken) seen.jimTook++; else seen.jimNo++;
+                    }
+                };
+                gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+                gs.players.forEach(p => { p.charChoices = [name, name]; });
+                gs.players.forEach(p => ctx.createBot(room, p.name));
+                for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+                assert.ok(gs.players.every(pl => pl.character === name),
+                    `${name}: všichni opravdu dostali tuhle postavu`);
+                const guard = pumpToWinner(ctx, room, () => {
+                    if (gs.phase === 'RESPOND' && gs.pendingResponse?.vos?.unavoidable) seen.unavoidable++;
+                });
+                assert.ok(gs.winner, `${name}: hra (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+                assert.ok(guard < 8000, `${name}: hra nebyla patologicky dlouhá (guard=${guard})`);
+            }
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci s postavami Údolí stínů');
+    assert.ok(seen.colorado > 0, 'Colorado Bill aspoň jednou snímal');
+    assert.ok(seen.spade > 0 && seen.unavoidable > 0, 'aspoň jednou padl pik a obrana byla nezrušitelná');
+    assert.ok(seen.jimTook > 0, 'Limonádový Jim si aspoň jednou doplnil život');
+    assert.ok(seen.jimNo > 0, 'Limonádový Jim aspoň jednou nabídku odmítl');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

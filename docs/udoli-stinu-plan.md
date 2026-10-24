@@ -5,11 +5,12 @@ vydáních, upřesnění z českých pravidel 3. vydání a Dynamite Boxu, ofici
 a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_box_cz.pdf`,
 `us_rules_eng.pdf` a přehled karet `us_karty_dvgiochi.webp`.
 
-**Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra) a F1 (šest karet,
-2026-10-24).** Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v
-[core/menuModel.js](../core/menuModel.js)); do balíčku jde zatím 6 z 15 druhů karet
-a žádná postava.
-Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: **1752 testů, 0 chyb**.
+**Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra), F1 (šest karet,
+2026-10-24) a F2 (Colorado Bill, Limonádový Jim, 2026-10-24).** Rozšíření jde zapnout
+v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js)); do balíčku jde
+zatím 6 z 15 druhů karet a do výběru 2 z 5 postav.
+Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
+**1782 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -747,6 +748,47 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
   jako Pivo, jen se nešetří; Lemat a Brokovnice mají ve `weaponValue` příplatek (jinak by
   na Colt nikdy nevyměnil); Lemat střílí „poslední možností" stejně jako Zúčtování.
   V `SHOTGUN_DISCARD` odhazuje nejnižší `keepScore`.
+
+### Co se ve fázi F2 odchýlilo od plánu (a proč)
+
+- **Nezrušitelnost nese kontext `vos`, ne `pendingResponse.unavoidable`.** Po pikovém
+  sejmutí dostane útok `vos.unavoidable: true`; `vos` se už od F1 protahuje celým
+  řetězem (barel → check → RESPOND), takže nové pole nemuselo nikam dalšímu. Ptá se
+  jediný predikát **`vosUnavoidable(state)`** (core/valley.js): server v
+  `handleResponse` (odmítne kartu z ruky i zelenou ze stolu), klient v
+  `cardPlayability` a `isRespondMiss` (view/board.js), bot v RESPOND. Barel
+  a Jourdonnais se vypínají už v `_beginBangResolution` (na barel se vůbec nesnímá).
+  **Útěk a Opětovná palba (F3, F6) se na `vosUnavoidable` musí ptát taky.**
+- **Sejmutí nese rozehraný BANG!** v `pendingCheckDraw.colorado = { attackerIdx,
+  targetIdx, isEffect, sourceName, vos }` a `triggerCheckDraw` ho předá do
+  `currentCheck` i do kontextu Lucky Duka / Podkovy. Výsledek dohrává
+  `_coloradoResult` (logic/valley.js) přes `_beginBangResolution`.
+- **Kárový BANG! na Apache Kida se nesnímá** – nemá žádný efekt, takže by nebylo co
+  rušit (hák sedí v `playBang` až za imunitou). Jediný rozdíl proti doslovnému čtení:
+  John Pain by si tu sejmutou kartu nevzal.
+- **Zuřivá Doroty:** poručený Colorado sejme sám (`pendingCheckDraw.playerIdx` je jeho
+  sedadlo, ne vypůjčené) – sedadlo se vrací hned jako u každého jiného zahrání.
+- **Trychtýř na kartu Pivo se nepřejmenoval, ale rozdělil:** nový `_onBeerCardPlayed`
+  (logic/characters.js) volá `_madamYtoOnBeer` (zůstal v logic/goldRush.js)
+  a `_lemonadeOnBeer` (logic/valley.js). Všech pět míst volání ukazuje na trychtýř.
+  Pořadí ve frontě: Madam Yto líže dřív, Jimova nabídka přijde po ní.
+- **Jim i za Pivo za valoun** (Zlatá horečka) – i to je „zahraná karta Pivo"; stejný
+  výklad jako u Madam Yto (dodatek „nezáleží, jestli šlo na život, nebo na valoun").
+- **Akce je `vos_lemonade { cardId | null, playerIdx }`** (plán psal `cardIdx`): ID se
+  nerozjede s optimistickým odebráním karty v klientu a `playerIdx` hlídá guard proti
+  opožděnému kliku (víc Jimů jde přes Veru Custer / Greygoryho Decka).
+- **Kdo nabídku dostane:** `lemonadeEligible` = ve hře, `canHeal` (ne plné životy, ne
+  stín) a aspoň jedna karta. Táž podmínka čistí frontu (`_pruneSuzyQueue`), kdyby se
+  Jim mezitím doléčil nebo odešel. Vynucenou kartu Práva západu odhodit nesmí (jen ve
+  vlastním tahu, `lawProtectedCard`). Odhoz je dobrovolný, takže Molly Stark za něj
+  mimo tah líže (R13) a Suzy Lafayette s prázdnou rukou taky.
+- **UI bez okna:** banner nahoře, svítící ruka (klik = odhodit) a tlačítko „NE, DĚKUJI"
+  v místě „Ukončit tah" – stejný vzor jako Brokovnice a Pokrevní bratři.
+- **Bot:** Jim vymění kartu s `keepScore ≤ 4` (Vězení, Hokynářství, Panika…), na ≤ 2
+  životech cokoli kromě Piva; jinak odmítne. Colorado nepotřeboval nic – sejmutí je
+  existující větev `CHECK_DRAW`.
+- **`beerByIdx`** (kdo Pivo zahrál, jen pro banner) je sedadlo, takže přibyl do
+  `SEAT_KEYS` (logic/wildWest.js) – hlídá to strukturální test Lady Růže.
 
 ## 9. Co plán vědomě nedělá
 
