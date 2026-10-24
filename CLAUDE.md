@@ -723,6 +723,9 @@ originál a u devíti karet se liší od mezinárodního) jsou v
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
 **Rozhodnuto uživatelem:** česká mechanika podle Dynamite Boxu 2023, ale jen **5 postav**
 původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
-pauza na reakci jen když reagovat jde, art dodá uživatel.
+pauza na reakci jen když reagovat jde, art dodává uživatel průběžně (co chybí, kreslí se
+jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
+text na artu" z Divokého západu se na Údolí stínů nevztahuje. Plán je hotový, další krok
+je fáze F0.
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.
