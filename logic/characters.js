@@ -201,6 +201,9 @@ const CharactersMixin = {
         // sám). Nasadí-li se, čeká hra na klik – vrací se `true`, aby volající na fázi
         // nesahal, přesně jako když se z fronty rozeběhne schopnost.
         if (this.specialActionQueue.length === 0 && this._drainGag()) return true;
+        // Údolí stínů – fronta výstřelů (Opětovná palba, Roztříštěná kulka, Evelyn):
+        // efekt doběhl a fronta je prázdná, takže je řada na odloženém výstřelu.
+        if (this.specialActionQueue.length === 0 && this._drainVosShots()) return true;
         if (this.specialActionQueue.length === 0) return false;
 
         // Neber další akci z fronty, když právě běží líznutí (běžné, Dostavník/Wells Fargo
@@ -351,7 +354,8 @@ const CharactersMixin = {
             // Divoký západ – Roubík: fáze je obnovená a nic neběží, takže je teprve TEĎ
             // místo na odloženou pokutu (výš se _processSpecialQueue ptal ještě ve fázi
             // právě dokončené schopnosti). Nasadí se klikaný zásah a hra čeká na klik.
-            this.gagFlush();
+            // Údolí stínů: totéž platí pro odložený výstřel (fronta výstřelů).
+            if (!this.gagFlush()) this._drainVosShots();
         }
     },
 

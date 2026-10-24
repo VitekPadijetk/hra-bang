@@ -6,11 +6,12 @@ a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_b
 `us_rules_eng.pdf` a přehled karet `us_karty_dvgiochi.webp`.
 
 **Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra), F1 (šest karet,
-2026-10-24) a F2 (Colorado Bill, Limonádový Jim, 2026-10-24).** Rozšíření jde zapnout
-v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js)); do balíčku jde
-zatím 6 z 15 druhů karet a do výběru 2 z 5 postav.
+2026-10-24), F2 (Colorado Bill, Limonádový Jim, 2026-10-24) a F3 (fronta výstřelů:
+Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24).**
+Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js));
+do balíčku jde zatím 9 z 15 druhů karet a do výběru 3 z 5 postav.
 Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
-**1782 testů, 0 chyb**.
+1782 testů. Po F3: **1813 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -676,7 +677,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F0** | Data (s `text`, `art: null`), `CardType`, `BLUE_CARD_TYPES`, characters.json + `CHAR_RANK`, mixin a zrcadlo (kostra), `core/vosAnim.js` (kostra), `VOS_CARDS_READY`/`VOS_READY` prázdné, loader se štítky (§2.14), debug přepínač, rozhodnutí pro Doroty a Lee Van Kliffa (§2.17) + jejich strukturální test | nic nemění pravidla, dá se ověřit samotné |
 | **F1** | Tomahawk, Poslední pivo, Chřestýš, Odměna, Lemat (+ `altBangOk`), Brokovnice (+ `SHOTGUN_DISCARD`), `isBangCardPlay`; **menu: karta „již brzy" → zapínací** | jen existující mašinerie; po F1 se dá rozšíření hrát |
 | **F2** | Colorado Bill, Limonádový Jim (+ `LEMONADE_OFFER`) | postavy bez nových mechanismů |
-| **F3** | Fronta výstřelů + `_afterVosShot` + zabiják; Opětovná palba, Roztříštěná kulka, Evelyn; klikané zásahy s útočníkem → Dvojitá rána | první nový mechanismus, na kterém stojí F7 |
+| **F3** ✓ | Fronta výstřelů + `_afterVosShot` + zabiják; Opětovná palba, Roztříštěná kulka, Evelyn; klikané zásahy s útočníkem → Dvojitá rána | první nový mechanismus, na kterém stojí F7 |
 | **F4** | Divoká banda, Tornádo, Poker (+ redakce, animace) | samostatné, vzor Daltonové |
 | **F5** | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
 | **F6** | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
@@ -789,6 +790,51 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
   existující větev `CHECK_DRAW`.
 - **`beerByIdx`** (kdo Pivo zahrál, jen pro banner) je sedadlo, takže přibyl do
   `SEAT_KEYS` (logic/wildWest.js) – hlídá to strukturální test Lady Růže.
+
+### Co se ve fázi F3 odchýlilo od plánu (a proč)
+
+- **`_afterVosShot` nevznikl.** Výstřel končí na stejných místech jako každý jiný BANG!
+  (konec obrany, úspěšný barel, záchrana posledního života) a všechna tři volají
+  `_processSpecialQueue` ve fázi PLAY – tam se rovnou odpálí další výstřel z fronty
+  (`_drainVosShots`, hned za Roubíkem). Další místa odpalu: `_resumeAfterSpecial`
+  (za `gagFlush`), pojistka v `tryEndTurn` (nejdřív výstřel, pak konec tahu) a v háku
+  `beforeBroadcast` (server/anim.js); `nextTurn` nedoběhlé výstřely zahodí.
+- **Ocas fáze lízání frontu podrží** (`_vosHolding` v `_finishDrawTail`
+  a `chooseHandcuffsSuit`): po frontě odložených akcí se tam ptají Želízka a Ranč
+  („je fáze PLAY?") a výstřel Evelyn by je přeskočil. Odpálí se až za nimi.
+- **Zabiják** se nepředává přes `pendingResponse.killerIdx`, ale z kontextu útoku:
+  výstřel nese `vos.shot` (BACKFIRE / FANNING / EVELYN) a `handleResponse` pak volá
+  `handleDamage(…, { killerIdx: originatorIdx })`; Dvojitá rána předává zabijáka v každém
+  kliku. Duel se nemění (jak plán chtěl).
+- **Smrt hráče na tahu mimo fázi PLAY** (výstřel zpět ho zabil ve fázi RESPOND) se
+  dorovnává obecným `_turnOwnerGone` (logic/combat.js): s frontou odložených akcí
+  (odměna za banditu, Herb Hunter…) `_nextTurnAfterQueue`, bez ní `_autoEndTurnPending`.
+  **Zjištěno mimochodem a opraveno:** úplně stejně zůstával na tahu mrtvý hráč, který
+  prohrál VLASTNÍ Duel (v základní hře) – mohl dál hrát karty, bot pak tah ukončil sám.
+  `_turnOwnerGone` se teď volá i na konci Duelu; zátěž F3 to hlídá.
+- **Pivo proti Dvojité ráně v obraně je dovolené** (plán ho v RESPOND zakazoval): zachrání
+  jeden ze dvou životů a druhý se kliká (`_advanceAfterLastLifeSave` → `_startAimHits(…, 1)`).
+  Výsledek je stejný jako „Pivo až mezi kliky", jen klient ani bot nepotřebují nový zákaz.
+- **Opětovná palba je `isMissedCard`** (core/playability.js) – jediný dotaz „je to karta
+  Vedle!?" pro `playsAsMissed`, Big Spencera, Calamity Janet (`playsAsBang`, Kazatel,
+  `nativePlayInTurn`, `getActionForCard`) i Lemat. Ve vlastním tahu se nehraje.
+- **Roztříštěná kulka má akci `FANNING`** (getActionForCard) a hratelnost `fanningOk`
+  (limit BANG!, Právo západu jako u BANG!u, cíl existuje). `fanningTargets` vrací seznam
+  už zúžený podle povinnosti DB; bez možného druhého cíle se klientem poslaný druhý cíl
+  tiše zahodí a je to obyčejný výstřel. Lee Van Kliff si ji do paměti zapíše (je hnědá),
+  zopakovat ji ale nesmí (`VOS_KINDS`).
+- **Lemat smí udělat BANG! i z Roztříštěné kulky a Dvojité rány** – výjimkou je jen
+  karta Vedle! (text karty).
+- **Evelyn Shebang** = volba `'evelyn'` v `options` fáze lízání (nabídne se jen s cílem
+  ve vzdálenosti 1) a akce `draw_card { source: 'evelyn', sourceIdx: cíl }` – nová akce
+  nevznikla. Pod Žízní (`cardsNeeded` 1 → 0) fáze lízání hned končí.
+- **Bot:** Opětovná palba přednostně proti nepříteli (proti spojenci obyčejné Vedle!),
+  Dvojitá rána ke každému výstřelu kartou BANG!, Roztříštěná kulka jen na dvojici bez
+  spojence (`fanningPick`; vynucená Právem západu na kohokoli), Evelyn na nepřítele
+  ve vzdálenosti 1. `keepScore`: Opětovná palba 7, kulka 6, Dvojitá rána 4.
+- **Animace:** výstřel z fronty žádnou let nemá (není karta) – banner obrany ho
+  pojmenuje („Opětovná palba od hráče X"). Dvojitá rána přidává do banneru „−2 ❤"
+  a klikané zásahy mají popisek „🎯 Dvojitá rána".
 
 ## 9. Co plán vědomě nedělá
 

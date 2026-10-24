@@ -29,6 +29,17 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         withRoom((room, p, gs) => {
             const ds = gs.drawPhaseState;
             const playerIdx = ds?.playerIdx;
+            // Údolí stínů – Evelyn Shebang: místo karty výstřel. Nic neletí; výstřel čeká ve
+            // frontě a odpálí se po fázi lízání (stav ho nese jako RESPOND).
+            if (data?.source === 'evelyn') {
+                const before = !!ds?.evelynUsed;
+                gs.drawCard('evelyn', data.sourceIdx);
+                if (!before && gs.drawPhaseState?.evelynUsed && data.sourceIdx !== playerIdx) {
+                    ctx.recordBehavior?.(room, { actorIdx: playerIdx, targetIdx: data.sourceIdx, kind: 'hostile' });
+                }
+                broadcastRoom(room);
+                return;
+            }
             const isKitCarlson = ds?.isKitCarlson;
             // Claus (Fistful) odkrývá celou řadu naráz a rozdává ji z ní – žádná
             // deck→ruka animace, řadu si klient nakreslí z přechodu fáze (jako u Kita).
@@ -223,9 +234,14 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // odhozu tak jako tak – s dalším stavem se pak vrátila do ruky, což vypadalo
             // jako bliknutí (bug 26). Pořadí vůči klientovi se nemění: emit je pořád před
             // broadcastem, takže animace dorazí dřív než stav.
-            gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx);
+            // Údolí stínů – Dvojitá rána jde do odhozu hned za kartou BANG! (aimCardId).
+            const aimCard = d.aimCardId != null ? attacker?.hand.find(c => c && c.id === d.aimCardId) : null;
+            gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx, d.aimCardId ?? null);
             if (cardLeftHand(attacker, card)) {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
+            }
+            if (aimCard && cardLeftHand(attacker, aimCard)) {
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: aimCard.id });
             }
             if (d.targetIdx !== d.attackerIdx) ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
             broadcastRoomDelayed(room);
@@ -489,6 +505,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 } else {
                     const card = respPlayer?.hand[d.cardIndex];
                     emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.playerIdx, cardId: card?.id });
+                    // Údolí stínů – Opětovná palba: výstřel zpět na střelce je nepřátelský.
+                    const orig = gs.pendingResponse?.originatorIdx;
+                    if (card?.type === 'Opětovná palba' && orig != null && orig !== d.playerIdx) {
+                        ctx.recordBehavior?.(room, { actorIdx: d.playerIdx, targetIdx: orig, kind: 'hostile' });
+                    }
                 }
                 gs.handleResponse(d.playerIdx, d.cardIndex, d.boardCardId ?? null);
                 // Fistful – Odražená střela: obrana kartou střelu odrazí, takže tudy
@@ -717,6 +738,25 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 ctx.recordBehavior?.(room, { actorIdx: gs.currentPlayerIndex, targetIdx: d.targetIdx, kind: 'hostile' });
             }
             broadcastRoom(room);
+        });
+    });
+
+    // ── Údolí stínů – Roztříštěná kulka: BANG! na dva cíle ──────────────────────
+    // První cíl se brání hned, druhý výstřel čeká ve frontě výstřelů a odpálí se, až
+    // první doběhne (logic/valley.js). Obě střely jsou nepřátelské (ledger).
+    on('play_fanning', (d) => {
+        withRoom((room, p, gs) => {
+            const attackerIdx = gs.currentPlayerIndex;
+            const attacker = gs.players[attackerIdx];
+            const card = attacker?.hand[d?.cardIdx];
+            const ok = gs.playFanning(attackerIdx, d?.cardIdx, d?.firstIdx, d?.secondIdx ?? null);
+            if (ok && cardLeftHand(attacker, card)) {
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: attackerIdx, cardId: card?.id });
+                [d.firstIdx, d.secondIdx].forEach(t => {
+                    if (t != null && t !== attackerIdx) ctx.recordBehavior?.(room, { actorIdx: attackerIdx, targetIdx: t, kind: 'hostile' });
+                });
+            }
+            broadcastRoomDelayed(room);
         });
     });
 

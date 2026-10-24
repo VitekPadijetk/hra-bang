@@ -34,6 +34,8 @@ module.exports = function installActionGuard(ctx) {
         // Údolí stínů – výběr karet z ruky (Brokovnice; v F4 Tornádo, Poker, Divoká banda)
         // a nabídka Limonádového Jima (odhoz za +1 život, nebo odmítnutí).
         'vos_pick', 'vos_lemonade',
+        // Údolí stínů (F3) – Roztříštěná kulka (BANG! na dva cíle) hraje hráč na tahu.
+        'play_fanning',
         'sniper_choose', 'play_ricochet',
         'claus_give', 'uncle_will', 'flint_westwood', 'lee_van_kliff', 'lady_rose',
         'dorothy_command', 'dorothy_target', 'dorothy_cancel',

@@ -642,6 +642,10 @@ module.exports = function installAnimService(ctx) {
     function beforeBroadcast(room) {
         ctx.flushBotQuips?.(room);
         flushDorothy(room);
+        // Údolí stínů – pojistka fronty výstřelů: kdyby se hra vrátila do fáze PLAY
+        // cestou, která frontu odložených akcí nebere, odpálí se odložený výstřel (Opětovná
+        // palba, Roztříštěná kulka, Evelyn) tady – jinak by čekal až na konec tahu.
+        room?.gameState?._drainVosShots?.();
         flushGhostLeave(room);
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);

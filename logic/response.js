@@ -212,6 +212,9 @@ const ResponseMixin = {
             // Údolí stínů: Pivo / Sid / Batoh zachránily poslední život, ale ZÁSAH to byl –
             // odměnu (Odměna) i odhoz (Brokovnice) to nepřebíjí (viz _vosOnBangHit).
             this._vosOnBangHit(pr);
+            // Dvojitá rána: záchrana zrušila JEDEN ze dvou ztracených životů – druhý se
+            // kliká (a na posledním životě se proti němu zase smí zachraňovat).
+            if (pr.vos && pr.vos.aim) { this._startAimHits(playerIdx, pr.originatorIdx, 1); return; }
             this.phase = "PLAY";
             // Fistful of Cards: běží-li série zásahů, pošli hned další (viz logic/fistful.js).
             if (!this._afterFistfulHit()) this._processSpecialQueue();
@@ -278,7 +281,19 @@ const ResponseMixin = {
                 // PŘED zraněním, tedy před Barta Cassidyho a El Gringa (pořadí dV:
                 // Brokovnice → Odměna → El Gringo) a dřív, než smrt uklidí stůl oběti.
                 this._vosOnBangHit(this.pendingResponse);
-                this.handleDamage(playerIdx, this.pendingResponse.originatorIdx);
+                // Údolí stínů – Dvojitá rána: zasažený ztrácí DVA životy, každý zvlášť
+                // klikaný (R8) – Pivo, Bart Cassidy, El Gringo i valouny tak platí na
+                // každý život, jako u dynamitu. Konec obrany dohraje _vosAimTail.
+                const _vosPr = this.pendingResponse;
+                if (_vosPr.vos && _vosPr.vos.aim) {
+                    _vosPr.responded.push(playerIdx);
+                    this._startAimHits(playerIdx, _vosPr.originatorIdx, 2);
+                    return;
+                }
+                // Výstřel mimo pořadí (Opětovná palba, Roztříštěná kulka, Evelyn): zabil
+                // střelec, ne hráč na tahu (plán §2.5).
+                this.handleDamage(playerIdx, _vosPr.originatorIdx,
+                    (_vosPr.vos && _vosPr.vos.shot) ? { killerIdx: _vosPr.originatorIdx } : null);
 
                 // Zásah hráče vyřadil → líznutí za Úhyb už nemá kdo vybrat (stejná podmínka
                 // jako u Suzy v _pruneSuzyQueue). Duch (Město duchů) hraje s 0 životy, ale
@@ -369,6 +384,10 @@ const ResponseMixin = {
                     if (this.checkSuzyLafayette(player)) this._processSpecialQueue();
                     return;
                 }
+                // Údolí stínů – Opětovná palba: obrana je dokončená a byla v ní Opětovná
+                // palba → střelec je terčem efektu BANG!. Proti Slabovi je potřeba ještě
+                // jedno Vedle!, proto se to posuzuje až TEĎ (samotná nestačí, dV).
+                this._vosBackfireCheck(this.pendingResponse, playerIdx);
                 this.pendingResponse.partialMisses = [];
                 this.missesPlayed = 0;
                 this.missesRequired = 1;
@@ -401,6 +420,9 @@ const ResponseMixin = {
                 this.pendingResponse.active = false;
                 this.phase = "PLAY";
                 this._releaseMollyDeferred();   // Duel skončil → uvolni Mollyiny odložené náhrady
+                // Duel prohrál ten, kdo ho zahrál, a umřel → tah skončil (bez tohohle
+                // zůstal mrtvý na tahu ve fázi PLAY a mohl dál hrát karty).
+                if (this._turnOwnerGone()) return;
                 this._processSpecialQueue();
             }
         }
@@ -411,6 +433,9 @@ const ResponseMixin = {
         else {
             this.pendingResponse.active = false;
             this.phase = "PLAY";
+            // Údolí stínů: výstřel mimo pořadí (Opětovná palba…) mohl zabít hráče na tahu.
+            // Smrt přišla ve fázi RESPOND, takže ji handlePlayerDeath tahu nepřipsal.
+            if (this.pendingResponse.vos && this.pendingResponse.vos.shot && this._turnOwnerGone()) return;
             // Fistful of Cards: běží-li série zásahů, pošli hned další (viz logic/fistful.js).
             if (!this._afterFistfulHit()) this._processSpecialQueue();
             this.targetPlayer = null;

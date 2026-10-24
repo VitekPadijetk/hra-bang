@@ -120,6 +120,10 @@ const DrawMixin = {
         if (hasAbility(player, "Pedro Ramirez") && !this._mineTurn) opts.push('discard');
         // Dodge City: Pat Brennan smí místo lízání vzít 1 kartu ze stolu libovolného hráče.
         if (hasAbility(player, "Pat Brennan")) opts.push('board');
+        // Údolí stínů – Evelyn Shebang: o kartu méně → BANG! na vzdálenost 1. Nabízí se jen,
+        // když je na koho (evelynTargets); kdo ho zvolí, rozhoduje evelynOffer.
+        if (this._vosOn() && hasAbility(player, "Evelyn Shebang") &&
+            evelynTargets(this, this.players.indexOf(player)).length) opts.push('evelyn');
         return opts;
     },
 
@@ -128,6 +132,9 @@ const DrawMixin = {
 
         const ds = this.drawPhaseState;
         const player = this.players[ds.playerIdx];
+
+        // Údolí stínů – Evelyn Shebang: místo jedné karty výstřel (`sourceIdx` = cíl).
+        if (source === 'evelyn') { this.evelynShoot(sourceIdx); return; }
 
         // A Fistful of Cards – Pálenka: místo celé fáze lízání si hráč vezme 1 život.
         // Rozhoduje se místo PRVNÍ karty (později už ne) a fáze tím končí klasickou cestou
@@ -369,13 +376,16 @@ const DrawMixin = {
     // se do něj dalo vrátit poté, co ho přeruší Dutch Will (Zlatá horečka).
     _finishDrawTail(wasStartOfTurn, wwsFlip) {
         if (wwsFlip !== null && wwsFlip !== undefined) this._flipWwsEvent(wwsFlip);
-        this._processSpecialQueue();
+        // Údolí stínů – výstřel Evelyn Shebang (fronta výstřelů) se odpálí až ZA Želízky
+        // a Rančem: oba se ptají „je fáze PLAY?", a rozeběhlý výstřel by je přeskočil.
+        this._vosHolding(() => this._processSpecialQueue());
         // High Noon – Želízka: po fázi lízání si hráč na tahu volí barvu. Ptáme se až
         // po frontě odložených akcí (na konci lízání bývá prázdná); kdyby si ji fronta
         // vzala, zůstane hráč pro tenhle tah bez omezení – nikdy ne zaseknutý.
         // Fistful – Ranč (výměna karet) jde AŽ ZA Želízky, takže když se čeká na barvu,
         // pustí ho na řadu chooseHandcuffsSuit (logic/highNoon.js).
         if (wasStartOfTurn && this.phase === "PLAY" && !this._startHandcuffs()) this._startRanch();
+        if (this.phase === "PLAY") this._drainVosShots();
     },
 
     // Claus "The Saint" (A Fistful of Cards): ve fázi 1 si lízne o kartu víc, než je

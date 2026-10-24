@@ -80,6 +80,20 @@ if (typeof require === 'function') {
     if (typeof vosUnavoidable === 'undefined') {
         globalThis.vosUnavoidable = require('./valley.js').vosUnavoidable;
     }
+    // Údolí stínů (F3) – Roztříštěná kulka (cíle) a zapnuté rozšíření (Dvojitá rána).
+    if (typeof fanningTargets === 'undefined') {
+        const __vos3 = require('./valley.js');
+        globalThis.fanningTargets = __vos3.fanningTargets;
+        globalThis.vosOn = __vos3.vosOn;
+    }
+}
+
+// Údolí stínů – Opětovná palba: „Počítá se jako karta VEDLE!." Je to tedy KARTA Vedle!
+// všude, kde se na kartu Vedle! ptá pravidlo: obrana, Calamity Janet ji smí zahrát jako
+// BANG! (dV 2427678), Big Spencer ji hrát nesmí, Lemat z ní BANG! neudělá a Ruská ruleta
+// ji bere jako odhoz. Výstřel zpět přidá jen obrana (logic/response.js).
+function isMissedCard(card) {
+    return !!card && (card.type === "Vedle!" || card.type === "Opětovná palba");
 }
 
 // ── Co se počítá za kartu Bang! a co za kartu Vedle! ────────────────────────
@@ -100,7 +114,7 @@ if (typeof require === 'function') {
 function playsAsBang(state, me, card) {
     if (!card || card._placeholder) return false;
     if (card.type === "Bang!") return true;
-    if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return true;
+    if (hasAbility(me, "Calamity Janet") && isMissedCard(card)) return true;
     if (eventActive(state, 'ZUCTOVANI')) return true;      // Zúčtování: každá karta
     return false;
 }
@@ -111,13 +125,13 @@ function playsAsBang(state, me, card) {
 // karta a pod Zúčtováním smí Big Spencer hrát jako Vedle! kartu BANG! (R9). Odhodit
 // kartu Vedle! (Ruská ruleta) smí – odhoz není zahrání, viz rouletteDiscardable.
 function bigSpencerBlocked(me, card) {
-    return hasAbility(me, "Big Spencer") && !!card && card.type === "Vedle!";
+    return hasAbility(me, "Big Spencer") && isMissedCard(card);
 }
 
 function playsAsMissed(state, me, card) {
     if (!card || card._placeholder) return false;
     if (bigSpencerBlocked(me, card)) return false;
-    if (card.type === "Vedle!" || card.type === "Úhyb") return true;
+    if (isMissedCard(card) || card.type === "Úhyb") return true;
     if (hasAbility(me, "Elena Fuente")) return true;
     if (card.type === "Bang!") {
         return hasAbility(me, "Calamity Janet") || eventActive(state, 'ZUCTOVANI');
@@ -137,7 +151,7 @@ function preacherBlocks(state, me, myIndex, card) {
     if (!bangBlockedFor(state, myIndex)) return false;
     if (!card) return true;
     if (card.type === "Bang!") return true;
-    if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return true;
+    if (hasAbility(me, "Calamity Janet") && isMissedCard(card)) return true;
     // Zúčtování (Divoký západ): kartou Bang! je KAŽDÁ karta, kterou se hráč rozhodne
     // jako Bang! zahrát, takže Kazatel pod ním výstřel zakazuje úplně (bug 36).
     return eventActive(state, 'ZUCTOVANI');
@@ -153,7 +167,7 @@ function showdownBangOk(state, me, myIndex, card) {
     if (!card || card._placeholder) return false;
     if (!isPlayTurn(state, myIndex)) return false;
     if (card.type === "Bang!") return false;                                  // řeší větev pro pravý Bang!
-    if (hasAbility(me, "Calamity Janet") && card.type === "Vedle!") return false;
+    if (hasAbility(me, "Calamity Janet") && isMissedCard(card)) return false;
     if (card.bangEffect && !card.green) return false;                         // Úder a spol. míří samy
     if (preacherBlocks(state, me, myIndex, card)) return false;               // Kazatel (High Noon)
     // Fistful – Právo západu: obyčejný výstřel čerpá limit karet Bang!, takže jím jde
@@ -171,12 +185,12 @@ function showdownBangOk(state, me, myIndex, card) {
 // (Willy the Kid smí víckrát, Dynamite Box), spouští Odměnu i Brokovnici a Kazatel ji
 // zakazuje. Jen „ve svém tahu" a jen při střelbě – v duelu ani proti Indiánům ne (dV).
 // „Kromě VEDLE!" = karta Vedle! (Calamity Janet ji smí jako BANG! zahrát i bez Lematu)
-// a Opětovná palba, která se jako karta Vedle! počítá (přibude v F3).
+// a Opětovná palba, která se jako karta Vedle! počítá (isMissedCard).
 function lematBangOk(state, me, myIndex, card) {
     if (!lematActive(state, me)) return false;
     if (!card || card._placeholder) return false;
     if (!isPlayTurn(state, myIndex)) return false;
-    if (card.type === "Bang!" || card.type === "Vedle!" || card.type === "Opětovná palba") return false;
+    if (card.type === "Bang!" || isMissedCard(card)) return false;
     if (card.bangEffect && !card.green) return false;                         // Úder a spol. míří samy
     if (preacherBlocks(state, me, myIndex, null)) return false;               // Kazatel – každá karta BANG!
     return bangLimitFree(state, me) &&
@@ -200,6 +214,41 @@ function isBangCardPlay(state, me, myIndex, card) {
     return playsAsBang(state, me, card) || lematBangOk(state, me, myIndex, card);
 }
 
+// Údolí stínů – Dvojitá rána: „Tuto kartu zahraješ společně s kartou BANG!. Je-li
+// napadený hráč zasažen, ztrácí dva životy." Smí jít k TÉHLE kartě? Jen ke KARTĚ BANG!
+// (R5 – pravá, Calamity, Zúčtování, Lemat), ne k bang-efektu, a jen ve vlastním tahu.
+// Dvojitá rána se hraje z ruky, takže na ni platí i Želízka (High Noon). Ptá se server
+// (playBang s aimCardId), klient (přepínač u vybrané karty) i bot.
+function aimOk(state, me, myIndex, card, aim) {
+    if (!vosOn(state) || !aim || aim._placeholder || aim.type !== "Dvojitá rána") return false;
+    if (!card || card._placeholder || card.id === aim.id) return false;
+    if (!isPlayTurn(state, myIndex)) return false;
+    if (suitBlockedFor(state, myIndex, aim)) return false;
+    // Fistful – Právo západu: Dvojitá rána odchází z ruky navíc (jako cena).
+    if (lawProtectedCard(state, me, myIndex, aim)) return false;
+    if (lawLocksOther(state, me, myIndex, card, { asBang: true, discards: 1 })) return false;
+    return isBangCardPlay(state, me, myIndex, card);
+}
+
+// Kterou Dvojitou ránu z ruky jde přidat k téhle kartě? (null = žádnou)
+function aimCardFor(state, me, myIndex, card) {
+    return (me?.hand || []).find(c => c && c.type === "Dvojitá rána" &&
+        aimOk(state, me, myIndex, card, c)) || null;
+}
+
+// Údolí stínů – Roztříštěná kulka: smí se teď zahrát? „Účinkuje jako BANG! na dostřel"
+// a podle Dynamite Boxu „nesmíte už ve stejném tahu zahrát svou standardní 1 kartu BANG!
+// (a naopak)" – čerpá tedy limit karet BANG!, i když kartou BANG! NENÍ (žádná Odměna,
+// Colorado, Brokovnice ani Slab; Kazatel ji nezakazuje). Cíl se volí přes fanningTargets
+// (core/valley.js). Želízka a Soudce řeší cardPlayability, tady jen to, co je její.
+function fanningOk(state, me, myIndex, card) {
+    if (!card || card._placeholder || card.type !== "Roztříštěná kulka") return false;
+    if (!isPlayTurn(state, myIndex)) return false;
+    if (!bangLimitFree(state, me)) return false;
+    if (lawLocksOther(state, me, myIndex, card, { asBang: true })) return false;
+    return fanningTargets(state, myIndex).length > 0;
+}
+
 // Smí se karta zahrát ve své VLASTNÍ roli (Bang! střílí, Pivo léčí, modrá jde na stůl)?
 // Vytažené z cardPlayability kvůli Zúčtování (Divoký západ): pod ním je hratelná i karta,
 // jejíž vlastní akce zrovna nedává smysl (Vedle! ve svém tahu, druhá zelená téhož jména) –
@@ -215,7 +264,7 @@ function nativePlayInTurn(state, me, myIndex, card) {
     if (card.bangEffect && !card.green) {
         return true;
     }
-    if (card.type === "Bang!" || (hasAbility(me, "Calamity Janet") && card.type === "Vedle!")) {
+    if (card.type === "Bang!" || (hasAbility(me, "Calamity Janet") && isMissedCard(card))) {
         // (Zúčtování sem NEpatří – karta, která je Bang! jen „jako by", si svou vlastní
         //  akci ponechává; tu možnost přidává navrch showdownBangOk v cardPlayability.)
         if (preacherBlocks(state, me, myIndex, card)) return false;   // Kazatel (High Noon)
@@ -249,7 +298,11 @@ function nativePlayInTurn(state, me, myIndex, card) {
             idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
         return true;
     }
-    if (card.type === "Vedle!") return false;   // Calamity Janet řeší větev výš, Zúčtování showdownBangOk
+    if (isMissedCard(card)) return false;   // Calamity Janet řeší větev výš, Zúčtování showdownBangOk
+    // Údolí stínů – Dvojitá rána se sama nehraje, jen K vybrané kartě BANG! (aimOk).
+    if (card.type === "Dvojitá rána") return false;
+    // Údolí stínů – Roztříštěná kulka: vlastní akce se dvěma cíli (fanningOk).
+    if (card.type === "Roztříštěná kulka") return fanningOk(state, me, myIndex, card);
     if (card.type === "Vězení") {
         return state.players.some((p, idx) => idx !== myIndex && p.health > 0 && p.role !== "Sheriff" && !(p.board||[]).some(c => c.type === "Vězení"));
     }
@@ -462,7 +515,8 @@ function _lawDrawGain(card) {
 // SAMA od sebe" a volající, který kartu posílá jako Bang!, to řekne přes `opts.asBang`.
 function _lawCountsBang(me, card) {
     return !!card && !card.bangEffect &&
-        (card.type === "Bang!" || (hasAbility(me, "Calamity Janet") && card.type === "Vedle!"));
+        (card.type === "Bang!" || card.type === "Roztříštěná kulka" ||
+         (hasAbility(me, "Calamity Janet") && isMissedCard(card)));
 }
 
 // Hypotetický stav PO akci, z pohledu vynucené karty. Kopíruje se MĚLCE (skutečným
@@ -1021,7 +1075,8 @@ if (typeof module !== 'undefined' && module.exports) {
                        lawProtectedCard, lawHandcuffsSuit, willPayOk, willOffer,
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
                        playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, bigSpencerBlocked,
-                       lematBangOk, altBangOk, isBangCardPlay,
+                       lematBangOk, altBangOk, isBangCardPlay, isMissedCard,
+                       aimOk, aimCardFor, fanningOk,
                        turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer,

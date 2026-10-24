@@ -715,8 +715,8 @@ vybavení) uzavřela celé rozšíření.
 
 ## Rozšíření Údolí stínů (Valley of Shadows) — rozpracované
 
-**Hotové jsou fáze F0 (kostra), F1 (šest karet na existující mašinerii) a F2 (dvě postavy)**
-a rozšíření
+**Hotové jsou fáze F0 (kostra), F1 (šest karet na existující mašinerii), F2 (dvě postavy)
+a F3 (fronta výstřelů)** a rozšíření
 jde zapnout v menu jako každé jiné (`MENU_EXPANSIONS`, nápověda poctivě říká „rozpracované").
 F1 = **Tomahawk** (jen data – bang-efekt s dostřelem 2), **Poslední pivo** (`cardEffects`
 v `playCard`, není to karta Pivo), **Chřestýš** (sejmutí v `logic/checks.js` po Dynamitu
@@ -744,6 +744,29 @@ a Opětovná palba z dalších fází se na něj musí ptát taky) a **Limonádo
 v logic/characters.js, který volá i Madam Yto; za CIZÍ Pivo jde do fronty
 `LEMONADE_OFFER` → fáze `LEMONADE_OFFER`/`pendingLemonade`, akce **`vos_lemonade
 { cardId | null, playerIdx }`**, kdo smí, říká `lemonadeEligible`).
+F3 = **fronta výstřelů `_vosShots`** (R6, logic/valley.js – vzor Roubík): výstřel bez karty
+a mimo pořadí se zapíše (`_vosQueueShot`) a odpálí (`_drainVosShots`) až v KLIDU
+(`_vosShotCalm`: fáze PLAY, prázdná fronta odložených akcí, nic rozdělaného, žádný resume
+příznak). Odpaluje se v `_processSpecialQueue` (za Roubíkem), v `_resumeAfterSpecial`,
+pojistkou v `tryEndTurn` a v háku `beforeBroadcast` (server/anim.js); `nextTurn` zbytek
+zahodí. **Ocas fáze lízání frontu podrží (`_vosHolding`)** – Želízka a Ranč se ptají
+„je fáze PLAY?" a rozeběhlý výstřel Evelyn by je přeskočil. Výstřel je bang-efekt
+s kontextem **`vos.shot`** – podle něj `handleDamage(…, { killerIdx })` připíše smrt
+STŘELCI, ne hráči na tahu. Smrt hráče na tahu ve fázi RESPOND/DYNAMITE_DAMAGE dorovná
+**`_turnOwnerGone`** (logic/combat.js; opravilo i starý Duel, ve kterém prohrávající
+iniciátor zůstal mrtvý na tahu). Karty: **Opětovná palba** (`isMissedCard` v
+core/playability.js = karta Vedle! pro Calamity, Big Spencera, Kazatele i Lemat; výstřel
+zpět zapíše `_vosBackfireCheck` až při DOKONČENÉ obraně), **Roztříštěná kulka**
+(`playFanning`, akce **`play_fanning { cardIdx, firstIdx, secondIdx }`**, akce karty
+`FANNING`, cíle `fanningTargets` v core/valley.js už zúžené podle povinnosti Dynamite
+Boxu, `fanningOk`; čerpá limit BANG!, kartou BANG! není) a **Dvojitá rána** (`play_bang`
++ `aimCardId`, `aimOk`/`aimCardFor`; zásah = **klikané zásahy S ÚTOČNÍKEM**
+`pendingDynamiteDamage.attackerIdx` → `_vosAimClick` přes `handleDamage`, `resume:
+'RESPOND_TAIL'` → `_vosAimTail`; Pivo v obraně zruší jen jeden ze dvou životů).
+Postava **Evelyn Shebang** = volba `'evelyn'` v `options` fáze lízání (`evelynOffer`/
+`evelynTargets`, `drawCard('evelyn', cíl)` → `evelynShoot`). UI: přepínač „+ DVOJITÁ
+RÁNA" nad slotem schopností, dvoukrokové míření kulky (`_vosFanningRole`), tlačítko
+Evelyn ve slotu schopností; výstřel z ruky posílá jen `emitPlayBang` (view/board.js).
 Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art: null` do dodání),
 postavy id 50–54 v characters.json (`portrait: false` do dodání), mixin
 [logic/valley.js](logic/valley.js), zrcadlo [core/valley.js](core/valley.js) (`vosOn`,
@@ -751,12 +774,13 @@ postavy id 50–54 v characters.json (`portrait: false` do dodání), mixin
 a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van Kliff –
 hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
 Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (postavy zatím
-dvě z pěti, karty šest z patnácti). **Art se kreslí jako štítek, dokud nedorazí**: karta bez artu, ale s `text`,
+tři z pěti, karty devět z patnácti). **Art se kreslí jako štítek, dokud nedorazí**: karta bez artu, ale s `text`,
 jde přes `paintCardLabel`, postava s `portrait: false` přes `buildPortraitLabels` (game.js);
 dodání = soubor do složky + vyplnit `art` / smazat `portrait: false` / `VOS_MARK_READY = true`.
-Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js`, `test/vos.characters.test.js`
-a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá karta opravdu hrála) a „(F2)"
-(stůl plný jedné postavy) v `test/server.bots.test.js`. Pravidla obou vydání (české Albi je
+Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js`, `test/vos.characters.test.js`,
+`test/vos.shots.test.js` (F3) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
+karta opravdu hrála), „(F2)" (stůl plný jedné postavy) a „(F3)" (karty F3 + stůl plný
+Evelyn, hlídá i to, že mrtvý hráč nikdy nezůstane na tahu) v `test/server.bots.test.js`. Pravidla obou vydání (české Albi je
 originál a u devíti karet se liší od mezinárodního) jsou v
 [docs/udoli-stinu.md](docs/udoli-stinu.md), plán karta po kartě s háky, rozhodnutími R1–R15
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
@@ -764,7 +788,7 @@ a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md
 původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
 pauza na reakci jen když reagovat jde, art dodává uživatel průběžně (co chybí, kreslí se
 jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
-text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F3
-(fronta výstřelů, Opětovná palba, Roztříštěná kulka, Evelyn Shebang, Dvojitá rána).
+text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F4
+(Divoká banda, Tornádo, Poker – sekvenční skryté volby, redakce, animace).
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.

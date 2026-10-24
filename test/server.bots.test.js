@@ -1373,7 +1373,9 @@ test('20 her jen botů jede i s balíčkem samých Divokých západů', () => {
 // na novém sejmutí nezasekne, a že se karty doopravdy hrály (ne že by tiše chyběly).
 test('Údolí stínů (F1): hra jen botů doběhne 3–8 hráčů, samo i se vším, s nasyceným balíčkem', () => {
     const vosData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
-    const { VOS_CARDS_READY } = require('../core/valley.js');
+    // Jen druhy fáze F1 – další fáze mají vlastní zátěž, jinak by se karty „naředily"
+    // a vzácné jevy (odhoz za Brokovnici) by se v téhle sadě přestaly objevovat.
+    const VOS_CARDS_READY = ['Tomahawk', 'Poslední pivo', 'Chřestýš', 'Odměna', 'Lemat', 'Brokovnice'];
     let nid = 70000;
     const rich = [];
     for (let copy = 0; copy < 6; copy++) {
@@ -1482,6 +1484,74 @@ test('Údolí stínů (F2): stůl plný Coloradů Billů / Limonádových Jimů 
     assert.ok(seen.spade > 0 && seen.unavoidable > 0, 'aspoň jednou padl pik a obrana byla nezrušitelná');
     assert.ok(seen.jimTook > 0, 'Limonádový Jim si aspoň jednou doplnil život');
     assert.ok(seen.jimNo > 0, 'Limonádový Jim aspoň jednou nabídku odmítl');
+});
+
+// Údolí stínů (fáze F3): první nový mechanismus – fronta výstřelů (Opětovná palba,
+// druhý cíl Roztříštěné kulky, Evelyn Shebang) a klikané zásahy s útočníkem (Dvojitá
+// rána). Karty F3 se namnoží (6 kopií) a polovina her má stůl plný Evelyn Shebang, ať
+// se výstřel místo karty ozve mnohokrát. Hlídá, že se výstřel mimo pořadí nepřepíše
+// s rozehranou obranou, že smrt hráče na tahu výstřelem zpět posune tah a že se nic
+// nezasekne.
+test('Údolí stínů (F3): fronta výstřelů a Dvojitá rána – hra jen botů doběhne 3–8 hráčů', () => {
+    const vosData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+    const F3 = ['Opětovná palba', 'Roztříštěná kulka', 'Dvojitá rána', 'Lemat'];
+    let nid = 71000;
+    const rich = [];
+    for (let copy = 0; copy < 6; copy++) {
+        vosData.filter(c => F3.includes(c.name)).forEach(c => rich.push({ ...c, id: nid++ }));
+    }
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const seen = { backfire: 0, fanning2: 0, aim: 0, evelyn: 0, shotFired: 0, ownerKilled: 0 };
+    try {
+        for (let k = 0; k < 16; k++) {
+            const n = 3 + (k % 6);
+            const all = k % 4 === 3;
+            const evelyn = k % 2 === 1;
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = rich;
+            const opts = { expansions: { udoli_stinu: true, dodge_city: all, high_noon: all,
+                                         fistful: all, divoky_zapad: all, zlata_horecka: all } };
+            const room = { id: 'vosf3_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e) return;
+                if (e.ev === 'special' && e.card === 'Opětovná palba') seen.backfire++;
+                if (e.ev === 'bang' && e.card === 'Roztříštěná kulka' && e.second) seen.fanning2++;
+                if (e.ev === 'special' && e.card === 'Dvojitá rána') seen.aim++;
+                if (e.ev === 'special' && e.card === 'Evelyn Shebang') seen.evelyn++;
+                if (e.ev === 'bang' && ['Opětovná palba', 'Evelyn Shebang'].includes(e.card)) seen.shotFired++;
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            if (evelyn) gs.players.forEach(p => { p.charChoices = ['Evelyn Shebang', 'Evelyn Shebang']; });
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            if (evelyn) {
+                for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+                assert.ok(gs.players.every(pl => pl.character === 'Evelyn Shebang'), 'stůl plný Evelyn');
+            }
+            const guard = pumpToWinner(ctx, room, () => {
+                // Hráč na tahu je mrtvý a nic to nepozná → hra by stála ve fázi PLAY.
+                const cur = gs.players[gs.currentPlayerIndex];
+                if (gs.phase === 'PLAY' && cur && cur.health <= 0 && !cur._ghost && !cur._shadow) seen.ownerKilled++;
+            });
+            assert.ok(gs.winner, `F3 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `F3 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci s frontou výstřelů');
+    assert.ok(seen.backfire > 0 && seen.shotFired > 0, 'Opětovná palba aspoň jednou vystřelila zpět');
+    assert.ok(seen.fanning2 > 0, 'Roztříštěná kulka aspoň jednou mířila na dva cíle');
+    assert.ok(seen.aim > 0, 'Dvojitá rána aspoň jednou zasáhla');
+    assert.ok(seen.evelyn > 0, 'Evelyn Shebang aspoň jednou střílela místo karty');
+    assert.equal(seen.ownerKilled, 0, 'mrtvý hráč na tahu nikdy nezůstal viset ve fázi PLAY');
 });
 
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {

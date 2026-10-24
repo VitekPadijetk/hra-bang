@@ -119,6 +119,7 @@ const VALLEY_CHARACTERS = [
 // implementace (F3, F6, F7); do té doby se dají vybrat jen v debug hře.
 const VOS_READY = [
     "Colorado Bill", "Limonádový Jim",   // F2
+    "Evelyn Shebang",                    // F3
 ];
 
 class Card {

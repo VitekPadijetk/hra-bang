@@ -33,6 +33,10 @@ const SEAT_KEYS = new Set([
     '_terenDyingIdx', '_pendingDeathReveal', '_winClaim3p',
     // Údolí stínů – Limonádový Jim: kdo zahrál Pivo (jen pro banner nabídky).
     'beerByIdx',
+    // Údolí stínů – fronta výstřelů (`_vosShots`): kdo vystřelí (cíl je `targetIdx`).
+    'shooterIdx',
+    // …a argumenty, které sedadlo nesou (Dvojitá rána, Roztříštěná kulka).
+    'victimIdx', 'secondIdx',
 ]);
 // Klíč, jehož hodnota je POLE sedadel (fronty, pořadí, seznamy):
 const SEAT_LIST_KEYS = new Set([

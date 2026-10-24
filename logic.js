@@ -180,6 +180,23 @@ if (typeof isBangCardPlay === 'undefined' && typeof require === 'function') {
     globalThis.altBangOk = __pl.altBangOk;
     globalThis.isBangCardPlay = __pl.isBangCardPlay;
 }
+// Údolí stínů (F3): Dvojitá rána (smí jít k téhle kartě BANG!?), Roztříštěná kulka (smí
+// se zahrát / na koho) a Evelyn Shebang (komu výstřel místo karty). Server, klient i bot.
+if (typeof aimOk === 'undefined' && typeof require === 'function') {
+    const __pl = require('./core/playability.js');
+    globalThis.aimOk = __pl.aimOk;
+    globalThis.fanningOk = __pl.fanningOk;
+    globalThis.isMissedCard = __pl.isMissedCard;
+}
+if (typeof fanningTargets === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.fanningTargets = __vos.fanningTargets;
+}
+if (typeof evelynTargets === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.evelynTargets = __vos.evelynTargets;
+    globalThis.evelynOffer = __vos.evelynOffer;
+}
 
 // Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum, karta Zlatá horečka
 // a Wanted („zahraj na libovolného hráče"): co jde s nákupem udělat a na koho. Stejným
@@ -466,6 +483,9 @@ class GameState {
         // Divoký západ – John Pain: pojistka pro větve, které frontu odložených akcí
         // neberou (Vězení sebralo tah, Vendeta neuspěla) – nejpozději na konci tahu.
         this._drainJohnPain();
+        // Údolí stínů: výstřel, který se do konce tahu nestihl odpálit (střelec nebo cíl
+        // mezitím odešel, tah skončil smrtí), propadá – patřil efektu tohohle tahu.
+        if (this._vosShots && this._vosShots.length) this._vosShots = [];
         // Divoký západ – Roubík: pokuta za promluvení do chatu, na kterou se během tahu
         // nenašlo místo. Konec tahu je poslední takové, takže se nasazuje i mimo fázi
         // PLAY; vrátí true, když si vzala tok hry – tah se posune až po odkliknutí zásahu.
@@ -631,6 +651,10 @@ class GameState {
         // Divoký západ – Zuřivá Doroty: dokud je sedadlo vypůjčené, sedí na něm
         // poručený hráč – ten by tím ukončil CIZÍ tah.
         if (this._dorothyOwnerIdx != null) return;
+        // Údolí stínů – pojistka: odložený výstřel (fronta výstřelů) se musí odpálit dřív,
+        // než tah skončí. Běžně se odpálí sám hned po efektu; tohle chytá cesty, které se
+        // vrátily do fáze PLAY bez fronty odložených akcí.
+        if (this.phase === "PLAY" && this._drainVosShots()) return;
         const p = this.getCurrentPlayer();
         if (!p) {
             this.nextTurn();

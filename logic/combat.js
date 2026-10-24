@@ -2,7 +2,10 @@
 // dynamitové zásahy. Připojuje se na GameState.prototype. Viz „Mixin pattern" v CLAUDE.md.
 (function () {
 const CombatMixin = {
-    handleDamage(targetIdx, attackerIdx = null) {
+    // `opts.killerIdx` = kdo zabil, když to NENÍ hráč na tahu (Údolí stínů: výstřel zpět
+    // Opětovné palby, Evelyn, Dvojitá rána). Bez něj se za zabijáka bere hráč na tahu
+    // (handlePlayerDeath) – u Duelu se tím vědomě nic nemění (plán §2.5).
+    handleDamage(targetIdx, attackerIdx = null, opts = null) {
         let target = this.players[targetIdx];
         if (!target || target.health <= 0) return;
 
@@ -32,7 +35,7 @@ const CombatMixin = {
             // ho další zásahy míjejí (early return nahoře). Schopnosti za ztrátu života
             // (Bart Cassidy, El Gringo) se pod tím spustí normálně.
             if (!target._ghost) {
-                this.handlePlayerDeath(targetIdx);
+                this.handlePlayerDeath(targetIdx, opts && opts.killerIdx != null ? opts.killerIdx : undefined);
                 return;
             }
         }
@@ -229,6 +232,33 @@ const CombatMixin = {
         }
     },
 
+    // Obrana skončila smrtí HRÁČE NA TAHU – prohrál Duel, který sám zahrál, nebo ho zabil
+    // výstřel mimo pořadí (Údolí stínů: Opětovná palba, Dvojitá rána na sebe). Smrt přišla
+    // ve fázi RESPOND / DYNAMITE_DAMAGE, takže ji handlePlayerDeath tahu nepřipsal
+    // (_autoEndTurnPending se nastavuje jen ve fázi PLAY/DRAW) a mrtvý by zůstal na tahu
+    // – dorovná se to tady. Vrací true, když si posun tahu vzala tahle cesta (volající
+    // pak už nesahá na frontu ani na fázi).
+    _turnOwnerGone() {
+        if (this.winner) return true;
+        const o = this._turnOwner();
+        if (isInPlay(this.players[o])) return false;
+        if (this._vosShots) this._vosShots.length = 0;
+        this.phase = "PLAY";
+        this.targetPlayer = null;
+        this.currentAttacker = null;
+        this._pruneSuzyQueue();
+        if (this.specialActionQueue.length) {
+            // Odměna za vyřazení (bandita, Herb Hunter, Vulture Sam…) musí doběhnout dřív,
+            // než začne další hráč – stejně jako u smrti na dynamit.
+            this._nextTurnAfterQueue = true;
+            this._processSpecialQueue();
+        } else {
+            this._autoEndTurnPending = true;
+            this._deadPlayerIdx = o;
+        }
+        return true;
+    },
+
     // ── DYNAMIT: hráč klikne na životy (1 hit z 3) ────────────────────────────
     // Kam se pokračuje, až jsou klikané zásahy dobrané. Dynamit vybuchl uprostřed kontrol
     // na začátku tahu → následuje kontrola Vězení a fáze lízání. Ruská ruleta (Fistful)
@@ -244,6 +274,10 @@ const CombatMixin = {
         // se vrací přesně do ní (`_gagResume`, logic/wildWest.js) – a rovnou zkusí
         // nasadit další pokutu, když jich čeká víc.
         const toGag = resume === 'GAG';
+        // Údolí stínů – Dvojitá rána: zásahy patří obraně proti BANG!u, takže se po nich
+        // dohrává její konec (fronta odložených akcí, další výstřel). Ten frontu bere sám,
+        // proto je jedno, jestli se na ni čekat mělo.
+        if (resume === 'RESPOND_TAIL') { this._vosAimTail(); return; }
         if (afterQueue) {
             if (toBeginTurn) this._resumeBeginTurnAfterQueue = true;
             else if (toNextTurn) this._nextTurnAfterQueue = true;
@@ -261,6 +295,9 @@ const CombatMixin = {
         if (this.phase !== "DYNAMITE_DAMAGE") return;
         const pdd = this.pendingDynamiteDamage;
         if (!pdd || pdd.playerIdx !== playerIdx) return;
+        // Údolí stínů – zásah S ÚTOČNÍKEM (Dvojitá rána): jde přes handleDamage, takže se
+        // veze valoun, El Gringo, Bart Cassidy, Teren Kill i zabiják (R8).
+        if (pdd.attackerIdx != null) { this._vosAimClick(playerIdx); return; }
         // Kam se po dobrání zásahů pokračuje – sebrat PŘED vynulováním pendingu.
         const resume = pdd.resume;
 

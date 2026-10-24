@@ -155,6 +155,8 @@ function waitingStatus(state) {
         text = 'brání se proti ' + _sourceLabel(state.pendingResponse);
         // Údolí stínů – Colorado Bill sejmul piky: bránit se vlastně nejde.
         if (state.pendingResponse.vos?.unavoidable) text += ' (nejde zrušit)';
+        // Údolí stínů – Dvojitá rána: zásah stojí dva životy.
+        if (state.pendingResponse.vos?.aim) text += ' + Dvojitá rána';
     }
     // Sloučená odložená líznutí (Bart Cassidy, Boty, Madam Yto, Úhyb – viz
     // _processSpecialQueue v logic/characters.js) běží jako běžná fáze lízání.
@@ -165,6 +167,11 @@ function waitingStatus(state) {
     // Klikaný zásah nese svůj zdroj – dynamit je jen jeden z nich (Údolí stínů: Chřestýš).
     if (pa.kind === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.source === 'RATTLESNAKE') {
         text = 'Chřestýš – ztrácí život';
+    }
+    // Údolí stínů – Dvojitá rána: zásah za dva životy, každý se kliká zvlášť.
+    if (pa.kind === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.source === 'AIM') {
+        const left = state.pendingDynamiteDamage.hitsLeft;
+        text = `Dvojitá rána – ztrácí ${left === 1 ? 'život' : left + ' životy'}`;
     }
     // Víc Vulture Samů si dělí karty vyřazeného hráče (viz logic/characters.js).
     if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isVultureSplit) {
@@ -237,6 +244,8 @@ function describePendingResponse(state, viewerIdx) {
         need,
         ricochet,
         unavoidable,
+        // Údolí stínů – Dvojitá rána: zásah stojí 2 životy (UI to řekne ve výzvě).
+        aim: !!(pr.vos && pr.vos.aim),
     };
 }
 

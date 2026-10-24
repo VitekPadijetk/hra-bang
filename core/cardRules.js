@@ -2,7 +2,7 @@
 // BEZ závislosti na Phaseru/DOM – jen mapování (karta, postava) -> akce.
 // Izomorfní: v prohlížeči globál getActionForCard, v Node/testech require.
 //
-// Vrací jeden z: "SHOOT" | "PLAY_BLUE" | "PLAY_CARD" | název cílené karty
+// Vrací jeden z: "SHOOT" | "FANNING" | "PLAY_BLUE" | "PLAY_CARD" | název cílené karty
 // ("Panika!" | "Cat Balou" | "Duel" | "Vězení" | "Chřestýš" | "Odměna").
 
 // `character` je BUĎ jméno postavy, NEBO pole jmen (abilitiesOf) – Greygory Deck
@@ -29,9 +29,14 @@ function getActionForCard(card, character) {
     if (card.green) return "PLAY_BLUE";
     // Karty s bang-efektem (Úder, …) se míří jako Bang!. (Zelené sem nedojdou – výše.)
     if (card.bangEffect && !card.green) return "SHOOT";
-    if (card.type === "Bang!" || (isJanet && card.type === "Vedle!")) {
+    // Údolí stínů – Opětovná palba se počítá jako karta Vedle!, takže ji Calamity Janet
+    // smí zahrát jako BANG! (dV 2427678).
+    if (card.type === "Bang!" || (isJanet && (card.type === "Vedle!" || card.type === "Opětovná palba"))) {
         return "SHOOT";
     }
+    // Údolí stínů – Roztříštěná kulka: míří se na DVA cíle (první v dostřelu, druhý
+    // ve vzdálenosti 1 od prvního), takže má vlastní akci.
+    if (card.type === "Roztříštěná kulka") return "FANNING";
     // Údolí stínů: Chřestýš a Odměna se vykládají před cíl (libovolného hráče, i sebe).
     if (["Panika!", "Cat Balou", "Duel", "Vězení", "Chřestýš", "Odměna"].includes(card.type)) {
         return card.type;

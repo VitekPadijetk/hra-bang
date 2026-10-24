@@ -534,9 +534,11 @@ const HighNoonMixin = {
         this.pendingHandcuffs = null;
         this.phase = "PLAY";
         this.logEvent('event', { card: 'Želízka', who: p.name, suit });
-        this._processSpecialQueue();
+        // Údolí stínů: odložený výstřel (Evelyn) počká, až se zeptá i Ranč.
+        this._vosHolding(() => this._processSpecialQueue());
         // Fistful – Ranč se ptá až za Želízky (viz _finishDraw v logic/draw.js).
         if (this.phase === "PLAY") this._startRanch();
+        if (this.phase === "PLAY") this._drainVosShots();
         return true;
     },
 

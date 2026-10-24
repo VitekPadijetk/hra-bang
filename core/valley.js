@@ -28,6 +28,8 @@ function vosOn(state) {
 const VOS_CARDS_READY = [
     // F1 – jen existující mašinerie
     'Tomahawk', 'Poslední pivo', 'Chřestýš', 'Odměna', 'Lemat', 'Brokovnice',
+    // F3 – fronta výstřelů a klikané zásahy s útočníkem
+    'Opětovná palba', 'Roztříštěná kulka', 'Dvojitá rána',
 ];
 
 // ── Zbraně (F1) ──────────────────────────────────────────────────────────────
@@ -63,6 +65,12 @@ if (typeof require === 'function' && typeof isInPlay === 'undefined') {
 if (typeof require === 'function' && typeof canHeal === 'undefined') {
     globalThis.canHeal = require('./distance.js').canHeal;
 }
+if (typeof require === 'function' && typeof computeCanHit === 'undefined') {
+    globalThis.computeCanHit = require('./distance.js').computeCanHit;
+}
+if (typeof require === 'function' && typeof computeDistance === 'undefined') {
+    globalThis.computeDistance = require('./distance.js').computeDistance;
+}
 
 // ── Postavy (F2) ─────────────────────────────────────────────────────────────
 // Colorado Bill: „Když zahraješ kartu BANG!, sejmi. Pokud je sejmutá karta piková ♠,
@@ -84,6 +92,61 @@ function vosUnavoidable(state) {
 // nabídce i při pročištění fronty (logic/valley.js).
 function lemonadeEligible(p) {
     return !!p && isInPlay(p) && canHeal(p) && (p.hand || []).length > 0;
+}
+
+// ── Fronta výstřelů (F3) ─────────────────────────────────────────────────────
+// Roztříštěná kulka: „Účinkuje jako BANG! na dostřel. Hráč dle tvého výběru ve
+// vzdálenosti 1 od napadeného hráče (kromě tebe) se stává také terčem efektu BANG!."
+// + Dynamite Box: „Je-li to možné, jako první cíl si musíte zvolit takového hráče
+// v dostřelu vaší zbraně, jenž má jiného hráče ve vzdálenosti 1 (i kdyby to bylo pro vás
+// nevýhodné)." Vzdálenost druhého cíle se měří OD PRVNÍHO cíle (computeDistance – Mustang,
+// Hledí, Rose Doolan i Paul Regret platí, zbraně ne) a druhým cílem nesmí být střelec.
+//
+// Vrací seznam dvojic { first, seconds } – už ZÚŽENÝ podle povinnosti: existuje-li první
+// cíl s druhým, jsou v seznamu jen takové. Prázdné `seconds` = obyčejný výstřel na jeden
+// cíl (nikdo nemá souseda). Ptá se server (playFanning), klient (zvýraznění) i bot.
+function fanningSeconds(state, myIndex, firstIdx) {
+    const out = [];
+    (state.players || []).forEach((p, i) => {
+        if (i === myIndex || i === firstIdx || !isInPlay(p)) return;
+        if (computeDistance(state, firstIdx, i) <= 1) out.push(i);
+    });
+    return out;
+}
+
+function fanningTargets(state, myIndex) {
+    const all = [];
+    (state.players || []).forEach((p, i) => {
+        if (i === myIndex || !isInPlay(p)) return;
+        if (!computeCanHit(state, myIndex, i)) return;
+        all.push({ first: i, seconds: fanningSeconds(state, myIndex, i) });
+    });
+    return all.some(t => t.seconds.length) ? all.filter(t => t.seconds.length) : all;
+}
+
+// Evelyn Shebang (česká verze): „Ve své fázi 1 si smí líznout o 1 kartu méně, čímž
+// automaticky vystřelí BANG! na vzdálenost 1." Vzdálenost bez zbraně (computeDistance),
+// cílem je kdokoli jiný ve hře.
+function evelynTargets(state, myIndex) {
+    const out = [];
+    (state.players || []).forEach((p, i) => {
+        if (i === myIndex || !isInPlay(p)) return;
+        if (computeDistance(state, myIndex, i) <= 1) out.push(i);
+    });
+    return out;
+}
+
+// Nabízí se právě teď Evelyn její výstřel? Jen ve FÁZI 1 (lízání na začátku tahu), před
+// první kartou (dV: „rozhodnout předem") a jen jednou. Fáze lízání nese 'evelyn'
+// v `options`, když ho server při jejím založení nabídl (_getDrawOptions) – Kit Carlson
+// ani Claus ho nedostanou, mají vlastní odkrytou řadu. Ptá se server, klient i bot.
+function evelynOffer(state, myIndex) {
+    const ds = state && state.drawPhaseState;
+    if (!ds || !ds.active || ds.playerIdx !== myIndex || state.phase !== 'DRAW') return false;
+    if (!ds.isStartOfTurn || ds.cardsDrawn > 0 || ds.evelynUsed || ds.isKitCarlson || ds.isClaus) return false;
+    if (!(ds.options || []).includes('evelyn')) return false;
+    if ((ds.cardsNeeded || 0) < 1) return false;
+    return evelynTargets(state, myIndex).length > 0;
 }
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
@@ -152,5 +215,6 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { vosOn, VOS_CARDS_READY, vosReadyCards, VOS_MARK_READY, hasDuchCard,
                        VOS_KINDS, vosDorothyOk, vosRepeatOk,
                        lematActive, shotgunActive, VOS_PLACE_TYPES, vosPlaceTargetOk,
-                       vosUnavoidable, lemonadeEligible };
+                       vosUnavoidable, lemonadeEligible,
+                       fanningSeconds, fanningTargets, evelynTargets, evelynOffer };
 }

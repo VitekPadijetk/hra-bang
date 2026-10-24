@@ -574,6 +574,70 @@ function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false) {
     return txt;
 }
 
+// ── Údolí stínů – Dvojitá rána a Roztříštěná kulka (F3) ─────────────────────
+// Dvojitá rána se „nabije" tlačítkem u vybrané karty BANG! (`selectedState.aim` = ID
+// karty Dvojitá rána). Platí, jen dokud ji pravidla k té kartě pořád pouštějí (aimOk) –
+// stav se mezi nabitím a výstřelem mohl změnit a server by celé zahrání mlčky odmítl.
+function _vosAimFor(me, card) {
+    const id = selectedState.aim;
+    if (id == null || !me || !card || typeof aimOk !== 'function') return null;
+    const aim = (me.hand || []).find(c => c && c.id === id);
+    return aim && aimOk(state, me, myIndex, card, aim) ? aim : null;
+}
+
+// Výstřel vybranou kartou z ruky (s Dvojitou ranou, je-li nabitá). Jediné místo, kudy
+// klient posílá play_bang z ruky – obě karty se z ruky odeberou optimisticky.
+function emitPlayBang(targetIdx, cardIdx) {
+    const me = state.players[myIndex];
+    const card = me?.hand[cardIdx];
+    const aim = _vosAimFor(me, card);
+    socket.emit('play_bang', { attackerIdx: myIndex, targetIdx, cardIdx, ...(aim ? { aimCardId: aim.id } : {}) });
+    const aimIdx = aim ? me.hand.findIndex(c => c && c.id === aim.id) : -1;
+    // Vyšší index napřed, ať se nižší neposune.
+    if (aimIdx > cardIdx) { optimisticRemoveCard(aimIdx); optimisticRemoveCard(cardIdx); }
+    else { optimisticRemoveCard(cardIdx); if (aimIdx !== -1) optimisticRemoveCard(aimIdx); }
+}
+
+// Roztříštěná kulka se míří na dvakrát: klik na první cíl (`selectedState.fanning.
+// firstIdx`), pak na druhý ve vzdálenosti 1 od něj. Kdo smí být prvním a druhým cílem,
+// říká fanningTargets (core/valley.js) – tentýž predikát, kterým se ptá server i bot.
+// Vrací 'first' | 'second' | null = jak smí hráč `idx` v tuhle chvíli kliknout.
+function _vosFanningRole(idx) {
+    if (selectedState.action !== 'FANNING' || selectedState.cardIndex == null) return null;
+    if (App.blockInput || state.phase !== 'PLAY' || state.currentPlayerIndex !== myIndex) return null;
+    const ts = fanningTargets(state, myIndex);
+    const first = selectedState.fanning?.firstIdx;
+    if (first == null) return ts.some(t => t.first === idx) ? 'first' : null;
+    const t = ts.find(x => x.first === first);
+    return t && t.seconds.includes(idx) ? 'second' : null;
+}
+
+function _vosFanningClick(idx) {
+    const role = _vosFanningRole(idx);
+    if (!role) return false;
+    const cardIdx = selectedState.cardIndex;
+    let first = selectedState.fanning?.firstIdx, second = null;
+    if (role === 'first') {
+        first = idx;
+        const t = fanningTargets(state, myIndex).find(x => x.first === idx);
+        // Druhý cíl je povinný, když existuje – počkej na druhý klik.
+        if (t && t.seconds.length) {
+            selectedState.fanning = { firstIdx: idx };
+            renderUI();
+            return true;
+        }
+    } else {
+        second = idx;
+    }
+    socket.emit('play_fanning', { cardIdx, firstIdx: first, secondIdx: second });
+    optimisticRemoveCard(cardIdx);
+    state.phase = "RESPOND";
+    selectedState = { cardIndex: null, action: null };
+    App.blockInput = true;
+    renderUI();
+    return true;
+}
+
 // ── Soupeři kolem stolu (vykresleno relativně k mému indexu) ──────────────────
 function drawOpponents(ctx) {
     const { anchors, scaleOpp, getTex, getCharTex, isMyDraw, handlePanicCBClick, L } = ctx;
@@ -832,9 +896,7 @@ function drawOpponents(ctx) {
                             // Aktivace zelené bang-efekt karty ze stolu (Pepperbox/Nůž/…).
                             socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId, target: { targetIdx: actualIdx } });
                         } else {
-                            const capturedIdx = selectedState.cardIndex;
-                            socket.emit('play_bang', { attackerIdx: myIndex, targetIdx: actualIdx, cardIdx: capturedIdx });
-                            optimisticRemoveCard(capturedIdx);
+                            emitPlayBang(actualIdx, selectedState.cardIndex);
                         }
                         // Odstřelovač jde nejdřív na výběr druhé karty (DISCARD_ANOTHER),
                         // ne rovnou do obrany – fázi si tedy dopředu nepřepisuj.
@@ -974,6 +1036,36 @@ function drawOpponents(ctx) {
                 sprite.on('pointerdown', () => {
                     if (!lvkValid || App.blockInput) return;
                     socket.emit('lee_van_kliff', { cardId: selectedState.lvk.cardId, targetIdx: actualIdx });
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                });
+            }
+
+            // Údolí stínů – Roztříštěná kulka: první cíl (v dostřelu), pak druhý ve
+            // vzdálenosti 1 od něj. Vybraný první cíl svítí zlatě, dokud se nevybere druhý.
+            if (selectedState.action === 'FANNING' && selectedState.cardIndex != null) {
+                const fanRole = _vosFanningRole(actualIdx);
+                const isFirst = selectedState.fanning?.firstIdx === actualIdx;
+                const baseTint = isFirst ? 0xffd24d : (fanRole ? 0x88ff88 : 0xff6666);
+                sprite.setInteractive({ useHandCursor: !!fanRole });
+                sprite.setTint(baseTint);
+                sprite.on('pointerover', () => { if (fanRole) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(baseTint); });
+                sprite.on('pointerdown', () => { _vosFanningClick(actualIdx); });
+            }
+
+            // Údolí stínů – Evelyn Shebang: nabitý výstřel místo karty → klik na hráče ve
+            // vzdálenosti 1 (evelynTargets – stejný seznam, jakým se ptá server i bot).
+            if (selectedState.evelyn && typeof evelynOffer === 'function' && evelynOffer(state, myIndex)) {
+                const evValid = !App.blockInput && evelynTargets(state, myIndex).includes(actualIdx);
+                sprite.setInteractive({ useHandCursor: evValid });
+                sprite.setTint(evValid ? 0x88ff88 : 0xff6666);
+                sprite.on('pointerover', () => { if (evValid) { sprite.setTint(0x00ff00); sprite.setScale(scaleOpp * 1.1); } });
+                sprite.on('pointerout', () => { sprite.setScale(scaleOpp); sprite.setTint(evValid ? 0x88ff88 : 0xff6666); });
+                sprite.on('pointerdown', () => {
+                    if (!evValid || App.blockInput) return;
+                    socket.emit('draw_card', { source: 'evelyn', sourceIdx: actualIdx });
                     selectedState = { cardIndex: null, action: null };
                     App.blockInput = true;
                     renderUI();
@@ -1726,7 +1818,8 @@ function drawMyArea(ctx) {
         if (isMyDynamiteDamage) {
             const pdd = state.pendingDynamiteDamage;
             // Klikaný zásah nemusí být dynamit (Údolí stínů – Chřestýš).
-            const ddIcon = pdd.source === 'RATTLESNAKE' ? '🐍 Chřestýš –' : '💥';
+            const ddIcon = pdd.source === 'RATTLESNAKE' ? '🐍 Chřestýš –'
+                : pdd.source === 'AIM' ? '🎯 Dvojitá rána –' : '💥';
             const ddTxt = gameScene.add.text(livesX, myBaseY + L.myHintOffY,
                 `${ddIcon} ${pdd.hitsLeft}× klikni na Životy`,
                 { fontSize: '19px', color: '#ff8800', backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 8, y: 4 } })
@@ -1845,9 +1938,7 @@ function drawMyArea(ctx) {
                 });
             } else if (selectedState.cardIndex !== null) {
                 charImg.on('pointerdown', () => {
-                    const capturedIdx = selectedState.cardIndex;
-                    socket.emit('play_bang', { attackerIdx: myIndex, targetIdx: myIndex, cardIdx: capturedIdx });
-                    optimisticRemoveCard(capturedIdx);
+                    emitPlayBang(myIndex, selectedState.cardIndex);
                     state.phase = "RESPOND";
                     selectedState = { cardIndex: null, action: null };
                     App.blockInput = true;
@@ -2746,6 +2837,10 @@ function drawMyArea(ctx) {
                             // Divoký západ – Zúčtování: „hrát jako Bang!" patří KONKRÉTNÍ
                             // kartě, výběr jiné ho ruší (stejně jako u Odstřelovače).
                             delete selectedState.showdown;
+                            // Údolí stínů: Dvojitá rána i míření Roztříštěné kulky patří
+                            // KONKRÉTNÍ kartě – výběr jiné je ruší.
+                            delete selectedState.aim;
+                            delete selectedState.fanning;
                             // Dostřel pro míření: u karet s bang-efektem (Úder) se liší od
                             // zbraně (undefined = dostřel zbraně, číslo, nebo Infinity).
                             selectedState.reach = bangEffectReach(card);
@@ -3076,6 +3171,51 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _sdBtn.setAlpha(0.45); _sdBtn.disableInteractive(); }
+        }
+
+        // ── Údolí stínů – Dvojitá rána: přidat k vybrané kartě BANG! ─────────────
+        // Nabídne se jen u karty, která se právě míří jako KARTA BANG! (aimCardFor –
+        // tentýž predikát jako server a bot). Sedí NAD slotem schopností, protože ten si
+        // v tu chvíli může brát Zúčtování / Lemat nebo Odstřelovač.
+        {
+            const _aimCard = (_selHandCard && selectedState.action === 'SHOOT' && !selectedState.sniper &&
+                state.phase === "PLAY" && state.currentPlayerIndex === myIndex && typeof aimCardFor === 'function')
+                ? aimCardFor(state, me, myIndex, _selHandCard) : null;
+            if (_aimCard) {
+                const _aimArmed = selectedState.aim != null;
+                const { bg: _aimBtn } = themeButton(gameScene, _abilX, L.btnAbilY - L.btnH - 12, 340, L.btnH,
+                    _aimArmed ? 'DVOJITÁ RÁNA: zrušit ↩' : '🎯 + DVOJITÁ RÁNA (−2 ❤)', {
+                    ...themeToggleStyle(_aimArmed), fontSize: '20px',
+                    onClick: () => {
+                        if (App.blockInput) return;
+                        if (_aimArmed) delete selectedState.aim; else selectedState.aim = _aimCard.id;
+                        renderUI();
+                    },
+                });
+                if (App.blockInput) { _aimBtn.setAlpha(0.45); _aimBtn.disableInteractive(); }
+            } else if (selectedState.aim != null && !_selHandCard) {
+                delete selectedState.aim;
+            }
+        }
+
+        // ── Údolí stínů – Evelyn Shebang: vystřelit místo jedné karty ────────────
+        // Ve fázi 1 před první kartou. Nabito → svítí hráči ve vzdálenosti 1 (klik na
+        // postavu, drawOpponents); nenabito → líže se klasicky klikem na balíček.
+        if (typeof evelynOffer === 'function' && evelynOffer(state, myIndex)) {
+            const _evArmed = !!selectedState.evelyn;
+            const { bg: _evBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH,
+                _evArmed ? 'EVELYN: zrušit ↩' : '💥 EVELYN: −1 karta → BANG!', {
+                ...themeToggleStyle(_evArmed), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    selectedState = _evArmed ? { cardIndex: null, action: null }
+                                             : { cardIndex: null, action: null, evelyn: true };
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _evBtn.setAlpha(0.45); _evBtn.disableInteractive(); }
+        } else if (selectedState.evelyn) {
+            delete selectedState.evelyn;
         }
 
         // ── Dodge City: tlačítka aktivních schopností (na úrovni tlačítka Sida) ─────
@@ -3438,8 +3578,10 @@ function drawPhaseOverlays(ctx) {
             // (ta se zároveň rozsvítí, viz _ricoDefend v drawMyArea).
             const _rcName = d.ricochet ? (d.ricochet.cardName || 'vyloženou kartu') : null;
             if (d.forMe) {
+                // Údolí stínů – Dvojitá rána: zásah stojí dva životy (jedno Vedle! stačí).
+                const _aim = d.aim ? ' + 🎯 Dvojitá rána (−2 ❤)' : '';
                 let l1 = gameScene.add.text(960, 66,
-                    _rcName ? `⚔️ Odražená střela${_from} – ${_rcName}!` : `⚔️ ${d.sourceLabel}${_from}!${_more}`,
+                    _rcName ? `⚔️ Odražená střela${_from} – ${_rcName}!` : `⚔️ ${d.sourceLabel}${_aim}${_from}!${_more}`,
                     { fontSize: '34px', color: '#ff6666', fontStyle: 'bold' }).setOrigin(0.5);
                 mAdd(l1, 206);
                 // Údolí stínů – Colorado Bill sejmul piky: nic se zahrát nedá (jen zachránit

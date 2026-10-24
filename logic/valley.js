@@ -8,6 +8,12 @@
 // Sem patří všechno, co nemá domov jinde: fronta výstřelů (F3), hromadné skryté volby (F4),
 // Duch (F5), okna reakcí (F6, F8) a pozastavená akce Henryho Blocka (F7).
 //
+// Fáze F3 přidala první nový mechanismus – FRONTU VÝSTŘELŮ (`_vosShots`, R6): výstřely
+// bez karty a mimo pořadí se zapíšou a odpálí, až efekt, který je vyvolal, celý doběhne
+// (Opětovná palba, druhý cíl Roztříštěné kulky, Evelyn Shebang) – a KLIKANÉ ZÁSAHY
+// S ÚTOČNÍKEM (R8, Dvojitá rána: dva životy, každý přes handleDamage). Smrt hráče na tahu
+// mimo jeho fázi PLAY dorovnává `_turnOwnerGone` (logic/combat.js).
+//
 // Fáze F2 přidala obě postavy bez nových mechanismů: Colorado Bill (sejmutí při kartě
 // BANG!, ♠ = nezrušitelný) a Limonádový Jim (nabídka „odhoď kartu za +1 život" za cizí
 // Pivo, fáze LEMONADE_OFFER).
@@ -120,6 +126,202 @@ const ValleyMixin = {
         const vos = spade ? { ...c.vos, unavoidable: true } : c.vos;
         this._beginBangResolution(c.attackerIdx, c.targetIdx, c.isEffect, c.sourceName, null, null, vos);
         this._processSpecialQueue();
+    },
+
+    // ── Fronta výstřelů (F3, R6) ─────────────────────────────────────────────
+    // Výstřely BEZ karty a mimo pořadí (Opětovná palba, druhý cíl Roztříštěné kulky,
+    // Evelyn Shebang) se nespouští hned: zapíšou se a odpálí se, až efekt, který je
+    // vyvolal, CELÝ doběhne – fáze PLAY, prázdná fronta odložených akcí, nic rozdělaného
+    // (pravidlo „nejdřív doběhne efekt zahrané karty"). Kdyby Opětovná palba vystřelila
+    // uprostřed Kulometu, přepsala by `pendingResponse` dalšího cíle. Vzor: Roubík.
+    //
+    // Výstřel je bang-EFEKT (žádný Slab, žádná Odměna, Brokovnice ani Colorado) a nese
+    // kontext `vos.shot`, podle kterého se pozná, že zabil střelec, ne hráč na tahu.
+    _vosQueueShot(shooterIdx, targetIdx, source, sourceName) {
+        if (!this._vosShots) this._vosShots = [];
+        this._vosShots.push({ shooterIdx, targetIdx, source, sourceName });
+    },
+
+    // Smí se teď odpálit další výstřel? Jen v klidu – stejná dohoda jako u odložené pokuty
+    // Roubíku: nic neběží, na nic se nečeká a nikdo si na dobrání fronty nenaplánoval
+    // pokračování (viz „Rodina resume příznaků" v CLAUDE.md).
+    _vosShotCalm() {
+        if (!this._vosShots || !this._vosShots.length) return false;
+        if (this.winner || this._vosHold) return false;
+        if (this.phase !== "PLAY") return false;
+        if (this._autoEndTurnPending || this._dorothyOwnerIdx != null) return false;
+        if ((this.specialActionQueue || []).length) return false;
+        if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;
+        if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
+        if (this.pendingResponse?.active || this.pendingBarrelCheck?.active) return false;
+        if (this._nextTurnAfterQueue || this._resumeBeginTurnAfterQueue ||
+            this._startChecksAfterQueue || this._advanceRouletteAfterQueue ||
+            this._advanceGrinnerAfterQueue || this._gagResumeAfterQueue) return false;
+        return true;
+    },
+
+    // Odpal nejstarší výstřel, jde-li to. Vrací true, když se rozeběhl (hra čeká na
+    // obranu) – volající pak nesmí sahat na fázi. Výstřel, jehož střelec nebo cíl mezitím
+    // odešel ze hry, propadá.
+    _drainVosShots() {
+        if (!this._vosShotCalm()) return false;
+        while (this._vosShots.length) {
+            const s = this._vosShots.shift();
+            const sh = this.players[s.shooterIdx], tg = this.players[s.targetIdx];
+            if (!isInPlay(sh) || !isInPlay(tg)) {
+                this.logEvent('special', { who: sh?.name, card: s.sourceName, target: tg?.name, msg: 'výstřel propadá' });
+                continue;
+            }
+            this.logEvent('bang', { who: sh.name, target: tg.name, card: s.sourceName });
+            this.currentAttacker = s.shooterIdx;
+            this._beginBangResolution(s.shooterIdx, s.targetIdx, true, s.sourceName, null, null, { shot: s.source });
+            return true;
+        }
+        return false;
+    },
+
+    // Spusť `fn`, aniž by se po cestě odpálil výstřel z fronty. Potřebuje to ocas fáze
+    // lízání: po frontě odložených akcí se tam ještě ptá Želízka a Ranč („je fáze PLAY?")
+    // a výstřel Evelyn by je přeskočil. Odpaluje se až za nimi.
+    _vosHolding(fn) {
+        this._vosHold = (this._vosHold || 0) + 1;
+        try { return fn(); }
+        finally { if (--this._vosHold <= 0) delete this._vosHold; }
+    },
+
+    // ── Opětovná palba (F3) ──────────────────────────────────────────────────
+    // „Počítá se jako karta VEDLE!. Hráč, který na tebe střílel, je nyní cílem efektu
+    // BANG!." Volá se z handleResponse ve chvíli, kdy je obrana DOKONČENÁ (proti Slabovi
+    // je potřeba ještě jedno Vedle!, samotná Opětovná palba nestačí – dV). Platí proti
+    // každému útoku, který má střelce (BANG!, bang-efekty, Kulomet, jiný výstřel zpět);
+    // bez střelce (Fistful of Cards) je to jen Vedle!. Apache Kida výstřel zasáhne
+    // (nemá barvu – 3. vydání).
+    _vosBackfireCheck(pr, playerIdx) {
+        if (!this._vosOn() || !pr) return;
+        if (!(pr.partialMisses || []).some(m => m && m.card && m.card.type === CardType.BACKFIRE)) return;
+        const from = pr.originatorIdx;
+        if (from == null || from === playerIdx || !this.players[from]) return;
+        this._vosQueueShot(playerIdx, from, 'BACKFIRE', 'Opětovná palba');
+        this.logEvent('special', { who: this.players[playerIdx].name, card: 'Opětovná palba',
+                                   target: this.players[from].name, msg: 'střílí zpět' });
+    },
+
+    // ── Dvojitá rána (F3, R8) ────────────────────────────────────────────────
+    // „Je-li napadený hráč zasažen, ztrácí dva životy." Každý život je klikaný zásah
+    // S ÚTOČNÍKEM (`pendingDynamiteDamage.attackerIdx`) – jde přes handleDamage, takže se
+    // na každý život zvlášť veze valoun, El Gringo, Bart Cassidy, Teren Kill i Pivo na
+    // posledním životě (mezi kliky, jako u dynamitu). Konec obrany dohraje _vosAimTail.
+    _startAimHits(victimIdx, attackerIdx, hits) {
+        if (this.pendingResponse) this.pendingResponse.active = false;
+        this.pendingDynamiteDamage = { playerIdx: victimIdx, hitsLeft: hits, source: 'AIM', attackerIdx, resume: 'RESPOND_TAIL' };
+        this.phase = "DYNAMITE_DAMAGE";
+        this.logEvent('special', { who: this.players[attackerIdx]?.name, card: 'Dvojitá rána',
+                                   target: this.players[victimIdx]?.name, msg: `−${hits} život` });
+    },
+
+    // Jeden klik na životy pod Dvojitou ranou (volá takeDynamiteHit, logic/combat.js).
+    _vosAimClick(playerIdx) {
+        const pdd = this.pendingDynamiteDamage;
+        const attackerIdx = pdd.attackerIdx;
+        pdd.hitsLeft--;
+        const last = pdd.hitsLeft <= 0;
+        if (last) this.pendingDynamiteDamage = null;
+        this.handleDamage(playerIdx, attackerIdx, { killerIdx: attackerIdx });
+        if (this.winner) { this.pendingDynamiteDamage = null; return; }
+        const victim = this.players[playerIdx];
+        // Vyřazený (nebo Teren Kill, který vyřazení pozastavil na sejmutí – snímá se jen
+        // jednou, FAQ Q12): zbytek zásahů propadá. Líznutí za Úhyb mrtvý nevybere.
+        if (!isInPlay(victim) || this.pendingTerenKill) {
+            this.pendingDynamiteDamage = null;
+            if (!isInPlay(victim)) {
+                for (let i = this.specialActionQueue.length - 1; i >= 0; i--) {
+                    const a = this.specialActionQueue[i];
+                    if (a.type === 'UHYB_DRAW' && a.playerIdx === playerIdx) this.specialActionQueue.splice(i, 1);
+                }
+            }
+            this._vosAimTail();
+            return;
+        }
+        if (last) { this._vosAimTail(); return; }
+        // Zbývá druhý život: líznutí Barta Cassidyho / krádež El Gringa doběhnou hned
+        // a hra se přes interruptedPhase vrátí do DYNAMITE_DAMAGE.
+        this._processSpecialQueue();
+    },
+
+    // Konec obrany proti BANG!u s Dvojitou ranou – totéž, co dělá handleResponse po
+    // obyčejném zásahu (fáze PLAY, fronta odložených akcí, případně další výstřel).
+    _vosAimTail() {
+        this.pendingDynamiteDamage = null;
+        if (this.pendingResponse) this.pendingResponse.active = false;
+        this.phase = "PLAY";
+        if (this._turnOwnerGone()) return;
+        if (!this._afterFistfulHit()) this._processSpecialQueue();
+        this.targetPlayer = null;
+        this.currentAttacker = null;
+    },
+
+    // ── Roztříštěná kulka (F3) ───────────────────────────────────────────────
+    // „Účinkuje jako BANG! na dostřel. Hráč dle tvého výběru ve vzdálenosti 1 od
+    // napadeného hráče (kromě tebe) se stává také terčem efektu BANG!." Čerpá limit karet
+    // BANG! (DB), ale kartou BANG! není (žádná Odměna, Brokovnice, Colorado ani Slab;
+    // Kazatel ji nezakazuje). Druhý výstřel je POVINNÝ a jde i tehdy, když první minul –
+    // proto se zapíše do fronty výstřelů hned teď a odpálí se po prvním. Kdo smí být
+    // prvním a druhým cílem, říká fanningTargets (core/valley.js), ptá se i klient a bot.
+    // Vrací true, když se karta zahrála.
+    playFanning(attackerIdx, cardIdx, firstIdx, secondIdx = null) {
+        if (this.phase !== "PLAY" || attackerIdx !== this.currentPlayerIndex) return false;
+        const a = this.players[attackerIdx];
+        const card = a?.hand[cardIdx];
+        if (!card || card.type !== CardType.FANNING) return false;
+        if (this._suitBlocked(attackerIdx, card)) return false;   // High Noon – Želízka
+        if (!fanningOk(this, a, attackerIdx, card)) return false;
+        const t = fanningTargets(this, attackerIdx).find(x => x.first === firstIdx);
+        if (!t) return false;
+        if (t.seconds.length) { if (!t.seconds.includes(secondIdx)) return false; }
+        else secondIdx = null;
+
+        a.bangsPlayedThisTurn++;
+        a.stats.bangsFired++;
+        this._trackCard(attackerIdx, card.type);
+        this._markBrownPlayed(attackerIdx, card);
+        this.logEvent('bang', { who: a.name, target: this.players[firstIdx].name, card: card.name,
+                                ...(secondIdx != null ? { second: this.players[secondIdx].name } : {}) });
+        this.deck.discard(a.hand.splice(cardIdx, 1)[0]);
+        this.currentAttacker = attackerIdx;
+        this.checkSuzyLafayette(a);
+        if (secondIdx != null) this._vosQueueShot(attackerIdx, secondIdx, 'FANNING', card.name);
+
+        // Apache Kid: kárový efekt BANG! ho míjí (karta je 2♠, kárová být jen nemůže –
+        // pojistka pro budoucí změny barvy).
+        if (this._apacheImmune(firstIdx, this._effSuit(card), attackerIdx)) {
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+            return true;
+        }
+        this._beginBangResolution(attackerIdx, firstIdx, true, card.name, null, null, { shot: 'FANNING' });
+        this._processSpecialQueue();
+        return true;
+    },
+
+    // ── Evelyn Shebang (F3) ──────────────────────────────────────────────────
+    // „Ve své fázi 1 si smí líznout o 1 kartu méně, čímž automaticky vystřelí BANG! na
+    // vzdálenost 1." Volí se PŘED lízáním (dV), nejvýš jedna karta a jeden cíl. Pod Žízní
+    // si pak nelízne nic, pod Příjezdem vlaku 2 (Dynamite Box). Výstřel jde do fronty
+    // a odpálí se po fázi lízání (bang-efekt, ne karta BANG! – BANG! smí hrát dál).
+    // Volá drawCard (logic/draw.js) se zdrojem 'evelyn'.
+    evelynShoot(targetIdx) {
+        const ds = this.drawPhaseState;
+        if (!ds || !evelynOffer(this, ds.playerIdx)) return false;
+        if (!evelynTargets(this, ds.playerIdx).includes(targetIdx)) return false;
+        const me = this.players[ds.playerIdx];
+        ds.cardsNeeded--;
+        ds.evelynUsed = true;
+        ds.options = (ds.options || []).filter(o => o !== 'evelyn');
+        this._vosQueueShot(ds.playerIdx, targetIdx, 'EVELYN', 'Evelyn Shebang');
+        this.logEvent('special', { who: me.name, card: 'Evelyn Shebang', target: this.players[targetIdx].name,
+                                   msg: 'o kartu méně → BANG!' });
+        if (ds.cardsDrawn >= ds.cardsNeeded) this._finishDraw();
+        return true;
     },
 
     // ── Limonádový Jim (F2) ──────────────────────────────────────────────────

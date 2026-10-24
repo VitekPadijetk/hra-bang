@@ -133,7 +133,10 @@ const PlayMixin = {
         this._processSpecialQueue();
     },
 
-    playBang(attackerIdx, targetIdx, cardIdx) {
+    // `aimCardId` = Údolí stínů – Dvojitá rána zahraná SPOLU s touhle kartou BANG!
+    // (zásah pak stojí 2 životy). Neplatná Dvojitá rána odmítne celé zahrání – klient ani
+    // bot ji bez aimOk neposílají, takže by šlo jen o opožděný klik.
+    playBang(attackerIdx, targetIdx, cardIdx, aimCardId = null) {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
         const card = attacker?.hand[cardIdx];
@@ -158,6 +161,15 @@ const PlayMixin = {
         const viaLemat = !card.bangEffect && !playsAsBang(this, attacker, card) &&
                          lematBangOk(this, attacker, attackerIdx, card);
         if (!card.bangEffect && !playsAsBang(this, attacker, card) && !viaLemat) return;
+
+        // Údolí stínů – Dvojitá rána: jde jen ke KARTĚ BANG! (R5) ve vlastním tahu. Ptá se
+        // tím samým predikátem jako klient a bot (aimOk) – a TEĎ, dokud limit karet BANG!
+        // ještě nezapočítal tuhle kartu (Lemat se na něj ptá).
+        let aimCard = null;
+        if (aimCardId != null) {
+            aimCard = attacker.hand.find(c => c && c.id === aimCardId) || null;
+            if (!aimOk(this, attacker, attackerIdx, card, aimCard)) return;
+        }
 
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
@@ -185,7 +197,7 @@ const PlayMixin = {
         // zásahu, kdy karta leží v odhozu – proto se to zjistí TEĎ (před započtením do
         // limitu, na který se lematBangOk ptá) a útok si to nese v `vos` až do zásahu.
         const vos = (this._vosOn() && isBangCardPlay(this, attacker, attackerIdx, card))
-            ? { bangCard: true, shotgun: shotgunActive(this, attacker) } : null;
+            ? { bangCard: true, shotgun: shotgunActive(this, attacker), ...(aimCard ? { aim: true } : {}) } : null;
 
         if (!isEffect) attacker.bangsPlayedThisTurn++;
         attacker.stats.bangsFired++;
@@ -193,8 +205,16 @@ const PlayMixin = {
         // Divoký západ – Lee Van Kliff: paměť poslední hnědé karty (i karty, která je
         // kartou Bang! jen pod Zúčtováním / u Calamity Janet, a bang-efektu Úderu).
         this._markBrownPlayed(attackerIdx, card, { asBang: true });
-        this.logEvent('bang', { who: attacker.name, target: target.name, card: card.name });
+        this.logEvent('bang', { who: attacker.name, target: target.name, card: card.name,
+                                ...(aimCard ? { aim: aimCard.name } : {}) });
         this.deck.discard(attacker.hand.splice(cardIdx, 1)[0]);
+        // Dvojitá rána jde do odhozu hned za kartou BANG! (zahrané jsou obě, do limitu se
+        // počítá jen BANG! – Madam Zuzaně ale obě, jsou to dvě zahrané karty).
+        if (aimCard) {
+            const ai = attacker.hand.findIndex(c => c && c.id === aimCard.id);
+            if (ai !== -1) this.deck.discard(attacker.hand.splice(ai, 1)[0]);
+            this._trackCard(attackerIdx, CardType.AIM);
+        }
         this.currentAttacker = attackerIdx;
         this.checkSuzyLafayette(attacker);
 

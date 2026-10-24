@@ -113,6 +113,18 @@ if (typeof require === 'function') {
     if (typeof vosUnavoidable === 'undefined') {
         globalThis.vosUnavoidable = require('./valley.js').vosUnavoidable;
     }
+    // Údolí stínů (F3) – Roztříštěná kulka, Evelyn Shebang a Dvojitá rána.
+    if (typeof fanningTargets === 'undefined') {
+        globalThis.fanningTargets = require('./valley.js').fanningTargets;
+    }
+    if (typeof evelynOffer === 'undefined') {
+        const __vos3 = require('./valley.js');
+        globalThis.evelynOffer = __vos3.evelynOffer;
+        globalThis.evelynTargets = __vos3.evelynTargets;
+    }
+    if (typeof aimCardFor === 'undefined') {
+        globalThis.aimCardFor = require('./playability.js').aimCardFor;
+    }
     // Divoký západ – Lee Van Kliff: „je co opakovat, čím zaplatit a na koho".
     if (typeof lvkOffer === 'undefined') {
         const __pl3 = require('./playability.js');
@@ -225,6 +237,7 @@ const T = {
     GATLING: 'Kulomet', INDIANS: 'Indiáni!', UHYB: 'Úhyb',
     // Údolí stínů
     LAST_CALL: 'Poslední pivo', RATTLESNAKE: 'Chřestýš', BOUNTY: 'Odměna',
+    BACKFIRE: 'Opětovná palba', FANNING: 'Roztříštěná kulka', AIM: 'Dvojitá rána',
 };
 // ── Zlatá horečka: co pro bota znamená koupené vybavení ──────────────────────
 // Ocenění musí být PO MAJITELI (stejná past jako u boardCardValue): karta má cenu jen
@@ -612,6 +625,9 @@ function keepScore(card) {
         case T.LAST_CALL: return 6;               // léčí jen ve vlastním tahu, ne záchrana
         case T.RATTLESNAKE: return 3;
         case T.BOUNTY: return 2;
+        case T.BACKFIRE: return 7;                // Vedle! a k tomu výstřel zpět
+        case T.FANNING: return 6;                 // BANG! na dva cíle
+        case T.AIM: return 4;                     // sama nic, jen k BANG!u
         default: return 1;
     }
 }
@@ -787,6 +803,26 @@ function daltonsDiscard(p) {
 // kdokoli platný", ne přes práh nepřátelskosti – jinak by se hra zasekla ve chvíli, kdy
 // bot u stolu žádného nepřítele nevidí. Vrací null, když cíl neexistuje (lawForcedCard
 // takovou kartu zároveň nevynucuje, takže se to nemá stát).
+// Údolí stínů – Roztříštěná kulka: nejlepší dvojice cílů (první, druhý | null). Počítá
+// se nepřátelskost obou; mimo vynucené zahrání (Právo západu) se dvojice s pravděpodobným
+// spojencem nebere vůbec – druhý výstřel je POVINNÝ, takže by bot střílel do vlastních.
+function fanningPick(state, myIndex, beliefs, forced) {
+    let best = null;
+    for (const t of fanningTargets(state, myIndex)) {
+        const seconds = t.seconds.length ? t.seconds : [null];
+        for (const s of seconds) {
+            const h1 = hostilityOf(state, myIndex, t.first, beliefs);
+            const h2 = s == null ? 0 : hostilityOf(state, myIndex, s, beliefs);
+            const risk = Math.max(allyRisk(state, myIndex, t.first, beliefs),
+                                  s == null ? 0 : allyRisk(state, myIndex, s, beliefs));
+            if (!forced && (h1 <= ENEMY_EPS || risk > FRIENDLY_FIRE_MAX)) continue;
+            const sc = h1 + h2;
+            if (!best || sc > best.sc) best = { first: t.first, second: s, sc };
+        }
+    }
+    return best;
+}
+
 function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
     const me = state.players[myIndex];
     const alive = (i) => i !== myIndex && state.players[i].health > 0;
@@ -800,6 +836,11 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
     const special = (targetIdx) => ({ event: 'play_special', payload: { attackerIdx: myIndex, targetIdx, cardIdx } });
 
     switch (turnActionForCard(state, me, myIndex, card)) {
+        // Údolí stínů – Roztříštěná kulka: vynucená → zahrát na kohokoli platného.
+        case 'FANNING': {
+            const fp = fanningPick(state, myIndex, beliefs, true);
+            return fp ? { event: 'play_fanning', payload: { cardIdx, firstIdx: fp.first, secondIdx: fp.second } } : null;
+        }
         case 'SHOOT': {
             // Vyčerpaný limit 1× Bang!/tah: na POSTAVU se střílet nedá (playBang by akci
             // mlčky zahodil), karta je ale pořád vynucená. Zbývají Odstřelovač a Odražená
@@ -959,8 +1000,21 @@ function decidePlay(state, myIndex, beliefs) {
             const reach = bangEffectReach(card);
             const tgt = shootTargets(state, myIndex, beliefs)
                 .find(e => computeCanHit(state, myIndex, e.idx, reach));
-            if (tgt) consider(50 + (5 - Math.min(tgt.health, 5)),
-                { event: 'play_bang', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
+            // Údolí stínů – Dvojitá rána: k výstřelu na nepřítele ji bot přidá vždycky
+            // (zásah za 2 životy), bez ní by ležela v ruce – sama se zahrát nedá.
+            const aim = tgt ? aimCardFor(state, me, myIndex, card) : null;
+            if (tgt) consider(50 + (5 - Math.min(tgt.health, 5)) + (aim ? 2 : 0),
+                { event: 'play_bang', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i,
+                                                 ...(aim ? { aimCardId: aim.id } : {}) } });
+            return;
+        }
+
+        // Údolí stínů – Roztříštěná kulka: dva výstřely jednou kartou (čerpá limit BANG!).
+        // O kousek víc než obyčejný výstřel, když trefí dva nepřátele.
+        if (action === 'FANNING') {
+            const fp = fanningPick(state, myIndex, beliefs, false);
+            if (fp) consider(fp.second != null ? 53 : 49,
+                { event: 'play_fanning', payload: { cardIdx: i, firstIdx: fp.first, secondIdx: fp.second } });
             return;
         }
 
@@ -1482,7 +1536,17 @@ function decideBotAction(state, myIndex, beliefs) {
             const isDodge = (c) => !suitBlockedFor(state, myIndex, c) && (req === T.MISSED
                 ? (playsAsMissed(state, me, c) && !_unavoidable)
                 : (!preacherBlocks(state, me, myIndex, c) && playsAsBang(state, me, c)));
-            const dodgeIdx = me.hand.findIndex(isDodge);
+            let dodgeIdx = me.hand.findIndex(isDodge);
+            // Údolí stínů – Opětovná palba: uhne A vystřelí zpět. Proti nepříteli ji bot
+            // hraje přednostně, proti spojenci (nebo útoku bez střelce) až jako poslední.
+            if (dodgeIdx !== -1 && req === T.MISSED) {
+                const orig = state.pendingResponse.originatorIdx;
+                const backAtEnemy = orig != null && orig !== myIndex &&
+                    hostilityOf(state, myIndex, orig, beliefs) > ENEMY_EPS;
+                const isBack = (c) => c && c.type === 'Opětovná palba';
+                const pref = me.hand.findIndex(c => isDodge(c) && (backAtEnemy ? isBack(c) : !isBack(c)));
+                if (pref !== -1) dodgeIdx = pref;
+            }
             if (dodgeIdx !== -1) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: dodgeIdx } };
 
             // Nelze uhnout z ruky – zkus zelenou Vedle!-kartu ze stolu (Železný plát/Bible/…).
@@ -1519,6 +1583,13 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'DRAW': {
             const ds = state.drawPhaseState;
             const opts = ds.options || ['deck'];
+            // Údolí stínů – Evelyn Shebang: o kartu méně → BANG! na vzdálenost 1. Jen na
+            // nepřítele, na kterého smí střílet (stejná brzda jako u výstřelu kartou).
+            if (evelynOffer(state, myIndex)) {
+                const ev = evelynTargets(state, myIndex);
+                const tgt = shootTargets(state, myIndex, beliefs).find(e => ev.includes(e.idx));
+                if (tgt) return { event: 'draw_card', payload: { source: 'evelyn', sourceIdx: tgt.idx } };
+            }
             // Pálenka (Fistful): vynechat celou fázi lízání za 1 život. Vyplatí se to jen
             // zraněnému, který už má co hrát – jinak jsou karty cennější. Duch (Město duchů)
             // o naléčený život na konci tahu zase přijde, takže si radši líže.
