@@ -5,9 +5,10 @@ vydáních, upřesnění z českých pravidel 3. vydání a Dynamite Boxu, ofici
 a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_box_cz.pdf`,
 `us_rules_eng.pdf` a přehled karet `us_karty_dvgiochi.webp`.
 
-**Stav: plán schválený (2026-10-21), nic není implementováno.** V menu je jen neklikatelná
-karta „Údolí stínů · již brzy" (`MENU_EXPANSIONS_SOON` v [core/menuModel.js](../core/menuModel.js)).
-Výchozí stav: `npm test` = **1697 testů, 0 chyb**, 19 sad.
+**Stav: plán schválený (2026-10-21), hotová je fáze F0 (kostra, 2026-10-24).** V menu je
+pořád jen neklikatelná karta „Údolí stínů · již brzy" (`MENU_EXPANSIONS_SOON` v
+[core/menuModel.js](../core/menuModel.js)), zapnout jde v debug hře S16.
+Po F0: `npm test` = **1714 testů, 0 chyb** (výchozí stav byl 1697).
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -680,6 +681,33 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F7** | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
 | **F8** | Obětavý skok (brány + odměna + redakce) | riziko jako Teren Kill; bez držitele karty se hra nemění |
 | **F9** | Politika bota, zátěž (matice + „balíček samých X"), invarianty rozložení, výměna štítků za art, CLAUDE.md + `docs/pravidla/udoli-stinu.md` | uzavření |
+
+### Co se ve fázi F0 odchýlilo od plánu (a proč)
+
+- **Kde žije „hotové"**: `VOS_READY` (postavy) je v logic/entities.js jako u ostatních
+  rozšíření, ale `VOS_CARDS_READY` (druhy karet podle JMÉNA) je v **core/valley.js** – ptá
+  se ho i klient (katalog Zuřivé Doroty v `clientCardKinds`) a server mimo GameState
+  (`_cardData` debug hry v server/rooms.js), takže musí být izomorfní a bez logic.js.
+- **Dodání portrétu** = smazat `"portrait": false` u postavy v characters.json (loader
+  bez něj soubor nestahuje, žádné 404). **Dodání značky supa** = `VOS_MARK_READY = true`
+  v core/valley.js – pole „v JSON" by muselo sedět na 16 kartách naráz. Že příznaky sedí
+  se soubory na disku, hlídá test.
+- **Chybějící portrét dnes vypadal** jako obecný placeholder bez jména (každé místo se
+  ptá `textures.exists('char_' + id)`). Proto se pod tentýž klíč peče **jmenovka**
+  (`buildPortraitLabels`, game.js) – nic dalšího se kvůli tomu měnit nemuselo.
+- **Štítek karty** (`paintCardLabel`) je nová větev `paintCardTexture` pro kartu bez artu,
+  ale s `text` – tedy jen Údolí stínů; ostatní karty bez artu jdou dál starou nouzovou
+  cestou. Značka rozšíření se obecně bere z `mark_<exp>` (býk Dodge City beze změny).
+- **Rozhodnutí §2.17** je tabulka `VOS_KINDS` (core/valley.js) s dvojicí `dorothy`/`lvk`
+  a zdůvodněním u každého druhu. Zapojená je hned: `dorothyCommandable`
+  (core/playability.js) a `_brownRepeatSpec` (logic/wildWest.js) se na ni ptají. Karta
+  zahraná JAKO BANG! pod Zúčtováním opakuje BANG!, ne svůj efekt, takže tabulka platí
+  až za větví `asBang`.
+- **Debug hra**: S16 nabízí chystaná rozšíření jako zapínací kartu (`_menuExpansionGrid`
+  s `soonToggle`); souhrn `expansionsLabel` je zná taky. Creative mode (dávání karet)
+  dostává jen hotové druhy, **galerie karet** všechny – je na kontrolu štítků a artu.
+- **Text štítku Obětavého skoku a Ducha** je podle pravidel Dynamite Boxu (2 karty z ruky,
+  nebo z balíčku; Duch si nechává postavu), ne podle starší karty – art pravidla nemění.
 
 ---
 

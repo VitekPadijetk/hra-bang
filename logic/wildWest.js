@@ -1085,6 +1085,8 @@ const WildWestMixin = {
                 ? { effect: 'BANG_EFFECT', aim: 'shoot', range: card.range != null ? card.range : null }
                 : { effect: 'BANG',        aim: 'shoot', range: null };
         }
+        // Údolí stínů: co se smí zopakovat, říká tabulka VOS_KINDS (core/valley.js, plán §2.17).
+        if (!vosRepeatOk(card)) return null;
         switch (card.type) {
             case CardType.BEER:        return { effect: 'BEER',        aim: null };
             case CardType.SALOON:      return { effect: 'SALOON',      aim: null };

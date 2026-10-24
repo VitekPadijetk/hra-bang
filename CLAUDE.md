@@ -713,11 +713,22 @@ vybavení) uzavřela celé rozšíření.
 - `CardType.EQUIPMENT = 'Vybavení'` už nesou **Hledí a Mustang**, takže karty Zlaté horečky
   se v kódu jmenují **`gear`** (`player.gear`), ne „vybavení".
 
-## Rozšíření Údolí stínů (Valley of Shadows) — v plánu
+## Rozšíření Údolí stínů (Valley of Shadows) — rozpracované
 
-Zatím **nic není implementováno**; v menu je jen neklikatelná karta „již brzy"
-(`MENU_EXPANSIONS_SOON` v core/menuModel.js – schválně mimo `MENU_EXPANSIONS`, takže se
-klíč `udoli_stinu` nedostane do `options.expansions`). Pravidla obou vydání (české Albi je
+**Hotová je fáze F0 (kostra)** – žádné pravidlo se zatím nemění. V menu je pořád jen
+neklikatelná karta „již brzy" (`MENU_EXPANSIONS_SOON` v core/menuModel.js – schválně mimo
+`MENU_EXPANSIONS`), zapnout jde jen v **debug hře S16** (`udoliStinu` v `debugStartPayload`).
+Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art: null` do dodání),
+postavy id 50–54 v characters.json (`portrait: false` do dodání), mixin
+[logic/valley.js](logic/valley.js), zrcadlo [core/valley.js](core/valley.js) (`vosOn`,
+**`VOS_CARDS_READY`** = druhy, které smí do balíčku, `VOS_MARK_READY`, `hasDuchCard`
+a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van Kliff –
+hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
+Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (oboje zatím
+prázdné). **Art se kreslí jako štítek, dokud nedorazí**: karta bez artu, ale s `text`,
+jde přes `paintCardLabel`, postava s `portrait: false` přes `buildPortraitLabels` (game.js);
+dodání = soubor do složky + vyplnit `art` / smazat `portrait: false` / `VOS_MARK_READY = true`.
+Testy: `test/vos.setup.test.js`. Pravidla obou vydání (české Albi je
 originál a u devíti karet se liší od mezinárodního) jsou v
 [docs/udoli-stinu.md](docs/udoli-stinu.md), plán karta po kartě s háky, rozhodnutími R1–R15
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
@@ -726,6 +737,6 @@ původního českého vydání (tři bonusové patří do budoucího mini-rozš�
 pauza na reakci jen když reagovat jde, art dodává uživatel průběžně (co chybí, kreslí se
 jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
 text na artu" z Divokého západu se na Údolí stínů nevztahuje. Plán je hotový, další krok
-je fáze F0.
+je fáze F1.
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.

@@ -39,7 +39,23 @@ const CardType = {
     COVERED_WAGON: 'Krytý vůz',
     CAN_CAN: 'Kankán',
     PONY_EXPRESS: 'Pony express',
-    HOWITZER: 'Houfnice'
+    HOWITZER: 'Houfnice',
+    // ── Rozšíření Údolí stínů (docs/udoli-stinu-plan.md, R3) ──────────────
+    // Identita karty je typ s českým jménem (žádné nekoliduje s ostatními). Zbraně
+    // Lemat a Brokovnice jsou WEAPON a poznávají se podle `effect` (VOS_LEMAT/VOS_SHOTGUN).
+    FANNING: 'Roztříštěná kulka',
+    TOMAHAWK: 'Tomahawk',
+    AIM: 'Dvojitá rána',
+    BACKFIRE: 'Opětovná palba',
+    ESCAPE: 'Útěk',
+    SAVED: 'Obětavý skok',
+    LAST_CALL: 'Poslední pivo',
+    POKER: 'Poker',
+    TORNADO: 'Tornádo',
+    BANDIDOS: 'Divoká banda',
+    BOUNTY: 'Odměna',
+    RATTLESNAKE: 'Chřestýš',
+    DUCH: 'Duch'
 };
 
 const Suits = { HEARTS: '♥️', DIAMONDS: '♦️', SPADES: '♠️', CLUBS: '♣️' };
@@ -91,6 +107,17 @@ const GOLD_RUSH_CHARACTERS = [
 // …a podmnožina, která už MÁ schopnost (vzor WILD_WEST_READY). Od fáze 6 je to celý
 // seznam a zůstává jen jako pojistka pro další rozšíření.
 const GOLD_RUSH_READY = [...GOLD_RUSH_CHARACTERS];
+
+// Postavy rozšíření Údolí stínů – jen pět z původního českého vydání (rozhodnutí
+// uživatele; tři bonusové z Dynamite Boxu patří do mini-rozšíření Nejhledanější).
+// Portréty 050–054, všechny 4 životy. Česká jména z Albi jsou identita v kódu (R15).
+const VALLEY_CHARACTERS = [
+    "Colorado Bill", "Evelyn Shebang", "Henry Block", "Limonádový Jim", "Mick Defender"
+];
+
+// …a podmnožina, která už MÁ schopnost (vzor WILD_WEST_READY). Roste po fázích
+// implementace (F2, F3, F6, F7); do té doby se dají vybrat jen v debug hře.
+const VOS_READY = [];
 
 class Card {
     constructor(id, name, type, suit, value, props = {}) {
@@ -309,5 +336,5 @@ function distinctCardKinds(rawCardData) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, GOLD_RUSH_CHARACTERS, GOLD_RUSH_READY, Card, Player, Deck, distinctCardKinds };
+    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, GOLD_RUSH_CHARACTERS, GOLD_RUSH_READY, VALLEY_CHARACTERS, VOS_READY, Card, Player, Deck, distinctCardKinds };
 }

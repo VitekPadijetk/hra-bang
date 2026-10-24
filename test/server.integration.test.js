@@ -547,3 +547,24 @@ test('room_update neposílá tokeny hráčů', () => {
     assert.ok(sent.every(p => !('token' in p)));
     assert.deepEqual(sent.map(p => p.name), ['Alice', 'Bob', 'Cyril', 'Dana']);
 });
+
+// Údolí stínů (fáze F0): rozšíření jde zatím zapnout jen v debug hře. Klíč `udoliStinu`
+// z klienta (debugStartPayload) musí dojít do options a do výběru postav.
+test('debug_start s Údolím stínů: options i výběr postav (všech pět v debugu)', () => {
+    const { ctx, mkSocket } = mkEnv();
+    ctx.vosCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+    mkSocket('s1').fire('debug_start', { playerCount: 4, roles: [], udoliStinu: true });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+    assert.equal(gs.options.expansions.udoli_stinu, true);
+    assert.equal(gs._vosOn(), true);
+    assert.ok(Array.isArray(gs.vosCardData));
+    const offered = new Set(gs.players.flatMap(p => p.charChoices || []));
+    for (const name of ['Colorado Bill', 'Evelyn Shebang', 'Henry Block', 'Limonádový Jim', 'Mick Defender']) {
+        assert.ok(offered.has(name), `${name} chybí v debug výběru`);
+    }
+    // Bez příznaku zůstává rozšíření vypnuté.
+    const env2 = mkEnv();
+    env2.mkSocket('s2').fire('debug_start', { playerCount: 3, roles: [] });
+    assert.equal([...env2.ctx.rooms.values()][0].gameState.options.expansions.udoli_stinu, false);
+});

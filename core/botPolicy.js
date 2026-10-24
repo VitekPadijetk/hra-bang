@@ -613,6 +613,9 @@ const CHAR_RANK = {
     // rozšíření nejsou – do výběru se ale dostanou jen s ním (_characterPool).
     'Don Bell': 7, 'Dutch Will': 6, 'Jacky Murieta': 7, 'Josh McCloud': 6,
     'Madam Yto': 6, 'Pretty Luzena': 6, 'Raddie Snake': 6, 'Simeon Picos': 7,
+    // Údolí stínů. Schopnosti přibývají po fázích (VOS_READY), rank musí být od začátku.
+    'Colorado Bill': 8, 'Evelyn Shebang': 6, 'Henry Block': 6, 'Limonádový Jim': 6,
+    'Mick Defender': 7,
 };
 // Průměrný rank postavy základní hry (těch 16, ze kterých líže Greygory Deck).
 // Je to očekávaná hodnota náhodného líznutí, takže i práh, pod kterým se vyplatí měnit.

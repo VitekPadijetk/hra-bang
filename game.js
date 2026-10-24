@@ -1962,12 +1962,16 @@ function playLuckyDukeResult(chosenId) {
 // Cachuje se: seznam se během hry nemění (jen se zapnutým Dodge City je delší).
 function clientCardKinds() {
     const dodge = !!state?.options?.expansions?.dodge_city;
-    if (App._cardKinds && App._cardKindsDodge === dodge) return App._cardKinds;
+    const vos = !!state?.options?.expansions?.udoli_stinu;
+    const sig = (dodge ? 'd' : '') + (vos ? 'v' : '');
+    if (App._cardKinds && App._cardKindsSig === sig) return App._cardKinds;
     const base = gameScene?.cache?.json?.get('cards_data') || [];
     const dc = dodge ? (gameScene?.cache?.json?.get('cards_dodge_city_data') || []) : [];
+    // Údolí stínů: jen hotové druhy, stejně jako server (`_deckDataFor` → vosReadyCards).
+    const vs = vos ? vosReadyCards(gameScene?.cache?.json?.get('cards_udoli_stinu_data') || []) : [];
     if (!base.length) return [];
-    App._cardKindsDodge = dodge;
-    App._cardKinds = distinctCardKinds(base.concat(dc));
+    App._cardKindsSig = sig;
+    App._cardKinds = distinctCardKinds(base.concat(dc, vs));
     return App._cardKinds;
 }
 
@@ -1983,7 +1987,9 @@ function showCardGallery() {
     // Galerie: základní karty + karty rozšíření (Dodge City), ať jdou zkontrolovat všechny.
     const _base = gameScene.cache.json.get('cards_data') || [];
     const _dodge = gameScene.cache.json.get('cards_dodge_city_data') || [];
-    const data = (_base.length || _dodge.length) ? _base.concat(_dodge) : (App.allCardsData || []);
+    // Údolí stínů: VŠECHNY karty (i bez hotového efektu) – galerie je na kontrolu štítků/artu.
+    const _vos = gameScene.cache.json.get('cards_udoli_stinu_data') || [];
+    const data = (_base.length || _dodge.length) ? _base.concat(_dodge, _vos) : (App.allCardsData || []);
 
     const bg = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.92)
         .setDepth(3000).setInteractive();
@@ -2152,6 +2158,7 @@ function preload() {
     loadAsset(this, 'json', 'cards_fistful_data', 'cards.fistful.json');
     loadAsset(this, 'json', 'cards_divoky_zapad_data', 'cards.divoky_zapad.json');
     loadAsset(this, 'json', 'cards_zlata_horecka_data', 'cards.zlata_horecka.json');
+    loadAsset(this, 'json', 'cards_udoli_stinu_data', 'cards.udoli_stinu.json');
 
     loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
@@ -2335,6 +2342,30 @@ const EXPANSION_LOADERS = {
             },
         };
     },
+
+    // Údolí stínů: hrací karty do HLAVNÍHO balíčku (vzor Dodge City – líc se peče z artu
+    // + marek hodnoty/barvy) a 5 postav (portréty 050–054). Art dodává uživatel průběžně
+    // (plán §2.14), takže se stahuje jen to, co v datech je: karta s `art: null` se peče
+    // jako ŠTÍTEK (paintCardTexture), postava s `portrait: false` (characters.json) jako
+    // jmenovka (buildPortraitLabels) a značka supa až s VOS_MARK_READY (core/valley.js).
+    // Žádné 404, nic kritického – hra na nic z toho nečeká.
+    udoli_stinu(scene) {
+        const data = scene.cache.json.get('cards_udoli_stinu_data') || [];
+        distinctArtKeys(data).forEach(a => loadAsset(scene, 'image', 'art_' + a, `assets/card_art/udoli_stinu/${a}.webp`));
+        if (VOS_MARK_READY) loadAsset(scene, 'image', 'mark_udoli_stinu', 'assets/card_marks/udoli_stinu.webp');
+        const chars = (scene.cache.json.get('characters_data') || []).filter(c => c.id >= 50 && c.id <= 54);
+        chars.forEach(c => {
+            if (c.portrait !== false) loadAsset(scene, 'image', 'char_' + c.id, `assets/characters/${String(c.id).padStart(3, '0')}.webp`);
+        });
+        return {
+            critical: [],
+            done: () => {
+                normalizeCharTextures(scene, 50, 54);
+                buildPortraitLabels(scene, chars);
+                buildCardTextures(scene, data);
+            },
+        };
+    },
 };
 
 // Dotáhne assety jednoho rozšíření (idempotentní). Rozšíření se řadí do fronty a načítají
@@ -2456,6 +2487,12 @@ function paintCardTexture(scene, rt, card, sKey) {
         art.setDisplaySize(W, H);
         rt.draw(art, 0, 0); art.destroy();
         drawMarks();
+    } else if (card.text) {
+        // Karta, jejíž art ještě nedorazil, ale data nesou její text (Údolí stínů, plán
+        // §2.14): čitelný ŠTÍTEK – rám podle `border`, jméno, text karty a marky. Vzor
+        // buildGearTextures (Zlatá horečka). Až art dorazí, jde karta hlavní cestou výš.
+        paintCardLabel(scene, rt, card);
+        drawMarks();
     } else {
         // Nouzová cesta (art druhu chybí): placeholder + název nahoře + marky. Stejně
         // jako u karet rozšíření bez artu, ale býka dostanou dál jen karty rozšíření.
@@ -2469,12 +2506,55 @@ function paintCardTexture(scene, rt, card, sKey) {
         rt.draw(nameTxt, W / 2, H * 0.06); nameTxt.destroy();
         drawMarks();
     }
-    // Symbol rozšíření (býk) do pravého horního rohu. Jen Dodge City – jiná rozšíření
-    // mají vlastní (nebo žádnou) marku, býka by dostat nesměla.
-    if (isExp === 'dodge_city' && scene.textures.exists('mark_dodge_city')) {
-        const bull = scene.make.image({ key: 'mark_dodge_city', add: false }).setOrigin(1, 0).setScale(L.bullScale);
-        rt.draw(bull, L.bullX, L.bullY); bull.destroy();
+    // Symbol rozšíření do pravého horního rohu: `mark_<exp>` – býk Dodge City, sup Údolí
+    // stínů. Každé rozšíření jen svůj; které značku nemá (nebo ještě nedorazila), nic.
+    const markKey = isExp ? 'mark_' + isExp : null;
+    if (markKey && scene.textures.exists(markKey)) {
+        const mark = scene.make.image({ key: markKey, add: false }).setOrigin(1, 0).setScale(L.bullScale);
+        rt.draw(mark, L.bullX, L.bullY); mark.destroy();
     }
+}
+
+// Štítek hrací karty bez artu: papír, rám v barvě karty (hnědá / modrá / zelená), jméno
+// nahoře a text karty uprostřed. Marky hodnoty a barvy dokreslí volající.
+const CARD_LABEL_BORDER = { brown: 0x8a5a2b, blue: 0x2b4f8a, green: 0x2f7a3a };
+function paintCardLabel(scene, rt, card) {
+    const W = CARD_TEX_W, H = CARD_TEX_H;
+    const paper = scene.make.graphics({ add: false });
+    paper.fillStyle(0xe8dcc0, 1).fillRoundedRect(0, 0, W, H, 18);
+    paper.lineStyle(14, CARD_LABEL_BORDER[card.border] || CARD_LABEL_BORDER.brown, 1)
+        .strokeRoundedRect(7, 7, W - 14, H - 14, 14);
+    rt.draw(paper, 0, 0); paper.destroy();
+    const name = scene.make.text({ x: 0, y: 0, add: false, text: card.name || '', style: {
+        fontFamily: 'Arial', fontSize: '28px', color: '#1a1a1a', fontStyle: 'bold',
+        align: 'center', wordWrap: { width: W * 0.74 } } }).setOrigin(0.5, 0);
+    rt.draw(name, W / 2, H * 0.07); name.destroy();
+    const text = scene.make.text({ x: 0, y: 0, add: false, text: card.text || '', style: {
+        fontFamily: 'Arial', fontSize: '19px', color: '#33261a',
+        align: 'center', wordWrap: { width: W * 0.8 } } }).setOrigin(0.5, 0.5);
+    rt.draw(text, W / 2, H * 0.5); text.destroy();
+}
+
+// Jmenovka postavy, jejíž portrét ještě nedorazil (`portrait: false` v characters.json).
+// Peče se pod klíč `char_<id>` (325×500 jako normalizovaný portrét), takže ji všechna
+// místa, která se ptají `textures.exists('char_' + id)`, vezmou místo placeholderu.
+// Portrét, který už je v cache, se nepřepisuje.
+function buildPortraitLabels(scene, chars) {
+    const W = CARD_TEX_W, H = CARD_TEX_H;
+    (chars || []).forEach(c => {
+        const key = 'char_' + c.id;
+        if (c.portrait !== false || scene.textures.exists(key)) return;
+        const rt = scene.make.renderTexture({ width: W, height: H }, false);
+        const g = scene.make.graphics({ add: false });
+        g.fillStyle(0x3a2a1c, 1).fillRoundedRect(0, 0, W, H, 18);
+        g.lineStyle(10, 0xc9a25a, 1).strokeRoundedRect(5, 5, W - 10, H - 10, 14);
+        rt.draw(g, 0, 0); g.destroy();
+        const name = scene.make.text({ x: 0, y: 0, add: false, text: c.name || '', style: {
+            fontFamily: 'Arial', fontSize: '40px', color: '#f3e6c4', fontStyle: 'bold',
+            align: 'center', wordWrap: { width: W * 0.8 } } }).setOrigin(0.5, 0.5);
+        rt.draw(name, W / 2, H * 0.45); name.destroy();
+        rt.saveTexture(key);   // RT drží texturu → nedestruovat
+    });
 }
 
 // ── Zlatá horečka: textury karet vybavení ───────────────────────────────────

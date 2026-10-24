@@ -56,6 +56,21 @@ if (typeof GOLD_RUSH_CHARACTERS === 'undefined' && typeof require === 'function'
     globalThis.GOLD_RUSH_READY = __ent.GOLD_RUSH_READY;
 }
 
+// Údolí stínů: postavy rozšíření (vzor shimu Zlaté horečky) a zrcadlo core/valley.js.
+if (typeof VALLEY_CHARACTERS === 'undefined' && typeof require === 'function') {
+    const __ent = require('./logic/entities.js');
+    globalThis.VALLEY_CHARACTERS = __ent.VALLEY_CHARACTERS;
+    globalThis.VOS_READY = __ent.VOS_READY;
+}
+if (typeof vosOn === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.vosOn = __vos.vosOn;
+    globalThis.vosReadyCards = __vos.vosReadyCards;
+    globalThis.hasDuchCard = __vos.hasDuchCard;
+    globalThis.vosDorothyOk = __vos.vosDorothyOk;
+    globalThis.vosRepeatOk = __vos.vosRepeatOk;
+}
+
 // Čisté helpery rolí/výhry. V prohlížeči globály z core/*, v Node přes require.
 if (typeof rolesForPlayerCount === 'undefined' && typeof require === 'function') {
     const __roles = require('./core/roles.js');
@@ -714,7 +729,8 @@ if (typeof module !== 'undefined' && typeof require === 'function') {
         require('./logic/fistful.js'),
         require('./logic/wildWest.js'),
         require('./logic/goldRush.js'),
-        require('./logic/shadow.js')
+        require('./logic/shadow.js'),
+        require('./logic/valley.js')
     );
 }
 

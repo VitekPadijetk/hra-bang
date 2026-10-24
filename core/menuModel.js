@@ -129,8 +129,11 @@ function playersLabel(n) { return `${n} ${czPlural(n, 'hráč', 'hráči', 'hrá
 function botsLabel(n) { return `${n} ${czPlural(n, 'bot', 'boti', 'botů')}`; }
 
 // „Dodge City · High Noon", nebo „základní hra".
+// Chystaná rozšíření (MENU_EXPANSIONS_SOON) jdou zapnout jen v debug hře – i tam se
+// ale mají v souhrnu ukázat.
 function expansionsLabel(exps) {
-    const names = MENU_EXPANSIONS.filter(e => exps && exps[e.key]).map(e => e.label);
+    const names = MENU_EXPANSIONS.concat(MENU_EXPANSIONS_SOON)
+        .filter(e => exps && exps[e.key]).map(e => e.label);
     return names.length ? names.join(' · ') : 'základní hra';
 }
 
@@ -682,6 +685,8 @@ function debugStartPayload({ count, roles, exps, hnExtra, shadows }) {
         fistful: !!e.fistful,
         divokyZapad: !!e.divoky_zapad,
         zlataHorecka: !!e.zlata_horecka,
+        // Údolí stínů – zatím jen v debug hře (MENU_EXPANSIONS_SOON).
+        udoliStinu: !!e.udoli_stinu,
         shadowGunslingers: !!shadows,
     };
 }

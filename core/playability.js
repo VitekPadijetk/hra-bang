@@ -65,6 +65,10 @@ if (typeof require === 'function') {
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
+    // Údolí stínů – které druhy karet smí Zuřivá Doroty poručit (plán §2.17).
+    if (typeof vosDorothyOk === 'undefined') {
+        globalThis.vosDorothyOk = require('./valley.js').vosDorothyOk;
+    }
 }
 
 // ── Co se počítá za kartu Bang! a co za kartu Vedle! ────────────────────────
@@ -800,8 +804,10 @@ function roseSwapOffer(state, myIndex) {
 // Druhy karet, které Doroty poroučet neumí: „odhoď další kartu" (Dodge City). Cenu by
 // platil poručený kartou VLASTNÍ volby a u Ragtime by si sám vybíral i okradenou kartu,
 // takže by věta „cíl(e) vybíráš ty" neplatila ani z poloviny.
+// Údolí stínů má vlastní tabulku (VOS_KINDS v core/valley.js): Roztříštěná kulka (dva cíle),
+// Dvojitá rána (jen s kartou BANG!) a reakce (Útěk, Obětavý skok, Opětovná palba) ne.
 function dorothyCommandable(card) {
-    return !!card && !card._placeholder && !card.discardExtra;
+    return !!card && !card._placeholder && !card.discardExtra && vosDorothyOk(card);
 }
 
 // Kolik poručení ještě zbývá. Strop je JEDNO ZA TAH – stejně jako u Lady Růže z Texasu.

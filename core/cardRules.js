@@ -46,7 +46,9 @@ function getActionForCard(card, character) {
 // POZOR: **Vězení je modrá karta** – jen se vykládá před SOUPEŘE, ne před sebe.
 // Jediný zdroj pravdy pro schopnost Josého Delgada (odhoď modrou → lízni 2): ptá se
 // jím server (logic/characters.js), klient (view/board.js) i bot (core/botPolicy.js).
-const BLUE_CARD_TYPES = ["Zbraň", "Barel", "Vybavení", "Dynamit", "Vězení"];
+// Údolí stínů: Odměna, Chřestýš a Duch (zbraně Lemat a Brokovnice jsou „Zbraň").
+const BLUE_CARD_TYPES = ["Zbraň", "Barel", "Vybavení", "Dynamit", "Vězení",
+                         "Odměna", "Chřestýš", "Duch"];
 
 function isBlueCard(card) {
     return !!card && !card.green && BLUE_CARD_TYPES.includes(card.type);

@@ -318,10 +318,16 @@ function _menuSoonCard(e) {
         `<span class="bu-check-hint">${e.hint}</span></span></button>`;
 }
 
-function _menuExpansionGrid(act, exps) {
+// `opts.soonToggle` (jen debug hra S16): chystaná rozšíření jdou zapnout, ať se dá
+// zkoušet rozpracovaná fáze, než karta v menu přestane být „již brzy".
+function _menuExpansionGrid(act, exps, opts = {}) {
+    const soon = opts.soonToggle
+        ? MENU_EXPANSIONS_SOON.map(e => _menuCheck('bu-check', act, e.key, e.label,
+            e.hint + ' · rozpracované, jen debug', !!exps[e.key]))
+        : MENU_EXPANSIONS_SOON.map(_menuSoonCard);
     return '<div class="bu-checks">' +
         MENU_EXPANSIONS.map(e => _menuCheck('bu-check', act, e.key, e.label, e.hint, !!exps[e.key])).join('') +
-        MENU_EXPANSIONS_SOON.map(_menuSoonCard).join('') +
+        soon.join('') +
         '</div>';
 }
 
@@ -698,7 +704,7 @@ ${_menuHead('⚙ Debug', 'Stav klienta, debug hra a simulace hlášek')}
     <div class="bu-roles">${roles}<button class="bu-role clear" data-act="debugRolesClear">✕ Vyčistit</button></div>
     <div class="bu-note">Role: ${esc(debugRolesLabel(App.debugRoles))} <span class="bu-label-aside">— zbytek se dolosuje</span></div>
     ${_menuCountRow('debugCount', count, DEBUG_PLAYER_COUNTS)}
-    ${_menuExpansionGrid('debugExp', exps)}
+    ${_menuExpansionGrid('debugExp', exps, { soonToggle: true })}
     ${extra}
     ${shadows}
   </div>

@@ -551,8 +551,10 @@ test('debugStartPayload: klíče rozšíření se překládají na camelCase ser
     assert.deepEqual(M.debugStartPayload({ count: 5, roles: ['Sheriff'], exps, hnExtra: true }), {
         playerCount: 5, roles: ['Sheriff'],
         dodgeCity: true, highNoon: true, highNoonExtra: true,
-        fistful: false, divokyZapad: true, zlataHorecka: false, shadowGunslingers: false,
+        fistful: false, divokyZapad: true, zlataHorecka: false, udoliStinu: false, shadowGunslingers: false,
     });
+    // Údolí stínů jde zatím zapnout jen v debug hře – klíč se přeloží stejně jako ostatní.
+    assert.equal(M.debugStartPayload({ count: 4, exps: { udoli_stinu: true } }).udoliStinu, true);
     assert.equal(M.debugStartPayload({ count: 4, exps: {}, shadows: true }).shadowGunslingers, true);
     // Přibalené karty bez High Noonu nedávají smysl a server by je stejně zahodil.
     assert.equal(M.debugStartPayload({ count: 3, exps: {}, hnExtra: true }).highNoonExtra, false);

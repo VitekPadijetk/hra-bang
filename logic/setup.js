@@ -30,6 +30,11 @@ const SetupMixin = {
             const pool = options.debugPool ? GOLD_RUSH_CHARACTERS : GOLD_RUSH_READY;
             if (typeof pool !== 'undefined') base.push(...pool);
         }
+        // Údolí stínů: totéž (VOS_READY roste s fázemi, debug hra bere všech pět).
+        if (exps.udoli_stinu) {
+            const pool = options.debugPool ? VALLEY_CHARACTERS : VOS_READY;
+            if (typeof pool !== 'undefined') base.push(...pool);
+        }
         return base;
     },
 
@@ -47,11 +52,18 @@ const SetupMixin = {
         }
     },
 
+    // Údolí stínů (gs.vosCardData) přidává do balíčku jen druhy s hotovým efektem
+    // (VOS_CARDS_READY, core/valley.js) – karta bez efektu by se v ruce nedala zahrát.
     _deckDataFor(options = {}) {
-        if (options.expansions && options.expansions.dodge_city && Array.isArray(this.dodgeCityCardData)) {
-            return this.cardData.concat(this.dodgeCityCardData);
+        const exps = options.expansions || {};
+        let data = this.cardData;
+        if (exps.dodge_city && Array.isArray(this.dodgeCityCardData)) {
+            data = data.concat(this.dodgeCityCardData);
         }
-        return this.cardData;
+        if (exps.udoli_stinu && Array.isArray(this.vosCardData)) {
+            data = data.concat(vosReadyCards(this.vosCardData));
+        }
+        return data;
     },
 
     setupGame(playerCount, playerNames = [], options = {}) {
