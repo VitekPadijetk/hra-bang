@@ -109,6 +109,13 @@ if (typeof require === 'function') {
         globalThis.lematActive = __vos.lematActive;
         globalThis.vosPlaceTargetOk = __vos.vosPlaceTargetOk;
     }
+    // Údolí stínů (F5) – karta Duch.
+    if (typeof isVosGhost === 'undefined') {
+        const __vg = require('./distance.js');
+        globalThis.isVosGhost = __vg.isVosGhost;
+        globalThis.staysInPlay = __vg.staysInPlay;
+        globalThis.hasDuchCard = __vg.hasDuchCard;
+    }
     // Údolí stínů (F2) – Colorado Bill: pikový BANG! nejde zrušit.
     if (typeof vosUnavoidable === 'undefined') {
         globalThis.vosUnavoidable = require('./valley.js').vosUnavoidable;
@@ -242,7 +249,7 @@ const T = {
     // Údolí stínů
     LAST_CALL: 'Poslední pivo', RATTLESNAKE: 'Chřestýš', BOUNTY: 'Odměna',
     BACKFIRE: 'Opětovná palba', FANNING: 'Roztříštěná kulka', AIM: 'Dvojitá rána',
-    BANDIDOS: 'Divoká banda', TORNADO: 'Tornádo', POKER: 'Poker',
+    BANDIDOS: 'Divoká banda', TORNADO: 'Tornádo', POKER: 'Poker', DUCH: 'Duch',
 };
 
 // Údolí stínů – má aspoň jeden jiný hráč ve hře kartu v ruce? (Divoká banda a Poker
@@ -502,6 +509,9 @@ function boardCardValue(card) {
     // Údolí stínů: Chřestýš kouše majitele, Odměna láká střelce – obojí mu škodí.
     if (card.type === T.RATTLESNAKE) return -2;
     if (card.type === T.BOUNTY) return -1;
+    // Duch drží vyřazeného hráče ve hře – bez něj vypadne. Nejcennější karta vůbec:
+    // nepříteli ji bot sebere první, spojenci ji nesundá (ani Daltony, ani Rvačkou).
+    if (card.type === T.DUCH) return 10;
     if (card.type === T.BARREL) return 3;
     if (card.type === T.WEAPON) return weaponValue(card);
     if (card.green) return 2;
@@ -728,6 +738,11 @@ function chooseTargetCardArea(target, sourceType, friendly = false) {
         return hasWeapon ? { area: 'weapon', cardIdx: null } : { area: 'hand', cardIdx: null };
     }
 
+    // Údolí stínů – Duch nepříteli: vzít/odhodit kartu Duch ho vyřadí ze hry. Nic
+    // cennějšího se z něj vzít nedá.
+    const duchIdx = board.findIndex(c => c && c.type === T.DUCH);
+    if (duchIdx !== -1) return { area: 'board', cardIdx: duchIdx };
+
     if (sourceType === T.PANIC) {
         // Panika/krádež → líznout z ruky je nejlepší (získám neznámou kartu).
         if (target.hand.length > 0) return { area: 'hand', cardIdx: null };
@@ -839,7 +854,9 @@ function fanningPick(state, myIndex, beliefs, forced) {
 
 function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
     const me = state.players[myIndex];
+    // alive = smí přijít o život (Duel, výstřel), inPlay = sedí ve hře (i Duch, Údolí stínů).
     const alive = (i) => i !== myIndex && state.players[i].health > 0;
+    const inPlay = (i) => i !== myIndex && isInPlay(state.players[i]);
     const hasCards = (p) => p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
     const pick = (ok) => {
         const ranked = rankEnemies(state, myIndex, beliefs, false).find(e => ok(e.idx));
@@ -885,7 +902,7 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
         }
         case T.JAIL: {
             const sheriffIdx = state.players.findIndex(p => p.role === 'Sheriff');
-            const t = pick(i => alive(i) && i !== sheriffIdx && !(state.players[i].board || []).some(c => c.type === T.JAIL));
+            const t = pick(i => inPlay(i) && i !== sheriffIdx && !(state.players[i].board || []).some(c => c.type === T.JAIL));
             return t === -1 ? null : special(t);
         }
         // Údolí stínů – Chřestýš / Odměna: „před libovolného hráče", takže nouzově i před
@@ -896,6 +913,13 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
             const tgt = t !== -1 ? t : (vosPlaceTargetOk(state, myIndex, card) ? myIndex : -1);
             return tgt === -1 ? null : special(tgt);
         }
+        // Duch: před vyřazeného – vynucený, takže před kohokoli platného (přednost spojenec).
+        case T.DUCH: {
+            const ok = (i) => vosPlaceTargetOk(state, i, card);
+            let t = state.players.findIndex((p, i) => ok(i) && hostilityOf(state, myIndex, i, beliefs) < -ENEMY_EPS);
+            if (t === -1) t = state.players.findIndex((p, i) => ok(i));
+            return t === -1 ? null : special(t);
+        }
         case T.DUEL: {
             const t = pick(alive);
             return t === -1 ? null : special(t);
@@ -903,7 +927,7 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
         case T.PANIC:
         case T.CAT_BALOU: {
             const maxDist = card.type === T.PANIC ? 1 : Infinity;
-            const t = pick(i => alive(i) && hasCards(state.players[i]) && computeDistance(state, myIndex, i) <= maxDist);
+            const t = pick(i => inPlay(i) && hasCards(state.players[i]) && computeDistance(state, myIndex, i) <= maxDist);
             return t === -1 ? null : special(t);
         }
         case 'DE_BANG': {
@@ -911,14 +935,14 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
             return t === -1 ? null : { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t } };
         }
         case 'DE_STEAL': {
-            const t = pick(i => alive(i) && hasCards(state.players[i]));
+            const t = pick(i => inPlay(i) && hasCards(state.players[i]));
             if (t === -1) return null;
             const a = chooseTargetCardArea(state.players[t], T.PANIC);
             return { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t, area: a.area, boardIdx: a.cardIdx ?? 0 } };
         }
         case 'DE_HEAL': {
             const t = canHeal(me) ? myIndex
-                : state.players.findIndex((p, i) => alive(i) && p.health < p.maxHealth);
+                : state.players.findIndex((p, i) => i !== myIndex && canHeal(p));
             return t === -1 ? null : { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t } };
         }
         case 'DE_DECK':
@@ -1061,6 +1085,33 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
 
+        // Údolí stínů – Duch: vrátí do hry vyřazeného SPOJENCE (jeho role je odhalená,
+        // takže je to jisté). Nepříteli ani nejistému se nevrací – radši kartu držet.
+        if (action === T.DUCH) {
+            let best = -1, bestH = -ENEMY_EPS;
+            state.players.forEach((p, idx) => {
+                if (!vosPlaceTargetOk(state, idx, card)) return;
+                const h = hostilityOf(state, myIndex, idx, beliefs);
+                if (h < bestH) { bestH = h; best = idx; }
+            });
+            if (best !== -1) consider(24,
+                { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: best, cardIdx: i } });
+            return;
+        }
+
+        // Údolí stínů – Duch nepřítele: sebrat / odhodit mu kartu Duch ho vyřadí ze hry
+        // (chooseTargetCardArea pak sáhne přímo po ní). rankEnemies Ducha nevrací – na
+        // Ducha se nestřílí –, takže se hledá zvlášť a před obyčejnou krádeží.
+        if (action === T.PANIC || action === T.CAT_BALOU) {
+            const maxDist = action === T.PANIC ? 1 : Infinity;
+            const ghost = state.players.findIndex((p, idx) => idx !== myIndex && isVosGhost(p) &&
+                hostilityOf(state, myIndex, idx, beliefs) > ENEMY_EPS &&
+                computeDistance(state, myIndex, idx) <= maxDist);
+            if (ghost !== -1) {
+                consider(31, { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: ghost, cardIdx: i } });
+                return;
+            }
+        }
         if (action === T.PANIC || action === T.CAT_BALOU) {
             const maxDist = action === T.PANIC ? 1 : Infinity;
             const tgt = rankEnemies(state, myIndex, beliefs, false).find(e =>
@@ -2018,7 +2069,7 @@ function decideBotAction(state, myIndex, beliefs) {
             // Rvačka nutí odhodit kartu KAŽDÉMU, tedy i pravděpodobnému spojenci – tomu
             // vybíráme jinak (viz chooseTargetCardArea). Dělení karet po mrtvém (Vulture
             // Sam) je vždy „ber to nejlepší", tam se na nepřátelskost neohlížíme.
-            const friendly = !sel.isVultureSplit && target.health > 0
+            const friendly = !sel.isVultureSplit && isInPlay(target)   // i Duch (Údolí stínů)
                 && hostilityOf(state, myIndex, sel.targetIdx, beliefs) < -ENEMY_EPS;
             const { area, cardIdx } = chooseTargetCardArea(target, sel.sourceCardType, friendly);
             // targetIdx = pro koho se vybírá (guard tím pozná klik do starého stavu).

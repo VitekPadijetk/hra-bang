@@ -155,7 +155,7 @@ const DrawMixin = {
         // libovolného hráče do ruky; tím jeho fáze lízání končí (bere jen tuto jednu kartu).
         if (source === 'board' && hasAbility(player, "Pat Brennan") && ds.cardsDrawn === 0) {
             const target = this.players[sourceIdx];
-            if (!target || target.health <= 0) return;
+            if (!target || !isInPlay(target)) return;   // i Duchovi (Údolí stínů)
             let card = null;
             if (area === 'weapon') {
                 if (target.weapon && target.weapon.id !== -1) {
@@ -177,7 +177,7 @@ const DrawMixin = {
 
         if (source === 'opponent_hand' && hasAbility(player, "Jesse Jones") && ds.cardsDrawn === 0) {
             const opponent = this.players[sourceIdx];
-            if (!opponent || opponent.health <= 0 || opponent.hand.length === 0) return;
+            if (!opponent || !isInPlay(opponent) || opponent.hand.length === 0) return;
             const randomIdx = Math.floor(Math.random() * opponent.hand.length);
             const stolen = opponent.hand.splice(randomIdx, 1)[0];
             player.hand.push(stolen);

@@ -30,6 +30,13 @@ if (typeof require === 'function') {
     if (typeof inPlayCount === 'undefined') {
         globalThis.inPlayCount = require('./distance.js').inPlayCount;
     }
+    // Údolí stínů – karta Duch (samostatný guard, přibyl později).
+    if (typeof isVosGhost === 'undefined') {
+        const __vg = require('./distance.js');
+        globalThis.isVosGhost = __vg.isVosGhost;
+        globalThis.staysInPlay = __vg.staysInPlay;
+        globalThis.hasDuchCard = __vg.hasDuchCard;
+    }
     if (typeof isResponseTurn === 'undefined') {
         const __ph = require('./phaseInfo.js');
         globalThis.isResponseTurn = __ph.isResponseTurn;
@@ -291,11 +298,13 @@ function nativePlayInTurn(state, me, myIndex, card) {
         if (card.discardExtra === 'heal_self_2') return canHeal(me);
         if (card.discardExtra === 'heal_any') return state.players.some(p => canHeal(p));
         if (card.discardExtra === 'bang_any') return state.players.some((p, idx) => idx !== myIndex && p.health > 0);
+        // Krást a odhazovat jde i Duchovi (Údolí stínů) – ve hře je (isInPlay). Střílet
+        // na něj ne (bang_any výš): život ztratit nemůže.
         if (card.discardExtra === 'steal_any') return state.players.some((p, idx) =>
-            idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0))
+            idx !== myIndex && isInPlay(p) && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0))
             || (me.weapon && me.weapon.id !== -1) || (me.board || []).length > 0;
         if (card.discardExtra === 'brawl') return state.players.some((p, idx) =>
-            idx !== myIndex && p.health > 0 && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
+            idx !== myIndex && isInPlay(p) && (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0));
         return true;
     }
     if (isMissedCard(card)) return false;   // Calamity Janet řeší větev výš, Zúčtování showdownBangOk
@@ -304,7 +313,7 @@ function nativePlayInTurn(state, me, myIndex, card) {
     // Údolí stínů – Roztříštěná kulka: vlastní akce se dvěma cíli (fanningOk).
     if (card.type === "Roztříštěná kulka") return fanningOk(state, me, myIndex, card);
     if (card.type === "Vězení") {
-        return state.players.some((p, idx) => idx !== myIndex && p.health > 0 && p.role !== "Sheriff" && !(p.board||[]).some(c => c.type === "Vězení"));
+        return state.players.some((p, idx) => idx !== myIndex && isInPlay(p) && p.role !== "Sheriff" && !(p.board||[]).some(c => c.type === "Vězení"));
     }
     if (card.type === "Panika!") {
         // Panika! potřebuje cíl do vzdálenosti 1 s alespoň jednou kartou
@@ -312,7 +321,7 @@ function nativePlayInTurn(state, me, myIndex, card) {
         const canTargetSelf = (me.weapon && me.weapon.id !== -1) ||
                              (me.board && me.board.length > 0);
         const canTargetOther = state.players.some((p, idx) =>
-            idx !== myIndex && p.health > 0 &&
+            idx !== myIndex && isInPlay(p) &&
             computeDistance(state, myIndex, idx) <= 1 &&
             (p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board && p.board.length > 0))
         );
@@ -477,7 +486,7 @@ function lawForcedCard(state, me, myIndex) {
 // (Ragtime) – klient i bot musí mít na co kliknout. Zbytek pokrývá cardPlayability
 // (Vězení, Duel, Pivo, Salon, ostatní „odhoď další kartu“).
 function _lawHasTarget(state, me, myIndex, card) {
-    const other = (i) => i !== myIndex && state.players[i].health > 0;
+    const other = (i) => i !== myIndex && isInPlay(state.players[i]);   // jen Panika / Cat Balou – Duch se počítá
     const hasCards = (p) => p.hand.length > 0 || (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
     switch (turnActionForCard(state, me, myIndex, card)) {
         case 'SHOOT':
@@ -982,8 +991,8 @@ function dorothyAsIf(state, commandedIdx) {
 }
 
 // Jakou akci poručená karta spustí (z pohledu poručeného) a potřebuje-li cíl.
-// Údolí stínů: Chřestýš a Odměna se vykládají před cíl stejně jako Vězení.
-const DOROTHY_AIMED = ['SHOOT', 'Panika!', 'Cat Balou', 'Duel', 'Vězení', 'Chřestýš', 'Odměna'];
+// Údolí stínů: Chřestýš, Odměna a Duch se vykládají před cíl stejně jako Vězení.
+const DOROTHY_AIMED = ['SHOOT', 'Panika!', 'Cat Balou', 'Duel', 'Vězení', 'Chřestýš', 'Odměna', 'Duch'];
 
 function dorothyAction(state, commandedIdx, card) {
     const p = state.players[commandedIdx];
@@ -1007,7 +1016,10 @@ function dorothyTargets(state, commandedIdx, card) {
         (q.weapon && q.weapon.id !== -1) || (q.board || []).length > 0;
     const out = [];
     (state.players || []).forEach((q, i) => {
-        if (i === commandedIdx || !q || !isInPlay(q)) return;
+        if (i === commandedIdx || !q) return;
+        // Údolí stínů – Duch: cílem je naopak vyřazený hráč (mimo hru).
+        if (action === 'Duch') { if (vosPlaceTargetOk(sim, i, card)) out.push(i); return; }
+        if (!isInPlay(q)) return;
         switch (action) {
             case 'SHOOT':
                 if (computeCanHit(sim, commandedIdx, i, bangEffectReach(card))) out.push(i);
@@ -1019,7 +1031,7 @@ function dorothyTargets(state, commandedIdx, card) {
                 if (hasCards(q)) out.push(i);
                 break;
             case 'Duel':
-                out.push(i);
+                if (!isVosGhost(q)) out.push(i);   // Duch život ztratit nemůže
                 break;
             case 'Vězení':
                 if (q.role !== 'Sheriff' && !(q.board || []).some(c => c.type === 'Vězení')) out.push(i);

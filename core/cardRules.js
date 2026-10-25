@@ -37,8 +37,9 @@ function getActionForCard(card, character) {
     // Údolí stínů – Roztříštěná kulka: míří se na DVA cíle (první v dostřelu, druhý
     // ve vzdálenosti 1 od prvního), takže má vlastní akci.
     if (card.type === "Roztříštěná kulka") return "FANNING";
-    // Údolí stínů: Chřestýš a Odměna se vykládají před cíl (libovolného hráče, i sebe).
-    if (["Panika!", "Cat Balou", "Duel", "Vězení", "Chřestýš", "Odměna"].includes(card.type)) {
+    // Údolí stínů: Chřestýš a Odměna se vykládají před cíl (libovolného hráče, i sebe),
+    // Duch před vyřazeného hráče (vosPlaceTargetOk, core/valley.js).
+    if (["Panika!", "Cat Balou", "Duel", "Vězení", "Chřestýš", "Odměna", "Duch"].includes(card.type)) {
         return card.type;
     }
     if (["Zbraň", "Barel", "Vybavení", "Dynamit"].includes(card.type)) {

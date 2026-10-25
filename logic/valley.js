@@ -392,7 +392,8 @@ const ValleyMixin = {
         while (this._vosShots.length) {
             const s = this._vosShots.shift();
             const sh = this.players[s.shooterIdx], tg = this.players[s.targetIdx];
-            if (!isInPlay(sh) || !isInPlay(tg)) {
+            // Na Ducha (F5) se nestřílí – život ztratit nemůže (computeCanHit).
+            if (!isInPlay(sh) || !isInPlay(tg) || isVosGhost(tg)) {
                 this.logEvent('special', { who: sh?.name, card: s.sourceName, target: tg?.name, msg: 'výstřel propadá' });
                 continue;
             }
@@ -597,6 +598,100 @@ const ValleyMixin = {
         this.checkSuzyLafayette(p);
         this._resumeAfterSpecial();
         return { card, handIdx: i };
+    },
+
+    // ── Duch (F5, R10) ───────────────────────────────────────────────────────
+    // „Polož před vyřazeného hráče. Ten se vrací do hry se svou postavou, ale nemůže
+    // získat ani ztratit žádný život." Že je hráč Duch, se ODVOZUJE z karty na stole
+    // (isVosGhost, core/distance.js) – pravidla se tedy nic dalšího ptát nemusí. Tady je
+    // jen ÚKLID po odchodu: kartu Duch může ze stolu sebrat deset různých cest (Panika,
+    // Cat Balou, Rvačka, Daltonové, Odražená střela, Johnny Kisch, Pat Brennan, Kankán…)
+    // a žádná z nich o Duchovi neví. Odvozený stav hráče vyřadí v tu ránu (isInPlay),
+    // ale jeho ruka a stůl zůstaly ležet a výhra se nepřepočítala – to dorovná
+    // _vosGhostSettle, až je klid. `_vosWasGhost` slouží JEN tomuhle přechodu.
+    //
+    // Laso (Fistful): karty na stole nemají efekt → duchové jsou vyřazeni (dV 1603935),
+    // i s kartou Duch. Belle Star Ducha nevyřazuje (jinak by mizeli každý její tah).
+    //
+    // Odchod NENÍ vyřazení (dV 2119446, 2587683): žádná odměna za banditu, Vulture Sam,
+    // Greg Digger ani Herb Hunter. Ruka i stůl jdou do odhozu animací odchodu ducha.
+
+    // Je klid na úklid? Fáze PLAY a nic rozdělaného (stejná myšlenka jako _vosShotCalm).
+    _vosGhostCalm() {
+        if (this.winner || this.phase !== "PLAY") return false;
+        if (this._dorothyOwnerIdx != null) return false;
+        if ((this.specialActionQueue || []).length) return false;
+        if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;
+        if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
+        if (this.pendingResponse?.active || this.pendingBarrelCheck?.active) return false;
+        if (this.pendingSelection || this.pendingVosRound || this.pendingVultureSplit) return false;
+        if (this._nextTurnAfterQueue || this._resumeBeginTurnAfterQueue ||
+            this._startChecksAfterQueue || this._advanceRouletteAfterQueue ||
+            this._advanceGrinnerAfterQueue || this._gagResumeAfterQueue) return false;
+        return true;
+    },
+
+    // Ukliď po Duších, kteří odešli. `force` = volající si klid zaručuje sám (krok startu
+    // tahu za Daltony a Lasem). Vrací true, když se tím hra pohnula tak, že volající nesmí
+    // pokračovat: padl vítěz, nebo odešel hráč na tahu a tah se posunul.
+    _vosGhostSettle(force = false) {
+        if (!(this.players || []).some(p => p && p._vosWasGhost)) return false;
+        if (!force && !this._vosGhostCalm()) return false;
+        const laso = this._boardDead();
+        const gone = [];
+        this.players.forEach((p, i) => {
+            if (!p || !p._vosWasGhost) return;
+            if (p.health > 0) { p._vosWasGhost = false; return; }   // (pojistka – nová hra)
+            if (isVosGhost(p) && !laso) return;                       // pořád je Duch
+            this._vosGhostLeave(i, laso);
+            gone.push(i);
+        });
+        if (!gone.length) return false;
+        // Duch se do teď počítal za živého (brání výhře zákona i odpadlíka, dV 1507774).
+        this.checkWinCondition();
+        if (this.winner) return true;
+        // Odešel hráč, kterému patří tah → tah končí (stejně jako smrt na vlastním tahu).
+        if (gone.includes(this._turnOwner())) {
+            if (this._vosShots) this._vosShots.length = 0;
+            this.targetPlayer = null;
+            this.currentAttacker = null;
+            this.nextTurn();
+            return true;
+        }
+        return false;
+    },
+
+    _vosGhostLeave(idx, laso) {
+        const p = this.players[idx];
+        p._vosWasGhost = false;
+        const weapon = (p.weapon && p.weapon.id !== -1) ? [p.weapon] : [];
+        if (p.hand.length + p.board.length + weapon.length > 0) {
+            // Stejná animace jako odchod ducha Města duchů (flushGhostLeave, server/anim.js).
+            // Slot je jeden – odejdou-li dva naráz (Laso), druhý odloží karty bez animace.
+            if (!this._ghostLeaveAnim) {
+                this._ghostLeaveAnim = {
+                    playerIdx: idx,
+                    blue: p.board.map(c => ({ id: c.id })),
+                    weapon: weapon.length ? { id: weapon[0].id } : null,
+                    hand: p.hand.map(c => ({ id: c.id })),
+                };
+            }
+            this.deck.discard(...p.hand, ...p.board, ...weapon);
+            p.hand = [];
+            p.board = [];
+            p.weapon = new Card(-1, "Colt .45", CardType.WEAPON, null, null, { range: 1 });
+        }
+        this._gearDropAll(idx);   // Zlatá horečka: vybavení jako při vyřazení
+        p.health = 0;
+        this.logEvent('event', { card: 'Duch', who: p.name,
+            msg: laso ? 'pod Lasem karta Duch nemá efekt – odchází ze hry' : 'přišel o kartu Duch – odchází ze hry' });
+    },
+
+    // Krok startu tahu hned za efekty obou karet událostí: Daltonové („každý odhodí modrou
+    // kartu") i Laso umí Ducha vyřadit dřív, než se start tahu dotočí. Odešel-li hráč na
+    // tahu, posune se tah (_vosGhostSettle) – start tahu mrtvému se dotáčet nesmí.
+    _vosGhostTurnStep() {
+        return this._vosGhostSettle(true);
     },
 };
 

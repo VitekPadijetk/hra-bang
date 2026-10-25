@@ -24,6 +24,14 @@ if (typeof require === 'function') {
     }
 }
 
+// Údolí stínů – karta Duch: „je Duch?" a „sedí ve hře natrvalo?" (živý nebo Duch).
+if (typeof require === 'function' && typeof isVosGhost === 'undefined') {
+    const __vg = require('./distance.js');
+    globalThis.isVosGhost = __vg.isVosGhost;
+    globalThis.staysInPlay = __vg.staysInPlay;
+    globalThis.hasDuchCard = __vg.hasDuchCard;
+}
+
 const ROLES = ['Sheriff', 'Deputy', 'Outlaw', 'Renegade'];
 
 // ── Nepřátelskost dvojice rolí (>0 = chci útočit, <=0 = spojenec/nestřílet) ────
@@ -161,7 +169,7 @@ function computeBeliefs(state, ledger, myIndex) {
     // ── Zarovnání proti šerifovi z chování (2 iterace: „nepřítel mého nepřítele") ──
     // anti[idx] ∈ ~[-1,1]: >0 = jedná proti straně šerifa (spíš Outlaw/Renegade),
     //                       <0 = jedná pro stranu šerifa (spíš Deputy).
-    const alive = players.map((p, i) => p.health > 0 ? i : -1).filter(i => i !== -1);
+    const alive = players.map((p, i) => staysInPlay(p) ? i : -1).filter(i => i !== -1);   // Duch hraje dál
     const anti = {};
     unknown.forEach(i => { anti[i] = 0; });
 
@@ -238,7 +246,7 @@ function computeBeliefs(state, ledger, myIndex) {
 function estimateRoleAlive(state, beliefs, role) {
     let sum = 0;
     (state.players || []).forEach((p, i) => {
-        if (p.health > 0 && beliefs[i]) sum += beliefs[i][role] || 0;
+        if (staysInPlay(p) && beliefs[i]) sum += beliefs[i][role] || 0;   // Duch se počítá (brání výhře)
     });
     return sum;
 }
@@ -249,7 +257,7 @@ function estimateOutlawsAlive(state, beliefs) { return estimateRoleAlive(state, 
 function estimateOtherRenegadesAlive(state, beliefs, myIndex) {
     let sum = 0;
     (state.players || []).forEach((p, i) => {
-        if (i !== myIndex && p.health > 0 && beliefs[i]) sum += beliefs[i].Renegade || 0;
+        if (i !== myIndex && staysInPlay(p) && beliefs[i]) sum += beliefs[i].Renegade || 0;
     });
     return sum;
 }

@@ -7,12 +7,12 @@ a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_b
 
 **Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra), F1 (šest karet,
 2026-10-24), F2 (Colorado Bill, Limonádový Jim, 2026-10-24), F3 (fronta výstřelů:
-Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24) a F4
-(kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25).**
+Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24), F4
+(kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25) a F5 (Duch, 2026-10-25).**
 Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js));
-do balíčku jde zatím 12 z 15 druhů karet a do výběru 3 z 5 postav.
+do balíčku jde zatím 13 z 15 druhů karet a do výběru 3 z 5 postav.
 Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
-1782 testů. Po F3: 1813 testů. Po F4: **1837 testů, 0 chyb**.
+1782 testů. Po F3: 1813 testů. Po F4: 1837 testů. Po F5: **1869 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -683,7 +683,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F2** | Colorado Bill, Limonádový Jim (+ `LEMONADE_OFFER`) | postavy bez nových mechanismů |
 | **F3** ✓ | Fronta výstřelů + `_afterVosShot` + zabiják; Opětovná palba, Roztříštěná kulka, Evelyn; klikané zásahy s útočníkem → Dvojitá rána | první nový mechanismus, na kterém stojí F7 |
 | **F4** ✓ | Divoká banda, Tornádo, Poker (+ redakce, animace) | samostatné, vzor Daltonové |
-| **F5** | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
+| **F5** ✓ | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
 | **F6** | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
 | **F7** | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
 | **F8** | Obětavý skok (brány + odměna + redakce) | riziko jako Teren Kill; bez držitele karty se hra nemění |
@@ -897,6 +897,60 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
   karet bere 2 nejcennější (Dynamit nechá). Divokou bandu hraje s převahou nepřátel,
   Poker vždy, když mají ostatní karty, Tornádo až nakonec tahu.
 - Henry Block, Útěk ani Mick Defender ještě nejsou (F6, F7) – nic se kvůli nim nečeká.
+
+### Co se ve fázi F5 odchýlilo od plánu (a proč)
+
+- **Tři dotazy místo dvou, všechny v core/distance.js:** `hasDuchCard` (karta na stole),
+  `isVosGhost` (= vyřazený s kartou Duch) a nový **`staysInPlay`** = „ve hře NATRVALO"
+  (živý nebo Duch). `isInPlay` zahrnuje i ducha Města duchů a stín na jejich tah, a řada
+  míst (pořadí tahů, kdo odkrývá události, Daltonové, výhra, dedukce rolí, Mrtvý muž,
+  Hřbitov) je dřív schválně vynechávala přes `health > 0` – ta se ptají `staysInPlay`,
+  takže se jim nic nemění. `hasDuchCard` se proto přesunul z core/valley.js do
+  core/distance.js (ptá se ho isInPlay); core/valley.js ho dál exportuje.
+- **Na Ducha se nestřílí.** Plán to neřešil; Duch „nemůže ztratit žádný život", takže by
+  výstřel nic neudělal a obrana by byla zbytečná pauza (R4). `computeCanHit` pro Ducha
+  vrací `false` (tím se ptá klient, bot i server), `playBang` a Duel ho odmítají,
+  Kulomet / Indiáni ho přeskakují, Evelyn ani Roztříštěná kulka (ani druhým cílem) na
+  něj nemíří a odložený výstřel z fronty na Ducha propadá. Krást, odhazovat, Vězení,
+  Chřestýš, Odměna i Daltonové na něj jdou – ve hře je.
+- **Co bere život, Ducha míjí:** dynamit se k němu posouvá (ve hře je), u něj vybuchne
+  bez zásahu a tah jde dál; na Chřestýše se mu nesnímá; Ruská ruleta, Fistful of Cards,
+  Pravé poledne, Madam Zuzana i Roubík se ho netýkají (ptají se `health > 0` – skutečný
+  život). Léčit se nedá ničím (`canHeal`, `_heal`), **Nová identita** se mu nenabízí
+  („klesne na 2 životy" by byl zisk), Greg Digger se jako Duch neléčí, Herb Hunter líže.
+- **Úklid po odchodu (`_vosGhostSettle`, logic/valley.js)** proběhne v KLIDU (fáze PLAY,
+  nic rozdělaného – `_vosGhostCalm`) na čtyřech místech: `_processSpecialQueue`
+  s prázdnou frontou, `_resumeAfterSpecial`, krok startu tahu hned za efekty událostí
+  (`_vosGhostTurnStep` – Daltonové a Laso) a hák před broadcastem (server/anim.js).
+  Odvozený stav hráče vyřadí okamžitě, úklid jen odhodí ruku a stůl (animace odchodu
+  ducha, `_ghostLeaveAnim`), přepočítá výhru a – odešel-li hráč na tahu – posune tah.
+  Odejdou-li dva naráz (Laso), animaci dostane jen první.
+- **Soudce** (Fistful) nově blokuje i Chřestýše a Odměnu – v F1 to chybělo – a s nimi
+  Ducha: všechny tři se vykládají před hráče.
+- **Helena Zontero** míchá role všech hráčů VE HŘE, tedy i Ducha – jeho role je pak
+  zase tajná (`_roleRevealed` shodí `_reshuffleRoles`). Hřbitov ho naopak nevrací
+  a jeho roli nemíchá (není vyřazený, dV 1528720).
+- **Animace a ledger:** Duch letí před cíl jako Vězení (`jail_sequence`, i pod Zuřivou
+  Doroty), v ledgeru chování je to pomoc (`support`). Doroty smí Ducha poručit (cíl =
+  vyřazený), Duel poručit na Ducha nejde.
+- **Klient:** s vybraným Duchem jde kliknout na portrét vyřazeného hráče (jinak je
+  neinteraktivní); Duch se kreslí jako hrající, jen s průsvitným portrétem
+  (`VOS_GHOST_ALPHA`, view/board.js). Krádeže (Panika, Cat Balou, Ragtime, Krytý vůz,
+  Kankán, Pat Brennan) Ducha zvýrazní. **Render neověřený** – čeká na kontrolu v prohlížeči.
+- **Bot:** karta Duch na stole má hodnotu 10 (`boardCardValue`) – Daltoni ani Rvačka
+  ji spojenci nesundají a Cat Balou / Panika nepříteli sáhnou rovnou po ní
+  (`chooseTargetCardArea`). Ducha nepřítele bot krade přednostně (skóre 31; rankEnemies
+  ho nevrací, protože se na něj nestřílí). Ducha zahraje jen na vyřazeného spojence
+  (role je odhalená, skóre 24); pod Právem západu na kohokoli platného.
+- **Strukturální test** (test/vos.ghost.test.js, `LIFE_OK`): každé napřímo položené
+  `health > 0` / `health <= 0` v logic.js, logic/* a core/* má v tabulce důvod; po
+  auditu jich zbylo 38, všechny „skutečný život". Klient (view/*) se v testu nehlídá.
+- **Zátěž** „balíček plný Duchů" (16 kusů, 3–8 hráčů, samo i se vším): v jednom běhu
+  29 návratů, 15 odchodů, 88 tahů Duchů; nikdy nezůstal vyřazený na tahu a Duch nikdy
+  nezískal život.
+- **Zjištěno mimochodem:** zátěž F1 („odhoz Brokovnice se ani jednou neobjevil") občas
+  selže na pokrytí – i na čistém stavu před F5 (2 z 25 běhů). Nejde o zaseknutí, jen
+  o vzácný jev v malém počtu her.
 
 ## 9. Co plán vědomě nedělá
 

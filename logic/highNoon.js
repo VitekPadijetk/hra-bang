@@ -122,11 +122,11 @@ const HighNoonMixin = {
         const n = list.length;
         if (!n) return -1;
         const from = this._firstPlayerIndex();
-        if (list[from] && list[from].health > 0) return from;
+        if (staysInPlay(list[from])) return from;   // Duch (Údolí stínů) ano – hraje natrvalo
         const step = this._turnStep();
         for (let k = 1; k < n; k++) {
             const i = (from + k * step) % n;
-            if (list[i] && list[i].health > 0) return i;
+            if (staysInPlay(list[i])) return i;
         }
         return -1;
     },
@@ -161,7 +161,8 @@ const HighNoonMixin = {
         const steps = [this._deadManReturn, this._boneOrchardReturn,
                        this._flipEvent, this._applyAbilitiesOnEnter,
                        this._applyEventOnEnter,
-                       this._applyFfEventOnEnter, this._noonDamage, this._fistfulHits,
+                       this._applyFfEventOnEnter, this._vosGhostTurnStep,
+                       this._noonDamage, this._fistfulHits,
                        this._newIdentityOffer, this._startBloodBrothers,
                        this._greygoryOffer, this._startValentine];
         while (this._beginTurnStep < steps.length) {
@@ -261,7 +262,8 @@ const HighNoonMixin = {
         const order = [];
         for (let k = 0; k < n; k++) {
             const idx = (from + k) % n;
-            if (this.players[idx].health > 0) order.push(idx);
+            // Duch (Údolí stínů) ve hře je – a odhozením karty Duch odchází (R10).
+            if (staysInPlay(this.players[idx])) order.push(idx);
         }
         this.daltonsQueue = order;
         this.logEvent('event', { card: 'Daltonové', order: order.map(i => this.players[i].name) });
@@ -282,7 +284,7 @@ const HighNoonMixin = {
         while (this.daltonsQueue && this.daltonsQueue.length > 0) {
             const idx = this.daltonsQueue.shift();
             const p = this.players[idx];
-            if (p && p.health > 0 && this._daltonsBlueCount(p) > 0) {
+            if (staysInPlay(p) && this._daltonsBlueCount(p) > 0) {
                 this.pendingSelection = {
                     attackerIdx: idx,
                     targetIdx: idx,
@@ -479,7 +481,8 @@ const HighNoonMixin = {
     _newIdentityOffer() {
         if (!this.hasEvent('NOVA_IDENTITA')) return false;
         const p = this.getCurrentPlayer();
-        if (!p || !isInPlay(p) || !p._secondChar) return false;
+        // Duch (Údolí stínů) by „klesl na 2 životy", tedy život získal – nesmí.
+        if (!p || !isInPlay(p) || isVosGhost(p) || !p._secondChar) return false;
         this.pendingNewIdentity = { playerIdx: this.currentPlayerIndex, character: p._secondChar };
         this.phase = "NEW_IDENTITY";
         return true;

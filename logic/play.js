@@ -150,6 +150,8 @@ const PlayMixin = {
         // střílet dá (jen umřít nemůže, viz handleDamage). Dostřel i klikatelnost cíle ho
         // pouštějí (computeCanHit/isInPlay), takže bez tohohle server Bang! tiše zahodil.
         if (!isInPlay(target)) return;
+        // Údolí stínů – na Ducha se nestřílí (život ztratit nemůže, viz computeCanHit).
+        if (isVosGhost(target)) return;
         if (this._suitBlocked(attackerIdx, card)) return;   // High Noon – Želízka
         // Fistful – Právo západu: vynucená karta musí ven jako první (viz _lawLocked).
         // `asBang` = tenhle výstřel čerpá limit karet Bang!, i když karta sama kartou
@@ -340,6 +342,8 @@ const PlayMixin = {
         }
 
         const target = tarIdx !== null ? this.players[tarIdx] : null;
+        // Údolí stínů – Duel s Duchem nemá smysl: prohrát (ztratit život) nemůže.
+        if (cardType === CardType.DUEL && isVosGhost(target)) return;
         const card = attacker.hand.splice(cardIdx, 1)[0];
 
         if (card) this._trackCard(attIdx, card.type);
@@ -369,9 +373,10 @@ const PlayMixin = {
             this._processSpecialQueue();
             return;
         }
-        else if (card.type === CardType.RATTLESNAKE || card.type === CardType.BOUNTY) {
+        else if (card.type === CardType.RATTLESNAKE || card.type === CardType.BOUNTY || card.type === CardType.DUCH) {
             // Údolí stínů – Chřestýš / Odměna: „polož před libovolného hráče" (i sebe,
             // i šerifa), jen ne dvě karty stejného jména (vosPlaceTargetOk, core/valley.js).
+            // Duch: před VYŘAZENÉHO hráče – tím se vrací do hry (isInPlay, core/distance.js).
             if (!vosPlaceTargetOk(this, tarIdx, card)) {
                 attacker.hand.splice(cardIdx, 0, card);
                 this.checkSuzyLafayette(attacker);
@@ -386,6 +391,12 @@ const PlayMixin = {
                 return;
             }
             target.board.push(card);
+            // Duch: hráč je od teď zpátky ve hře. Příznak slouží JEN k úklidu po odchodu
+            // (_vosGhostSettle, logic/valley.js) – pravidla se ptají karty na stole.
+            if (card.type === CardType.DUCH) {
+                target._vosWasGhost = true;
+                this.logEvent('event', { card: 'Duch', who: target.name, msg: `vrací se do hry (zahrál ${attacker.name})` });
+            }
             // Johnny Kisch (Fistful): vyložením odhodí stejnojmenné karty u stolu.
             this._johnnyKischPurge(attIdx, card.name, card);
             this.checkSuzyLafayette(attacker);
@@ -578,7 +589,8 @@ const PlayMixin = {
         // když je hromadný útok kárový (imunita vůči ♦).
         while (
             nextTarget !== originatorIdx &&
-            (!isInPlay(this.players[nextTarget]) || this._apacheImmune(nextTarget, this._massAttackSuit, originatorIdx)) &&
+            (!isInPlay(this.players[nextTarget]) || isVosGhost(this.players[nextTarget]) ||
+             this._apacheImmune(nextTarget, this._massAttackSuit, originatorIdx)) &&
             loopCount < this.players.length
         ) {
             nextTarget = (nextTarget + 1) % this.players.length;

@@ -264,8 +264,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (isPanicCB) {
                 room._pendingPanicCard = { type: card.type === 'Panika!' ? 'panic_sequence' : 'catbalou_sequence',
                     attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id };
-            } else if (card?.type === 'Vězení' || card?.type === 'Chřestýš' || card?.type === 'Odměna') {
-                // Údolí stínů: Chřestýš a Odměna letí před cíl stejně jako Vězení.
+            } else if (card?.type === 'Vězení' || card?.type === 'Chřestýš' || card?.type === 'Odměna' || card?.type === 'Duch') {
+                // Údolí stínů: Chřestýš, Odměna a Duch letí před cíl stejně jako Vězení.
                 emitAnim(room, { type: 'jail_sequence', attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id, boardIdx: jailBoardIdx });
             } else {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
@@ -277,6 +277,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // Údolí stínů: Chřestýš a Odměna před CIZÍHO hráče jsou nepřátelské (před sebe ne).
             if (d.targetIdx != null && d.targetIdx !== d.attackerIdx && ['Chřestýš', 'Odměna'].includes(card?.type)) {
                 ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
+            }
+            // Údolí stínů: Duch vrací vyřazeného do hry – to je pomoc (jeho roli zná celý stůl).
+            if (d.targetIdx != null && card?.type === 'Duch') {
+                ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'support' });
             }
             // Panika/Cat Balou nemusí vždy nastartovat výběr karty (Apache Kid je imunní
             // vůči ♦ → karta se odhodí naprázdno). Držení karty v ruce dělej JEN když

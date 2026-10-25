@@ -147,7 +147,7 @@ const SetupMixin = {
 
     debugGiveCard(playerIdx, cardData) {
         const p = this.players[playerIdx];
-        if (!p || p.health <= 0) return;
+        if (!p || !isInPlay(p)) return;
         const resolvedType = CardType[cardData.type] || cardData.type;
         // cards.json drží barvu jako klíč ("DIAMONDS"…); reálný balíček ji mapuje přes
         // Suits[...] na symbol ('♦️'). Debug karty to musí dělat taky, jinak by např.

@@ -13,7 +13,7 @@ const QUEUED_DRAW_LABEL = {
 };
 const CharactersMixin = {
     checkSuzyLafayette(player) {
-        if (player && hasAbility(player, "Suzy Lafayette") && player.hand.length === 0 && player.health > 0) {
+        if (player && hasAbility(player, "Suzy Lafayette") && player.hand.length === 0 && isInPlay(player)) {
             const playerIdx = this.players.findIndex(p => p === player);
             const alreadyInQueue = this.specialActionQueue.some(a => a.type === 'SUZY_DRAW' && a.playerIdx === playerIdx);
             const alreadyPending = this.pendingSuzyDraw && this.pendingSuzyDraw.playerIdx === playerIdx;
@@ -188,7 +188,7 @@ const CharactersMixin = {
             }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
-            if (!p || p.health <= 0 || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
+            if (!p || !isInPlay(p) || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
         }
     },
 
@@ -201,6 +201,10 @@ const CharactersMixin = {
         // sama, volající nemá sahat na fázi.
         if (this.pendingVosRound) return true;
         this._pruneSuzyQueue();
+        // Údolí stínů – Duch: efekt doběhl a fronta je prázdná, takže je klid uklidit po
+        // Duchovi, kterému karta Duch zmizela ze stolu (_vosGhostSettle). Odešel-li hráč
+        // na tahu, tah se tím posunul – volající na fázi sahat nesmí.
+        if (this.specialActionQueue.length === 0 && this._vosGhostSettle()) return true;
         // Divoký západ – Roubík: odložená pokuta za promluvení do chatu se nasazuje na
         // nejbližším místě, kde smí přerušit, a tohle je ono (_drainGag si to ověřuje
         // sám). Nasadí-li se, čeká hra na klik – vrací se `true`, aby volající na fázi
@@ -356,6 +360,8 @@ const CharactersMixin = {
             // Divoký západ – Zuřivá Doroty: efekt poručené karty doběhl včetně fronty,
             // takže se vypůjčené sedadlo vrací jeho majiteli (viz `_dorothySettle`).
             this._dorothySettle();
+            // Údolí stínů – Duch: úklid po odchodu (viz _processSpecialQueue).
+            if (this._vosGhostSettle()) return;
             // Divoký západ – Roubík: fáze je obnovená a nic neběží, takže je teprve TEĎ
             // místo na odloženou pokutu (výš se _processSpecialQueue ptal ještě ve fázi
             // právě dokončené schopnosti). Nasadí se klikaný zásah a hra čeká na klik.
@@ -387,7 +393,7 @@ const CharactersMixin = {
         if (!vs) { this._resumeAfterSpecial(); return; }
         if (this._vultureSplitLeft() <= 0) { this._finishVultureSplit(); return; }
         let tries = 0;
-        while (tries < vs.pickers.length && !(this.players[vs.pickers[vs.next]]?.health > 0)) {
+        while (tries < vs.pickers.length && !isInPlay(this.players[vs.pickers[vs.next]])) {
             vs.next = (vs.next + 1) % vs.pickers.length;
             tries++;
         }
@@ -708,7 +714,7 @@ const CharactersMixin = {
         const me = this.currentPlayerIndex;
         const out = [];
         this.players.forEach((p, i) => {
-            if (i === me || p.health <= 0 || !p.character) return;
+            if (i === me || !staysInPlay(p) || !p.character) return;   // Duch si schopnost nechává (dV)
             if (p.character === "Vera Custer") return;
             if (!out.includes(p.character)) out.push(p.character);
         });

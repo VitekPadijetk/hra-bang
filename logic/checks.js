@@ -48,6 +48,8 @@ const ChecksMixin = {
     // Vrací index karty na stole, nebo -1.
     _rattlesnakePending(p) {
         if (!p || this._boardDead() || p._vosSnakeTurn === this.turnId) return -1;
+        // Duch (Údolí stínů) život ztratit nemůže – na Chřestýše se mu nesnímá.
+        if (isVosGhost(p)) return -1;
         return p.board.findIndex(c => c.type === CardType.RATTLESNAKE);
     },
 
@@ -210,6 +212,13 @@ const ChecksMixin = {
                 const dynCard = p.board.splice(check.boardIdx, 1)[0];
                 this.lastAnimEvent = { type: 'dynamite_explode', playerIdx: check.playerIdx, cardId: dynCard?.id, boardIdx: fromBoardIdx };
                 this.deck.discard(dynCard);
+                // Údolí stínů – Duch život ztratit nemůže: dynamit vybuchne (odhodí se),
+                // ale zásahy propadají a tah pokračuje kontrolou Vězení.
+                if (isVosGhost(p)) {
+                    this.logEvent('special', { who: p.name, card: 'Duch', msg: 'dynamit mu nic neudělá' });
+                    this.handleStartOfTurnChecks();
+                    return;
+                }
                 // Hráč musí 3× kliknout na životy (po jednom hitu)
                 this.pendingDynamiteDamage = { playerIdx: check.playerIdx, hitsLeft: 3 };
                 this.phase = "DYNAMITE_DAMAGE";
@@ -220,7 +229,7 @@ const ChecksMixin = {
                 for (let k = 1; k < this.players.length; k++) {
                     const idx = (check.playerIdx + k) % this.players.length;
                     const np = this.players[idx];
-                    if (np.health > 0 && !np.board.some(c => c.type === CardType.DYNAMITE)) { targetIdx = idx; break; }
+                    if (staysInPlay(np) && !np.board.some(c => c.type === CardType.DYNAMITE)) { targetIdx = idx; break; }
                 }
                 if (targetIdx === null) {
                     // Nikdo jiný nemůže dynamit převzít (všichni ho mají / jsou mrtví) →

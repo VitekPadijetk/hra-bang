@@ -45,7 +45,7 @@ const CombatMixin = {
         }
         if (hasAbility(target, "El Gringo") && attackerIdx !== null && attackerIdx !== targetIdx) {
             const attacker = this.players[attackerIdx];
-            if (attacker && attacker.health > 0 && attacker.hand.length > 0) {
+            if (attacker && isInPlay(attacker) && attacker.hand.length > 0) {   // i Duchovi
                 this.specialActionQueue.push({ type: 'EL_GRINGO_STEAL', playerIdx: targetIdx, attackerIdx });
             }
         }
@@ -151,9 +151,10 @@ const CombatMixin = {
         // Greg Digger +2 životy (do maxima), Herb Hunter lízne 2 karty (kill-reward fronta).
         // Herb je ve frontě PŘED odměnou za banditu: schopnost postavy se vyhodnotí dřív
         // než odměna za roli (a u zabijáka-Herba se tak jeho 2 karty nesmíchají s 3 kartami).
+        // Duch (Údolí stínů) schopnost má, jen se léčit nemůže: Herb Hunter líže, Greg ne.
         this.players.forEach((p, idx) => {
-            if (idx === deadIdx || p.health <= 0) return;
-            if (hasAbility(p, "Greg Digger")) {
+            if (idx === deadIdx || !staysInPlay(p)) return;
+            if (hasAbility(p, "Greg Digger") && p.health > 0) {
                 p.health = Math.min(p.health + 2, p.maxHealth);
             }
             if (hasAbility(p, "Herb Hunter")) {

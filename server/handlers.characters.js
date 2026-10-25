@@ -266,8 +266,8 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             emitAnim(room, { type: 'hand_to_board', playerIdx: commandedIdx, cardId: card.id, boardIdx });
             return;
         }
-        // Údolí stínů: Chřestýš a Odměna letí před cíl stejně jako Vězení.
-        if (card.type === 'Vězení' || card.type === 'Chřestýš' || card.type === 'Odměna') {
+        // Údolí stínů: Chřestýš, Odměna a Duch letí před cíl stejně jako Vězení.
+        if (card.type === 'Vězení' || card.type === 'Chřestýš' || card.type === 'Odměna' || card.type === 'Duch') {
             const jailBoardIdx = 1 + (gs.players[targetIdx]?.board?.length || 0);
             emitAnim(room, { type: 'jail_sequence', attackerIdx: commandedIdx, targetIdx,
                              cardId: card.id, boardIdx: jailBoardIdx });

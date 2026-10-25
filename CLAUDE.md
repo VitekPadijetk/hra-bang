@@ -92,7 +92,7 @@ nebo „nejdřív doběhne efekt") — to sem patří aspoň jako jednořádkov�
 ### Čisté helpery (`core/`) — BEZ Phaseru/DOM, izomorfní, testované
 | Soubor | Export | Co rozhoduje |
 |---|---|---|
-| `core/distance.js` | `computeDistance`, `computeCanHit`, **`hasAbility`/`abilitiesOf`**, `effectiveCharacter`, **`isInPlay`** | vzdálenost a dostřel + **které schopnosti hráči právě platí** a **kdo je vůbec ve hře**. **`hasAbility(p, "Jméno")` je jediný trychtýř všech ~85 kontrol „umí X?"** (v `logic/*`, `core/playability.js`, `core/botPolicy.js` i `view/board.js`; `abilitiesOf(p)` vrací celý seznam): prázdno při Kocovině (`p._noAbility`), jinak `p._copiedCharacter || p.character` – a u **Greygoryho Decka** (Divoký západ) jeho líznutá **dvojice** `p._greygoryChars`. Dotaz nesmí jít přes rovnost jednoho jména, jinak Greygorymu nesedne nikdy (hlídá strukturální test v `test/wws.greygory.test.js`). `effectiveCharacter(p)` zůstává vedle pro to, kde jde o JEDNU postavu k **zobrazení** (portrét, overlay volby kopie, štítek, `CHAR_RANK` bota) – tam se se jménem neporovnává. Max. životy (`healthForCharacter`) a portrét čtou `p.character` napřímo, takže se Kocovinou nemění. `isInPlay(p)` = `health > 0 || p._ghost` – duch (Město duchů) má 0 životů, ale na svůj tah sedí zase v kole (vzdálenost, hokynářství, hromadné útoky, Vulture Sam). Prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger, poslední život). Ptá se jím i klient, komu ještě probliká portrét (`registerVeraPortrait` – vyřazená Vera Custer už nekopíruje, zůstane Vera; duch probliká dál). Problikávající portrét si přitom drží obarvení, které měl (`baseTint` v `_tickVeraPortraits`) – hráč na tahu je zelený i ve chvíli, kdy je na jeho místě vidět kopírovaná postava. |
+| `core/distance.js` | `computeDistance`, `computeCanHit`, **`hasAbility`/`abilitiesOf`**, `effectiveCharacter`, **`isInPlay`**, **`staysInPlay`/`isVosGhost`/`hasDuchCard`** (Duch, Údolí stínů – viz tam) | vzdálenost a dostřel + **které schopnosti hráči právě platí** a **kdo je vůbec ve hře**. **`hasAbility(p, "Jméno")` je jediný trychtýř všech ~85 kontrol „umí X?"** (v `logic/*`, `core/playability.js`, `core/botPolicy.js` i `view/board.js`; `abilitiesOf(p)` vrací celý seznam): prázdno při Kocovině (`p._noAbility`), jinak `p._copiedCharacter || p.character` – a u **Greygoryho Decka** (Divoký západ) jeho líznutá **dvojice** `p._greygoryChars`. Dotaz nesmí jít přes rovnost jednoho jména, jinak Greygorymu nesedne nikdy (hlídá strukturální test v `test/wws.greygory.test.js`). `effectiveCharacter(p)` zůstává vedle pro to, kde jde o JEDNU postavu k **zobrazení** (portrét, overlay volby kopie, štítek, `CHAR_RANK` bota) – tam se se jménem neporovnává. Max. životy (`healthForCharacter`) a portrét čtou `p.character` napřímo, takže se Kocovinou nemění. `isInPlay(p)` = `health > 0 || p._ghost` – duch (Město duchů) má 0 životů, ale na svůj tah sedí zase v kole (vzdálenost, hokynářství, hromadné útoky, Vulture Sam). Prosté `health > 0` zůstává tam, kde jde o skutečný život (léčení, Greg Digger, poslední život). Ptá se jím i klient, komu ještě probliká portrét (`registerVeraPortrait` – vyřazená Vera Custer už nekopíruje, zůstane Vera; duch probliká dál). Problikávající portrét si přitom drží obarvení, které měl (`baseTint` v `_tickVeraPortraits`) – hráč na tahu je zelený i ve chvíli, kdy je na jeho místě vidět kopírovaná postava. |
 | `core/layout.js` | `computeStage`, `stageCoverSize`, `LAYOUT_PROFILES`, `getLayout`, **`currentLayout`**, `pickLayoutProfile`, **`resolveLayout`**, `stretchAnchors`, `boardRowLimit`, **`myHandRow`/`myHandSlotX`**, **`compactMetrics`/`compactAnchors`/`compactBoardPos`/`compactHandPos`**, **`oppScale`/`handCardScale`**, **`boardBand`/`boardSlot`**, **`livesTrack`/`livesSlot`/`livesCardsShown`**, **`livesFitScale`/`myLivesGeom`** | **jeviště + profil rozložení**. `computeStage(vw,vh)` = velikost plátna v design px podle SKUTEČNÉHO poměru stran: základ 1920×1080 zůstává souřadnicovou soustavou, ale plátno se natáhne do poměru displeje (strop 2560×1440) a kamera se posune o půlku přírůstku (`applyStage` v game.js), takže se souřadnicemi 0…1920/0…1080 se nehne – jen po stranách přibude plocha (`stageLeft/Right/Top/Bottom`). Zaokrouhluje se dolů, takže **měřítko obsahu zůstává identické**; mizí jen mrtvé pruhy (telefon na šířku ~18 % šířky, okno prohlížeče na PC taky). Pozadí a všechny celoobrazovkové překryvy se proto kreslí na `stageW()/stageH()` (resp. `stageCoverSize()`) a nálety „zpoza okraje" startují za okrajem JEVIŠTĚ. `currentLayout()` = profil rozložení desky (`App.layout`, mimo prohlížeč vždy desktopový) – jediný zdroj geometrie pro `view/board.js` i `positions.js`, které se dřív musely shodovat ručně. **`resolveLayout(profil, jeviště)`** (volá `applyStage`, výsledek jde do `App.layout`) dopočítá to, co se má **lepit na okraj**: konec mé ruky (`handEndX = stage.right − handEndMargin`) a počet vyložených karet v jedné řadě mého stolu (`boardRowLimit` – rostou doleva od karty role, takže je omezuje levý okraj). `stretchAnchors` totéž dělá s kotvami soupeřů (volá ji `getOpponentAnchors`): krajní zůstanou `oppEdgeMargin` od okraje JEVIŠTĚ, prostřední se mezi ně rovnoměrně rozestoupí, střed zůstává středem. **Na 16:9 jsou obě identita** (`resolveLayout` vrací týž objekt), takže PC ve fullscreenu je pixelově dnešní stav. Rohové ovládání (Zpět, ⚙ DEBUG, Ukončit hru, debug sloupec) a prahy „která je to strana" v `view/intro.js` se proto kotví přes `stageLeft/Right/Top/Bottom`, ne přes 0/1920. **`myHandRow(L, počet)`** = začátek a rozteč MOJÍ ruky ve vodorovném pásu `handStartX…handEndX` (to jsou STŘEDY krajních slotů) – jediný zdroj pro `drawMyArea`, `positions.js` i intro. `handAlign` řídí zarovnání: desktop `'left'` (dnešní stav), mobil `'center'`, protože pás jde přes celou šířku jeviště a pár karet by se krčilo v rohu. **Mobilní profil (`oppMode: 'compact'`) navíc nese kompaktní řadu soupeřů** – viz „Kompaktní soupeři" níže. **`boardBand`/`boardSlot`** = pás vyložených karet s pevným počtem slotů (viz „Pás vyložených karet" níže). **`oppScale(L, n)` závisí na POČTU soupeřů i v okruhu** (`oppScaleByCount`): při 7 soupeřích (8 hráčů) stojí nahoře tři skupiny vedle sebe, takže se karty zmenší z 0,27 na 0,25. Ptát se proto vždy přes `oppScale`, nikdy na `L.scaleOpp` napřímo – platí to i pro `positions.js`. **`livesTrack(maxHealth, scale, maxCards)`** = dráha, po které jezdí portrét po kartě životů. Karta má 5 nábojů, takže postavy Divokého západu nad 5 životů (Big Spencer 9, jako šerif 10; Gary Looter 5/6) dostanou v ose pohybu portrétu DRUHOU kartu a dvojice se chová jako jedna dráha o 10 slotech (`cardOff` = 5 × `step`, karty se o 0,07 výšky překrývají, aby rozestup nábojů zůstal stejný). Do 5 životů vrací pixelově dnešní stav. **Kolik karet dráhy je zrovna VIDĚT, ale neurčuje `cards` (kapacita z maxHealth), nýbrž `livesCardsShown(track, health)`** – druhá se vykládá až od 6 životů, protože při 5 leží portrét přesně na jejím místě a níž by jen zabírala místo; na desce se přechod fáduje (`App.livesFade`, view/board.js), v intru ho hlídá `_introSyncLives2`. `maxCards: 1` je pro kompaktní sloupec soupeře (mobil) – ten je široký přesně jednu kartu, takže se dráha nedělí, portrét se zastaví na 5. slotu (`livesSlot`) a přebytek se dopíše číslem (`counter`). Ptají se jím `view/board.js` (všechny čtyři větve okruhu, moje zóna, divák, kompaktní sloupec) a `view/intro.js` (`_introOppSlots`, `MY_LIVES2_Y`); `positions.js` se nemění – druhá karta roste směrem, kterým sloty vyložených karet nerostou. **`myLivesGeom(L, health, maxHealth)`** k tomu řeší, že MŮJ blok (karty + portrét) by nad 7 životů dosáhl na balíčky: celý se zmenší (`livesFitScale`, zarovnáno DOLŮ – spodní hrana nulté karty zůstává na `myBaseY` + půl karty) a s ubývajícími životy se plynule vrací do plné velikosti. Strop drží `livesTopY` v profilu (desktop = spodek odhozu, mobil = spodek kompaktní řady soupeřů); do 7 životů vrací fit 1, takže je to pro každou jinou postavu no-op. Týká se schválně jen mojí zóny – u soupeřů roste blok do volného prostoru – a musí se ho držet i intro (`MY_LIVES_Y`/`MY_LIVES_SCALE`/`_myCharY`/`MY_LIVES2_Y` ve view/intro.js berou zobrazené životy), jinak by se blok se startem hry skokem zmenšil. |
 | `core/cardRules.js` | `getActionForCard`, **`isBlueCard`** | jakou akci spustit po výběru karty + **co je modrá karta**. `isBlueCard` je jediný zdroj pravdy pro schopnost Josého Delgada (server `logic/characters.js`, klient `view/board.js`, bot `core/botPolicy.js`) – **Vězení a Dynamit jsou modré** (Vězení se jen vykládá před soupeře), zelené karty Dodge City mají vlastní typy + `green: true`, takže sem nespadají. |
 | `core/phaseInfo.js` | `isResponseTurn`, `isPlayTurn`, `canActOnHand` | čí je tah / co smí hráč |
@@ -716,7 +716,7 @@ vybavení) uzavřela celé rozšíření.
 ## Rozšíření Údolí stínů (Valley of Shadows) — rozpracované
 
 **Hotové jsou fáze F0 (kostra), F1 (šest karet na existující mašinerii), F2 (dvě postavy),
-F3 (fronta výstřelů) a F4 (kolečko voleb)** a rozšíření
+F3 (fronta výstřelů), F4 (kolečko voleb) a F5 (Duch)** a rozšíření
 jde zapnout v menu jako každé jiné (`MENU_EXPANSIONS`, nápověda poctivě říká „rozpracované").
 F1 = **Tomahawk** (jen data – bang-efekt s dostřelem 2), **Poslední pivo** (`cardEffects`
 v `playCard`, není to karta Pivo), **Chřestýš** (sejmutí v `logic/checks.js` po Dynamitu
@@ -782,6 +782,22 @@ Lafayette si lízne až po přesunu. Karta jde z ruky ven dřív, než se vybír
 (`_vosPlayRound`). Akce `vos_pick` a `vos_poker_take`; animace (`tornado_pass`,
 `poker_reveal`, `poker_take`) zapisují pravidla do `_vosAnim` a posílá je `flushVosAnim`
 (server/anim.js), boti čekají na `room._vosBlockUntil` (časování core/vosAnim.js).
+F5 = **Duch** (vyřazený hráč zpátky ve hře s nulou životů, natrvalo). Stav se ODVOZUJE
+z karty na stole – trojice **`hasDuchCard`/`isVosGhost`/`staysInPlay`** v
+core/distance.js; `isInPlay` Ducha zahrnuje, `canHeal` ne. **`staysInPlay` = „ve hře
+natrvalo" (živý nebo Duch)** – bez ducha Města duchů a stínu, kteří jsou ve hře jen na
+svůj tah; ptá se jím pořadí tahů, výhra, kdo odkrývá události, Daltonové, Mrtvý muž,
+Hřbitov a dedukce rolí. **Na Ducha se nestřílí** (`computeCanHit` vrací false, playBang,
+Duel, hromadné útoky, Evelyn i fronta výstřelů ho míjejí) a nic, co bere život, na něj
+nedopadá (dynamit vybuchne bez zásahu, Chřestýš se nesnímá); krást, odhazovat, Vězení
+i Daltonové na něj jdou. Kartu může sebrat kdokoli – odchod uklízí **`_vosGhostSettle`**
+(logic/valley.js; volá ho `_processSpecialQueue`, `_resumeAfterSpecial`, krok startu tahu
+`_vosGhostTurnStep` za Daltony a Lasem a hák před broadcastem) v klidu: ruka a stůl do
+odhozu (`_ghostLeaveAnim`), bez odměny, přepočet výhry, a odešel-li hráč na tahu, posun
+tahu. `_vosWasGhost` slouží JEN tomuhle úklidu. Laso Ducha vyřazuje i s kartou.
+**Každé napřímo položené `health > 0` / `health <= 0` v logic.js, logic/* a core/* musí
+být v tabulce `LIFE_OK` s důvodem** (strukturální test v `test/vos.ghost.test.js`) –
+„ve hře" se ptá `isInPlay`/`staysInPlay`, napřímo jen skutečný život.
 Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art` = slug v
 `assets/card_art/udoli_stinu/`), postavy id 50–54 v characters.json, mixin
 [logic/valley.js](logic/valley.js), zrcadlo [core/valley.js](core/valley.js) (`vosOn`,
@@ -789,7 +805,7 @@ Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art` = slug v
 a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van Kliff –
 hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
 Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (postavy zatím
-tři z pěti, karty dvanáct z patnácti). **Art všech 15 karet i 5 portrétů je dodaný**
+tři z pěti, karty třináct z patnácti). **Art všech 15 karet i 5 portrétů je dodaný**
 (`assets/card_art/udoli_stinu/*.webp`, `assets/characters/050–054.webp`) a s nimi
 **značka supa** (`assets/card_marks/udoli_stinu.webp`, `VOS_MARK_READY = true`). Značky rozšíření
 (býk i sup) mají **100×100 px** a pečou se v rozměru souboru × 0,5 (`MARK_LAYOUT.bullScale`, game.js),
@@ -797,10 +813,11 @@ kotva pravý horní roh – jiný rozměr souboru = jiná velikost na kartě.
 Štítky zůstávají jako záloha: karta bez artu, ale s `text`, jde přes `paintCardLabel`,
 postava s `portrait: false` přes `buildPortraitLabels` (game.js).
 Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js`, `test/vos.characters.test.js`,
-`test/vos.shots.test.js` (F3), `test/vos.round.test.js` (F4) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
+`test/vos.shots.test.js` (F3), `test/vos.round.test.js` (F4), `test/vos.ghost.test.js` (F5) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
 karta opravdu hrála), „(F2)" (stůl plný jedné postavy) a „(F3)" (karty F3 + stůl plný
 Evelyn, hlídá i to, že mrtvý hráč nikdy nezůstane na tahu) a „(F4)" (namnožené karty
-F4, hlídá, že kolečko nikdy nezůstane viset do fáze PLAY) v `test/server.bots.test.js`. Pravidla obou vydání (české Albi je
+F4, hlídá, že kolečko nikdy nezůstane viset do fáze PLAY) a „(F5)" (balíček plný Duchů,
+hlídá, že vyřazený nikdy nezůstane na tahu a Duch nezíská život) v `test/server.bots.test.js`. Pravidla obou vydání (české Albi je
 originál a u devíti karet se liší od mezinárodního) jsou v
 [docs/udoli-stinu.md](docs/udoli-stinu.md), plán karta po kartě s háky, rozhodnutími R1–R15
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
@@ -808,7 +825,7 @@ a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md
 původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
 pauza na reakci jen když reagovat jde, art dodává uživatel (co chybí, kreslí se
 jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
-text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F5
-(Duch – audit `health > 0` / `isInPlay` se strukturálním testem, settle hák, výhra, kreslení).
+text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F6
+(okno úniku `EVADE_OFFER`: Útěk a Mick Defender).
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.

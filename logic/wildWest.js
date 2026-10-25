@@ -216,13 +216,13 @@ const WildWestMixin = {
         if (!this.hasEvent('HRBITOV')) return false;
         const idx = this.currentPlayerIndex;
         const p = this.players[idx];
-        if (!p || p.health > 0) return false;
+        if (!p || staysInPlay(p)) return false;   // Duch (Údolí stínů) vyřazený není
         // Míchají se role všech, kdo jsou v TENHLE okamžik vyřazení – včetně toho, kdo
         // se právě vrací (R2). Není to jednorázová akce při příchodu karty: při pěti
         // vyřazených se zamíchá čtyřikrát (5, 4, 3 a 2 zbylé role), u poslední už ne.
         const dead = [];
         this.players.forEach((q, i) => {
-            if (q && q.health <= 0 && q.role !== 'Sheriff') dead.push(i);
+            if (q && !staysInPlay(q) && q.role !== 'Sheriff') dead.push(i);
         });
         p._ghost = false;
         p.health = 1;

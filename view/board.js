@@ -18,6 +18,10 @@
 // se kterou právě hraje (`_shadowSide`, logic/shadow.js) – „stínový pomocník / bandita".
 // Než dorazí art oboustranné karty, stojí za ni karta té strany. Ostatním vrací `fallback`.
 const SHADOW_ROLE_TEX = { Deputy: 'role_shadow_deputy', Outlaw: 'role_shadow_outlaw' };
+
+// Údolí stínů – Duch: vyřazený hráč s kartou Duch hraje dál s nulou životů. Kreslí se
+// jako hrající, jen jeho portrét je průsvitný (isVosGhost, core/distance.js).
+const VOS_GHOST_ALPHA = 0.55;
 function roleTexFor(player, fallback) {
     const side = player && player._shadowSide;
     if (!side) return fallback;
@@ -695,8 +699,8 @@ function drawOpponents(ctx) {
         // (do stále zvýrazněné ruky už vyřízeného hráče) vyhodnotil jako výběr karty DALŠÍHO
         // hráče v pořadí. Stejně to platí pro Paniku/Cat Balou/Ragtime/zelené krádeže.
         const canTargetThisPlayer = !App.blockInput && (
-            (isPanicCBActive && panicInRange && player.health > 0) ||
-            (isDeSteal && player.health > 0) || isServerCardSelect);
+            (isPanicCBActive && panicInRange && isInPlay(player)) ||      // i Duch (Údolí stínů)
+            (isDeSteal && isInPlay(player)) || isServerCardSelect);
         // Fistful – Odražená střela: klikatelné jsou VYLOŽENÉ karty kteréhokoli soupeře
         // (vzdálenost nehraje roli, FAQ Q15).
         const isRicochetTarget = _ricoArmed && ricochetTargetOk(state, myIndex, actualIdx);
@@ -752,7 +756,7 @@ function drawOpponents(ctx) {
         // i klikatelnost karet na stole HNED zmizí (nečekej na room_update na konci animace) –
         // jinak jde na ně klikat znovu a spustit „falešnou" animaci karty, co nedoletí do ruky.
         const isPatDraw = isMyDraw && !App.blockInput && (state.drawPhaseState?.options || []).includes('board') &&
-            state.drawPhaseState?.cardsDrawn === 0 && player.health > 0;
+            state.drawPhaseState?.cardsDrawn === 0 && isInPlay(player);
 
         let isCurrent = state.currentPlayerIndex === actualIdx;
         // Na víc hráčů naráz se čeká jen u kolečka voleb Údolí stínů – svítí všichni z nich.
@@ -833,10 +837,15 @@ function drawOpponents(ctx) {
         const handFan = player.hand.length;
         const handLen = Math.max(0, handFan - (App.oppHandHideCount?.[actualIdx] || 0));
 
+        // Údolí stínů – karta Duch se vykládá právě před VYŘAZENÉHO hráče, takže jeho
+        // portrét musí jít kliknout i jako mrtvý.
+        const _duchTarget = selectedState.action === 'Duch' && !!_selCard &&
+            vosPlaceTargetOk(state, actualIdx, _selCard);
         const addCharInteraction = (sprite) => {
             // Duch (Město duchů, High Noon) je na svůj tah zpátky ve hře – kreslí se
-            // jako hráč na tahu a dá se na něj cílit, i když má 0 životů.
-            if (isDead && !player._ghost && !player._shadow) {
+            // jako hráč na tahu a dá se na něj cílit, i když má 0 životů. Duch z Údolí
+            // stínů ve hře sedí natrvalo (isInPlay).
+            if (isDead && !isInPlay(player) && !_duchTarget) {
                 sprite.setInteractive({ useHandCursor: false });
                 return;
             }
@@ -846,8 +855,8 @@ function drawOpponents(ctx) {
             const isJail = selectedState.action === 'Vězení';
             // Údolí stínů – Chřestýš / Odměna: před libovolného hráče (i šerifa), jen ne
             // dvakrát stejné jméno. Jediný zdroj pravdy je vosPlaceTargetOk (core/valley.js).
-            const isPlace = (selectedState.action === 'Chřestýš' || selectedState.action === 'Odměna') &&
-                !!_selCard;
+            const isPlace = (selectedState.action === 'Chřestýš' || selectedState.action === 'Odměna' ||
+                             selectedState.action === 'Duch') && !!_selCard;
             const placeOk = isPlace && vosPlaceTargetOk(state, actualIdx, _selCard);
             // Dodge City „odhoď další kartu" – volba cíle PŘED zaplacením: Tequila (DE_HEAL)
             // léčí zvoleného hráče, Springfield (DE_BANG) na něj vystřelí bang-efekt.
@@ -1313,6 +1322,7 @@ function drawOpponents(ctx) {
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
+            if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
             gameScene.cardsSprites.add(charOpp);
             const _slidingL = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 1, 0, angle, scaleOpp, getCharTex(player.character),
                 player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
@@ -1388,6 +1398,7 @@ function drawOpponents(ctx) {
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
+            if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
             gameScene.cardsSprites.add(charOpp);
             const _slidingT = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 0, 1, angle, scaleOpp, getCharTex(player.character),
                 player.role === "Sheriff" ? { dx: cardW * 0.42, dy: cardH * 0.45, scale: starScale } : null, livesT.slots);
@@ -1462,6 +1473,7 @@ function drawOpponents(ctx) {
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
+            if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
             gameScene.cardsSprites.add(charOpp);
             const _slidingR = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, -1, 0, angle, scaleOpp, getCharTex(player.character),
                 player.role === "Sheriff" ? { dx: -cardH * 0.45, dy: cardW * 0.42, scale: starScale } : null, livesT.slots);
@@ -1583,6 +1595,7 @@ function drawCompactOpponent(ctx) {
     else if (isCurrent) applyTurnTint(charOpp);
     else if (isWaiting) charOpp.setTint(waitTint);
     addCharInteraction(charOpp);
+    if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
     gameScene.cardsSprites.add(charOpp);
     const _slidingC = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 1, 0, angle, scaleOpp, getCharTex(player.character),
         player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
@@ -1837,6 +1850,7 @@ function drawMyArea(ctx) {
         // Nová identita (High Noon, přibalené): stará postava se během cinematiky výměny
         // překlápí na rub a sjíždí na slot odložené karty → na svém místě zatím není.
         if (App.niHideChar) charImg.setVisible(false);
+        if (isVosGhost(me)) charImg.setAlpha(VOS_GHOST_ALPHA);   // Údolí stínů – jsem Duch
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, myLivesScale, getCharTex(me.character), null, myLivesT.slots)) charImg.setVisible(false);
         // Střílím zrovna na někoho? Červeně se útočník rozsvítí OSTATNÍM u stolu
@@ -1980,7 +1994,7 @@ function drawMyArea(ctx) {
         // Umírám-li, moje karty zůstávají na stole, dokud jedna po druhé neodletí
         // (viz deathCardsStillShown) – ne že by všechny zmizely v okamžiku zásahu.
         // Duch (Město duchů, High Noon) hraje s 0 životy, takže potřebuje svůj stůl vidět.
-        if (me.health > 0 || me._ghost || me._shadow || deathCardsStillShown(myIndex)) {
+        if (isInPlay(me) || deathCardsStillShown(myIndex)) {   // i Duch (Údolí stínů)
             if (me.weapon && me.weapon.id !== -1) {
                 myBoardCards.push({ ...me.weapon, _isWeapon: true });
             } else {
@@ -2337,7 +2351,7 @@ function drawMyArea(ctx) {
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
                     // Cíl může být soupeř (má kartu) NEBO já sám (moje karta na stole – mimo
                     // tuhle aktivovanou zelenou), pravidla umožňují cílit i na sebe.
-                    ok = state.players.some((pl, idx) => idx !== myIndex && pl.health > 0 &&
+                    ok = state.players.some((pl, idx) => idx !== myIndex && isInPlay(pl) &&
                             (pl.hand.length > 0 || (pl.weapon && pl.weapon.id !== -1) || (pl.board || []).length > 0))
                         || (me.weapon && me.weapon.id !== -1)
                         || (me.board || []).some(c => c.id !== card.id);
@@ -2914,7 +2928,7 @@ function drawMyArea(ctx) {
                 } else if (card.activate === 'heal_self') {
                     return canHeal(me);   // duch se léčit smí
                 } else if (card.activate === 'steal_any' || card.activate === 'discard_any') {
-                    return state.players.some((pl, idx) => idx !== myIndex && pl.health > 0 &&
+                    return state.players.some((pl, idx) => idx !== myIndex && isInPlay(pl) &&
                         (pl.hand.length > 0 || (pl.weapon && pl.weapon.id !== -1) || (pl.board || []).length > 0));
                 }
                 return true;

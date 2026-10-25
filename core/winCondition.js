@@ -10,6 +10,14 @@ if (typeof require === 'function') {
     }
 }
 
+// Údolí stínů – karta Duch: „je Duch?" a „sedí ve hře natrvalo?" (živý nebo Duch).
+if (typeof require === 'function' && typeof isVosGhost === 'undefined') {
+    const __vg = require('./distance.js');
+    globalThis.isVosGhost = __vg.isVosGhost;
+    globalThis.staysInPlay = __vg.staysInPlay;
+    globalThis.hasDuchCard = __vg.hasDuchCard;
+}
+
 // Hra pro 3 hráče (Město duchů). Role jsou odkryté a cíle v kruhu (TARGET_3P):
 //   • kdo OSOBNĚ vyřadí svého určeného nepřítele, vyhrává hned → `winClaimIdx`,
 //   • zabije-li ho někdo jiný (nebo dynamit), novým cílem obou zbylých je zůstat naživu
@@ -20,7 +28,7 @@ function evaluateWinner3p(players, winClaimIdx) {
     if (winClaimIdx != null && players[winClaimIdx]) {
         return `${roleNameCz(players[winClaimIdx].role)} vyhrál!`;
     }
-    const alive = players.filter(p => p.health > 0 || p._ghost);
+    const alive = players.filter(p => staysInPlay(p) || p._ghost);
     if (alive.length === 1) return `${roleNameCz(alive[0].role)} vyhrál!`;
     return null;
 }
@@ -40,7 +48,7 @@ function evaluateWinner(players, opts = {}) {
     // Nula živých nastat nemůže – vyřazení jde vždy po jednom (`handlePlayerDeath`
     // vyhodnotí výhru po každém), takže se předposlední smrtí vítěz najde.
     if (opts.lastManStanding) {
-        const alive = players.filter(p => p.health > 0 || p._ghost);
+        const alive = players.filter(p => staysInPlay(p) || p._ghost);
         return alive.length === 1 ? `${alive[0].name} vyhrál!` : null;
     }
     if (opts.mode3p) return evaluateWinner3p(players, opts.winClaimIdx);
@@ -48,7 +56,9 @@ function evaluateWinner(players, opts = {}) {
     // High Noon – Město duchů: duch (`_ghost`) je na svůj tah zpátky ve hře, takže se
     // do vyhodnocení počítá jako živý (FAQ H7: zabije-li duch šerifa, vyhrává jeho
     // strana). Příznak drží jen po dobu jeho tahu; jeho odchodem se výhra přepočítá.
-    const alive = players.filter(p => p.health > 0 || p._ghost);
+    // Údolí stínů – Duch (staysInPlay) se počítá taky, a to natrvalo: „ghost-bandita
+    // brání výhře zákona i odpadlíka" (dV 1507774).
+    const alive = players.filter(p => staysInPlay(p) || p._ghost);
     const sheriff = alive.find(p => p.role === "Sheriff");
     const outlaws = alive.filter(p => p.role === "Outlaw");
     const renegades = alive.filter(p => p.role === "Renegade");

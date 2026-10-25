@@ -662,6 +662,10 @@ module.exports = function installAnimService(ctx) {
         // cestou, která frontu odložených akcí nebere, odpálí se odložený výstřel (Opětovná
         // palba, Roztříštěná kulka, Evelyn) tady – jinak by čekal až na konec tahu.
         room?.gameState?._drainVosShots?.();
+        // Údolí stínů – Duch: pojistka úklidu po odchodu (karta Duch zmizela ze stolu
+        // cestou, která frontu odložených akcí nebere). Před flushGhostLeave – ten
+        // animaci odchodu pošle.
+        room?.gameState?._vosGhostSettle?.();
         flushGhostLeave(room);
         flushJohnnyPurge(room);
         flushHighNoonReveal(room);

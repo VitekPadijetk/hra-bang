@@ -19,6 +19,13 @@ if (typeof inPlayCount === 'undefined' && typeof require === 'function') {
 if (typeof canHeal === 'undefined' && typeof require === 'function') {
     globalThis.canHeal = require('./core/distance.js').canHeal;
 }
+// Údolí stínů – karta Duch: „je Duch?" a „sedí ve hře natrvalo?" (živý nebo Duch).
+if (typeof isVosGhost === 'undefined' && typeof require === 'function') {
+    const __vg = require('./core/distance.js');
+    globalThis.isVosGhost = __vg.isVosGhost;
+    globalThis.staysInPlay = __vg.staysInPlay;
+    globalThis.hasDuchCard = __vg.hasDuchCard;
+}
 
 // Samostatný guard: `hasAbility`/`abilitiesOf` (Greygory Deck – Divoký západ) je nový
 // trychtýř dotazů „umí X?"; bloky výš hlídané jiným globálem by ho mohly minout.
@@ -458,8 +465,9 @@ class GameState {
     // spadnou zase na nulu (tryEndTurn / _teardownGhost).
     // Stín (Stínoví pistolníci) ve hře je taky, ale „nemůže získat ani ztratit život" –
     // stejný dotaz, jakým se ptá klient i bot (`canHeal`, core/distance.js).
+    // Duch (Údolí stínů) taky ne – stejný důvod, isVosGhost.
     _heal(player, amount = 1) {
-        if (!player || !isInPlay(player) || player._shadow || amount <= 0) return 0;
+        if (!player || !isInPlay(player) || player._shadow || isVosGhost(player) || amount <= 0) return 0;
         const before = player.health;
         player.health = Math.min(player.health + amount, player.maxHealth);
         return player.health - before;
@@ -560,15 +568,17 @@ class GameState {
         // protože je to totéž: jako by na tom sedadle nikdo neseděl. Příznak je
         // jednorázový a shodí ho `_roseSkip` (logic/wildWest.js), takže smyčka vždycky
         // doběhne – každá další otočka jich má o jeden míň.
+        // Údolí stínů – Duch: vyřazený s kartou Duch sedí ve hře natrvalo (staysInPlay),
+        // takže se nepřeskakuje a nestává se z něj ani duch Města duchů, ani stín.
         while (this._roseSkip(p) ||
-               (p.health <= 0 && !ghostTown && !boneOrchard && !shadows && this.currentPlayerIndex !== deadManIdx)) {
+               (!staysInPlay(p) && !ghostTown && !boneOrchard && !shadows && this.currentPlayerIndex !== deadManIdx)) {
             this.currentPlayerIndex = (this.currentPlayerIndex + step) % this.players.length;
             p = this.players[this.currentPlayerIndex];
         }
-        if (ghostTown && !boneOrchard && p.health <= 0 && this.currentPlayerIndex !== deadManIdx) {
+        if (ghostTown && !boneOrchard && !staysInPlay(p) && this.currentPlayerIndex !== deadManIdx) {
             p._ghost = true;
             this.logEvent('event', { card: 'Město duchů', who: p.name, msg: 'vrací se na jeden tah do hry' });
-        } else if (shadows && !boneOrchard && p.health <= 0 && this.currentPlayerIndex !== deadManIdx) {
+        } else if (shadows && !boneOrchard && !staysInPlay(p) && this.currentPlayerIndex !== deadManIdx) {
             this._enterShadow(this.currentPlayerIndex);
         }
         // Fistful – Vendeta: sejmutí („jen jednou za tah") i příznak tahu navíc platí vždy
@@ -708,7 +718,7 @@ class GameState {
         // Výhra je individuální a smrt šerifa hru nekončí – viz core/winCondition.js.
         const lastManStanding = this.hasEvent('DIVOKY_ZAPAD');
         if (this.isDebug) {
-            const alive = this.players.filter(p => p.health > 0);
+            const alive = this.players.filter(p => staysInPlay(p));   // Duch se počítá
             let result = null;
             if (lastManStanding) {
                 if (alive.length === 1) result = `${alive[0].name} by vyhrál!`;
@@ -733,7 +743,7 @@ class GameState {
             this.winner = w;
             this.logEvent('win', {
                 winner: this.winner,
-                survivors: this.players.filter(p => p.health > 0).map(p => `${p.name}(${p.role})`),
+                survivors: this.players.filter(p => staysInPlay(p)).map(p => `${p.name}(${p.role})`),
             });
         }
     }

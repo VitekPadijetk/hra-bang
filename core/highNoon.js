@@ -65,7 +65,8 @@ function boardDeadFor(state) {
 // A Fistful of Cards – Soudce: karta z ruky se nesmí vyložit před žádného hráče.
 // Zrcadlí GameState._judgeBlocks (logic/fistful.js); typy jsou tytéž řetězce jako
 // CardType v logic/entities.js (core je bez závislostí, viz effSuit výš).
-const JUDGE_BLOCKED_TYPES = ['Zbraň', 'Vybavení', 'Barel', 'Dynamit', 'Vězení'];
+// Údolí stínů: Chřestýš, Odměna i Duch se vykládají před hráče taky.
+const JUDGE_BLOCKED_TYPES = ['Zbraň', 'Vybavení', 'Barel', 'Dynamit', 'Vězení', 'Chřestýš', 'Odměna', 'Duch'];
 function judgeBlocksFor(state, card) {
     if (!card || !eventActive(state, 'SOUDCE')) return false;
     return !!card.green || JUDGE_BLOCKED_TYPES.includes(card.type);

@@ -1612,6 +1612,61 @@ test('Údolí stínů (F4): Divoká banda, Tornádo a Poker – hra jen botů do
     assert.ok(seen.pokerAce > 0, 'Poker aspoň jednou zablokovalo Eso');
 });
 
+test('Údolí stínů (F5): balíček plný Duchů – hra jen botů doběhne 3–8 hráčů', () => {
+    const { isInPlay, isVosGhost } = require('../core/distance.js');
+    const vosData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+    let nid = 73000;
+    const rich = [];
+    for (let copy = 0; copy < 8; copy++) {
+        vosData.filter(c => c.name === 'Duch').forEach(c => rich.push({ ...c, id: nid++ }));
+    }
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const seen = { back: 0, left: 0, deadOnTurn: 0, ghostTurns: 0, healed: 0 };
+    try {
+        for (let k = 0; k < 18; k++) {
+            const n = 3 + (k % 6);
+            const all = k % 3 === 2;
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = rich;
+            const opts = { expansions: { udoli_stinu: true, dodge_city: all, high_noon: all,
+                                         fistful: all, divoky_zapad: all, zlata_horecka: all } };
+            const room = { id: 'vosf5_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e || e.card !== 'Duch') return;
+                if (/vrací se do hry/.test(e.msg || '')) seen.back++;
+                if (/odchází ze hry/.test(e.msg || '')) seen.left++;
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            let lastTurn = null;
+            const guard = pumpToWinner(ctx, room, () => {
+                const cp = gs.players[gs.currentPlayerIndex];
+                if (gs.phase === 'PLAY' && !gs.winner && !isInPlay(cp) && gs._dorothyOwnerIdx == null) seen.deadOnTurn++;
+                if (isVosGhost(cp) && gs.turnId !== lastTurn) { seen.ghostTurns++; lastTurn = gs.turnId; }
+                if (gs.players.some(p => isVosGhost(p) === false && p._vosWasGhost && p.health > 0)) seen.healed++;
+            });
+            assert.ok(gs.winner, `F5 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `F5 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci');
+    assert.equal(seen.deadOnTurn, 0, 'vyřazený hráč nikdy nezůstal na tahu ve fázi PLAY');
+    assert.equal(seen.healed, 0, 'Duch nikdy nezískal život');
+    assert.ok(seen.back > 0, 'Duch aspoň jednou vrátil hráče do hry');
+    assert.ok(seen.ghostTurns > 0, 'Duch aspoň jednou odehrál tah');
+    assert.ok(seen.left > 0, 'Duch aspoň jednou přišel o kartu a odešel ze hry');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

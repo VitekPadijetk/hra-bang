@@ -69,17 +69,43 @@ function hasAbility(player, name) {
 // KAŽDÝ svůj tah, i tehdy je ve hře (vzdálenost, cíl, hokynářství), ale s 0 životy,
 // které se „nedají získat ani ztratit". Mimo svůj tah je mimo hru jako každý vyřazený –
 // příznak drží zase jen po dobu jeho tahu (_teardownShadow, logic/shadow.js).
+//
+// Údolí stínů – karta Duch: vyřazený hráč, před kterým leží Duch, je zpátky ve hře
+// NATRVALO (i během cizích tahů) – s 0 životy, které „nemůže získat ani ztratit".
+// Stav se ODVOZUJE z karty na stole (R10, `hasDuchCard`), žádný příznak: kartu umí
+// sebrat deset různých cest (Panika, Cat Balou, Daltonové, Odražená střela…) a odvozený
+// stav se rozejít nemůže. Úklid po odchodu dělá `_vosGhostSettle` (logic/valley.js).
 function isInPlay(player) {
-    return !!player && (player.health > 0 || !!player._ghost || !!player._shadow);
+    return !!player && (player.health > 0 || !!player._ghost || !!player._shadow || isVosGhost(player));
+}
+
+// Leží před hráčem karta Duch (Údolí stínů)?
+function hasDuchCard(player) {
+    return !!player && (player.board || []).some(c => c && c.type === 'Duch');
+}
+
+// Je hráč Duch – vyřazený (0 životů) s kartou Duch před sebou? Kartu Duch jde vyložit
+// jen před vyřazeného a život pak získat nemůže, takže nula je jistá – dotaz se na ni
+// přesto ptá, ať karta před živým hráčem (nemělo by nastat) nic nerozbije.
+function isVosGhost(player) {
+    return !!player && player.health <= 0 && hasDuchCard(player);
+}
+
+// Sedí hráč ve hře NATRVALO, i mimo svůj tah? Živý, nebo Duch. Na rozdíl od isInPlay
+// sem nepatří duch Města duchů ani stín Stínových pistolníků – ti jsou ve hře jen po
+// dobu svého tahu. Ptá se tím pořadí tahů (nextTurn), kdo odkrývá události, Daltonové,
+// výhra, dedukce rolí bota, Mrtvý muž a Hřbitov (Duch není vyřazený, nevrací se).
+function staysInPlay(player) {
+    return !!player && (player.health > 0 || isVosGhost(player));
 }
 
 // Může si hráč právě teď doplnit život? JEDINÝ dotaz všech léčivých cest (Pivo, Salón,
 // Whisky, Tequila, Sid Ketchum, Panák, Batoh, Rum, …) na serveru, u klienta i u bota.
-// Duch (Město duchů) se léčit smí; stín (Stínoví pistolníci) ne – „nemůžeš získat ani
-// ztratit život". Kdyby se jedna strana ptala jinak, bot by poslal léčení, které server
-// mlčky odmítne, a hra jen botů by se zasekla.
+// Duch (Město duchů) se léčit smí; stín (Stínoví pistolníci) ani Duch (Údolí stínů) ne
+// – „nemůžeš získat ani ztratit život". Kdyby se jedna strana ptala jinak, bot by poslal
+// léčení, které server mlčky odmítne, a hra jen botů by se zasekla.
 function canHeal(player) {
-    return isInPlay(player) && !player._shadow && player.health < player.maxHealth;
+    return isInPlay(player) && !player._shadow && !isVosGhost(player) && player.health < player.maxHealth;
 }
 
 // Kolik hráčů právě SEDÍ VE HŘE (duch Města duchů se počítá – na svůj tah hraje).
@@ -129,6 +155,10 @@ function computeDistance(state, fromIdx, toIdx) {
 //   Infinity  → bez omezení (bang-efekt „any": Springfield/Puška na bizony).
 function computeCanHit(state, attackerIdx, targetIdx, reachOverride) {
     const attacker = state.players[attackerIdx];
+    // Údolí stínů – na Ducha se nestřílí: ve hře sice je (vzdálenost, Panika, Vězení…),
+    // ale život ztratit nemůže, takže by výstřel nic neudělal. Tímhle dotazem se ptá
+    // klient (zvýraznění cíle), bot i server, takže se nerozejdou.
+    if (isVosGhost(state.players[targetIdx])) return false;
     let reach;
     if (reachOverride === Infinity) reach = Infinity;
     else if (typeof reachOverride === 'number') reach = reachOverride;
@@ -150,5 +180,6 @@ function bangEffectReach(card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, abilitiesOf, hasAbility, isInPlay, canHeal, inPlayCount };
+    module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, abilitiesOf, hasAbility, isInPlay, canHeal, inPlayCount,
+                       hasDuchCard, isVosGhost, staysInPlay };
 }

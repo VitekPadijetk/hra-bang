@@ -18,8 +18,10 @@ const LAST_FF_KEY = 'FISTFUL_OF_CARDS';
 
 // Soudce: karty, které se z ruky vykládají PŘED hráče (vlastního i cizího). Zelené karty
 // (Dodge City) mají vlastní typy, poznají se přes `card.green`.
+// Údolí stínů: Chřestýš, Odměna i Duch se vykládají před hráče taky.
 const JUDGE_BLOCKED_TYPES = [CardType.WEAPON, CardType.EQUIPMENT, CardType.BARREL,
-                             CardType.DYNAMITE, CardType.JAIL];
+                             CardType.DYNAMITE, CardType.JAIL,
+                             CardType.RATTLESNAKE, CardType.BOUNTY, CardType.DUCH];
 
 const FistfulMixin = {
     // ── Příprava balíčku (setupGame / setupDebugGame / setupNextGame) ──────────
@@ -875,7 +877,7 @@ const FistfulMixin = {
         if (!this.hasEvent('MRTVY_MUZ') || this._deadManUsed) return -1;
         const i = this._firstDeadIdx;
         if (i === null || i === undefined) return -1;
-        return (this.players[i] && this.players[i].health <= 0) ? i : -1;
+        return (this.players[i] && !staysInPlay(this.players[i])) ? i : -1;   // Duch vyřazený není
     },
 
     // Krok 0 startu tahu – schválně PŘED odkrytím událostí: hráč musí být zpátky ve hře

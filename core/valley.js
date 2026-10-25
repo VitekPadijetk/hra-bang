@@ -32,6 +32,8 @@ const VOS_CARDS_READY = [
     'Opětovná palba', 'Roztříštěná kulka', 'Dvojitá rána',
     // F4 – kolečko voleb všech hráčů (pendingVosRound)
     'Divoká banda', 'Tornádo', 'Poker',
+    // F5 – vyřazený hráč zpátky ve hře s nulou životů
+    'Duch',
 ];
 
 // ── Zbraně (F1) ──────────────────────────────────────────────────────────────
@@ -51,12 +53,21 @@ function shotgunActive(state, p) { return _weaponOn(state, p, 'VOS_SHOTGUN'); }
 // Chřestýš a Odměna: „Polož před libovolného hráče" – tedy i před sebe a před šerifa
 // (na rozdíl od Vězení). Jediná překážka je pravidlo „žádné dvě karty stejného jména
 // před jedním hráčem". Klient, bot i server se ptají tímhle predikátem.
-const VOS_PLACE_TYPES = ['Chřestýš', 'Odměna'];
+//
+// Duch (F5): „Polož před vyřazeného hráče." Cílem je jen hráč MIMO hru – tedy ani duch
+// Města duchů / stín na svůj tah (ti ve hře jsou), ani hráč, který už Ducha má. Sám
+// sebe zahrávající cílit nemůže: hraje, takže ve hře je. Pod Lasem (Fistful) nemá
+// karta na stole žádný efekt – Duch by hráče vrátil a hned zase vyřadil, proto nejde.
+const VOS_PLACE_TYPES = ['Chřestýš', 'Odměna', 'Duch'];
 
 function vosPlaceTargetOk(state, targetIdx, card) {
     if (!card || !VOS_PLACE_TYPES.includes(card.type)) return false;
     const t = state && state.players && state.players[targetIdx];
-    if (!t || !isInPlay(t)) return false;
+    if (!t) return false;
+    if (card.type === 'Duch') {
+        return t.health <= 0 && !isInPlay(t) && !boardDeadFor(state);
+    }
+    if (!isInPlay(t)) return false;
     return !(t.board || []).some(c => c && c.name === card.name);
 }
 
@@ -72,6 +83,13 @@ if (typeof require === 'function' && typeof computeCanHit === 'undefined') {
 }
 if (typeof require === 'function' && typeof computeDistance === 'undefined') {
     globalThis.computeDistance = require('./distance.js').computeDistance;
+}
+// Karta Duch (F5): dotazy žijí v core/distance.js, protože se na ně ptá isInPlay.
+if (typeof require === 'function' && typeof isVosGhost === 'undefined') {
+    const __vg = require('./distance.js');
+    globalThis.isVosGhost = __vg.isVosGhost;
+    globalThis.staysInPlay = __vg.staysInPlay;
+    globalThis.hasDuchCard = __vg.hasDuchCard;
 }
 
 // ── Postavy (F2) ─────────────────────────────────────────────────────────────
@@ -110,7 +128,9 @@ function lemonadeEligible(p) {
 function fanningSeconds(state, myIndex, firstIdx) {
     const out = [];
     (state.players || []).forEach((p, i) => {
-        if (i === myIndex || i === firstIdx || !isInPlay(p)) return;
+        // Duch (F5) ve hře je, ale život ztratit nemůže – na něj se nestřílí (ani druhým
+        // cílem, ani jako „soused", kvůli kterému by první cíl byl povinný).
+        if (i === myIndex || i === firstIdx || !isInPlay(p) || isVosGhost(p)) return;
         if (computeDistance(state, firstIdx, i) <= 1) out.push(i);
     });
     return out;
@@ -132,7 +152,7 @@ function fanningTargets(state, myIndex) {
 function evelynTargets(state, myIndex) {
     const out = [];
     (state.players || []).forEach((p, i) => {
-        if (i === myIndex || !isInPlay(p)) return;
+        if (i === myIndex || !isInPlay(p) || isVosGhost(p)) return;   // na Ducha se nestřílí
         if (computeDistance(state, myIndex, i) <= 1) out.push(i);
     });
     return out;
@@ -252,12 +272,8 @@ function vosReadyCards(data) {
 // se pečou bez značky. Dodání = soubor do složky + tady `true`.
 const VOS_MARK_READY = true;
 
-// Leží před hráčem karta Duch? Stav Ducha se ODVOZUJE z karty na stole (R10), žádný
-// příznak – kartu umí sebrat deset různých cest a odvozený stav se nemůže rozejít.
-// (Do isInPlay/canHeal se zapojí až ve fázi F5.)
-function hasDuchCard(p) {
-    return !!p && (p.board || []).some(c => c && c.type === 'Duch');
-}
+// Karta Duch (F5): `hasDuchCard`, `isVosGhost` a `staysInPlay` jsou v core/distance.js
+// – ptá se na ně isInPlay i canHeal, takže tam musí být dřív. Exportují se i odsud.
 
 // ── Zuřivá Doroty a Lee Van Kliff (Divoký západ), plán §2.17 ─────────────────
 // Obě karty pracují s KATALOGEM druhů karet, takže by se nové druhy objevily samy.
@@ -304,7 +320,7 @@ function vosRepeatOk(card) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { vosOn, VOS_CARDS_READY, vosReadyCards, VOS_MARK_READY, hasDuchCard,
+    module.exports = { vosOn, VOS_CARDS_READY, vosReadyCards, VOS_MARK_READY, hasDuchCard, isVosGhost, staysInPlay,
                        VOS_KINDS, vosDorothyOk, vosRepeatOk,
                        lematActive, shotgunActive, VOS_PLACE_TYPES, vosPlaceTargetOk,
                        vosUnavoidable, lemonadeEligible,

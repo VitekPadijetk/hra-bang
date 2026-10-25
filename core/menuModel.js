@@ -7,6 +7,7 @@ if (typeof require === 'function') {
     if (typeof roleNameCz === 'undefined') globalThis.roleNameCz = require('./roles.js').roleNameCz;
     if (typeof isThreePlayerMode === 'undefined') globalThis.isThreePlayerMode = require('./roles.js').isThreePlayerMode;
     if (typeof teamRole === 'undefined') globalThis.teamRole = require('./roles.js').teamRole;
+    if (typeof staysInPlay === 'undefined') globalThis.staysInPlay = require('./distance.js').staysInPlay;
 }
 
 // Každý text od hráče (jméno, název hry) jde do innerHTML jen přes esc() –
@@ -398,7 +399,7 @@ function playerWon(p, winner, players) {
     const team = teamRole(p);
     if (winner === 'Zákon vyhrál!') return team === 'Sheriff' || team === 'Deputy';
     if (winner === 'Bandité vyhráli!') return team === 'Outlaw';
-    if (winner === 'Odpadlík vyhrál!') return team === 'Renegade' && p.health > 0;
+    if (winner === 'Odpadlík vyhrál!') return team === 'Renegade' && staysInPlay(p);   // i jako Duch (Údolí stínů)
     return false;
 }
 

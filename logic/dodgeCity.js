@@ -39,7 +39,7 @@ const DodgeCityMixin = {
             if (!t || t.health <= 0 || target.targetIdx === pIdx) return;
         } else if (effect === 'steal_any') {
             const t = this.players[target?.targetIdx];
-            if (!t || t.health <= 0 || !this._hasAnyCard(t) || !target.area) return;
+            if (!t || !isInPlay(t) || !this._hasAnyCard(t) || !target.area) return;
             // Na sebe (Ragtime na vlastní stůl) lze cílit jen kartu na stole (zbraň/modrá),
             // z vlastní ruky brát nelze.
             if (target.targetIdx === pIdx && target.area === 'hand') return;
@@ -136,7 +136,7 @@ const DodgeCityMixin = {
             // Cíl karty už znám z target → vyřeš rovnou přes společnou resolveCardSelection.
             const targetIdx = target?.targetIdx;
             const t = this.players[targetIdx];
-            if (!t || t.health <= 0 || !this._hasAnyCard(t) || (targetIdx === playerIdx && target.area === 'hand')) {
+            if (!t || !isInPlay(t) || !this._hasAnyCard(t) || (targetIdx === playerIdx && target.area === 'hand')) {
                 this.phase = "PLAY";
                 this._processSpecialQueue();
                 return;
@@ -295,7 +295,7 @@ const DodgeCityMixin = {
             const targetIdx = target?.targetIdx;
             const t = this.players[targetIdx];
             // Cílit lze i na sebe (vlastní karty na stole) – pravidla to umožňují.
-            if (!t || t.health <= 0 || !this._hasAnyCard(t) || !target?.area) return;
+            if (!t || !isInPlay(t) || !this._hasAnyCard(t) || !target?.area) return;
             // Na sebe: odhození zelené karty posune indexy mého stolu → cíl zapamatuj podle
             // ID a po odhození dopočítej znovu. Na samotnou aktivovanou kartu cílit nelze.
             let selfBoardId = null;
