@@ -1047,17 +1047,34 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     // Divoký západ – Miláček Valentýn: hráč na tahu odhazuje ruku po jedné kartě
     // (klikáním, ne automatikou). Fáze skončí sama s poslední kartou a přejde do
     // lízání náhrad – klient i bot jedou stejnou cestou jako u Ruské rulety.
-    // Údolí stínů – výběr karet z ruky (zatím jen Brokovnice: zasažený odhodí kartu dle
-    // své volby; Tornádo, Poker a Divoká banda přibudou ve fázi F4). Aktér se čte ze
-    // stavu; `playerIdx` v payloadu hlídá guard proti opožděnému kliku.
+    // Údolí stínů – výběr karet z ruky: Brokovnice (zasažený odhodí kartu dle své volby)
+    // a kolečko voleb F4 (Divoká banda odhazuje, Tornádo a Poker si karty jen označí –
+    // přesunou se, až volil poslední; animaci pak pošle hák flushVosAnim v server/anim.js).
+    // Aktér se čte ze stavu; `playerIdx` v payloadu hlídá guard proti opožděnému kliku.
     on('vos_pick', (d) => {
         withRoom((room, p, gs) => {
-            const idx = gs.pendingShotgun?.playerIdx;
+            const idx = gs.pendingVosRound ? gs.pendingVosRound.playerIdx : gs.pendingShotgun?.playerIdx;
             if (idx === undefined || idx === null) return;
             if (d && d.playerIdx != null && d.playerIdx !== idx) return;
             const res = gs.vosPick(idx, d && d.cardIds);
             if (!res) { broadcastRoom(room); return; }
-            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            if (res.card) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            (res.discarded || []).forEach(x => {
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: x.card.id });
+            });
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    // Údolí stínů – Poker: hráč si z vyložených karet bere až 2 (`cardIds`, i prázdné),
+    // zbytek jde do odhozu. Animaci (poker_take) pošle hák flushVosAnim.
+    on('vos_poker_take', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingVosRound?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            if (d && d.playerIdx != null && d.playerIdx !== idx) return;
+            const res = gs.vosPokerTake(idx, (d && d.cardIds) || []);
+            if (!res) { broadcastRoom(room); return; }
             handleReshuffleAndBroadcast(room, gs);
         });
     });

@@ -60,6 +60,11 @@ const PlayMixin = {
             // Yto ani Tequila Joe (+2) se ho netýkají. Mimo tah se jako záchrana nehraje –
             // tahle cesta je jen ve fázi PLAY hráče na tahu.
             [CardType.LAST_CALL]: () => this._heal(player, 1) > 0,
+            // Údolí stínů – Divoká banda, Tornádo, Poker: kolečko voleb všech hráčů
+            // (logic/valley.js). Kartu si odhodí samy, ještě než se začne vybírat.
+            [CardType.BANDIDOS]: () => this._vosPlayRound(cardIndex, 'BANDIDOS'),
+            [CardType.TORNADO]:  () => this._vosPlayRound(cardIndex, 'TORNADO'),
+            [CardType.POKER]:    () => this._vosPlayRound(cardIndex, 'POKER'),
             [CardType.SALOON]: () => {
                 // Léčí každého VE HŘE – při Městě duchů (High Noon) tedy i ducha, který si
                 // zrovna odbývá svůj tah (isInPlay, ne health > 0).

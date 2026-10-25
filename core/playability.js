@@ -389,6 +389,13 @@ function cardPlayability(state, me, myIndex, card) {
         if (state.pendingLemonade?.playerIdx !== myIndex) return null;
         return !lawProtectedCard(state, me, myIndex, card);
     }
+    // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): hráč na řadě si vybírá
+    // z CELÉ ruky (označuje klikáním, odesílá tlačítkem – co je platná volba, říká
+    // vosRoundPickOk). Ve výběru z vyložených karet Pokeru ruka klikací není.
+    if (['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)) {
+        if (state.phase === 'POKER_TAKE') return null;
+        return state.pendingVosRound?.playerIdx === myIndex ? true : null;
+    }
     // Zlatá horečka – Dutch Will: odhazuje JEDNU z právě líznutých karet, takže na rozdíl
     // od Valentýna není klikatelná celá ruka – jen ty, které přibyly ve fázi 1 (seznam
     // nese `pendingDutchDiscard.cardIds`). Je to jeho vlastní fáze 1, ale sedí tady

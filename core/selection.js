@@ -22,6 +22,7 @@
 //   { type: 'DUTCH_DISCARD', index, cardId }          – Dutch Will (Zlatá horečka): odhoď jednu z líznutých
 //   { type: 'VOS_PICK', index, cardId }               – Brokovnice (Údolí stínů): zasažený odhazuje kartu
 //   { type: 'VOS_LEMONADE', index, cardId }           – Limonádový Jim (Údolí stínů): odhoz za +1 život
+//   { type: 'VOS_ROUND_TOGGLE', index, cardId }       – Divoká banda/Tornádo/Poker (Údolí stínů): označit kartu
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání
@@ -82,6 +83,13 @@ function decideCardClick(ctx) {
     // (RANCH), takže sem musí přijít dřív, než se cokoli ptá na „můj tah ve fázi PLAY".
     if (state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex) {
         return { type: 'RANCH_TOGGLE', index, cardId: card.id };
+    }
+
+    // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): karty se jen OZNAČUJÍ
+    // (App.vosSel), odesílá je tlačítko – stejný vzor jako Ranč. Druhý klik označení zruší.
+    if (['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK'].includes(state.phase) &&
+        state.pendingVosRound?.playerIdx === myIndex) {
+        return { type: 'VOS_ROUND_TOGGLE', index, cardId: card.id };
     }
 
     // Fistful – Ruská ruleta: odhod karty Vedle! probíhá MIMO tah i mimo obranu (kolečko

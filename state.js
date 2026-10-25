@@ -224,6 +224,14 @@ const App = {
     // Čistě klientský výběr: server dostane až seznam v `ranch_exchange`. Vyprazdňuje se
     // s odchodem z fáze RANCH (net/handlers.js).
     ranchSel: new Set(),
+    // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): karty označené v ruce
+    // (odesílá je tlačítko, net/handlers.js výběr zahodí, když na řadě nejsem já),
+    // naposled odeslaná volba (animace Tornáda podle ní pozná moje karty), výběr
+    // z vyložených karet Pokeru a „řadu kreslí animace, ne deska" (poker_take).
+    vosSel: new Set(),
+    vosSentIds: [],
+    vosTakeSel: new Set(),
+    vosPoolHide: false,
     // High Noon / Fistful of Cards / Divoký západ: po dobu cinematiky odkrytí karty
     // události kreslíme balíček událostí podle animace, ne podle stavu (ten dorazí až po
     // ní) – karta z balíčku odchází hned se startem letu. null = kresli podle stavu

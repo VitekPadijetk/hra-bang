@@ -30,6 +30,8 @@ const VOS_CARDS_READY = [
     'Tomahawk', 'Poslední pivo', 'Chřestýš', 'Odměna', 'Lemat', 'Brokovnice',
     // F3 – fronta výstřelů a klikané zásahy s útočníkem
     'Opětovná palba', 'Roztříštěná kulka', 'Dvojitá rána',
+    // F4 – kolečko voleb všech hráčů (pendingVosRound)
+    'Divoká banda', 'Tornádo', 'Poker',
 ];
 
 // ── Zbraně (F1) ──────────────────────────────────────────────────────────────
@@ -149,6 +151,87 @@ function evelynOffer(state, myIndex) {
     return evelynTargets(state, myIndex).length > 0;
 }
 
+// ── Kolečko voleb (F4): Divoká banda, Tornádo, Poker ────────────────────────
+// Všechny tři karty nechají vybírat KAŽDÉHO (ostatní) hráče jeho vlastní karty z ruky.
+// Hráči volí po jednom (kolečko `pendingVosRound.queue`, vzor Daltonové / Rvačka), ale
+// u Tornáda a Pokeru se volba nikam nepřesouvá, dokud nevolili všichni – tím je splněné
+// „všichni najednou" i při postupném klikání. Volby (`picks`) vidí jen jejich vlastník
+// (redactState v server/rooms.js). Divoká banda odhazuje hned: odhoz je veřejný a text
+// karty nic současného neříká.
+//
+//   BANDIDOS_DISCARD – „Všichni ostatní hráči odhodí kartu BANG!, nebo odhodí 2 libovolné
+//                      karty z ruky." S jedinou kartou odhodí ji, bez karet nic.
+//   TORNADO_PICK     – „Každý hráč musí dát 2 karty z ruky hráči po levici." S jednou
+//                      kartou dá jednu, bez karet nic (a soused dostane míň).
+//   POKER_PICK       – „Všichni ostatní hráči vyloží po 1 kartě z ruky (pokud můžou)."
+//   POKER_TAKE       – „Když nikdo nevyložil Eso, vezmi si až 2 karty z vyložených karet."
+const VOS_ROUND_PHASES = {
+    BANDIDOS: 'BANDIDOS_DISCARD',
+    TORNADO:  'TORNADO_PICK',
+    POKER:    'POKER_PICK',
+};
+
+// Ve které fázi kolečko právě je (POKER_TAKE = Poker po odkrytí vyložených karet).
+function vosRoundPhase(r) {
+    if (!r) return null;
+    return r.kind === 'POKER' && r.pool ? 'POKER_TAKE' : VOS_ROUND_PHASES[r.kind];
+}
+
+// Čí je teď volba v kolečku? (null mimo kolečko.) Ptá se pendingActor i klient.
+function vosRoundChooser(state) {
+    const r = state && state.pendingVosRound;
+    if (!r || state.phase !== vosRoundPhase(r)) return null;
+    return r.playerIdx != null ? r.playerIdx : null;
+}
+
+// „Karta BANG!" pro Divokou bandu: pravý BANG!, Calamity Janet se svým Vedle!, pod
+// Zúčtováním každá karta (playsAsBang). Lemat ne – platí jen „ve svém tahu".
+// playability.js se na valley.js ptá sám, proto se tu bere až při volání (kruh).
+function _playsAsBangLazy(state, p, card) {
+    const f = typeof playsAsBang === 'function' ? playsAsBang : require('./playability.js').playsAsBang;
+    return f(state, p, card);
+}
+
+// Kolik karet hráč s `n` kartami v ruce vybírá. U Divoké bandy je to „2, nebo jedna
+// karta BANG!" – vrací se 2 a jedničku pouští vosRoundPickOk.
+function vosRoundPickCount(kind, n) {
+    if (kind === 'TORNADO' || kind === 'BANDIDOS') return Math.min(2, n);
+    if (kind === 'POKER') return Math.min(1, n);
+    return 0;
+}
+
+// Je `cardIds` platná volba hráče `idx` v právě běžícím kolečku? Jediný zdroj pravdy pro
+// server (vosPick), klienta (kdy se rozsvítí potvrzovací tlačítko) i bota.
+function vosRoundPickOk(state, idx, cardIds) {
+    const r = state && state.pendingVosRound;
+    if (!r || r.pool || vosRoundChooser(state) !== idx) return false;
+    const p = state.players && state.players[idx];
+    if (!p || !Array.isArray(cardIds)) return false;
+    if (new Set(cardIds).size !== cardIds.length) return false;
+    const hand = p.hand || [];
+    const cards = cardIds.map(id => hand.find(c => c && !c._placeholder && c.id === id));
+    if (cards.some(c => !c)) return false;
+    if (r.kind === 'BANDIDOS' && cards.length === 1 && hand.length > 1) {
+        return _playsAsBangLazy(state, p, cards[0]);
+    }
+    return cards.length === vosRoundPickCount(r.kind, hand.length);
+}
+
+// Poker – výběr z vyložených karet: až 2 RŮZNÉ karty z `pool` (i žádná).
+function pokerTakeOk(state, idx, cardIds) {
+    const r = state && state.pendingVosRound;
+    if (!r || r.kind !== 'POKER' || !r.pool || vosRoundChooser(state) !== idx) return false;
+    if (!Array.isArray(cardIds) || cardIds.length > 2) return false;
+    if (new Set(cardIds).size !== cardIds.length) return false;
+    return cardIds.every(id => r.pool.some(e => e && e.card && e.card.id === id));
+}
+
+// Poker: „Když nikdo nevyložil Eso" – rozhoduje VYTIŠTĚNÁ hodnota (Požehnání/Prokletí
+// mění jen barvu).
+function pokerHasAce(cards) {
+    return (cards || []).some(c => c && c.value === 'A');
+}
+
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
 // logic/setup.js) a do katalogu karet debug hry.
 function vosReadyCards(data) {
@@ -216,5 +299,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        VOS_KINDS, vosDorothyOk, vosRepeatOk,
                        lematActive, shotgunActive, VOS_PLACE_TYPES, vosPlaceTargetOk,
                        vosUnavoidable, lemonadeEligible,
-                       fanningSeconds, fanningTargets, evelynTargets, evelynOffer };
+                       fanningSeconds, fanningTargets, evelynTargets, evelynOffer,
+                       VOS_ROUND_PHASES, vosRoundPhase, vosRoundChooser, vosRoundPickCount,
+                       vosRoundPickOk, pokerTakeOk, pokerHasAce };
 }

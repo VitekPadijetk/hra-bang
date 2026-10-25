@@ -2977,6 +2977,16 @@ function _playCardAnim(data) {
         case 'gear_rum':
             playGearRum(data);
             break;
+        // Údolí stínů – kolečko voleb (core/vosAnim.js).
+        case 'tornado_pass':
+            playTornadoPass(data, { sideAngle, sideScale });
+            break;
+        case 'poker_reveal':
+            playPokerReveal(data, { sideAngle, sideScale, pileScale });
+            break;
+        case 'poker_take':
+            playPokerTake(data, { sideAngle, sideScale, pileScale });
+            break;
         case 'store_pick': {
             // Karta letí ze slotu hokynářství do ruky hráče. Já: lícem do mého slotu
             // (staging). Jiný: líc→rub do jeho ruky (mizí mu do skryté ruky).
@@ -3168,6 +3178,135 @@ function playGearRum(data) {
     });
 }
 
+// ── Údolí stínů – kolečko voleb (core/vosAnim.js) ─────────────────────────────
+// Karta, která z ruky odchází: u mě podle ID, u ostatních (ruka je rubem) poslední
+// slot. Pod Sacagaway jsou cizí ruce odkryté – tam se taky hledá podle ID.
+function _vosTakeFromHand(playerIdx, cardId) {
+    const p = state?.players?.[playerIdx];
+    if (!p || !p.hand) return;
+    const i = cardId != null ? p.hand.findIndex(c => c && c.id === cardId) : -1;
+    if (i !== -1) p.hand.splice(i, 1);
+    else if (playerIdx !== myIndex && p.hand.length) p.hand.pop();
+}
+
+// Tornádo: karty letí z každé ruky k sousedovi po levici, všechny naráz. Které karty dávám
+// já, vím z vlastního stavu (`picks`, redakce mi je nechává) nebo z toho, co jsem právě
+// odeslal (byl jsem poslední, takže stav s mou volbou nedorazil). Ostatní letí rubem.
+// Nové karty se v rukou objeví až se stavem (fronta animací ho drží do konce letu).
+function playTornadoPass(data, h) {
+    if (!gameScene || !state) return;
+    const T = VOS_ANIM.tornado;
+    const myPick = (state.pendingVosRound?.picks || []).find(pk => pk.playerIdx === myIndex);
+    const mine = new Set([...(myPick?.cardIds || []), ...(App.vosSentIds || [])]);
+    App.vosSentIds = [];
+    (data.moves || []).forEach(m => {
+        const from = getPlayerHandPos(m.fromIdx), to = getPlayerHandPos(m.toIdx);
+        const fp = state.players[m.fromIdx];
+        const faces = m.fromIdx === myIndex ? (fp?.hand || []).filter(c => mine.has(c.id)).slice(0, m.count).map(c => c.id) : [];
+        for (let k = 0; k < m.count; k++) {
+            _vosTakeFromHand(m.fromIdx, faces[k] ?? null);
+            const tex = faces[k] != null ? getCardTex(faces[k]) : 'card_back';
+            animateCard(from.x, from.y, to.x, to.y, tex, T.flyMs, null, {
+                delay: k * T.staggerMs,
+                startAngle: h.sideAngle(m.fromIdx), endAngle: h.sideAngle(m.toIdx),
+                startScale: h.sideScale(m.fromIdx, 'hand'), endScale: h.sideScale(m.toIdx, 'hand'),
+            });
+        }
+    });
+    renderUI();
+}
+
+// Poker: vyložené karty vyletí z rukou do řady uprostřed stolu (cestou se otočí), leží
+// s popiskem a pak: s Esem odletí do odhozu, bez Esa zůstanou – od příchodu stavu je
+// kreslí deska (fáze POKER_TAKE, drawVosPokerPool ve view/board.js) na stejných místech.
+function playPokerReveal(data, h) {
+    if (!gameScene || !state) return;
+    const P = VOS_ANIM.poker;
+    const cards = data.cards || [];
+    const n = cards.length;
+    if (!n) return;
+    App.vosSentIds = [];
+    const sprites = [];
+    let stateIn = false;
+    onNextState(() => {
+        stateIn = true;
+        // Bez Esa leží karty dál – teď už je kreslí deska ze stavu.
+        if (!data.ace) sprites.forEach(s => { if (s?.active) s.destroy(); });
+    });
+    cards.forEach((c, i) => {
+        gameScene.time.delayedCall(i * P.staggerMs, () => {
+            if (!gameScene) return;
+            const from = getPlayerHandPos(c.fromIdx);
+            _vosTakeFromHand(c.fromIdx, c.id);
+            renderUI();
+            const spr = gameScene.add.image(from.x, from.y, 'card_back')
+                .setScale(h.sideScale(c.fromIdx, 'hand')).setAngle(h.sideAngle(c.fromIdx))
+                .setDepth(820 + i).setAlpha(0.98);
+            sprites[i] = spr;
+            if (stateIn && !data.ace) { spr.destroy(); return; }
+            gameScene.tweens.add({ targets: spr, x: pokerSlotX(i, n), y: P.rowY, angle: 0,
+                                   scaleY: P.scale, duration: P.flyMs, ease: 'Cubic.easeOut' });
+            gameScene.tweens.add({ targets: spr, scaleX: 0, duration: P.flyMs / 2, ease: 'Sine.easeIn',
+                onComplete: () => {
+                    if (!spr.active) return;
+                    spr.setTexture(getCardTex(c.id));
+                    gameScene.tweens.add({ targets: spr, scaleX: P.scale, duration: P.flyMs / 2, ease: 'Sine.easeOut' });
+                } });
+        });
+    });
+    const shownAt = (n - 1) * P.staggerMs + P.flyMs;
+    const who = state.players?.[data.byIdx]?.name || '';
+    const label = data.ace ? '🃏 Poker – někdo vyložil Eso! Všechno jde do odhozu'
+                           : `🃏 Poker – bez Esa${who ? ': ' + who + ' si bere až 2 karty' : ''}`;
+    gameScene.time.delayedCall(shownAt, () => {
+        if (!gameScene) return;
+        const cap = gameScene.add.text(960, P.rowY - 500 * P.scale / 2 - 34, label,
+            { fontFamily: THEME.fontUI, fontSize: '28px', fontStyle: 'bold',
+              color: data.ace ? THEME.color.danger : THEME.color.gold,
+              backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 16, y: 6 } })
+            .setOrigin(0.5).setDepth(830);
+        gameScene.time.delayedCall(P.holdMs, () => { if (cap.active) cap.destroy(); });
+    });
+    if (!data.ace) return;
+    cards.forEach((c, i) => {
+        gameScene.time.delayedCall(shownAt + P.holdMs + i * P.landStaggerMs, () => {
+            const spr = sprites[i];
+            if (!gameScene || !spr?.active) return;
+            const to = discardTopPos();
+            gameScene.tweens.add({ targets: spr, x: to.x, y: to.y, scaleX: h.pileScale(), scaleY: h.pileScale(),
+                duration: P.landMs, ease: 'Cubic.easeIn',
+                onComplete: () => holdThenFinish(spr, () => stateIn, () => { if (spr.active) spr.destroy(); }) });
+        });
+    });
+}
+
+// Poker – výběr z řady: vybrané karty letí do ruky hráče, zbytek do odhozu. Řada
+// přestane být kreslená deskou hned (App.vosPoolHide), sprity ji převezmou.
+function playPokerTake(data, h) {
+    if (!gameScene || !state) return;
+    const P = VOS_ANIM.poker;
+    const pool = state.pendingVosRound?.pool || [];
+    const n = pool.length;
+    if (!n) return;
+    App.vosPoolHide = true;
+    App.vosTakeSel.clear();
+    let stateIn = false;
+    onNextState(() => { stateIn = true; App.vosPoolHide = false; });
+    renderUI();
+    const taken = data.taken || [];
+    pool.forEach((e, i) => {
+        const take = taken.includes(e.card.id);
+        const to = take ? getPlayerHandPos(data.playerIdx) : discardTopPos();
+        animateCard(pokerSlotX(i, n), P.rowY, to.x, to.y, getCardTex(e.card.id), P.landMs, null, {
+            delay: i * P.landStaggerMs,
+            startScale: P.scale,
+            endScale: take ? h.sideScale(data.playerIdx, 'hand') : h.pileScale(),
+            startAngle: 0, endAngle: take ? h.sideAngle(data.playerIdx) : 0, exactAngle: !take,
+            holdUntil: () => stateIn,
+        });
+    });
+}
+
 // Společné tělo obou (a předloha je 2. karta Black Jacka): karta vyletí z balíčku
 // doprostřed obrazovky, cestou se překlopí a zvětší, chvíli drží – a pak letí do RUKY
 // (ostatním se za letu překlopí zpět na rub) nebo do ODHOZU (`toDiscard`).
@@ -3345,6 +3484,11 @@ function _animDurationMs(data) {
     if (data.type === 'ranch_discard') return ranchDiscardMs((data.cardIds || []).length);
     // Zlatá horečka – Rum: řada otočených karet uprostřed stolu, pak do odhozu.
     if (data.type === 'gear_rum') return rumRevealMs((data.cards || []).length, data.shuffle);
+    // Údolí stínů – Tornádo (předání karet), Poker (odhalení vyložených karet, výběr).
+    // Stejný vzorec drží boty na serveru (flushVosAnim v server/anim.js).
+    if (data.type === 'tornado_pass' || data.type === 'poker_reveal' || data.type === 'poker_take') {
+        return vosAnimMs(data);
+    }
     // Divoký západ – Helena Zontero a obě půlky přerozdání rolí (Hřbitov i Helena).
     // `role_peek` trvá stejně u všech, i u těch, kdo si ho nepřehrají (role: null) –
     // jinak by se fronty klientů rozešly a stav by u každého dorazil jindy.
@@ -3650,6 +3794,11 @@ function _applyRoomUpdate(payload) {
     // Fistful – Ranč: označené karty patří jedné fázi, s odchodem z ní se zahodí (jinak by
     // se starý výběr nabalil na příští Ranč, kde už ta ID nikdo nemá).
     if (state?.phase !== 'RANCH' && App.ranchSel.size) App.ranchSel.clear();
+    // Údolí stínů – kolečko voleb: výběr patří jedné volbě. Zahodí se, jakmile na řadě
+    // nejsem já (volba odešla, kolečko se posunulo) – jinak by se nabalil na příští.
+    const _vosMine = !!state?.pendingVosRound && state.pendingVosRound.playerIdx === myIndex;
+    if (!_vosMine && App.vosSel.size) App.vosSel.clear();
+    if (state?.phase !== 'POKER_TAKE' && App.vosTakeSel.size) App.vosTakeSel.clear();
 
     // Sejmutí / Black Jack reveal: spustí se JEDNOU při přechodu do fáze. Animaci
     // vidí všichni; vyhodnocení (resolve) automaticky odpálí ten, na koho se čeká,

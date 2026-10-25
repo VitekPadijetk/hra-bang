@@ -8,6 +8,10 @@
 // Sem patří všechno, co nemá domov jinde: fronta výstřelů (F3), hromadné skryté volby (F4),
 // Duch (F5), okna reakcí (F6, F8) a pozastavená akce Henryho Blocka (F7).
 //
+// Fáze F4 přidala KOLEČKO VOLEB (`pendingVosRound`): Divoká banda, Tornádo a Poker
+// nechají každého (ostatního) hráče vybrat karty z ruky; u Tornáda a Pokeru se karty
+// přesunou až po volbě posledního. Dokud kolečko běží, fronta odložených akcí stojí.
+//
 // Fáze F3 přidala první nový mechanismus – FRONTU VÝSTŘELŮ (`_vosShots`, R6): výstřely
 // bez karty a mimo pořadí se zapíšou a odpálí, až efekt, který je vyvolal, celý doběhne
 // (Opětovná palba, druhý cíl Roztříštěné kulky, Evelyn Shebang) – a KLIKANÉ ZÁSAHY
@@ -75,6 +79,10 @@ const ValleyMixin = {
     // víc karet, F4); Brokovnice bere právě jednu. Vrací { card, handIdx } pro animaci,
     // nebo null u neplatného kliku (fáze pak trvá dál).
     vosPick(playerIdx, cardIds) {
+        // F4 – kolečko voleb (Divoká banda, Tornádo, Poker).
+        if (this.pendingVosRound && this.phase === vosRoundPhase(this.pendingVosRound)) {
+            return this._vosRoundPick(playerIdx, cardIds);
+        }
         if (this.phase === "SHOTGUN_DISCARD") {
             const ps = this.pendingShotgun;
             if (!ps || ps.playerIdx !== playerIdx) return null;
@@ -94,6 +102,215 @@ const ValleyMixin = {
             return { card, handIdx: i };
         }
         return null;
+    },
+
+    // ── Kolečko voleb (F4): Divoká banda, Tornádo, Poker ─────────────────────
+    // Všechny tři karty nechají vybírat karty z ruky KAŽDÉHO (ostatního) hráče. Volí se
+    // po jednom, po směru od hráče po levici toho, kdo kartu zahrál (vzor Rvačka /
+    // Daltonové); stav drží `pendingVosRound = { kind, byIdx, queue, playerIdx, picks,
+    // pool }`. Pravidla „všichni najednou" (Tornádo) a skrytý výběr (Poker) splňuje to,
+    // že se karty u těch dvou NIKAM nepřesouvají, dokud nevolil poslední – volby (`picks`)
+    // vidí do té doby jen jejich vlastník (redactState v server/rooms.js).
+    //
+    // Dokud kolečko běží, fronta odložených akcí se NEodbavuje (_processSpecialQueue si
+    // to hlídá): Suzy Lafayette, která dala poslední kartu, si lízne až po přesunu – a u
+    // Tornáda zjistí, že jí soused karty mezitím dal. Pravidlo „nejdřív doběhne efekt".
+    // Odhoz je vynucený, takže Molly Stark za něj nelíže (R13) a Henry Block se
+    // nespouští (dává/odhazuje sám, plán §2.9).
+
+    // Karta z ruky hráče na tahu (cesta playCard). Karta musí z ruky ven DŘÍV, než se
+    // začne vybírat – jinak by Tornádo šlo předat sousedovi spolu s ostatními kartami.
+    // Vrací false (playCard ji pak už neodhazuje, odhozená je).
+    _vosPlayRound(cardIndex, kind) {
+        const idx = this.currentPlayerIndex;
+        const p = this.players[idx];
+        const card = p.hand.splice(cardIndex, 1)[0];
+        this.deck.discard(card);
+        this._trackCard(idx, card.type);
+        this._markBrownPlayed(idx, card);
+        this._startVosRound(kind, idx, this._effSuit(card));
+        return false;
+    },
+
+    // Založí kolečko. `suit` = platná barva zahrané karty – Divoká banda je Q♦, takže
+    // Apache Kida (i Kalumet) vynechá stejně jako kárové Indiány.
+    // Tornádo: „KAŽDÝ hráč" – i ten, kdo ho zahrál (volí poslední). Ostatní dvě karty
+    // míří na „všechny ostatní".
+    _startVosRound(kind, byIdx, suit = null) {
+        const n = this.players.length;
+        const span = kind === 'TORNADO' ? n : n - 1;
+        const queue = [];
+        for (let k = 1; k <= span; k++) {
+            const idx = (byIdx + k) % n;
+            if (!isInPlay(this.players[idx])) continue;
+            if (kind === 'BANDIDOS' && this._apacheImmune(idx, suit, byIdx)) continue;
+            queue.push(idx);
+        }
+        this.pendingVosRound = { kind, byIdx, queue, playerIdx: null, picks: [] };
+        return this._advanceVosRound();
+    },
+
+    // Na řadu jde další hráč, který je ve hře a má co vybírat (hráč bez karet se
+    // přeskakuje – „pokud můžou"). Po posledním se kolečko dokončí. Vrací true, když
+    // se čeká na volbu.
+    _advanceVosRound() {
+        const r = this.pendingVosRound;
+        if (!r) return false;
+        while (r.queue.length) {
+            const p = this.players[r.queue[0]];
+            if (isInPlay(p) && p.hand.length > 0) {
+                r.playerIdx = r.queue[0];
+                this.phase = VOS_ROUND_PHASES[r.kind];
+                return true;
+            }
+            r.queue.shift();
+        }
+        r.playerIdx = null;
+        this._finishVosRound();
+        return false;
+    },
+
+    // Hráč na řadě vybral karty (`vos_pick`). Platnost hlídá vosRoundPickOk
+    // (core/valley.js) – stejný predikát rozsvěcí klientovi tlačítko a ptá se ho bot.
+    // Vrací { discarded: [{ card, handIdx }] } (Divoká banda – animace odhozu),
+    // { picked: true } (Tornádo, Poker), nebo null u neplatné volby.
+    _vosRoundPick(playerIdx, cardIds) {
+        if (!vosRoundPickOk(this, playerIdx, cardIds)) return null;
+        const r = this.pendingVosRound;
+        const p = this.players[playerIdx];
+        let res;
+        if (r.kind === 'BANDIDOS') {
+            const discarded = [];
+            for (const id of cardIds) {
+                const i = p.hand.findIndex(c => c && c.id === id);
+                const card = p.hand.splice(i, 1)[0];
+                this.deck.discard(card);
+                discarded.push({ card, handIdx: i });
+            }
+            this.logEvent('special', { who: p.name, card: 'Divoká banda',
+                                       taken: discarded.map(d => d.card.name).join(', '), msg: 'odhazuje' });
+            this.checkSuzyLafayette(p);
+            res = { discarded };
+        } else {
+            r.picks.push({ playerIdx, cardIds: cardIds.slice() });
+            this.logEvent('special', { who: p.name, card: r.kind === 'TORNADO' ? 'Tornádo' : 'Poker',
+                                       msg: r.kind === 'TORNADO' ? `vybral ${cardIds.length} k předání` : 'vyložil kartu lícem dolů' });
+            res = { picked: true };
+        }
+        r.queue.shift();
+        this._advanceVosRound();
+        return res;
+    },
+
+    // Další hráč ve hře po levici (po směru, i+1) – Tornádo (R12). Bez ohledu na Zlatou
+    // horečku z High Noonu: efekty karet jdou vždycky po směru (FAQ H3).
+    _vosLeftOf(idx) {
+        const n = this.players.length;
+        for (let k = 1; k < n; k++) {
+            const j = (idx + k) % n;
+            if (isInPlay(this.players[j])) return j;
+        }
+        return null;
+    },
+
+    // Volili všichni – teď se teprve něco hýbe. Karty, které si hráč vybral, se berou
+    // jen pokud je pořád drží (kolečko smí mezitím přerušit nanejvýš vyřazení).
+    _finishVosRound() {
+        const r = this.pendingVosRound;
+        if (!r) return;
+        if (r.kind === 'TORNADO') {
+            const moves = [];
+            for (const pk of r.picks) {
+                const giver = this.players[pk.playerIdx];
+                if (!isInPlay(giver)) continue;
+                const cards = pk.cardIds.map(id => giver.hand.find(c => c && c.id === id)).filter(Boolean);
+                const toIdx = this._vosLeftOf(pk.playerIdx);
+                if (!cards.length || toIdx == null) continue;
+                moves.push({ fromIdx: pk.playerIdx, toIdx, cards });
+            }
+            // Nejdřív všem vzít, teprve pak rozdat – „všichni najednou": karta, kterou
+            // hráč dostal, se v tomtéž Tornádu dál neposílá.
+            for (const m of moves) {
+                const g = this.players[m.fromIdx];
+                for (const c of m.cards) g.hand.splice(g.hand.indexOf(c), 1);
+            }
+            for (const m of moves) this.players[m.toIdx].hand.push(...m.cards);
+            this._vosAnimPush({ type: 'tornado_pass',
+                                moves: moves.map(m => ({ fromIdx: m.fromIdx, toIdx: m.toIdx, count: m.cards.length })) });
+            this.logEvent('special', { who: this.players[r.byIdx]?.name, card: 'Tornádo',
+                                       msg: moves.length ? 'karty předány doleva' : 'nikdo nemá co předat' });
+            this.pendingVosRound = null;
+            this.players.forEach(p => this.checkSuzyLafayette(p));
+            this.phase = "PLAY";
+            this._processSpecialQueue();
+            return;
+        }
+        if (r.kind === 'POKER') {
+            const pool = [];
+            for (const pk of r.picks) {
+                const giver = this.players[pk.playerIdx];
+                if (!isInPlay(giver)) continue;
+                const i = giver.hand.findIndex(c => c && c.id === pk.cardIds[0]);
+                if (i === -1) continue;
+                pool.push({ card: giver.hand.splice(i, 1)[0], fromIdx: pk.playerIdx });
+            }
+            const ace = pokerHasAce(pool.map(e => e.card));
+            const by = this.players[r.byIdx];
+            if (pool.length) {
+                this._vosAnimPush({ type: 'poker_reveal', byIdx: r.byIdx, ace,
+                                    cards: pool.map(e => ({ id: e.card.id, fromIdx: e.fromIdx })) });
+            }
+            this.logEvent('special', { who: by?.name, card: 'Poker',
+                                       taken: pool.map(e => e.card.name).join(', '),
+                                       msg: !pool.length ? 'nikdo nic nevyložil' : (ace ? 'Eso – vše do odhozu' : 'bez Esa') });
+            pool.forEach(e => this.checkSuzyLafayette(this.players[e.fromIdx]));
+            // S Esem (nebo když není co brát) jde všechno do odhozu hned.
+            if (!pool.length || ace || !isInPlay(by)) {
+                pool.forEach(e => this.deck.discard(e.card));
+                this.pendingVosRound = null;
+                this.phase = "PLAY";
+                this._processSpecialQueue();
+                return;
+            }
+            r.picks = [];
+            r.queue = [];
+            r.pool = pool;
+            r.playerIdx = r.byIdx;
+            this.phase = "POKER_TAKE";
+            return;
+        }
+        // Divoká banda: odhazovalo se průběžně, není co dokončovat.
+        this.pendingVosRound = null;
+        this.phase = "PLAY";
+        this._processSpecialQueue();
+    },
+
+    // Poker: hráč si z vyložených karet bere „až 2" (`cardIds`, i prázdné), zbytek jde
+    // do odhozu. Vrací { taken, discarded } (ID karet) pro animaci, nebo null.
+    vosPokerTake(playerIdx, cardIds) {
+        if (this.phase !== "POKER_TAKE" || !pokerTakeOk(this, playerIdx, cardIds)) return null;
+        const r = this.pendingVosRound;
+        const p = this.players[playerIdx];
+        const taken = [], discarded = [];
+        for (const e of r.pool) {
+            if (cardIds.includes(e.card.id)) { p.hand.push(e.card); taken.push(e.card.id); }
+            else { this.deck.discard(e.card); discarded.push(e.card.id); }
+        }
+        this.logEvent('special', { who: p.name, card: 'Poker',
+                                   msg: taken.length ? `bere si ${taken.length}` : 'nic si nebere' });
+        this._vosAnimPush({ type: 'poker_take', playerIdx, taken, discarded });
+        this.pendingVosRound = null;
+        this.phase = "PLAY";
+        this._processSpecialQueue();
+        return { taken, discarded };
+    },
+
+    // Animace kolečka zapisují pravidla, posílá je hák před broadcastem (flushVosAnim
+    // v server/anim.js) – kolečko může doběhnout z víc akcí (vos_pick, play_card, Lee
+    // Van Kliff, Zuřivá Doroty), takže se to nedá navázat na jeden handler.
+    _vosAnimPush(a) {
+        if (!this._vosAnim) this._vosAnim = [];
+        this._vosAnim.push(a);
     },
 
     // ── Colorado Bill (F2) ───────────────────────────────────────────────────

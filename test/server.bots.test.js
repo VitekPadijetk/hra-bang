@@ -1554,6 +1554,64 @@ test('Údolí stínů (F3): fronta výstřelů a Dvojitá rána – hra jen bot�
     assert.equal(seen.ownerKilled, 0, 'mrtvý hráč na tahu nikdy nezůstal viset ve fázi PLAY');
 });
 
+// Údolí stínů (fáze F4): kolečko voleb všech hráčů – Divoká banda, Tornádo a Poker.
+// Karty se namnoží (6 kopií), čtvrtina her má zapnutá i všechna ostatní rozšíření (Lee Van
+// Kliff a Zuřivá Doroty kolečko spouští jinou cestou než playCard). Hlídá, že kolečko
+// vždycky doběhne, nikdy nezůstane viset do fáze PLAY a že se hra nezasekne na volbě,
+// která stav nemění (Tornádo a Poker si volbu jen zapíšou).
+test('Údolí stínů (F4): Divoká banda, Tornádo a Poker – hra jen botů doběhne 3–8 hráčů', () => {
+    const vosData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+    const F4 = ['Divoká banda', 'Tornádo', 'Poker'];
+    let nid = 72000;
+    const rich = [];
+    for (let copy = 0; copy < 6; copy++) {
+        vosData.filter(c => F4.includes(c.name)).forEach(c => rich.push({ ...c, id: nid++ }));
+    }
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const seen = { bandidos: 0, tornado: 0, pokerTake: 0, pokerAce: 0, leftover: 0 };
+    try {
+        for (let k = 0; k < 16; k++) {
+            const n = 3 + (k % 6);
+            const all = k % 4 === 3;
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = rich;
+            const opts = { expansions: { udoli_stinu: true, dodge_city: all, high_noon: all,
+                                         fistful: all, divoky_zapad: all, zlata_horecka: all } };
+            const room = { id: 'vosf4_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e || e.ev !== 'special') return;
+                if (e.card === 'Divoká banda' && e.taken) seen.bandidos++;
+                if (e.card === 'Tornádo' && e.msg === 'karty předány doleva') seen.tornado++;
+                if (e.card === 'Poker' && /^bere si/.test(e.msg || '')) seen.pokerTake++;
+                if (e.card === 'Poker' && /Eso/.test(e.msg || '')) seen.pokerAce++;
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room, () => {
+                if (gs.phase === 'PLAY' && gs.pendingVosRound) seen.leftover++;
+            });
+            assert.ok(gs.winner, `F4 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `F4 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci v kolečku voleb');
+    assert.equal(seen.leftover, 0, 'kolečko nikdy nezůstalo viset do fáze PLAY');
+    assert.ok(seen.bandidos > 0, 'Divoká banda aspoň jednou někoho připravila o karty');
+    assert.ok(seen.tornado > 0, 'Tornádo aspoň jednou předalo karty');
+    assert.ok(seen.pokerTake > 0, 'Poker aspoň jednou skončil výběrem z vyložených karet');
+    assert.ok(seen.pokerAce > 0, 'Poker aspoň jednou zablokovalo Eso');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

@@ -181,6 +181,9 @@ module.exports = function installBotService(ctx) {
             gs._dorothyUsed || 0,
             (gs._gagPending || []).length,       // Roubík: čekající pokuty za promluvení
             nugSum, gearSum,                     // Zlatá horečka: nákup v obchodě
+            // Údolí stínů – Tornádo a Poker: volba se jen zapíše (karty se hýbou až po
+            // posledním), takže pokrok je vidět jen na tom, kdo je na řadě a kolik voleb je.
+            gs.pendingVosRound ? `${gs.pendingVosRound.playerIdx}:${(gs.pendingVosRound.picks || []).length}` : '-',
         ].join('|');
     }
 
@@ -217,6 +220,16 @@ module.exports = function installBotService(ctx) {
                 const c = gs.players[idx]?.hand?.[0];
                 return c ? { event: 'vos_pick', payload: { cardIds: [c.id], playerIdx: idx } } : null;
             }
+            // Údolí stínů – kolečko voleb: první platná volba z ruky (prvních N karet; u Divoké
+            // bandy to vždycky projde, protože 2 karty jsou platné vždy). Poker: nebrat nic.
+            case 'BANDIDOS_DISCARD':
+            case 'TORNADO_PICK':
+            case 'POKER_PICK': {
+                const hand = gs.players[idx]?.hand || [];
+                const n = kind === 'POKER_PICK' ? Math.min(1, hand.length) : Math.min(2, hand.length);
+                return n ? { event: 'vos_pick', payload: { cardIds: hand.slice(0, n).map(c => c.id), playerIdx: idx } } : null;
+            }
+            case 'POKER_TAKE': return { event: 'vos_poker_take', payload: { cardIds: [], playerIdx: idx } };
             // Údolí stínů – Limonádový Jim: nabídku jde vždycky odmítnout.
             case 'LEMONADE_OFFER': return { event: 'vos_lemonade', payload: { cardId: null, playerIdx: idx } };
             // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
@@ -287,6 +300,9 @@ module.exports = function installBotService(ctx) {
         // Divoký západ – Sacagaway: vlna přetáčení vějířů (core/wwsAnim.js, nastaví
         // flushSacaFlip / krádež z odkryté ruky v server/anim.js) – po tu dobu bot nehraje.
         const wwsWait = Math.max(0, (room._wwsBlockUntil || 0) - Date.now());
+        // Údolí stínů – kolečko voleb: předání karet Tornáda, odhalení a výběr u Pokeru
+        // (core/vosAnim.js, nastaví flushVosAnim v server/anim.js).
+        const vosWait = Math.max(0, (room._vosBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
         if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
@@ -332,7 +348,7 @@ module.exports = function installBotService(ctx) {
 
         // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
         // časováním – bot čeká, než doběhnou.
-        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait, wwsWait);
+        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait, wwsWait, vosWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();

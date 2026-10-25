@@ -197,6 +197,16 @@ if (typeof evelynTargets === 'undefined' && typeof require === 'function') {
     globalThis.evelynTargets = __vos.evelynTargets;
     globalThis.evelynOffer = __vos.evelynOffer;
 }
+// Údolí stínů (F4): kolečko voleb – Divoká banda, Tornádo, Poker.
+if (typeof vosRoundPickOk === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.VOS_ROUND_PHASES = __vos.VOS_ROUND_PHASES;
+    globalThis.vosRoundPhase = __vos.vosRoundPhase;
+    globalThis.vosRoundChooser = __vos.vosRoundChooser;
+    globalThis.vosRoundPickOk = __vos.vosRoundPickOk;
+    globalThis.pokerTakeOk = __vos.pokerTakeOk;
+    globalThis.pokerHasAce = __vos.pokerHasAce;
+}
 
 // Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum, karta Zlatá horečka
 // a Wanted („zahraj na libovolného hráče"): co jde s nákupem udělat a na koho. Stejným
@@ -365,6 +375,10 @@ class GameState {
         // Údolí stínů – Limonádový Jim: „odhoď kartu za +1 život" za cizí Pivo – fáze
         // LEMONADE_OFFER (fronta odložených akcí, viz logic/valley.js).
         this.pendingLemonade = null;
+        // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): kdo je na řadě,
+        // kdo ještě čeká, co si kdo vybral (tajné, viz redactState) a u Pokeru vyložené
+        // karty. Fáze BANDIDOS_DISCARD / TORNADO_PICK / POKER_PICK / POKER_TAKE.
+        this.pendingVosRound = null;
         // Madam Yto: líznutí za zahrané Pivo – fáze YTO_DRAW (fronta odložených akcí).
         this.pendingYtoDraw = null;
         // Don Bell: sejmutí na konci vlastního tahu je v jednom tahu jen jednou.
@@ -486,6 +500,9 @@ class GameState {
         // Údolí stínů: výstřel, který se do konce tahu nestihl odpálit (střelec nebo cíl
         // mezitím odešel, tah skončil smrtí), propadá – patřil efektu tohohle tahu.
         if (this._vosShots && this._vosShots.length) this._vosShots = [];
+        // Kolečko voleb (Divoká banda, Tornádo, Poker) končí vždy ve fázi PLAY, takže tu
+        // viset nemá – pojistka, ať nedoběhlé kolečko nepřežije do cizího tahu.
+        this.pendingVosRound = null;
         // Divoký západ – Roubík: pokuta za promluvení do chatu, na kterou se během tahu
         // nenašlo místo. Konec tahu je poslední takové, takže se nasazuje i mimo fázi
         // PLAY; vrátí true, když si vzala tok hry – tah se posune až po odkliknutí zásahu.

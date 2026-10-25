@@ -6,6 +6,7 @@ const { hnRevealMs } = require('../core/highNoonAnim.js');
 const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs,
         seatSwapMs, greygoryDealMs } = require('../core/wwsAnim.js');
+const { vosAnimMs } = require('../core/vosAnim.js');
 const { eventActive } = require('../core/highNoon.js');
 const { hasAbility, isInPlay } = require('../core/distance.js');
 
@@ -636,6 +637,21 @@ module.exports = function installAnimService(ctx) {
         }
     }
 
+    // ── Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker) ────────────
+    // Kolečko může doběhnout z víc akcí (vos_pick, vos_poker_take, play_card, Lee Van
+    // Kliff, Zuřivá Doroty), proto si pravidla animaci jen zapíšou (`_vosAnim`) a tady se
+    // pošle těsně před stavem – klient ji přehraje a stav podrží ve frontě. Boti počkají
+    // stejně dlouho (core/vosAnim.js).
+    function flushVosAnim(room) {
+        const gs = room.gameState;
+        const list = gs && gs._vosAnim;
+        if (!list || !list.length) return;
+        gs._vosAnim = null;
+        let hold = 0;
+        list.forEach(a => { emitAnim(room, a); hold += vosAnimMs(a); });
+        if (hold) room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + hold);
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
     // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost
     // a teprve za ní (poslední krok startu tahu) může přijít Miláček Valentýn.
@@ -654,6 +670,7 @@ module.exports = function installAnimService(ctx) {
         flushGreygory(room);
         flushJohnPain(room);
         flushLuckyDeal(room);
+        flushVosAnim(room);
     }
 
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,

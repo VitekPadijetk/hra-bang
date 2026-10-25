@@ -6,12 +6,13 @@ a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_b
 `us_rules_eng.pdf` a přehled karet `us_karty_dvgiochi.webp`.
 
 **Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra), F1 (šest karet,
-2026-10-24), F2 (Colorado Bill, Limonádový Jim, 2026-10-24) a F3 (fronta výstřelů:
-Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24).**
+2026-10-24), F2 (Colorado Bill, Limonádový Jim, 2026-10-24), F3 (fronta výstřelů:
+Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24) a F4
+(kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25).**
 Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js));
-do balíčku jde zatím 9 z 15 druhů karet a do výběru 3 z 5 postav.
+do balíčku jde zatím 12 z 15 druhů karet a do výběru 3 z 5 postav.
 Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
-1782 testů. Po F3: **1813 testů, 0 chyb**.
+1782 testů. Po F3: 1813 testů. Po F4: **1837 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -681,7 +682,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F1** | Tomahawk, Poslední pivo, Chřestýš, Odměna, Lemat (+ `altBangOk`), Brokovnice (+ `SHOTGUN_DISCARD`), `isBangCardPlay`; **menu: karta „již brzy" → zapínací** | jen existující mašinerie; po F1 se dá rozšíření hrát |
 | **F2** | Colorado Bill, Limonádový Jim (+ `LEMONADE_OFFER`) | postavy bez nových mechanismů |
 | **F3** ✓ | Fronta výstřelů + `_afterVosShot` + zabiják; Opětovná palba, Roztříštěná kulka, Evelyn; klikané zásahy s útočníkem → Dvojitá rána | první nový mechanismus, na kterém stojí F7 |
-| **F4** | Divoká banda, Tornádo, Poker (+ redakce, animace) | samostatné, vzor Daltonové |
+| **F4** ✓ | Divoká banda, Tornádo, Poker (+ redakce, animace) | samostatné, vzor Daltonové |
 | **F5** | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
 | **F6** | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
 | **F7** | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
@@ -838,6 +839,55 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 - **Animace:** výstřel z fronty žádnou let nemá (není karta) – banner obrany ho
   pojmenuje („Opětovná palba od hráče X"). Dvojitá rána přidává do banneru „−2 ❤"
   a klikané zásahy mají popisek „🎯 Dvojitá rána".
+
+### Co se ve fázi F4 odchýlilo od plánu (a proč)
+
+- **Jeden stav pro všechny tři karty:** `pendingVosRound = { kind, byIdx, queue,
+  playerIdx, picks, pool }` (logic/valley.js) se čtyřmi fázemi `BANDIDOS_DISCARD`,
+  `TORNADO_PICK`, `POKER_PICK` a `POKER_TAKE`. Kdo je na řadě, je `playerIdx`
+  (pendingActor). Volí se po jednom, po směru od hráče po levici toho, kdo kartu zahrál;
+  u Tornáda volí hráč sám poslední. Hráč bez karet se přeskakuje.
+- **Divoká banda odhazuje hned**, ne až po posledním (plán §2.7 ji házel do jednoho pytle
+  s Tornádem a Pokerem). Text karty nic současného neříká a odhoz je veřejný, takže
+  skrývat není co. Platná volba = 1 karta, která `playsAsBang` (Calamity, Zúčtování),
+  nebo 2 libovolné, s jedinou kartou ta jedna. Q♦ vynechá Apache Kida i Kalumet.
+- **Tornádo a Poker si volbu jen zapíšou** (`picks`), karty se hýbou až po posledním.
+  Redakce nechává `picks[].cardIds` jen vlastníkovi (ostatním prázdný seznam = „už
+  volil"). Tornádo nejdřív všem vezme a pak rozdá, takže se přijatá karta v tomtéž
+  Tornádu neposílá dál. Poker přesune vyložené karty do `pool` – po dobu výběru neleží
+  v žádné hromádce (jako nabídka hokynářství); s Esem (vytištěná hodnota `A`) nebo bez
+  karet jdou rovnou do odhozu.
+- **Jediný predikát platné volby:** `vosRoundPickOk` a `pokerTakeOk` (core/valley.js) –
+  server odmítá, klient podle nich rozsvěcí tlačítko a bot je musí splnit.
+  `playsAsBang` si core/valley.js bere líně (playability.js se na valley.js ptá sám).
+- **Karta odchází z ruky dřív, než se začne vybírat** (`_vosPlayRound`, volá ji
+  `cardEffects` v `playCard` a vrací `false`): jinak by šlo Tornádo předat sousedovi.
+- **Fronta odložených akcí během kolečka stojí** (`_processSpecialQueue` vrací `true`,
+  dokud `pendingVosRound` existuje) a kolečko si ji zavolá samo po doběhnutí. Suzy
+  Lafayette, která dala poslední kartu, si tak lízne až po přesunu – a u Tornáda, které
+  jí karty vrátilo, vůbec. Ze stejného důvodu ho **nepřeruší Roubík** (`_gagCalm`):
+  líznutí Barta Cassidyho za pokutu by nemělo kudy proběhnout.
+- **Lee Van Kliff** opakuje všechny tři (`_brownRepeatSpec` → `_startVosRound`, Apache
+  Kida rozhoduje barva PŮVODNÍ karty), **Zuřivá Doroty** je poroučí běžnou cestou
+  `playCard` (kolečko si `byIdx` nese samo, sedadlo se vrací hned).
+- **Akce:** `vos_pick { cardIds, playerIdx }` (rozšířená) a nová `vos_poker_take
+  { cardIds, playerIdx }` (0–2 karty najednou, ne po jedné). Obě hlídá guard proti
+  opožděnému kliku. Do otisku pokroku botů (`progressSig`) přibylo „kdo je na řadě
+  a kolik voleb je zapsaných" – zápis volby jinak stav viditelně nemění.
+- **Animace** zapisují pravidla (`_vosAnim`) a posílá je hák `flushVosAnim` před
+  broadcastem (kolečko doběhne z vos_pick, play_card, Lee Van Kliffa i Doroty):
+  `tornado_pass` (jen počty karet – které karty dávám já, ví klient ze své volby),
+  `poker_reveal` (veřejná ID vyložených karet, Eso → do odhozu) a `poker_take`.
+  Časování v core/vosAnim.js, boti čekají na `room._vosBlockUntil`.
+- **UI:** výběr v ruce jako u Ranče (`App.vosSel`, tlačítko ODHODIT / PŘEDAT / VYLOŽIT
+  v místě „Ukončit tah"), vyložené karty Pokeru v řadě uprostřed stolu se jménem toho,
+  kdo je vyložil (klik označí, tlačítko VZÍT / NEBRAT NIC). Kdo už volil a čeká, má své
+  karty v ruce zašedlé.
+- **Bot:** Divoká banda radši nejlacinější kartou BANG! než dvěma kartami, Tornádo
+  a Poker nejhorší karty (`keepScore`); hraje-li Poker nepřítel, vyloží Eso. Z vyložených
+  karet bere 2 nejcennější (Dynamit nechá). Divokou bandu hraje s převahou nepřátel,
+  Poker vždy, když mají ostatní karty, Tornádo až nakonec tahu.
+- Henry Block, Útěk ani Mick Defender ještě nejsou (F6, F7) – nic se kvůli nim nečeká.
 
 ## 9. Co plán vědomě nedělá
 

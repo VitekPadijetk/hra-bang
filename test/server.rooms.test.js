@@ -304,6 +304,23 @@ test('redakce: které karty Dutch Will líznul, vidí jen on', () => {
     assert.deepEqual(payloadFor(emits, 's3').pendingDutchDiscard.cardIds, [5, 6]);
 });
 
+// Údolí stínů – Tornádo / Poker: volby se nikam nepřesouvají, dokud nevolili všichni,
+// a do té doby je vidí jen jejich vlastník („všichni najednou", karta lícem dolů).
+test('redakce: co si kdo vybral v kolečku Tornáda/Pokeru, vidí jen on', () => {
+    const { ctx, addSocket, emits } = setup();
+    ['s1', 's2', 's3'].forEach(addSocket);
+    const room = mkPlaying(ctx);
+    room.gameState.phase = 'POKER_PICK';
+    room.gameState.pendingVosRound = { kind: 'POKER', byIdx: 0, queue: [2], playerIdx: 2,
+                                       picks: [{ playerIdx: 1, cardIds: [7] }] };
+    ctx.broadcastRoom(room);
+    assert.deepEqual(payloadFor(emits, 's1').pendingVosRound.picks,
+                     [{ playerIdx: 1, cardIds: [] }], 'cizím zbude jen to, že už volil');
+    assert.deepEqual(payloadFor(emits, 's3').pendingVosRound.picks, [{ playerIdx: 1, cardIds: [] }]);
+    assert.deepEqual(payloadFor(emits, 's2').pendingVosRound.picks[0].cardIds, [7]);
+    assert.deepEqual(room.gameState.pendingVosRound.picks[0].cardIds, [7], 'skutečný stav se nezměnil');
+});
+
 test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => {
     const { ctx, addSocket, emits } = setup();
     ['s1', 's2', 's3'].forEach(addSocket);

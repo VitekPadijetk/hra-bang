@@ -120,7 +120,16 @@ module.exports = function installRoomService(ctx) {
         // i `player.gear` / `player.nuggets` („pokládejte viditelně před sebe").
         // Karta ve fázi GEAR_MODE (Josh McCloud) je naopak VEŘEJNÁ – leží lícem vzhůru
         // pod balíčkem vybavení, takže `pendingGearMode` se neořezává.
-        return { ...gs, players, deck, clausState, pendingDutchDiscard: dutch,
+        // Údolí stínů – kolečko voleb (Tornádo, Poker): co si kdo vybral, vidí do odhalení
+        // jen on sám (Tornádo „všichni najednou", Poker lícem dolů). Že už volil, zůstává
+        // veřejné (položka v `picks` s prázdným seznamem). Vyložené karty Pokeru (`pool`)
+        // jsou po odhalení veřejné. Pod Sacagaway se ruce ukazují, volby ne – volba není ruka.
+        const vosRound = gs.pendingVosRound
+            ? { ...gs.pendingVosRound,
+                picks: (gs.pendingVosRound.picks || []).map(pk =>
+                    pk.playerIdx === viewerIdx ? pk : { playerIdx: pk.playerIdx, cardIds: [] }) }
+            : gs.pendingVosRound;
+        return { ...gs, players, deck, clausState, pendingDutchDiscard: dutch, pendingVosRound: vosRound,
                  eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck),
                  wwsDeck: hideAll(gs.wwsDeck), gearDeck: hideAll(gs.gearDeck) };
     }

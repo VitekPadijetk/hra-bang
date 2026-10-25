@@ -37,6 +37,8 @@ const SEAT_KEYS = new Set([
     'shooterIdx',
     // …a argumenty, které sedadlo nesou (Dvojitá rána, Roztříštěná kulka).
     'victimIdx', 'secondIdx',
+    // …a kolečko voleb (Divoká banda, Tornádo, Poker): kdo kartu zahrál.
+    'byIdx',
 ]);
 // Klíč, jehož hodnota je POLE sedadel (fronty, pořadí, seznamy):
 const SEAT_LIST_KEYS = new Set([
@@ -529,6 +531,10 @@ const WildWestMixin = {
     //     `handlePlayerDeath` (nastaví `_autoEndTurnPending`), stejně jako u Madam Zuzany.
     _gagCalm(playerIdx) {
         if (this.winner || this._autoEndTurnPending) return false;
+        // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker) se nepřerušuje:
+        // fronta odložených akcí v něm stojí, takže by líznutí Barta Cassidyho za pokutu
+        // nemělo kudy proběhnout. Pokuta počká, až kolečko doběhne.
+        if (this.pendingVosRound) return false;
         if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
         if (this.specialActionQueue?.length) return false;
         if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;
@@ -1097,6 +1103,10 @@ const WildWestMixin = {
             case CardType.BEER:        return { effect: 'BEER',        aim: null };
             // Údolí stínů – Poslední pivo: efekt = +1 život (není to karta Pivo).
             case CardType.LAST_CALL:   return { effect: 'LAST_CALL',   aim: null };
+            // Údolí stínů – kolečko voleb všech hráčů, bez cíle.
+            case CardType.BANDIDOS:    return { effect: 'BANDIDOS',    aim: null };
+            case CardType.TORNADO:     return { effect: 'TORNADO',     aim: null };
+            case CardType.POKER:       return { effect: 'POKER',       aim: null };
             case CardType.SALOON:      return { effect: 'SALOON',      aim: null };
             case CardType.STORE:       return { effect: 'STORE',       aim: null };
             case CardType.STAGECOACH:  return { effect: 'STAGECOACH',  aim: null };
@@ -1257,6 +1267,14 @@ const WildWestMixin = {
             }
             case 'brawl': {
                 this._startBrawl(playerIdx);
+                return;
+            }
+            // Údolí stínů – Divoká banda / Tornádo / Poker: kolečko si frontu odložených
+            // akcí dobere samo, až doběhne. Apache Kida rozhoduje barva PŮVODNÍ karty.
+            case 'BANDIDOS':
+            case 'TORNADO':
+            case 'POKER': {
+                this._startVosRound(lb.effect, playerIdx, this._effSuit(src));
                 return;
             }
             default:

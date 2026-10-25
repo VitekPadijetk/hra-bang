@@ -70,6 +70,14 @@ function pendingActor(state) {
         // Údolí stínů – Limonádový Jim: za cizí Pivo odhodí kartu za +1 život, nebo odmítne.
         case 'LEMONADE_OFFER':   return state.pendingLemonade
             ? { idx: state.pendingLemonade.playerIdx, kind: 'LEMONADE_OFFER' } : null;
+        // Údolí stínů – kolečko voleb: Divoká banda (odhoz), Tornádo (karty pro souseda),
+        // Poker (karta lícem dolů) a výběr z vyložených karet Pokeru. Kdo je na řadě,
+        // drží `pendingVosRound.playerIdx` (veřejné – co si vybral, ne).
+        case 'BANDIDOS_DISCARD':
+        case 'TORNADO_PICK':
+        case 'POKER_PICK':
+        case 'POKER_TAKE':       return state.pendingVosRound && state.pendingVosRound.playerIdx != null
+            ? { idx: state.pendingVosRound.playerIdx, kind: state.phase } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -121,6 +129,10 @@ const _WAIT_LABELS = {
     DUTCH_DISCARD:         'Dutch Will – odhazuje líznutou kartu',
     SHOTGUN_DISCARD:       'Brokovnice – odhazuje kartu',
     LEMONADE_OFFER:        'Limonádový Jim – rozmýšlí, jestli si za kartu doplní život',
+    BANDIDOS_DISCARD:      'Divoká banda – odhazuje BANG!, nebo 2 karty',
+    TORNADO_PICK:          'Tornádo – vybírá karty pro souseda po levici',
+    POKER_PICK:            'Poker – vykládá kartu lícem dolů',
+    POKER_TAKE:            'Poker – bere si z vyložených karet',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',

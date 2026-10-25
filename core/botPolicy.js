@@ -238,7 +238,14 @@ const T = {
     // Údolí stínů
     LAST_CALL: 'Poslední pivo', RATTLESNAKE: 'Chřestýš', BOUNTY: 'Odměna',
     BACKFIRE: 'Opětovná palba', FANNING: 'Roztříštěná kulka', AIM: 'Dvojitá rána',
+    BANDIDOS: 'Divoká banda', TORNADO: 'Tornádo', POKER: 'Poker',
 };
+
+// Údolí stínů – má aspoň jeden jiný hráč ve hře kartu v ruce? (Divoká banda a Poker
+// bez toho nic neudělají.)
+function _vosOthersHoldCards(state, myIndex) {
+    return state.players.some((p, i) => i !== myIndex && isInPlay(p) && (p.hand || []).length > 0);
+}
 // ── Zlatá horečka: co pro bota znamená koupené vybavení ──────────────────────
 // Ocenění musí být PO MAJITELI (stejná past jako u boardCardValue): karta má cenu jen
 // tehdy, když z ní bot něco má. Tabulka roste s fázemi plánu, stejně jako GEAR_READY
@@ -628,6 +635,9 @@ function keepScore(card) {
         case T.BACKFIRE: return 7;                // Vedle! a k tomu výstřel zpět
         case T.FANNING: return 6;                 // BANG! na dva cíle
         case T.AIM: return 4;                     // sama nic, jen k BANG!u
+        case T.BANDIDOS: return 4;                // jako hromadný útok
+        case T.POKER: return 4;                   // až 2 karty navíc
+        case T.TORNADO: return 2;                 // výměna 2 za 2
         default: return 1;
     }
 }
@@ -1161,6 +1171,21 @@ function decidePlay(state, myIndex, beliefs) {
             if (pos >= 1 && pos > neg) consider(35, intent);
             return;
         }
+        // Údolí stínů – Divoká banda: ostatní přijdou o kartu BANG! nebo o 2 karty, takže
+        // se hraje jako hromadný útok – jen s převahou nepřátel.
+        if (card.type === T.BANDIDOS) {
+            const { pos, neg } = aoeBalance();
+            if (pos >= 1 && pos > neg && _vosOthersHoldCards(state, myIndex)) consider(30, intent);
+            return;
+        }
+        // Údolí stínů – Poker: až 2 karty navíc, pokud nikdo nevyloží Eso.
+        if (card.type === T.POKER) {
+            if (_vosOthersHoldCards(state, myIndex)) consider(26, intent);
+            return;
+        }
+        // Údolí stínů – Tornádo: výměna 2 karet za 2 karty – zhruba nula. Hraje se až
+        // nakonec (nejhorší karty pak putují k sousedovi), ale zahraje se.
+        if (card.type === T.TORNADO) { consider(8, intent); return; }
     });
 
     _showdownShot();   // Divoký západ – Zúčtování (viz výš)
@@ -1358,7 +1383,14 @@ function decidePlay(state, myIndex, beliefs) {
                     } else if (_lvk.effect === 'INDIANS' || _lvk.effect === 'GATLING') {
                         const bal = aoeBalance();
                         if (bal.pos > bal.neg) score = 26;
+                    } else if (_lvk.effect === 'BANDIDOS') {
+                        // Údolí stínů – Divoká banda: ostatní odhazují, tedy jako hromadný útok.
+                        const bal = aoeBalance();
+                        if (bal.pos > bal.neg) score = 22;
+                    } else if (_lvk.effect === 'POKER') {
+                        if (_vosOthersHoldCards(state, myIndex)) score = 20;
                     }
+                    // Tornádo se neopakuje – výměna karet za placený BANG! se nevyplatí.
                     break;
                 }
             }
@@ -1816,6 +1848,40 @@ function decideBotAction(state, myIndex, beliefs) {
             if (!me.hand.length) return null;
             const worst = me.hand.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
             return { event: 'vos_pick', payload: { cardIds: [worst.id], playerIdx: myIndex } };
+        }
+
+        // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker). Vždy se posílá volba,
+        // kterou pustí vosRoundPickOk – kdyby ne, server ji mlčky odmítne a hra se zasekne.
+        //   Divoká banda – radši jedna karta BANG! (nejlacinější) než dvě karty,
+        //   Tornádo      – sousedovi putují nejhorší karty,
+        //   Poker        – hraje-li Poker nepřítel a bot drží Eso, vyloží Eso (zablokuje
+        //                  mu výběr); jinak tu nejhorší.
+        case 'BANDIDOS_DISCARD':
+        case 'TORNADO_PICK':
+        case 'POKER_PICK': {
+            const hand = me.hand.filter(c => c && !c._placeholder);
+            if (!hand.length) return null;
+            const pick = (cards) => ({ event: 'vos_pick', payload: { cardIds: cards.map(c => c.id), playerIdx: myIndex } });
+            const sorted = hand.slice().sort((a, b) => keepScore(a) - keepScore(b));
+            const r = state.pendingVosRound || {};
+            if (pa.kind === 'BANDIDOS_DISCARD' && hand.length > 1) {
+                const bang = sorted.find(c => playsAsBang(state, me, c));
+                if (bang) return pick([bang]);
+            }
+            if (pa.kind === 'POKER_PICK' && r.byIdx != null &&
+                hostilityOf(state, myIndex, r.byIdx, beliefs) > ENEMY_EPS) {
+                const ace = sorted.find(c => c.value === 'A');
+                if (ace) return pick([ace]);
+            }
+            const need = pa.kind === 'POKER_PICK' ? 1 : Math.min(2, hand.length);
+            return pick(sorted.slice(0, need));
+        }
+        // Poker: z vyložených karet si bot vezme 2 nejcennější (Dynamit radši nechá ležet).
+        case 'POKER_TAKE': {
+            const pool = (state.pendingVosRound?.pool || []).map(e => e.card)
+                .filter(c => c && keepScore(c) > 0)
+                .sort((a, b) => keepScore(b) - keepScore(a));
+            return { event: 'vos_poker_take', payload: { cardIds: pool.slice(0, 2).map(c => c.id), playerIdx: myIndex } };
         }
 
         // Údolí stínů – Limonádový Jim: za cizí Pivo „odhoď kartu, doplň 1 život". Karta za

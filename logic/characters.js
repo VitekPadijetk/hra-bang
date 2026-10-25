@@ -195,6 +195,11 @@ const CharactersMixin = {
     // Vrací `true`, když se z fronty něco rozeběhlo (nebo běží lízání) – tedy když hra
     // pokračuje sama a volající nemá sahat na fázi. `false` = fronta nic nespustila.
     _processSpecialQueue() {
+        // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker) je jeden efekt: dokud
+        // nevolil poslední, nic z fronty se nespouští (Suzy Lafayette si lízne až po
+        // přesunu karet). Kolečko si frontu zavolá samo, až doběhne. `true` = hra pokračuje
+        // sama, volající nemá sahat na fázi.
+        if (this.pendingVosRound) return true;
         this._pruneSuzyQueue();
         // Divoký západ – Roubík: odložená pokuta za promluvení do chatu se nasazuje na
         // nejbližším místě, kde smí přerušit, a tohle je ono (_drainGag si to ověřuje

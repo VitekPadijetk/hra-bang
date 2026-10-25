@@ -72,10 +72,10 @@ function takeHit(g, idx) {
 
 // ── Hotové druhy a menu ──────────────────────────────────────────────────────
 
-test('F1 + F3: do balíčku jde devět hotových druhů', () => {
+test('F1 + F3 + F4: do balíčku jde dvanáct hotových druhů', () => {
     assert.deepEqual([...V.VOS_CARDS_READY].sort(),
-        ['Brokovnice', 'Chřestýš', 'Dvojitá rána', 'Lemat', 'Odměna', 'Opětovná palba',
-         'Poslední pivo', 'Roztříštěná kulka', 'Tomahawk']);
+        ['Brokovnice', 'Chřestýš', 'Divoká banda', 'Dvojitá rána', 'Lemat', 'Odměna',
+         'Opětovná palba', 'Poker', 'Poslední pivo', 'Roztříštěná kulka', 'Tomahawk', 'Tornádo']);
 });
 
 test('menu: Údolí stínů jde zapnout (už není „již brzy")', () => {

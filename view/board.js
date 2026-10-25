@@ -2450,7 +2450,16 @@ function drawMyArea(ctx) {
                 // se zmenší a zašedne – stejná řeč jako u Sida/Doca („tahle jde pryč“).
                 const isRanchMine = state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex;
                 const isRanchPicked = isRanchMine && App.ranchSel.has(card.id);
-                const cScale = (isStagedCard || isDAmain || isDocStaged || isRanchPicked) ? scaleHand * 0.88 : scaleHand;
+                // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): na řadě jsem já,
+                // celá ruka je klikací (světle modře) a označené karty se zmenší a zašednou –
+                // stejná řeč jako u Ranče. Kdo už volil a čeká na ostatní (Tornádo, Poker),
+                // má své vybrané karty zašedlé, ať ví, co půjde pryč.
+                const _vosR = state.pendingVosRound;
+                const isVosMine = !!_vosR && !_vosR.pool && _vosR.playerIdx === myIndex &&
+                    ['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK'].includes(state.phase);
+                const _vosDone = !!_vosR && (_vosR.picks || []).some(pk => pk.playerIdx === myIndex && pk.cardIds.includes(card.id));
+                const isVosPicked = (isVosMine && App.vosSel.has(card.id)) || _vosDone;
+                const cScale = (isStagedCard || isDAmain || isDocStaged || isRanchPicked || isVosPicked) ? scaleHand * 0.88 : scaleHand;
                 let cSprite = gameScene.add.image(posX, handY, getTex(card.id))
                     .setScale(cScale)
                     .setAngle(0);
@@ -2484,6 +2493,8 @@ function drawMyArea(ctx) {
                 if (_lvkPayMode) cSprite.setTint(_lvkPayOk ? 0xff6666 : 0x777777);
                 // Ranč: celá ruka je klikací (světle modře), označené karty zašednou.
                 if (isRanchMine) cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff);
+                if (isVosMine) cSprite.setTint(isVosPicked ? 0xbbbbbb : 0xaaddff);
+                else if (_vosDone) cSprite.setTint(0xbbbbbb);
                 // Fistful – Právo západu: v režimech ceny je vynucená karta mimo hru.
                 // Ve fázi PLAY (Sid/Doc/José/Will) ji stejně přebije zlatá níž; ve fázích
                 // DISCARD_ANOTHER a RANCH je tohle jediné, co ji odliší.
@@ -2545,7 +2556,8 @@ function drawMyArea(ctx) {
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
                                        _isGrinnerPick || _isValentinePick || _isDutchPick ||
-                                       _isShotgunPick || _isLemonadePick || _isLawForced;
+                                       _isShotgunPick || _isLemonadePick || _isLawForced ||
+                                       isVosMine || _vosDone;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2676,6 +2688,13 @@ function drawMyArea(ctx) {
                             return;
                         case 'DESELECT':
                             selectedState = { cardIndex: null, action: null };
+                            renderUI();
+                            return;
+                        case 'VOS_ROUND_TOGGLE':
+                            // Údolí stínů – kolečko voleb: jen označit/odznačit, odesílá
+                            // tlačítko (viz drawVosRoundButtons).
+                            if (App.vosSel.has(intent.cardId)) App.vosSel.delete(intent.cardId);
+                            else App.vosSel.add(intent.cardId);
                             renderUI();
                             return;
                         case 'RANCH_TOGGLE':
@@ -2958,7 +2977,8 @@ function drawMyArea(ctx) {
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
                  'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE',
-                 'SHOTGUN_DISCARD', 'LEMONADE_OFFER'].includes(state.phase)
+                 'SHOTGUN_DISCARD', 'LEMONADE_OFFER',
+                 'BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -3081,6 +3101,52 @@ function drawMyArea(ctx) {
                 fontSize: '22px', onClick: () => _ranchSend([]),
             });
             if (App.blockInput) { _skipBtn.setAlpha(0.45); _skipBtn.disableInteractive(); }
+        }
+
+        // ── Údolí stínů – kolečko voleb: potvrzení výběru z ruky ─────────────────
+        // Karty se označují klikáním v ruce (App.vosSel, viz drawMyArea výš). Tlačítko se
+        // rozsvítí, až je výběr platný – rozhoduje vosRoundPickOk (core/valley.js), stejný
+        // predikát jako na serveru. Přeskočit nejde: volba je povinná.
+        const _vosRound = state.pendingVosRound;
+        if (_vosRound && !_vosRound.pool && _vosRound.playerIdx === myIndex &&
+            ['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK'].includes(state.phase)) {
+            const _vIds = me.hand.filter(c => c && !c._placeholder && App.vosSel.has(c.id)).map(c => c.id);
+            const _vOk = vosRoundPickOk(state, myIndex, _vIds);
+            const _verb = _vosRound.kind === 'BANDIDOS' ? 'ODHODIT' : (_vosRound.kind === 'TORNADO' ? 'PŘEDAT' : 'VYLOŽIT');
+            const { bg: _vBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH,
+                _vIds.length ? `${_verb} (${_vIds.length})` : 'VYBER KARTY', {
+                ...themeToggleStyle(_vOk), fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput || !_vOk) return;
+                    App.blockInput = true;
+                    App.vosSentIds = _vIds.slice();
+                    App.vosSel.clear();
+                    socket.emit('vos_pick', { cardIds: _vIds, playerIdx: myIndex });
+                    if (_vosRound.kind === 'BANDIDOS') _vIds.forEach(id => {
+                        const i = me.hand.findIndex(c => c && c.id === id);
+                        if (i !== -1) optimisticRemoveCard(i);
+                    });
+                    renderUI();
+                },
+            });
+            if (App.blockInput || !_vOk) { _vBtn.setAlpha(0.45); _vBtn.disableInteractive(); }
+        }
+        // Poker – výběr z vyložených karet (klik na kartu v řadě uprostřed, viz
+        // drawVosPokerPool). Nebrat nic je taky platná volba.
+        if (_vosRound && _vosRound.pool && state.phase === 'POKER_TAKE' && _vosRound.playerIdx === myIndex) {
+            const _tIds = _vosRound.pool.map(e => e.card.id).filter(id => App.vosTakeSel.has(id));
+            const _tOk = pokerTakeOk(state, myIndex, _tIds);
+            const { bg: _tBtn } = themeButton(gameScene, L.btnEndX, L.btnEndY, 260, L.btnH,
+                _tIds.length ? `VZÍT (${_tIds.length})` : 'NEBRAT NIC', {
+                ...themeToggleStyle(_tOk && _tIds.length > 0), fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput || !_tOk) return;
+                    App.blockInput = true;
+                    socket.emit('vos_poker_take', { cardIds: _tIds, playerIdx: myIndex });
+                    renderUI();
+                },
+            });
+            if (App.blockInput || !_tOk) { _tBtn.setAlpha(0.45); _tBtn.disableInteractive(); }
         }
 
         // ── A Fistful of Cards – Pokrevní bratři: darovat 1 život ────────────────
@@ -3796,6 +3862,76 @@ function drawPhaseOverlays(ctx) {
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }
+    }
+
+    // ── Údolí stínů – kolečko voleb: Divoká banda, Tornádo, Poker ────────────────
+    const _vr = state.pendingVosRound;
+    if (_vr && ['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)) {
+        const _vMine = _vr.playerIdx === myIndex;
+        const _vName = state.players[_vr.playerIdx]?.name || '?';
+        const _vBy = state.players[_vr.byIdx]?.name || '?';
+        const _me = myIndex !== null ? state.players[myIndex] : null;
+        const _n = _me ? (_me.hand || []).length : 0;
+        const T = {
+            BANDIDOS_DISCARD: ['🤠 Divoká banda – odhoď kartu BANG!, nebo 2 karty',
+                               _n === 1 ? `${_vBy} zahrál Divokou bandu – máš jedinou kartu, odhodíš ji`
+                                        : `${_vBy} zahrál Divokou bandu – označ karty a potvrď`,
+                               'Divoká banda (odhazuje)'],
+            TORNADO_PICK:     ['🌪️ Tornádo – vyber karty pro hráče po levici',
+                               `Dáš ${Math.min(2, _n)} ${Math.min(2, _n) === 1 ? 'kartu' : 'karty'} – předávají všichni najednou, až vyberou všichni`,
+                               'Tornádo (vybírá karty pro souseda)'],
+            POKER_PICK:       ['🃏 Poker – vylož 1 kartu lícem dolů',
+                               `${_vBy} zahrál Poker – když nikdo nevyloží Eso, vezme si až 2 z vyložených`,
+                               'Poker (vykládá kartu)'],
+            POKER_TAKE:       ['🃏 Poker – vezmi si až 2 vyložené karty',
+                               'Klikni na karty uprostřed stolu – zbytek půjde do odhozu',
+                               'Poker (bere si z vyložených karet)'],
+        }[state.phase];
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _vMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_vMine) {
+            mAdd(gameScene.add.text(960, 66, T[0], { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5), 206);
+            mAdd(gameScene.add.text(960, 112, T[1], { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5), 206);
+        } else {
+            // Kdo už volil a čeká na ostatní (Tornádo, Poker), ví, že jeho karty ještě nikam nešly.
+            const _waitMine = (_vr.picks || []).some(pk => pk.playerIdx === myIndex);
+            mAdd(gameScene.add.text(960, _waitMine ? 76 : 92, `⏳ Čeká se na hráče ${_vName} – ${T[2]}`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5), 206);
+            if (_waitMine) {
+                mAdd(gameScene.add.text(960, 112, 'Svou volbu máš hotovou – karty se přesunou, až vyberou všichni',
+                    { fontSize: '20px', color: '#ffeedd' }).setOrigin(0.5), 206);
+            }
+        }
+    }
+    // Poker – vyložené karty leží v řadě uprostřed stolu (stejná místa jako cinematika
+    // poker_reveal, core/vosAnim.js). Hráč, který Poker zahrál, si klikáním označí až 2.
+    if (_vr && _vr.pool && state.phase === 'POKER_TAKE' && !App.vosPoolHide) {
+        const P = VOS_ANIM.poker;
+        const n = _vr.pool.length;
+        const _take = _vr.playerIdx === myIndex;
+        _vr.pool.forEach((e, i) => {
+            const sel = App.vosTakeSel.has(e.card.id);
+            const spr = gameScene.add.image(pokerSlotX(i, n), P.rowY - (sel ? 24 : 0), getTex(e.card.id))
+                .setScale(P.scale);
+            mAdd(spr, 820 + i);
+            if (sel) spr.setTint(0xddffdd);
+            if (_take && !App.blockInput) {
+                spr.setInteractive({ useHandCursor: true });
+                spr.on('pointerdown', () => {
+                    if (App.blockInput) return;
+                    if (App.vosTakeSel.has(e.card.id)) App.vosTakeSel.delete(e.card.id);
+                    else if (App.vosTakeSel.size < 2) App.vosTakeSel.add(e.card.id);
+                    renderUI();
+                });
+            }
+            const from = state.players[e.fromIdx]?.name;
+            if (from) {
+                mAdd(gameScene.add.text(pokerSlotX(i, n), P.rowY + 500 * P.scale / 2 + 18, from,
+                    { fontSize: '18px', color: '#ffeedd', backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 6, y: 2 } })
+                    .setOrigin(0.5), 821 + i);
+            }
+        });
     }
 
     // ── Zlatá horečka – Josh McCloud si lízl Láhev / Komplice: jak ji zahraje? ────
