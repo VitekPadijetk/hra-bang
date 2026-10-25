@@ -770,7 +770,11 @@ Evelyn ve slotu schopností; výstřel z ruky posílá jen `emitPlayBang` (view/
 F4 = **kolečko voleb `pendingVosRound`** (logic/valley.js – `_startVosRound`/
 `_advanceVosRound`/`_vosRoundPick`/`_finishVosRound`/`vosPokerTake`) pro **Divokou bandu**
 (`BANDIDOS_DISCARD`, odhazuje se hned), **Tornádo** (`TORNADO_PICK`) a **Poker**
-(`POKER_PICK` → `POKER_TAKE`); u těch dvou se volba jen zapíše do `picks` (redakce ji
+(`POKER_PICK` → `POKER_TAKE`). **Z ruky vybírají všichni naráz** (`waiting` = kdo ještě
+nevybral) – jediné místo hry, kde se čeká na víc hráčů najednou, proto
+**`pendingActors`/`waitingStatusFor`** (core/pending.js): ptá se jimi bot driver, guard
+(`vos_pick` od kohokoli z `waiting`, jen za vlastní místo), `decideBotAction` i jantarové
+zvýraznění na desce. U Tornáda a Pokeru se volba jen zapíše do `picks` (redakce ji
 nechává jen vlastníkovi) a karty se hýbou až po posledním. Platnou volbu říká
 `vosRoundPickOk`/`pokerTakeOk` (core/valley.js). **Dokud kolečko běží,
 `_processSpecialQueue` nic nespouští (vrací `true`) a Roubík ho nepřeruší** – Suzy

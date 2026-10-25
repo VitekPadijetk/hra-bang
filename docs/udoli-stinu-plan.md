@@ -842,11 +842,17 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 
 ### Co se ve fázi F4 odchýlilo od plánu (a proč)
 
-- **Jeden stav pro všechny tři karty:** `pendingVosRound = { kind, byIdx, queue,
-  playerIdx, picks, pool }` (logic/valley.js) se čtyřmi fázemi `BANDIDOS_DISCARD`,
-  `TORNADO_PICK`, `POKER_PICK` a `POKER_TAKE`. Kdo je na řadě, je `playerIdx`
-  (pendingActor). Volí se po jednom, po směru od hráče po levici toho, kdo kartu zahrál;
-  u Tornáda volí hráč sám poslední. Hráč bez karet se přeskakuje.
+- **Jeden stav pro všechny tři karty:** `pendingVosRound = { kind, byIdx, waiting,
+  picks, pool, playerIdx }` (logic/valley.js) se čtyřmi fázemi `BANDIDOS_DISCARD`,
+  `TORNADO_PICK`, `POKER_PICK` a `POKER_TAKE`. **Z ruky vybírají všichni naráz**
+  (rozhodl uživatel 2026-10-25 – zrychlí to hru): `waiting` = kdo ještě nevybral,
+  hra počká na posledního. Na víc hráčů najednou se čeká jen tady, proto přibylo
+  **`pendingActors(state)`** a **`waitingStatusFor(state, idx)`** (core/pending.js):
+  bot driver rozhýbe kteréhokoli čekajícího bota, guard pustí `vos_pick` od kohokoli
+  z `waiting` (jen za vlastní místo) a klient rozsvítí jantarově všechny, kdo ještě
+  vybírají. `pendingActor` vrací prvního z nich (popisek, log). Výběr z vyložených
+  karet Pokeru (`POKER_TAKE`) dělá jen hráč, který Poker zahrál (`playerIdx`). Hráč bez
+  karet nevybírá vůbec.
 - **Divoká banda odhazuje hned**, ne až po posledním (plán §2.7 ji házel do jednoho pytle
   s Tornádem a Pokerem). Text karty nic současného neříká a odhoz je veřejný, takže
   skrývat není co. Platná volba = 1 karta, která `playsAsBang` (Calamity, Zúčtování),
@@ -877,9 +883,12 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 - **Animace** zapisují pravidla (`_vosAnim`) a posílá je hák `flushVosAnim` před
   broadcastem (kolečko doběhne z vos_pick, play_card, Lee Van Kliffa i Doroty):
   `tornado_pass` (jen počty karet – které karty dávám já, ví klient ze své volby),
-  `poker_reveal` (veřejná ID vyložených karet, Eso → do odhozu) a `poker_take`.
+  `poker_reveal` (veřejné karty i s hodnotou a barvou; s Esem se žádný nápis
+  neukazuje – první Eso, `aceIdx`, se zvětší, zabliká na něm hodnota stejnou markou
+  jako u sejmutí a všechno odletí do odhozu) a `poker_take`.
   Časování v core/vosAnim.js, boti čekají na `room._vosBlockUntil`.
-- **UI:** výběr v ruce jako u Ranče (`App.vosSel`, tlačítko ODHODIT / PŘEDAT / VYLOŽIT
+- **UI:** výběr v ruce jako u Ranče (`App.vosSel`, celá ruka světle modře, označené
+  karty zmenšené a šedé, hover kartu jen zvětší; tlačítko ODHODIT / PŘEDAT / VYLOŽIT
   v místě „Ukončit tah"), vyložené karty Pokeru v řadě uprostřed stolu se jménem toho,
   kdo je vyložil (klik označí, tlačítko VZÍT / NEBRAT NIC). Kdo už volil a čeká, má své
   karty v ruce zašedlé.

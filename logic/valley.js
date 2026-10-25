@@ -9,8 +9,8 @@
 // Duch (F5), okna reakcí (F6, F8) a pozastavená akce Henryho Blocka (F7).
 //
 // Fáze F4 přidala KOLEČKO VOLEB (`pendingVosRound`): Divoká banda, Tornádo a Poker
-// nechají každého (ostatního) hráče vybrat karty z ruky; u Tornáda a Pokeru se karty
-// přesunou až po volbě posledního. Dokud kolečko běží, fronta odložených akcí stojí.
+// nechají každého (ostatního) hráče vybrat karty z ruky – všichni naráz; u Tornáda
+// a Pokeru se karty přesunou až po volbě posledního. Dokud kolečko běží, fronta odložených akcí stojí.
 //
 // Fáze F3 přidala první nový mechanismus – FRONTU VÝSTŘELŮ (`_vosShots`, R6): výstřely
 // bez karty a mimo pořadí se zapíšou a odpálí, až efekt, který je vyvolal, celý doběhne
@@ -105,12 +105,14 @@ const ValleyMixin = {
     },
 
     // ── Kolečko voleb (F4): Divoká banda, Tornádo, Poker ─────────────────────
-    // Všechny tři karty nechají vybírat karty z ruky KAŽDÉHO (ostatního) hráče. Volí se
-    // po jednom, po směru od hráče po levici toho, kdo kartu zahrál (vzor Rvačka /
-    // Daltonové); stav drží `pendingVosRound = { kind, byIdx, queue, playerIdx, picks,
-    // pool }`. Pravidla „všichni najednou" (Tornádo) a skrytý výběr (Poker) splňuje to,
-    // že se karty u těch dvou NIKAM nepřesouvají, dokud nevolil poslední – volby (`picks`)
-    // vidí do té doby jen jejich vlastník (redactState v server/rooms.js).
+    // Všechny tři karty nechají vybírat karty z ruky KAŽDÉHO (ostatního) hráče. Vybírají
+    // VŠICHNI NARÁZ – kdo ještě nevybral, drží `waiting` – a hra počká na posledního
+    // (zrychlí to hru proti kolečku po jednom jako u Indiánů). Stav:
+    // `pendingVosRound = { kind, byIdx, waiting, picks, pool, playerIdx }`.
+    // Pravidla „všichni najednou" (Tornádo) a skrytý výběr (Poker) splňuje to, že se karty
+    // u těch dvou NIKAM nepřesouvají, dokud nevybral poslední – volby (`picks`) vidí do té
+    // doby jen jejich vlastník (redactState v server/rooms.js). `playerIdx` má jen výběr
+    // z vyložených karet Pokeru (POKER_TAKE) – ten dělá jediný hráč.
     //
     // Dokud kolečko běží, fronta odložených akcí se NEodbavuje (_processSpecialQueue si
     // to hlídá): Suzy Lafayette, která dala poslední kartu, si lízne až po přesunu – a u
@@ -134,44 +136,44 @@ const ValleyMixin = {
 
     // Založí kolečko. `suit` = platná barva zahrané karty – Divoká banda je Q♦, takže
     // Apache Kida (i Kalumet) vynechá stejně jako kárové Indiány.
-    // Tornádo: „KAŽDÝ hráč" – i ten, kdo ho zahrál (volí poslední). Ostatní dvě karty
-    // míří na „všechny ostatní".
+    // Tornádo: „KAŽDÝ hráč" – i ten, kdo ho zahrál. Ostatní dvě karty míří na „všechny
+    // ostatní". Kdo nemá kartu, nevybírá („pokud můžou"). Pořadí v `waiting` je po směru
+    // od levého souseda – jen kvůli pendingActor (popisek, log); vybírá se naráz.
     _startVosRound(kind, byIdx, suit = null) {
         const n = this.players.length;
         const span = kind === 'TORNADO' ? n : n - 1;
-        const queue = [];
+        const waiting = [];
         for (let k = 1; k <= span; k++) {
             const idx = (byIdx + k) % n;
-            if (!isInPlay(this.players[idx])) continue;
+            const p = this.players[idx];
+            if (!isInPlay(p) || !p.hand.length) continue;
             if (kind === 'BANDIDOS' && this._apacheImmune(idx, suit, byIdx)) continue;
-            queue.push(idx);
+            waiting.push(idx);
         }
-        this.pendingVosRound = { kind, byIdx, queue, playerIdx: null, picks: [] };
+        this.pendingVosRound = { kind, byIdx, waiting, picks: [], playerIdx: null };
         return this._advanceVosRound();
     },
 
-    // Na řadu jde další hráč, který je ve hře a má co vybírat (hráč bez karet se
-    // přeskakuje – „pokud můžou"). Po posledním se kolečko dokončí. Vrací true, když
-    // se čeká na volbu.
+    // Kdo ještě vybírá, smí dál; kdo mezitím odešel ze hry nebo nemá kartu, vypadne.
+    // Nikdo nezbyl → kolečko se dokončí. Vrací true, když se čeká na volbu.
     _advanceVosRound() {
         const r = this.pendingVosRound;
         if (!r) return false;
-        while (r.queue.length) {
-            const p = this.players[r.queue[0]];
-            if (isInPlay(p) && p.hand.length > 0) {
-                r.playerIdx = r.queue[0];
-                this.phase = VOS_ROUND_PHASES[r.kind];
-                return true;
-            }
-            r.queue.shift();
+        r.waiting = r.waiting.filter(idx => {
+            const p = this.players[idx];
+            return isInPlay(p) && p.hand.length > 0;
+        });
+        if (r.waiting.length) {
+            this.phase = VOS_ROUND_PHASES[r.kind];
+            return true;
         }
-        r.playerIdx = null;
         this._finishVosRound();
         return false;
     },
 
-    // Hráč na řadě vybral karty (`vos_pick`). Platnost hlídá vosRoundPickOk
-    // (core/valley.js) – stejný predikát rozsvěcí klientovi tlačítko a ptá se ho bot.
+    // Hráč vybral karty (`vos_pick`). Smí kdokoli, na koho se ještě čeká – vybírá se
+    // naráz. Platnost hlídá vosRoundPickOk (core/valley.js) – stejný predikát rozsvěcí
+    // klientovi tlačítko a ptá se ho bot.
     // Vrací { discarded: [{ card, handIdx }] } (Divoká banda – animace odhozu),
     // { picked: true } (Tornádo, Poker), nebo null u neplatné volby.
     _vosRoundPick(playerIdx, cardIds) {
@@ -197,7 +199,7 @@ const ValleyMixin = {
                                        msg: r.kind === 'TORNADO' ? `vybral ${cardIds.length} k předání` : 'vyložil kartu lícem dolů' });
             res = { picked: true };
         }
-        r.queue.shift();
+        r.waiting = r.waiting.filter(i => i !== playerIdx);
         this._advanceVosRound();
         return res;
     },
@@ -218,6 +220,7 @@ const ValleyMixin = {
     _finishVosRound() {
         const r = this.pendingVosRound;
         if (!r) return;
+        r.playerIdx = null;
         if (r.kind === 'TORNADO') {
             const moves = [];
             for (const pk of r.picks) {
@@ -257,8 +260,12 @@ const ValleyMixin = {
             const ace = pokerHasAce(pool.map(e => e.card));
             const by = this.players[r.byIdx];
             if (pool.length) {
+                // Vyložené karty jsou teď veřejné – hodnota a barva jdou s animací, aby klient
+                // u Esa zvětšil kartu a zablikal na ní hodnotu (`aceIdx` = první Eso).
                 this._vosAnimPush({ type: 'poker_reveal', byIdx: r.byIdx, ace,
-                                    cards: pool.map(e => ({ id: e.card.id, fromIdx: e.fromIdx })) });
+                                    aceIdx: ace ? pool.findIndex(e => e.card.value === 'A') : -1,
+                                    cards: pool.map(e => ({ id: e.card.id, fromIdx: e.fromIdx,
+                                                            value: e.card.value, suit: e.card.suit })) });
             }
             this.logEvent('special', { who: by?.name, card: 'Poker',
                                        taken: pool.map(e => e.card.name).join(', '),
@@ -273,7 +280,7 @@ const ValleyMixin = {
                 return;
             }
             r.picks = [];
-            r.queue = [];
+            r.waiting = [];
             r.pool = pool;
             r.playerIdx = r.byIdx;
             this.phase = "POKER_TAKE";

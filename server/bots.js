@@ -9,6 +9,7 @@
 // ctx.afterBroadcast / ctx.afterIntroEmit (viz rooms.js / intro.js).
 
 const { pendingActor, decideBotAction } = require('../core/botPolicy.js');
+const { pendingActors } = require('../core/pending.js');
 const { computeBeliefs } = require('../core/beliefs.js');
 const { botQuip, quipEvents, quipSnapshot } = require('../core/botChat.js');
 const registerGameHandlers = require('./handlers.game.js');
@@ -183,7 +184,7 @@ module.exports = function installBotService(ctx) {
             nugSum, gearSum,                     // Zlatá horečka: nákup v obchodě
             // Údolí stínů – Tornádo a Poker: volba se jen zapíše (karty se hýbou až po
             // posledním), takže pokrok je vidět jen na tom, kdo je na řadě a kolik voleb je.
-            gs.pendingVosRound ? `${gs.pendingVosRound.playerIdx}:${(gs.pendingVosRound.picks || []).length}` : '-',
+            gs.pendingVosRound ? `${(gs.pendingVosRound.waiting || []).length}:${(gs.pendingVosRound.picks || []).length}:${gs.pendingVosRound.playerIdx}` : '-',
         ].join('|');
     }
 
@@ -412,10 +413,14 @@ module.exports = function installBotService(ctx) {
             if (acted) return;
         }
 
-        const pa = pendingActor(gs);
-        if (!pa) return;
+        // Většinou se čeká na jednoho; u kolečka voleb Údolí stínů (Divoká banda, Tornádo,
+        // Poker) vybírají všichni naráz – bot proto nečeká, až vybere člověk před ním.
+        const pa = pendingActors(gs).find(a => {
+            const r = room.players[a.idx];
+            return r && (r.isBot || r.botControlled);
+        });
+        if (!pa) return;   // čeká se jen na (připojené) lidi → nech být
         const rp = room.players[pa.idx];
-        if (!rp || (!rp.isBot && !rp.botControlled)) return;  // čeká se na (připojeného) člověka → nech být
         const sock = botSockets.get(rp.socketId);
         if (!sock) return;
 

@@ -71,13 +71,19 @@ function pendingActor(state) {
         case 'LEMONADE_OFFER':   return state.pendingLemonade
             ? { idx: state.pendingLemonade.playerIdx, kind: 'LEMONADE_OFFER' } : null;
         // Údolí stínů – kolečko voleb: Divoká banda (odhoz), Tornádo (karty pro souseda),
-        // Poker (karta lícem dolů) a výběr z vyložených karet Pokeru. Kdo je na řadě,
-        // drží `pendingVosRound.playerIdx` (veřejné – co si vybral, ne).
+        // Poker (karta lícem dolů) a výběr z vyložených karet Pokeru. Z ruky vybírají
+        // VŠICHNI NARÁZ (`pendingVosRound.waiting`) – tady se vrací první z nich (popisek,
+        // log, pauza); celý seznam dává pendingActors. Výběr z vyložených karet dělá jen
+        // hráč, který Poker zahrál (`playerIdx`).
         case 'BANDIDOS_DISCARD':
         case 'TORNADO_PICK':
         case 'POKER_PICK':
-        case 'POKER_TAKE':       return state.pendingVosRound && state.pendingVosRound.playerIdx != null
-            ? { idx: state.pendingVosRound.playerIdx, kind: state.phase } : null;
+        case 'POKER_TAKE': {
+            const r = state.pendingVosRound;
+            if (!r) return null;
+            const idx = state.phase === 'POKER_TAKE' ? r.playerIdx : (r.waiting || [])[0];
+            return idx != null ? { idx, kind: state.phase } : null;
+        }
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -94,6 +100,20 @@ function pendingActor(state) {
         case 'VERA_COPY':        return state.pendingVeraCopy ? { idx: state.pendingVeraCopy.playerIdx, kind: 'VERA_COPY' } : null;
         default: return null;
     }
+}
+
+// ── pendingActors — VŠICHNI, na koho se právě čeká ───────────────────────────
+// Skoro vždycky jeden (= pendingActor). Víc jich je jen při současném výběru z ruky
+// v kolečku Údolí stínů (Divoká banda, Tornádo, Poker): kdokoli z `waiting` smí vybrat
+// hned. Ptá se tím bot driver (server/bots.js – rozhýbe kteréhokoli čekajícího bota),
+// guard (server/guard.js) i klient (kdo svítí jako „něco má dělat").
+const _VOS_PARALLEL = ['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK'];
+function pendingActors(state) {
+    if (state && _VOS_PARALLEL.includes(state.phase) && state.pendingVosRound) {
+        return (state.pendingVosRound.waiting || []).map(idx => ({ idx, kind: state.phase }));
+    }
+    const pa = pendingActor(state);
+    return pa ? [pa] : [];
 }
 
 // ── waitingStatus — krátký český popis, co čekaný hráč právě řeší ─────────────
@@ -210,6 +230,19 @@ function waitingStatus(state) {
         text = `${state.pendingGearTarget.cardName} – vybírá, na koho ho zahraje`;
     }
     return { idx: pa.idx, kind: pa.kind, text };
+}
+
+// Totéž pro KONKRÉTNÍHO hráče: { idx, kind, text }, když se na něj právě čeká (i jako
+// na jednoho z víc naráz – pendingActors), jinak null. Klient podle toho rozsvítí
+// jantarově všechny, kdo něco mají udělat.
+function waitingStatusFor(state, idx) {
+    if (idx == null) return null;
+    const st = waitingStatus(state);
+    if (st && st.idx === idx) return st;
+    if (pendingActors(state).some(a => a.idx === idx)) {
+        return { idx, kind: state.phase, text: _WAIT_LABELS[state.phase] || '' };
+    }
+    return null;
 }
 
 // ── describePendingResponse — co ohrožuje hráče ve fázi RESPOND ───────────────
@@ -383,5 +416,5 @@ function describePendingCheck(state, viewerIdx) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { pendingActor, waitingStatus, describePendingResponse, describePendingCheck };
+    module.exports = { pendingActor, pendingActors, waitingStatus, waitingStatusFor, describePendingResponse, describePendingCheck };
 }

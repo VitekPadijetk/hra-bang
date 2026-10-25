@@ -88,7 +88,7 @@ function decideCardClick(ctx) {
     // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): karty se jen OZNAČUJÍ
     // (App.vosSel), odesílá je tlačítko – stejný vzor jako Ranč. Druhý klik označení zruší.
     if (['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK'].includes(state.phase) &&
-        state.pendingVosRound?.playerIdx === myIndex) {
+        (state.pendingVosRound?.waiting || []).includes(myIndex)) {
         return { type: 'VOS_ROUND_TOGGLE', index, cardId: card.id };
     }
 

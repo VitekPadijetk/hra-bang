@@ -394,7 +394,7 @@ function cardPlayability(state, me, myIndex, card) {
     // vosRoundPickOk). Ve výběru z vyložených karet Pokeru ruka klikací není.
     if (['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)) {
         if (state.phase === 'POKER_TAKE') return null;
-        return state.pendingVosRound?.playerIdx === myIndex ? true : null;
+        return (state.pendingVosRound?.waiting || []).includes(myIndex) ? true : null;
     }
     // Zlatá horečka – Dutch Will: odhazuje JEDNU z právě líznutých karet, takže na rozdíl
     // od Valentýna není klikatelná celá ruka – jen ty, které přibyly ve fázi 1 (seznam

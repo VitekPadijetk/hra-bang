@@ -6,8 +6,9 @@
 // uprostřed cinematiky a stav ji předběhne.
 //
 //   tornado_pass – karty z ruky k sousedovi po levici, všichni naráz (F4),
-//   poker_reveal – vyložené karty z rukou doprostřed, cestou se otočí; s Esem pak
-//                  odletí do odhozu, bez Esa leží, dokud si hráč nevybere (F4),
+//   poker_reveal – vyložené karty z rukou doprostřed, cestou se otočí; s Esem se Eso
+//                  zvětší, zabliká na něm hodnota a všechno odletí do odhozu, bez Esa
+//                  karty leží, dokud si hráč nevybere (F4),
 //   poker_take   – vybrané karty do ruky hráče, zbytek do odhozu (F4).
 // Přibude: odchod ducha – vyřazení hráče, kterému sebrali kartu Duch (F5).
 const VOS_ANIM = {
@@ -19,7 +20,10 @@ const VOS_ANIM = {
     poker: {
         staggerMs:  170,  // rozestup startů letu z rukou do řady
         flyMs:      460,  // ruka → řada (uvnitř překlopení rub→líc)
-        holdMs:    1500,  // řada leží s popiskem (Eso / bez Esa)
+        holdMs:    1500,  // řada leží (bez Esa pak zůstane ležet pro výběr)
+        aceGrowMs:  260,  // Eso se zvětší…
+        aceHoldMs: 1300,  // …a hodnota na něm bliká (navíc k holdMs)
+        aceScale:  1.28,  // o kolik se Eso zvětší
         landStaggerMs: 90,
         landMs:     400,  // řada → odhoz / ruka
         bufMs:      120,
@@ -44,7 +48,7 @@ function pokerRevealMs(n, ace) {
     n = n | 0;
     if (!n) return 0;
     const shown = (n - 1) * P.staggerMs + P.flyMs + P.holdMs;
-    return shown + (ace ? (n - 1) * P.landStaggerMs + P.landMs : 0) + P.bufMs;
+    return shown + (ace ? P.aceGrowMs + P.aceHoldMs + (n - 1) * P.landStaggerMs + P.landMs : 0) + P.bufMs;
 }
 
 // Poker – výběr z řady: všech `n` karet odletí (do ruky / do odhozu).

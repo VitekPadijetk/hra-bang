@@ -202,7 +202,8 @@ if (typeof vosRoundPickOk === 'undefined' && typeof require === 'function') {
     const __vos = require('./core/valley.js');
     globalThis.VOS_ROUND_PHASES = __vos.VOS_ROUND_PHASES;
     globalThis.vosRoundPhase = __vos.vosRoundPhase;
-    globalThis.vosRoundChooser = __vos.vosRoundChooser;
+    globalThis.vosRoundWaiting = __vos.vosRoundWaiting;
+    globalThis.vosRoundWaitsFor = __vos.vosRoundWaitsFor;
     globalThis.vosRoundPickOk = __vos.vosRoundPickOk;
     globalThis.pokerTakeOk = __vos.pokerTakeOk;
     globalThis.pokerHasAce = __vos.pokerHasAce;

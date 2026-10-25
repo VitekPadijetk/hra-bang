@@ -1053,9 +1053,12 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     // Aktér se čte ze stavu; `playerIdx` v payloadu hlídá guard proti opožděnému kliku.
     on('vos_pick', (d) => {
         withRoom((room, p, gs) => {
-            const idx = gs.pendingVosRound ? gs.pendingVosRound.playerIdx : gs.pendingShotgun?.playerIdx;
+            // Kolečko voleb vybírají všichni naráz – za koho se vybírá, nese payload
+            // (guard ověřil, že to místo patří odesílateli a že se na něj ještě čeká).
+            const idx = gs.pendingVosRound ? (d && d.playerIdx != null ? d.playerIdx : p?.playerIdx)
+                                           : gs.pendingShotgun?.playerIdx;
             if (idx === undefined || idx === null) return;
-            if (d && d.playerIdx != null && d.playerIdx !== idx) return;
+            if (!gs.pendingVosRound && d && d.playerIdx != null && d.playerIdx !== idx) return;
             const res = gs.vosPick(idx, d && d.cardIds);
             if (!res) { broadcastRoom(room); return; }
             if (res.card) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });

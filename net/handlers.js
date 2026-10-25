@@ -3216,9 +3216,11 @@ function playTornadoPass(data, h) {
     renderUI();
 }
 
-// Poker: vyložené karty vyletí z rukou do řady uprostřed stolu (cestou se otočí), leží
-// s popiskem a pak: s Esem odletí do odhozu, bez Esa zůstanou – od příchodu stavu je
-// kreslí deska (fáze POKER_TAKE, drawVosPokerPool ve view/board.js) na stejných místech.
+// Poker: vyložené karty vyletí z rukou do řady uprostřed stolu (cestou se otočí) a leží.
+// Bez Esa zůstanou – od příchodu stavu je kreslí deska (fáze POKER_TAKE, řada ve
+// view/board.js) na stejných místech. S Esem se žádný nápis neukazuje: první Eso (`aceIdx`)
+// se zvětší a zabliká na něm hodnota (pulseCheckMark – stejná marka jako u sejmutí),
+// pak všechno odletí do odhozu. Časování je sdílené se serverem (core/vosAnim.js).
 function playPokerReveal(data, h) {
     if (!gameScene || !state) return;
     const P = VOS_ANIM.poker;
@@ -3228,8 +3230,16 @@ function playPokerReveal(data, h) {
     App.vosSentIds = [];
     const sprites = [];
     let stateIn = false;
+    let pulse = null;
+    const stopPulse = () => {
+        if (!pulse) return;
+        if (pulse.tween) pulse.tween.remove();
+        pulse.marks.forEach(m => { if (m?.active) m.destroy(); });
+        pulse = null;
+    };
     onNextState(() => {
         stateIn = true;
+        stopPulse();
         // Bez Esa leží karty dál – teď už je kreslí deska ze stavu.
         if (!data.ace) sprites.forEach(s => { if (s?.active) s.destroy(); });
     });
@@ -3254,22 +3264,27 @@ function playPokerReveal(data, h) {
                 } });
         });
     });
-    const shownAt = (n - 1) * P.staggerMs + P.flyMs;
-    const who = state.players?.[data.byIdx]?.name || '';
-    const label = data.ace ? '🃏 Poker – někdo vyložil Eso! Všechno jde do odhozu'
-                           : `🃏 Poker – bez Esa${who ? ': ' + who + ' si bere až 2 karty' : ''}`;
-    gameScene.time.delayedCall(shownAt, () => {
-        if (!gameScene) return;
-        const cap = gameScene.add.text(960, P.rowY - 500 * P.scale / 2 - 34, label,
-            { fontFamily: THEME.fontUI, fontSize: '28px', fontStyle: 'bold',
-              color: data.ace ? THEME.color.danger : THEME.color.gold,
-              backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 16, y: 6 } })
-            .setOrigin(0.5).setDepth(830);
-        gameScene.time.delayedCall(P.holdMs, () => { if (cap.active) cap.destroy(); });
-    });
     if (!data.ace) return;
+    const shownAt = (n - 1) * P.staggerMs + P.flyMs;
+    const ai = data.aceIdx >= 0 ? data.aceIdx : cards.findIndex(c => c.value === 'A');
+    const big = P.scale * P.aceScale;
+    // Eso: zvětšit (navrch řady) a pak nechat blikat hodnotu.
+    gameScene.time.delayedCall(shownAt, () => {
+        const spr = sprites[ai];
+        if (!gameScene || !spr?.active) return;
+        spr.setDepth(840);
+        gameScene.tweens.add({ targets: spr, scaleX: big, scaleY: big, duration: P.aceGrowMs, ease: 'Back.easeOut',
+            onComplete: () => {
+                if (!spr.active || stateIn) return;
+                pulse = pulseCheckMark(spr.x, spr.y, big, cards[ai], { printedSuit: true });
+                // Navrch zvětšeného Esa: záplata (marks[0], když je) pod pulzující marky.
+                if (pulse) pulse.marks.forEach((m, k) => m.setDepth(pulse.marks.length === 3 && k === 0 ? 840.5 : 841));
+            } });
+    });
+    const flyAt = shownAt + P.aceGrowMs + P.holdMs + P.aceHoldMs;
+    gameScene.time.delayedCall(flyAt, stopPulse);
     cards.forEach((c, i) => {
-        gameScene.time.delayedCall(shownAt + P.holdMs + i * P.landStaggerMs, () => {
+        gameScene.time.delayedCall(flyAt + i * P.landStaggerMs, () => {
             const spr = sprites[i];
             if (!gameScene || !spr?.active) return;
             const to = discardTopPos();
@@ -3796,7 +3811,7 @@ function _applyRoomUpdate(payload) {
     if (state?.phase !== 'RANCH' && App.ranchSel.size) App.ranchSel.clear();
     // Údolí stínů – kolečko voleb: výběr patří jedné volbě. Zahodí se, jakmile na řadě
     // nejsem já (volba odešla, kolečko se posunulo) – jinak by se nabalil na příští.
-    const _vosMine = !!state?.pendingVosRound && state.pendingVosRound.playerIdx === myIndex;
+    const _vosMine = (state?.pendingVosRound?.waiting || []).includes(myIndex);
     if (!_vosMine && App.vosSel.size) App.vosSel.clear();
     if (state?.phase !== 'POKER_TAKE' && App.vosTakeSel.size) App.vosTakeSel.clear();
 

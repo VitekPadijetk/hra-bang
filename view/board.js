@@ -755,7 +755,10 @@ function drawOpponents(ctx) {
             state.drawPhaseState?.cardsDrawn === 0 && player.health > 0;
 
         let isCurrent = state.currentPlayerIndex === actualIdx;
-        const isWaiting = !!_waiting && _waiting.idx === actualIdx && actualIdx !== state.currentPlayerIndex;
+        // Na víc hráčů naráz se čeká jen u kolečka voleb Údolí stínů – svítí všichni z nich.
+        const _wst = (typeof waitingStatusFor === 'function') ? waitingStatusFor(state, actualIdx)
+                   : (_waiting && _waiting.idx === actualIdx ? _waiting : null);
+        const isWaiting = !!_wst && actualIdx !== state.currentPlayerIndex;
         const isClausTarget = clausTargetIdx() === actualIdx;
         const cardW = 325 * scaleOpp;
         const cardH = 500 * scaleOpp;
@@ -1286,7 +1289,7 @@ function drawOpponents(ctx) {
                 player, actualIdx, anchor, scaleOpp, getCharTex, L,
                 cardW, cardH, bulletH, livesT, healthSlot, displayCards, handFan, handLen,
                 isCurrent, isWaiting, isClausTarget, attack: _attack,
-                waiting: _waiting, waitTint: WAIT_TINT, starScale,
+                waiting: _wst, waitTint: WAIT_TINT, starScale,
                 drawBoardCard, drawHandCard, addCharInteraction,
             });
         }
@@ -1355,8 +1358,8 @@ function drawOpponents(ctx) {
                     .setOrigin(0.5, 0).setDepth(50);
                 gameScene.cardsSprites.add(nameTxt);
                 drawNuggets(player, nameTxt.x - nameTxt.width / 2 - 5, nameY);
-                if (isWaiting && _waiting.text) {
-                    let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _waiting.text,
+                if (isWaiting && _wst.text) {
+                    let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _wst.text,
                         { fontSize: '15px', color: '#ffcc44',
                           backgroundColor: 'rgba(60,30,0,0.88)', padding: { x: 6, y: 2 } })
                         .setOrigin(0.5, 0).setDepth(51);
@@ -1430,8 +1433,8 @@ function drawOpponents(ctx) {
                     .setOrigin(0.5, 0).setDepth(50);
                 gameScene.cardsSprites.add(nameTxt);
                 drawNuggets(player, nameTxt.x - nameTxt.width / 2 - 5, nameY);
-                if (isWaiting && _waiting.text) {
-                    let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _waiting.text,
+                if (isWaiting && _wst.text) {
+                    let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _wst.text,
                         { fontSize: '15px', color: '#ffcc44',
                           backgroundColor: 'rgba(60,30,0,0.88)', padding: { x: 6, y: 2 } })
                         .setOrigin(0.5, 0).setDepth(51);
@@ -1505,8 +1508,8 @@ function drawOpponents(ctx) {
                     .setOrigin(0.5, 0).setDepth(50);
                 gameScene.cardsSprites.add(nameTxt);
                 drawNuggets(player, nameTxt.x - nameTxt.width / 2 - 5, nameY);
-                if (isWaiting && _waiting.text) {
-                    let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _waiting.text,
+                if (isWaiting && _wst.text) {
+                    let stTxt = gameScene.add.text(charX, nameY + 30, '⏳ ' + _wst.text,
                         { fontSize: '15px', color: '#ffcc44',
                           backgroundColor: 'rgba(60,30,0,0.88)', padding: { x: 6, y: 2 } })
                         .setOrigin(0.5, 0).setDepth(51);
@@ -1698,7 +1701,8 @@ function drawMyArea(ctx) {
 
         {
             const isCurrentMe = state.currentPlayerIndex === myIndex;
-            const _myWaiting = (typeof waitingStatus === 'function') ? waitingStatus(state) : null;
+            const _myWaiting = (typeof waitingStatusFor === 'function') ? waitingStatusFor(state, myIndex)
+                             : ((typeof waitingStatus === 'function') ? waitingStatus(state) : null);
             const isWaitingMe = !!_myWaiting && _myWaiting.idx === myIndex && myIndex !== state.currentPlayerIndex;
             let myNameTxt = gameScene.add.text(roleX, myBaseY + L.myNameOffY,
                 me.name,
@@ -2455,7 +2459,7 @@ function drawMyArea(ctx) {
                 // stejná řeč jako u Ranče. Kdo už volil a čeká na ostatní (Tornádo, Poker),
                 // má své vybrané karty zašedlé, ať ví, co půjde pryč.
                 const _vosR = state.pendingVosRound;
-                const isVosMine = !!_vosR && !_vosR.pool && _vosR.playerIdx === myIndex &&
+                const isVosMine = !!_vosR && !_vosR.pool && (_vosR.waiting || []).includes(myIndex) &&
                     ['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK'].includes(state.phase);
                 const _vosDone = !!_vosR && (_vosR.picks || []).some(pk => pk.playerIdx === myIndex && pk.cardIds.includes(card.id));
                 const isVosPicked = (isVosMine && App.vosSel.has(card.id)) || _vosDone;
@@ -2556,8 +2560,7 @@ function drawMyArea(ctx) {
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
                                        _isGrinnerPick || _isValentinePick || _isDutchPick ||
-                                       _isShotgunPick || _isLemonadePick || _isLawForced ||
-                                       isVosMine || _vosDone;
+                                       _isShotgunPick || _isLemonadePick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2585,6 +2588,9 @@ function drawMyArea(ctx) {
                     if (pointer?.wasTouch) return;
                     startCardZoom(getTex(card.id), card.id);
                     isHovered = true;
+                    // Údolí stínů – kolečko voleb: barva (modrá = vybírej, šedá = označeno)
+                    // zůstává, hover kartu jen trochu zvětší (jako u Ranče).
+                    if (isVosMine || _vosDone) { if (!isVosPicked) cSprite.setScale(baseScale * 1.05); return; }
                     if (isMySidActive || isDocActive || isWillActive || isRanchMine || state.phase === "DISCARD") return;
                     // „Odhoď další kartu": drž červené zvýraznění ceny i při hoveru (jako Sid).
                     if (isDiscardAnother) { if (!isDAmain) cSprite.setScale(baseScale * 1.05); return; }
@@ -2610,6 +2616,11 @@ function drawMyArea(ctx) {
                     isHovered = false;
                     // Zlatá (Právo západu) drží i nad vybranou kartou – jen měřítko zpět.
                     if (_isLawForced) { cSprite.setScale(baseScale); cSprite.setTint(0xffcc33); return; }
+                    if (isVosMine || _vosDone) {
+                        cSprite.setScale(isVosPicked ? baseScale * 0.88 : baseScale);
+                        cSprite.setTint(isVosPicked ? 0xbbbbbb : 0xaaddff);
+                        return;
+                    }
                     if (selectedState.cardIndex === index) return;
                     cSprite.setScale((isDAmain || isDocStaged || isRanchPicked) ? baseScale * 0.88 : baseScale);
                     if (isRanchMine) { cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff); return; }
@@ -3108,7 +3119,7 @@ function drawMyArea(ctx) {
         // rozsvítí, až je výběr platný – rozhoduje vosRoundPickOk (core/valley.js), stejný
         // predikát jako na serveru. Přeskočit nejde: volba je povinná.
         const _vosRound = state.pendingVosRound;
-        if (_vosRound && !_vosRound.pool && _vosRound.playerIdx === myIndex &&
+        if (_vosRound && !_vosRound.pool && (_vosRound.waiting || []).includes(myIndex) &&
             ['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK'].includes(state.phase)) {
             const _vIds = me.hand.filter(c => c && !c._placeholder && App.vosSel.has(c.id)).map(c => c.id);
             const _vOk = vosRoundPickOk(state, myIndex, _vIds);
@@ -3867,8 +3878,11 @@ function drawPhaseOverlays(ctx) {
     // ── Údolí stínů – kolečko voleb: Divoká banda, Tornádo, Poker ────────────────
     const _vr = state.pendingVosRound;
     if (_vr && ['BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)) {
-        const _vMine = _vr.playerIdx === myIndex;
-        const _vName = state.players[_vr.playerIdx]?.name || '?';
+        // Z ruky vybírají všichni naráz (`waiting`), z vyložených karet Pokeru jen ten,
+        // kdo ho zahrál (`playerIdx`).
+        const _vWait = state.phase === 'POKER_TAKE' ? [_vr.playerIdx] : (_vr.waiting || []);
+        const _vMine = _vWait.includes(myIndex);
+        const _vName = _vWait.map(i => state.players[i]?.name).filter(Boolean).join(', ') || '?';
         const _vBy = state.players[_vr.byIdx]?.name || '?';
         const _me = myIndex !== null ? state.players[myIndex] : null;
         const _n = _me ? (_me.hand || []).length : 0;

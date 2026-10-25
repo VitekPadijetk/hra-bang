@@ -17,7 +17,7 @@ const { mkGame, give, CardType, Suits } = require('./_helpers.js');
 const { Card, distinctCardKinds } = require('../logic/entities.js');
 const { cardPlayability } = require('../core/playability.js');
 const { getActionForCard } = require('../core/cardRules.js');
-const { pendingActor, waitingStatus } = require('../core/pending.js');
+const { pendingActor, pendingActors, waitingStatus, waitingStatusFor } = require('../core/pending.js');
 const { decideBotAction } = require('../core/botPolicy.js');
 const { decideCardClick } = require('../core/selection.js');
 const V = require('../core/valley.js');
@@ -93,11 +93,12 @@ test('Divoká banda: jedna karta BANG! stačí, jedna jiná karta ne (2 karty)',
     assert.equal(V.vosRoundPickOk(g, 1, [beer, missed]), true);
     assert.equal(V.vosRoundPickOk(g, 1, [beer, missed, bang]), false);
     assert.equal(V.vosRoundPickOk(g, 1, [beer, beer]), false);
-    assert.equal(V.vosRoundPickOk(g, 2, [g.players[2].hand[0].id]), false, 'není na řadě');
+    assert.equal(V.vosRoundPickOk(g, 2, [g.players[2].hand[0].id]), true, 'vybírá se naráz');
+    assert.equal(V.vosRoundPickOk(g, 0, []), false, 'hráč sám nevybírá');
     const res = g.vosPick(1, [bang]);
     assert.equal(res.discarded.length, 1);
     assert.equal(g.players[1].hand.length, 2);
-    assert.equal(pendingActor(g).idx, 2);
+    assert.deepEqual(pendingActors(g).map(a => a.idx), [2]);
 });
 
 test('Divoká banda: s jedinou kartou ji odhodí, bez karet se přeskakuje', () => {
@@ -194,7 +195,10 @@ test('Tornádo: volby ostatních jsou ve stavu, ale klikací jsou jen moje karty
     g.playCard(giveV(g, 0, 'Tornádo'));
     const me = g.players[1], other = g.players[2];
     assert.equal(cardPlayability(g, me, 1, me.hand[0]), true);
-    assert.equal(cardPlayability(g, other, 2, other.hand[0]), null);
+    assert.equal(cardPlayability(g, other, 2, other.hand[0]), true, 'vybírají všichni naráz');
+    g.vosPick(2, ids(g, 2));
+    assert.equal(cardPlayability(g, other, 2, other.hand[0]), null, 'kdo vybral, už neklikne');
+    assert.equal(g.pendingVosRound.picks[0].playerIdx, 2);
     const intent = decideCardClick({ state: g, me, myIndex: 1, selectedState: {}, card: me.hand[0], index: 0,
                                      blockInput: false, isMySidActive: false, playable: true });
     assert.equal(intent.type, 'VOS_ROUND_TOGGLE');
@@ -210,6 +214,34 @@ test('Tornádo: Suzy, která dala poslední kartu a dostala dvě, si nelízne', 
     g.vosPick(0, ids(g, 0));
     assert.equal(g.phase, 'PLAY');
     assert.equal(g.players[1].hand.length, 2);
+});
+
+test('Tornádo: vybírají všichni naráz – pořadí je jedno, karty se hnou až po posledním', () => {
+    const g = mkV(4);
+    for (const k of [0, 1, 2, 3]) { give(g, k, CardType.BEER); give(g, k, CardType.BANG); }
+    g.playCard(giveV(g, 0, 'Tornádo'));
+    assert.deepEqual(pendingActors(g).map(a => a.idx).sort(), [0, 1, 2, 3]);
+    for (const k of [0, 1, 2, 3]) assert.ok(waitingStatusFor(g, k), `na hráče ${k} se čeká`);
+    const before = [0, 1, 2, 3].map(k => ids(g, k));
+    for (const k of [3, 0, 2]) {
+        g.vosPick(k, ids(g, k));
+        assert.equal(g.phase, 'TORNADO_PICK');
+        assert.equal(waitingStatusFor(g, k), null, `hráč ${k} už vybral`);
+    }
+    assert.deepEqual(pendingActors(g).map(a => a.idx), [1]);
+    assert.equal(g.vosPick(3, ids(g, 3)), null, 'podruhé vybrat nejde');
+    g.vosPick(1, ids(g, 1));
+    assert.equal(g.phase, 'PLAY');
+    for (const k of [0, 1, 2, 3]) assert.deepEqual(ids(g, (k + 1) % 4).sort(), before[k].sort());
+});
+
+test('bot vybírá, i když na člověka před ním se ještě čeká', () => {
+    const g = mkV(3);
+    give(g, 1, CardType.BEER); give(g, 2, CardType.BEER);
+    g.playCard(giveV(g, 0, 'Poker'));
+    const a = decideBotAction(g, 2, null);
+    assert.equal(a && a.event, 'vos_pick');
+    assert.ok(V.vosRoundPickOk(g, 2, a.payload.cardIds));
 });
 
 // ── Poker ───────────────────────────────────────────────────────────────────

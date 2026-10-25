@@ -44,6 +44,8 @@ const SEAT_KEYS = new Set([
 const SEAT_LIST_KEYS = new Set([
     'responded', 'daltonsQueue', 'brawlQueue', 'queue', 'order', 'pickers',
     '_gagPending', 'visible', 'peek', 'playerIdxs', 'idxs',
+    // Údolí stínů – kolečko voleb: kdo ještě vybírá (vybírá se naráz).
+    'waiting',
 ]);
 // Klíč, který se na sedadlo jen podobá – je to index do JINÉHO pole (stůl, ruka,
 // nabídka postav) a přemapovat se nesmí:
@@ -55,6 +57,8 @@ const NOT_SEAT_KEYS = new Set([
     // Zlatá horečka: index do obchodu (gearRow) a do vybavení hráče (player.gear) –
     // ani jedno není sedadlo.
     'rowIdx', 'gearIdx',
+    // Údolí stínů – Poker: které z vyložených karet je Eso (index do řady, animace).
+    'aceIdx',
 ]);
 // Podstromy, do kterých se při přemapování vůbec nechodí (viz `_remapSeats`).
 const SEAT_SKIP_KEYS = new Set(['players', 'deck', 'storeCards', 'cardData', '_deathAnimData']);

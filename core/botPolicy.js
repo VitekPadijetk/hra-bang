@@ -157,6 +157,10 @@ if (typeof require === 'function') {
     if (typeof pendingActor === 'undefined') {
         globalThis.pendingActor = require('./pending.js').pendingActor;
     }
+    // Údolí stínů – kolečko voleb: na víc hráčů se čeká naráz (samostatný guard).
+    if (typeof pendingActors === 'undefined') {
+        globalThis.pendingActors = require('./pending.js').pendingActors;
+    }
     if (typeof effSuit === 'undefined') {
         const __hn = require('./highNoon.js');
         globalThis.eventActive = __hn.eventActive;
@@ -1533,8 +1537,10 @@ function decideBotAction(state, myIndex, beliefs) {
         return null;
     }
 
-    const pa = pendingActor(state);
-    if (!pa || pa.idx !== myIndex) return null;
+    // Na víc hráčů se čeká naráz jen u kolečka voleb Údolí stínů (pendingActors) –
+    // tam smí bot vybrat, i když není první v pořadí.
+    const pa = pendingActors(state).find(a => a.idx === myIndex);
+    if (!pa) return null;
 
     // Beliefy si v testech/serveru předá volající; kdyby chyběly, spočítej z prázdného ledgeru.
     if (!beliefs) beliefs = computeBeliefs(state, state.behaviorLedger || { pairs: {} }, myIndex);

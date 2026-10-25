@@ -15,7 +15,7 @@
 //
 // Factory installActionGuard(ctx) vystaví `ctx.guardedOn(socket)` = náhrada za
 // `socket.on` pro herní handlery (handlers.game.js / handlers.characters.js).
-const { pendingActor } = require('../core/pending.js');
+const { pendingActor, pendingActors } = require('../core/pending.js');
 
 module.exports = function installActionGuard(ctx) {
 
@@ -84,6 +84,15 @@ module.exports = function installActionGuard(ctx) {
         }
         // Údolí stínů – vos_pick nese, ZA KOHO se vybírá (`playerIdx`): u kolečka voleb
         // (Tornádo, Poker…) by opožděný klik jinak vybral karty dalšímu v pořadí.
+        // Kolečko voleb vybírají všichni NARÁZ (pendingActors): projde výběr kohokoli, na
+        // koho se ještě čeká – ale jen za vlastní místo (`playerIdx` musí patřit socketu).
+        const many = pendingActors(gs);
+        if (event === 'vos_pick' && many.length > 1) {
+            const idx = payload && payload.playerIdx;
+            if (idx == null || !seats.includes(idx)) return `výběr za cizí místo #${idx}`;
+            if (!many.some(a => a.idx === idx)) return `na #${idx} se už nečeká`;
+            return null;
+        }
         if ((event === 'vos_pick' || event === 'vos_poker_take' || event === 'vos_lemonade') &&
             payload && payload.playerIdx != null) {
             const cur = pendingActor(gs);

@@ -249,3 +249,25 @@ test('každá herní akce bota je v guardu (TURN_ACTIONS nebo SELF_ACTIONS)', ()
     const missing = botEvents.filter(e => !known.has(e) && !UNGUARDED.has(e));
     assert.deepEqual(missing, [], 'herní akce mimo guard = neautorizovaný posun hry');
 });
+
+// Údolí stínů – kolečko voleb (Tornádo, Poker, Divoká banda) vybírají všichni NARÁZ:
+// projde výběr kohokoli, na koho se ještě čeká, ale jen za vlastní místo.
+test('kolečko voleb: vybírá kdokoli z čekajících, za cizí místo ne', () => {
+    const { gs, sock } = mkEnv();
+    gs.options = { expansions: { udoli_stinu: true } };
+    [1, 2, 3].forEach(k => give(gs, k, CardType.BEER));
+    gs.pendingVosRound = { kind: 'POKER', byIdx: 0, waiting: [1, 2, 3], picks: [], playerIdx: null };
+    gs.phase = 'POKER_PICK';
+    const id = k => gs.players[k].hand[0].id;
+    // hráč 3 vybírá dřív než hráči 1 a 2
+    sock(3).fire('vos_pick', { cardIds: [id(3)], playerIdx: 3 });
+    assert.equal(sock(3).rejected.length, 0);
+    assert.deepEqual(gs.pendingVosRound.waiting, [1, 2]);
+    // hráč 2 za hráče 1 nesmí
+    sock(2).fire('vos_pick', { cardIds: [id(1)], playerIdx: 1 });
+    assert.equal(sock(2).rejected.length, 1);
+    assert.deepEqual(gs.pendingVosRound.waiting, [1, 2]);
+    // hráč 3 podruhé taky ne – na něj se už nečeká
+    sock(3).fire('vos_pick', { cardIds: [id(3)], playerIdx: 3 });
+    assert.equal(sock(3).rejected.length, 1);
+});
