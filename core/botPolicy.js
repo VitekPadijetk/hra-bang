@@ -129,6 +129,12 @@ if (typeof require === 'function') {
         globalThis.evelynOffer = __vos3.evelynOffer;
         globalThis.evelynTargets = __vos3.evelynTargets;
     }
+    // Údolí stínů (F6) – okno úniku: Útěk a Mick Defender.
+    if (typeof evadeOptions === 'undefined') {
+        const __vos6 = require('./valley.js');
+        globalThis.evadeOptions = __vos6.evadeOptions;
+        globalThis.escapeRespondOk = __vos6.escapeRespondOk;
+    }
     if (typeof aimCardFor === 'undefined') {
         globalThis.aimCardFor = require('./playability.js').aimCardFor;
     }
@@ -250,6 +256,7 @@ const T = {
     LAST_CALL: 'Poslední pivo', RATTLESNAKE: 'Chřestýš', BOUNTY: 'Odměna',
     BACKFIRE: 'Opětovná palba', FANNING: 'Roztříštěná kulka', AIM: 'Dvojitá rána',
     BANDIDOS: 'Divoká banda', TORNADO: 'Tornádo', POKER: 'Poker', DUCH: 'Duch',
+    ESCAPE: 'Útěk',
 };
 
 // Údolí stínů – má aspoň jeden jiný hráč ve hře kartu v ruce? (Divoká banda a Poker
@@ -652,6 +659,7 @@ function keepScore(card) {
         case T.BANDIDOS: return 4;                // jako hromadný útok
         case T.POKER: return 4;                   // až 2 karty navíc
         case T.TORNADO: return 2;                 // výměna 2 za 2
+        case T.ESCAPE: return 5;                  // uhne i Vězení a Panice, ne však BANG!u
         default: return 1;
     }
 }
@@ -1650,6 +1658,10 @@ function decideBotAction(state, myIndex, beliefs) {
                     && c._playedTurn !== state.turnId);
                 if (greenMiss) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null, boardCardId: greenMiss.id } };
             }
+            // Údolí stínů – Útěk proti bang-efektu na jediný cíl (až po obyčejném Vedle!:
+            // Útěk je jediná karta, která uhne i Vězení nebo Panice).
+            const escIdx = me.hand.findIndex(c => escapeRespondOk(state, myIndex, c));
+            if (escIdx !== -1) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: escIdx } };
 
             // Pořád nelze uhnout — záchrana při posledním životě (Pivo / Sid Ketchum).
             const aliveCount = inPlayCount(state.players);   // duch se počítá (Město duchů)
@@ -1955,6 +1967,41 @@ function decideBotAction(state, myIndex, beliefs) {
                 return { event: 'vos_lemonade', payload: { cardId: worst.id, playerIdx: myIndex } };
             }
             return decline;
+        }
+
+        // Údolí stínů – okno úniku (Útěk / Mick Defender). Uhnout se vyplatí, když efekt
+        // škodí: Vězení a Chřestýš vždycky, Odměna jen levným Útěkem, Panika/Cat Balou
+        // nepřítele vždycky – spojenec mi jimi nejspíš sundává Vězení/Dynamit (pak
+        // nechat), a Duel, když nemám aspoň dvě karty BANG!. Mick si kartu Vedle! šetří
+        // na BANG! – utratí ji jen na Vězení/Chřestýše, nebo když jich má víc. Odmítnout
+        // jde vždycky, takže se nezasekne.
+        case 'EVADE_OFFER': {
+            const pe = state.pendingEvade;
+            const decline = { event: 'vos_evade', payload: { cardId: null, playerIdx: myIndex } };
+            const opts = pe ? evadeOptions(state, myIndex) : [];
+            if (!opts.length) return decline;
+            const escapes = opts.filter(c => c.type === 'Útěk');
+            const misses = opts.filter(c => c.type !== 'Útěk');
+            const r = pe.resume || {};
+            const placed = r.kind === 'PLACE'
+                ? (me.board || []).find(c => c && c.id === r.cardId) : null;
+            const hostile = hostilityOf(state, myIndex, pe.attackerIdx, beliefs) > ENEMY_EPS;
+            let want = false, severe = false;
+            if (placed) {
+                severe = placed.type === T.JAIL || placed.type === T.RATTLESNAKE;
+                want = severe || (placed.type === T.BOUNTY && escapes.length > 0);
+            } else if (r.kind === 'DUEL') {
+                want = me.hand.filter(c => playsAsBang(state, me, c)).length < 2;
+            } else {
+                const helpful = (me.board || []).some(c => boardCardValue(c) < 0);
+                want = hostile || !helpful;
+            }
+            if (!want) return decline;
+            const pool = escapes.length ? escapes
+                       : ((severe || misses.length >= 2 || r.kind === 'DUEL') ? misses : []);
+            if (!pool.length) return decline;
+            const pick = pool.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
+            return { event: 'vos_evade', payload: { cardId: pick.id, playerIdx: myIndex } };
         }
 
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom

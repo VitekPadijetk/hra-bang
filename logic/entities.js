@@ -120,6 +120,7 @@ const VALLEY_CHARACTERS = [
 const VOS_READY = [
     "Colorado Bill", "Limonádový Jim",   // F2
     "Evelyn Shebang",                    // F3
+    "Mick Defender",                     // F6
 ];
 
 class Card {

@@ -216,6 +216,14 @@ if (typeof vosRoundPickOk === 'undefined' && typeof require === 'function') {
     globalThis.pokerHasAce = __vos.pokerHasAce;
 }
 
+// Údolí stínů (F6): okno úniku – Útěk a Mick Defender.
+if (typeof vosEvadable === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.evadeOptions = __vos.evadeOptions;
+    globalThis.vosEvadable = __vos.vosEvadable;
+    globalThis.escapeRespondOk = __vos.escapeRespondOk;
+}
+
 // Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum, karta Zlatá horečka
 // a Wanted („zahraj na libovolného hráče"): co jde s nákupem udělat a na koho. Stejným
 // predikátem se ptá okno obchodu i bot – kdyby se rozešly, server by nákup mlčky odmítl
@@ -383,6 +391,10 @@ class GameState {
         // Údolí stínů – Limonádový Jim: „odhoď kartu za +1 život" za cizí Pivo – fáze
         // LEMONADE_OFFER (fronta odložených akcí, viz logic/valley.js).
         this.pendingLemonade = null;
+        // Údolí stínů – okno úniku (Útěk, Mick Defender): cíl karty na jediného hráče se
+        // smí efektu vyhnout – fáze EVADE_OFFER. Pokračování po odmítnutí je DATA
+        // (`resume`), ne funkce. Viz _vosEvadeGate v logic/valley.js.
+        this.pendingEvade = null;
         // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): kdo je na řadě,
         // kdo ještě čeká, co si kdo vybral (tajné, viz redactState) a u Pokeru vyložené
         // karty. Fáze BANDIDOS_DISCARD / TORNADO_PICK / POKER_PICK / POKER_TAKE.

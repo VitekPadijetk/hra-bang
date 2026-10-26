@@ -34,6 +34,8 @@ const VOS_CARDS_READY = [
     'Divoká banda', 'Tornádo', 'Poker',
     // F5 – vyřazený hráč zpátky ve hře s nulou životů
     'Duch',
+    // F6 – okno úniku (EVADE_OFFER) a Útěk jako odpověď na bang-efekt
+    'Útěk',
 ];
 
 // ── Zbraně (F1) ──────────────────────────────────────────────────────────────
@@ -80,6 +82,9 @@ if (typeof require === 'function' && typeof canHeal === 'undefined') {
 }
 if (typeof require === 'function' && typeof computeCanHit === 'undefined') {
     globalThis.computeCanHit = require('./distance.js').computeCanHit;
+}
+if (typeof require === 'function' && typeof hasAbility === 'undefined') {
+    globalThis.hasAbility = require('./distance.js').hasAbility;
 }
 if (typeof require === 'function' && typeof computeDistance === 'undefined') {
     globalThis.computeDistance = require('./distance.js').computeDistance;
@@ -261,6 +266,66 @@ function pokerHasAce(cards) {
     return (cards || []).some(c => c && c.value === 'A');
 }
 
+// ── Okno úniku (F6): Útěk a Mick Defender ────────────────────────────────────
+// Útěk:          „Pokud jsi jediným cílem karty jiné než BANG!, vyhneš se efektu
+//                 odhozením této karty."
+// Mick Defender: „Pokud je Mick jediným cílem karty, může použít kartu VEDLE, aby se
+//                 jejímu efektu vyhnul." (Albi: i modré a zelené karty mířící jen na něj,
+//                 ne Dynamit. Kartám BANG! se brání obvyklým způsobem.)
+// R11: jediný cíl, karta libovolné barvy ZAHRANÁ hráčem – Panika, Cat Balou, Duel (jen
+// před začátkem), Ragtime, Kankán, Krytý vůz, Vězení, Chřestýš, Odměna, opakování Lee
+// Van Kliffem a bang-efekty na jeden cíl. Ne Dynamit (přichází posunem), ne hromadné
+// karty, ne karta BANG!, ne vybavení Zlaté horečky, ne schopnosti postav.
+//
+// Kudy se uniká, záleží na tom, jestli karta má vlastní obranu:
+//   • bang-efekty (Úder, Tomahawk, Springfield…) už RESPOND mají – Útěk je v něm jen
+//     další platná odpověď, která efekt zruší celý (escapeRespondOk). Mick se proti nim
+//     brání svou kartou Vedle! normálně, takže tam nic dalšího nepotřebuje;
+//   • ostatní karty se zastaví ve fázi EVADE_OFFER (logic/valley.js) – ale JEN tehdy,
+//     když cíl reagovat může (R4): drží Útěk, nebo je Mick a má čím zahrát Vedle!.
+
+// Které karty z ruky cíle smí únik zaplatit? Prázdné = okno se vůbec neotevře.
+function evadeOptions(state, idx) {
+    if (!vosOn(state)) return [];
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p)) return [];
+    const mick = hasAbility(p, 'Mick Defender');
+    return (p.hand || []).filter(c => c && !c._placeholder &&
+        (c.type === 'Útěk' || (mick && _playsAsMissedLazy(state, p, c))));
+}
+
+// Otevře se pro tenhle zásah okno úniku? Sám na sebe se nikdo nevyhýbá (Ragtime na
+// vlastní stůl, Chřestýš před sebe).
+function vosEvadable(state, attackerIdx, targetIdx) {
+    if (!vosOn(state) || attackerIdx == null || attackerIdx === targetIdx) return false;
+    return evadeOptions(state, targetIdx).length > 0;
+}
+
+// Smí hráč `idx` právě teď v RESPOND zahrát `card` jako Útěk? Jen proti bang-EFEKTU
+// zahranému kartou na něj samotného: ne karta BANG! (Lemat, Zúčtování, Calamity – `vos.
+// bangCard`, Odstřelovač a Odražená střela nejsou efekty), ne hromadný útok ani Duel,
+// ne útok bez střelce (Fistful of Cards), ne nezrušitelný BANG! Colorada a ne výstřel,
+// který karta nemá – Evelyn Shebang a Doc Holyday jsou schopnosti, Láhev je vybavení
+// a Roztříštěná kulka se dvěma cíli nemíří na jediného (`vos.noEscape`).
+function escapeRespondOk(state, idx, card) {
+    if (!card || card.type !== 'Útěk' || !vosOn(state)) return false;
+    const pr = state.pendingResponse;
+    if (state.phase !== 'RESPOND' || !pr || !pr.active || pr.targetIdx !== idx) return false;
+    if (pr.sourceCard !== 'Bang!' || pr.requiredCard !== 'Vedle!') return false;
+    if (!pr.bangEffect || pr.ricochet) return false;
+    if (pr.originatorIdx == null || pr.originatorIdx === idx) return false;
+    const v = pr.vos || {};
+    if (v.bangCard || v.unavoidable || v.noEscape || v.shot === 'EVELYN') return false;
+    return true;
+}
+
+// „Karta Vedle!" pro Micka Defendera – Big Spencer, Elena Fuente, Calamity i Zúčtování
+// jdou stejným predikátem jako v obraně (playability.js se na valley.js ptá sám, kruh).
+function _playsAsMissedLazy(state, p, card) {
+    const f = typeof playsAsMissed === 'function' ? playsAsMissed : require('./playability.js').playsAsMissed;
+    return f(state, p, card);
+}
+
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
 // logic/setup.js) a do katalogu karet debug hry.
 function vosReadyCards(data) {
@@ -326,5 +391,6 @@ if (typeof module !== 'undefined' && module.exports) {
                        vosUnavoidable, lemonadeEligible,
                        fanningSeconds, fanningTargets, evelynTargets, evelynOffer,
                        VOS_ROUND_PHASES, vosRoundPhase, vosRoundWaiting, vosRoundWaitsFor, vosRoundPickCount,
-                       vosRoundPickOk, pokerTakeOk, pokerHasAce };
+                       vosRoundPickOk, pokerTakeOk, pokerHasAce,
+                       evadeOptions, vosEvadable, escapeRespondOk };
 }

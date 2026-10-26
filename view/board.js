@@ -2571,10 +2571,14 @@ function drawMyArea(ctx) {
                 const _isLemonadePick = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "LEMONADE_OFFER" && state.pendingLemonade?.playerIdx === myIndex;
                 if (_isLemonadePick) cSprite.setTint(0xffff44);
+                // Údolí stínů – okno úniku: svítí Útěk (a u Micka Defendera karty Vedle!).
+                const _isEvadePick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "EVADE_OFFER" && state.pendingEvade?.targetIdx === myIndex;
+                if (_isEvadePick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
                                        _isGrinnerPick || _isValentinePick || _isDutchPick ||
-                                       _isShotgunPick || _isLemonadePick || _isLawForced;
+                                       _isShotgunPick || _isLemonadePick || _isEvadePick || _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2794,6 +2798,15 @@ function drawMyArea(ctx) {
                             App.blockInput = true;
                             renderUI();
                             return;
+                        case 'VOS_EVADE':
+                            // Údolí stínů – okno úniku: klik na Útěk / kartu Vedle! (Mick)
+                            // = vyhnout se efektu (odmítnutí je tlačítko).
+                            socket.emit('vos_evade', { cardId: intent.cardId, playerIdx: myIndex });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
                         case 'VOS_LEMONADE':
                             // Údolí stínů – Limonádový Jim: klik na kartu = odhodit ji za
                             // +1 život (banner nahoře to říká, odmítnutí je tlačítko).
@@ -3002,7 +3015,7 @@ function drawMyArea(ctx) {
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
                  'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE',
-                 'SHOTGUN_DISCARD', 'LEMONADE_OFFER',
+                 'SHOTGUN_DISCARD', 'LEMONADE_OFFER', 'EVADE_OFFER',
                  'BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
@@ -3206,6 +3219,22 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _lmSkip.setAlpha(0.45); _lmSkip.disableInteractive(); }
+        }
+
+        // ── Údolí stínů – okno úniku: nevyhýbat se ───────────────────────────────
+        // Únik je klik na Útěk / kartu Vedle! v ruce (VOS_EVADE), tady je „nechat proběhnout".
+        if (state.phase === "EVADE_OFFER" && state.pendingEvade?.targetIdx === myIndex) {
+            const { bg: _evSkip } = themeButton(gameScene, L.btnEndX, L.btnEndY, 280, L.btnH, 'NEVYHÝBAT SE ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('vos_evade', { cardId: null, playerIdx: myIndex });
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _evSkip.setAlpha(0.45); _evSkip.disableInteractive(); }
         }
 
         // ── Zlatá horečka: zrušit nabité „donutit odhodit vybavení" ─────────────
@@ -3884,6 +3913,32 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_lName} – Limonádový Jim (za Pivo si může doplnit život)`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Údolí stínů – okno úniku: „vyhneš se kartě X?" ───────────────────────────
+    if (state.phase === "EVADE_OFFER" && state.pendingEvade) {
+        const _pe = state.pendingEvade;
+        const _eMine = _pe.targetIdx === myIndex;
+        const _eName = state.players[_pe.targetIdx]?.name || '?';
+        const _eBy = state.players[_pe.attackerIdx]?.name || '?';
+        const _eMick = _eMine && (evadeOptions(state, myIndex) || []).some(c => c.type !== 'Útěk');
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _eMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_eMine) {
+            let l1 = gameScene.add.text(960, 66, `🏃 ${_eBy} na tebe hraje ${_pe.cardName} – vyhneš se?`,
+                { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112,
+                `Klikni na ${_eMick ? 'Útěk nebo kartu Vedle! (Mick Defender)' : 'Útěk'}, nebo „Nevyhýbat se"`,
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_eName} – může se vyhnout kartě ${_pe.cardName}`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }

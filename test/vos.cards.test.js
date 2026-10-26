@@ -72,10 +72,10 @@ function takeHit(g, idx) {
 
 // ── Hotové druhy a menu ──────────────────────────────────────────────────────
 
-test('F1 + F3 + F4 + F5: do balíčku jde třináct hotových druhů', () => {
+test('F1 + F3 + F4 + F5 + F6: do balíčku jde čtrnáct hotových druhů', () => {
     assert.deepEqual([...V.VOS_CARDS_READY].sort(),
         ['Brokovnice', 'Chřestýš', 'Divoká banda', 'Duch', 'Dvojitá rána', 'Lemat', 'Odměna',
-         'Opětovná palba', 'Poker', 'Poslední pivo', 'Roztříštěná kulka', 'Tomahawk', 'Tornádo']);
+         'Opětovná palba', 'Poker', 'Poslední pivo', 'Roztříštěná kulka', 'Tomahawk', 'Tornádo', 'Útěk']);
 });
 
 test('menu: Údolí stínů jde zapnout (už není „již brzy")', () => {
@@ -83,6 +83,22 @@ test('menu: Údolí stínů jde zapnout (už není „již brzy")', () => {
     assert.ok(M.MENU_EXPANSIONS.some(e => e.key === 'udoli_stinu'));
     assert.ok(!M.MENU_EXPANSIONS_SOON.some(e => e.key === 'udoli_stinu'));
     assert.equal(M.emptyExpansions().udoli_stinu, false);
+});
+
+// Nápověda u karty rozšíření v menu říká, kolik je hotovo – a musí sedět s tím, co
+// opravdu jde do balíčku a do výběru postav (po F1–F5 pořád tvrdila „6 z 15").
+test('menu: nápověda Údolí stínů sedí s počtem hotových karet a postav', () => {
+    const M = require('../core/menuModel.js');
+    const E = require('../logic/entities.js');
+    const hint = M.MENU_EXPANSIONS.find(e => e.key === 'udoli_stinu').hint;
+    const doneCards = V.VOS_CARDS_READY.length, doneChars = E.VOS_READY.length;
+    const allChars = E.VALLEY_CHARACTERS.length;
+    if (doneCards === kinds.length && doneChars === allChars) {
+        assert.ok(!/Rozpracované/.test(hint), hint);
+    } else {
+        assert.ok(hint.includes(`${doneCards} z ${kinds.length} druhů karet`), hint);
+        assert.ok(hint.includes(`${doneChars} z ${allChars} postav`), hint);
+    }
 });
 
 // ── Tomahawk ─────────────────────────────────────────────────────────────────

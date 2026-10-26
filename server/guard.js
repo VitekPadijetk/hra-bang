@@ -34,6 +34,8 @@ module.exports = function installActionGuard(ctx) {
         // Údolí stínů – výběr karet z ruky (Brokovnice, Tornádo, Poker, Divoká banda),
         // výběr z vyložených karet Pokeru a nabídka Limonádového Jima.
         'vos_pick', 'vos_poker_take', 'vos_lemonade',
+        // Údolí stínů (F6) – okno úniku: Útěk / Mick Defender (cíl karty, mimo tah).
+        'vos_evade',
         // Údolí stínů (F3) – Roztříštěná kulka (BANG! na dva cíle) hraje hráč na tahu.
         'play_fanning',
         'sniper_choose', 'play_ricochet',
@@ -93,7 +95,7 @@ module.exports = function installActionGuard(ctx) {
             if (!many.some(a => a.idx === idx)) return `na #${idx} se už nečeká`;
             return null;
         }
-        if ((event === 'vos_pick' || event === 'vos_poker_take' || event === 'vos_lemonade') &&
+        if ((event === 'vos_pick' || event === 'vos_poker_take' || event === 'vos_lemonade' || event === 'vos_evade') &&
             payload && payload.playerIdx != null) {
             const cur = pendingActor(gs);
             if (cur && cur.idx !== payload.playerIdx) {

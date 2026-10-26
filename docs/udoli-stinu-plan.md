@@ -8,11 +8,14 @@ a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_b
 **Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra), F1 (šest karet,
 2026-10-24), F2 (Colorado Bill, Limonádový Jim, 2026-10-24), F3 (fronta výstřelů:
 Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24), F4
-(kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25) a F5 (Duch, 2026-10-25).**
+(kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25), F5 (Duch, 2026-10-25) a F6
+(okno úniku: Útěk, Mick Defender, 2026-10-26).**
 Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js));
-do balíčku jde zatím 13 z 15 druhů karet a do výběru 3 z 5 postav.
+do balíčku jde zatím 14 z 15 druhů karet a do výběru 4 z 5 postav (nápovědu v menu drží
+v souladu test).
 Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
-1782 testů. Po F3: 1813 testů. Po F4: 1837 testů. Po F5: **1869 testů, 0 chyb**.
+1782 testů. Po F3: 1813 testů. Po F4: 1837 testů. Po F5: 1869 testů. Po F6: **1903
+testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -684,7 +687,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F3** ✓ | Fronta výstřelů + `_afterVosShot` + zabiják; Opětovná palba, Roztříštěná kulka, Evelyn; klikané zásahy s útočníkem → Dvojitá rána | první nový mechanismus, na kterém stojí F7 |
 | **F4** ✓ | Divoká banda, Tornádo, Poker (+ redakce, animace) | samostatné, vzor Daltonové |
 | **F5** ✓ | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
-| **F6** | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
+| **F6** ✓ | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
 | **F7** | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
 | **F8** | Obětavý skok (brány + odměna + redakce) | riziko jako Teren Kill; bez držitele karty se hra nemění |
 | **F9** | Politika bota, zátěž (matice + „balíček samých X"), invarianty rozložení, výměna štítků za art, CLAUDE.md + `docs/pravidla/udoli-stinu.md` | uzavření |
@@ -951,6 +954,71 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 - **Zjištěno mimochodem:** zátěž F1 („odhoz Brokovnice se ani jednou neobjevil") občas
   selže na pokrytí – i na čistém stavu před F5 (2 z 25 běhů). Nejde o zaseknutí, jen
   o vzácný jev v malém počtu her.
+
+### Co se ve fázi F6 odchýlilo od plánu (a proč)
+
+- **Tři vstupy podle §2.8, pokračování jako DATA:** `_enterTargetSelection(sel, { evade,
+  pick })`, `_placeOnTarget(card, att, tar)` a `_startDuel(pr, evadable)` (logic/valley.js)
+  se zastaví ve fázi `EVADE_OFFER` přes `_vosEvadeGate`, ale jen když `vosEvadable`
+  (core/valley.js) – cíl drží Útěk, nebo je Mick a má kartu, kterou pustí `playsAsMissed`
+  (R4). Odmítnutí dohraje `_evadeContinue` podle `pendingEvade.resume` (`SELECTION` /
+  `PLACE` / `DUEL`), ne znovuzavoláním původní funkce. Karty s předem zvolenou oblastí
+  (Ragtime, Krytý vůz, Kankán) nesou v `resume.pick` i ji, takže se po odmítnutí rovnou
+  vyřeší. Sám na sebe se nikdo nevyhýbá (Ragtime na vlastní stůl, Chřestýš před sebe),
+  Duch (cíl = vyřazený) okno neotevírá.
+- **Vyložená karta leží před cílem UŽ BĚHEM rozmýšlení** (Vězení, Chřestýš, Odměna):
+  letí tam svou obvyklou animací a cíl vidí, čemu se vyhýbá; únik ji odtud odhodí
+  (`board_to_discard`). Johnny Kisch a Suzy Lafayette se vyhodnotí až po rozhodnutí
+  (`_placeSettle`). Plán počítal s kartou „v odhozu místo na stole".
+- **Dokud okno visí, fronta odložených akcí stojí** (`_processSpecialQueue` vrací `true`,
+  vzor kolečka voleb) a **Roubík ho nepřeruší** (`_gagCalm`). Suzy, která zahrála poslední
+  kartu (Paniku), si lízne až po rozhodnutí cíle.
+- **Útěk proti bang-efektu** (Úder, Tomahawk, Springfield, zelené karty, výstřel Opětovné
+  palby, Roztříštěná kulka s jediným cílem, opakování Lee Van Kliffem) je v RESPOND další
+  platná odpověď – zruší CELÝ efekt (na počtu Vedle! nezáleží a nic se neodráží). Jediný
+  predikát `escapeRespondOk` (core/valley.js) se ptá serveru (`handleResponse`), klienta
+  (`cardPlayability`) i bota. Neplatí proti kartě BANG! (`vos.bangCard`, Odstřelovač,
+  Odražená střela), hromadným útokům, Duelu, útoku bez střelce (Fistful of Cards),
+  Coloradovu ♠ ani proti tomu, co kartou není nebo nemíří na jediného: kontext útoku
+  dostal příznak **`vos.noEscape`** (Doc Holyday, Láhev jako BANG! ze Zlaté horečky,
+  Roztříštěná kulka se dvěma cíli – oba výstřely) a výstřel Evelyn se pozná podle
+  `vos.shot`.
+- **Zlatá horečka (R11):** Komplic a Láhev jdou přes `_repeatBrownEffect` stejně jako Lee
+  Van Kliff, takže deskriptor nese `gear: true` a okno se pro ně neotevírá.
+- **Mick a Úhyb:** zahraje-li Mick jako kartu Vedle! Úhyb, líznutí k němu patří (jako
+  v obraně, `UHYB_DRAW`). Big Spencer (třeba přes Greygoryho Decka) kartu Vedle! hrát
+  nesmí, takže se mu okno neotevře – hlídá to sám `playsAsMissed`.
+- **Molly Stark (R13)** líže za Útěk i za Mickovo Vedle! – je to dobrovolně zahraná karta
+  mimo tah.
+- **Akce je `vos_evade { cardId | null, playerIdx }`** (plán psal `cardIdx`) – stejný
+  důvod jako u Limonádového Jima. Guard ji hlídá proti opožděnému kliku. Ragtime
+  v `discard_another_card` krádež neanimuje, dokud se čeká na únik; animace krádeže /
+  odhozu po odmítnutí (oblast zvolená předem) posílá handler `vos_evade`.
+- **Bot:** Vězení a Chřestýšovi uhne vždycky, Odměně jen Útěkem, Panice / Cat Balou od
+  nepřítele vždycky (od spojence jen když mu na stole neleží Vězení / Dynamit, které by
+  mu mohl sundávat), Duelu když nemá aspoň dvě karty BANG!. Mick si jedinou kartu Vedle!
+  šetří na BANG! (utratí ji na Vězení / Chřestýše, Duel, nebo když jich má víc). Útěk
+  v obraně až po obyčejném Vedle! a zelené kartě ze stolu. `keepScore` Útěku 5.
+- **UI** (view/board.js): banner „X na tebe hraje Y – vyhneš se?", svítící Útěk / karty
+  Vedle! (klik = únik, intent `VOS_EVADE`) a tlačítko „NEVYHÝBAT SE" v místě „Ukončit tah"
+  – vzor Limonádového Jima. **Render neověřený.**
+- **Strukturální test** (test/vos.reactions.test.js): `phase = "SELECTING_TARGET_CARD"`
+  smí v logic.js a logic/* stát jen v `_enterTargetSelection`, `_evadeContinue` a třech
+  hromadných výběrech (`_advanceBrawl`, `_nextVultureSplitPick`, `_advanceDaltons`).
+- **Zjištěno mimochodem a opraveno (F5):**
+  1. **Duch pod Právem západu** zůstal v tahu zamčený: vynucený BANG! bez jiného cíle se
+     má poslat na sebe, jenže na Ducha se střílet nedá – server výstřel odmítal a tah
+     nešel ani ukončit (i člověku). `_lawHasTarget` (core/playability.js) teď pro Ducha
+     bez jiného cíle povinnost nevynucuje.
+  2. **Zátěž „balíček plný Duchů" občas nedoběhla** – vinou testu, ne pravidel: server
+     drží Paniku, Cat Balou, Krytý vůz a Kankán mimo odhoz, dokud je tam nedoveze animace
+     (`setTimeout` v server/handlers.game.js), a synchronní pumpa testu timeouty nikdy
+     nespustila. Po pár stech tazích v balíčku nezbyla jediná karta, která by Duchovi
+     sebrala kartu, a hra samých Duchů neměla jak skončit. `pumpToWinner`
+     (test/server.bots.test.js) teď po každé akci spustí čekající timeouty (`mock.timers`).
+- **Zátěž F6:** balíček plný Útěků (+ Tomahawky), každá druhá hra se stolem samých Micků,
+  čtvrtina se všemi rozšířeními; hlídá, že okno nikdy nezůstane viset mimo svou fázi
+  a že se otevřelo, uniklo se Útěkem, Mickem i v obraně.
 
 ## 9. Co plán vědomě nedělá
 

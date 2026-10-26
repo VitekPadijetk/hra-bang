@@ -200,6 +200,9 @@ const CharactersMixin = {
         // přesunu karet). Kolečko si frontu zavolá samo, až doběhne. `true` = hra pokračuje
         // sama, volající nemá sahat na fázi.
         if (this.pendingVosRound) return true;
+        // Údolí stínů – okno úniku (Útěk / Mick Defender): efekt zahrané karty ještě
+        // nedoběhl, takže fronta stojí taky. vosEvade si ji zavolá samo.
+        if (this.pendingEvade) return true;
         this._pruneSuzyQueue();
         // Údolí stínů – Duch: efekt doběhl a fronta je prázdná, takže je klid uklidit po
         // Duchovi, kterému karta Duch zmizela ze stolu (_vosGhostSettle). Odešel-li hráč
@@ -700,7 +703,10 @@ const CharactersMixin = {
 
         p.stats.bangsFired++;
         this.currentAttacker = playerIdx;
-        this._beginBangResolution(playerIdx, targetIdx, true); // isEffect = true (bez limitu/Slaba)
+        // isEffect = true (bez limitu/Slaba). Údolí stínů: je to schopnost, ne karta –
+        // Útěk ji nezruší (`noEscape`, escapeRespondOk v core/valley.js).
+        this._beginBangResolution(playerIdx, targetIdx, true, null, null, null,
+                                  this._vosOn() ? { noEscape: true } : null);
         this._processSpecialQueue();
         return true;
     },

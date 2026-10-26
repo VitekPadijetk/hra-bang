@@ -716,8 +716,9 @@ vybavení) uzavřela celé rozšíření.
 ## Rozšíření Údolí stínů (Valley of Shadows) — rozpracované
 
 **Hotové jsou fáze F0 (kostra), F1 (šest karet na existující mašinerii), F2 (dvě postavy),
-F3 (fronta výstřelů), F4 (kolečko voleb) a F5 (Duch)** a rozšíření
-jde zapnout v menu jako každé jiné (`MENU_EXPANSIONS`, nápověda poctivě říká „rozpracované").
+F3 (fronta výstřelů), F4 (kolečko voleb), F5 (Duch) a F6 (okno úniku)** a rozšíření
+jde zapnout v menu jako každé jiné (`MENU_EXPANSIONS`, nápověda poctivě říká, kolik je
+hotovo – čísla drží v souladu s `VOS_CARDS_READY`/`VOS_READY` test v `test/vos.cards.test.js`).
 F1 = **Tomahawk** (jen data – bang-efekt s dostřelem 2), **Poslední pivo** (`cardEffects`
 v `playCard`, není to karta Pivo), **Chřestýš** (sejmutí v `logic/checks.js` po Dynamitu
 a Vězení – `_rattlesnakePending`/`_rattlesnakeOrDraw`, ♠ = klikaný zásah se `source:
@@ -798,6 +799,20 @@ tahu. `_vosWasGhost` slouží JEN tomuhle úklidu. Laso Ducha vyřazuje i s kart
 **Každé napřímo položené `health > 0` / `health <= 0` v logic.js, logic/* a core/* musí
 být v tabulce `LIFE_OK` s důvodem** (strukturální test v `test/vos.ghost.test.js`) –
 „ve hře" se ptá `isInPlay`/`staysInPlay`, napřímo jen skutečný život.
+F6 = **okno úniku `EVADE_OFFER`** (Útěk, Mick Defender – logic/valley.js). Karta na
+JEDINÝ cíl bez vlastní obrany jde do hry jedním ze tří vstupů: **`_enterTargetSelection`**
+(Panika, Cat Balou, Ragtime, Krytý vůz, Kankán, Lee Van Kliff – **fázi `SELECTING_TARGET_CARD`
+napřímo nesmí zakládat nic jiného** než tři hromadné výběry, hlídá to strukturální test
+v `test/vos.reactions.test.js`), **`_placeOnTarget`** (Vězení, Chřestýš, Odměna, Duch – karta
+leží před cílem už během rozmýšlení) a **`_startDuel`**. Brána `_vosEvadeGate` otevře okno,
+jen když cíl reagovat může (`vosEvadable`/`evadeOptions`, core/valley.js: Útěk v ruce, nebo
+Mick s kartou, kterou pustí `playsAsMissed`); odmítnutí dohraje `_evadeContinue` podle
+`pendingEvade.resume` (DATA: `SELECTION`+`pick` / `PLACE` / `DUEL`). Dokud okno visí, fronta
+odložených akcí stojí a Roubík ho nepřeruší. Akce **`vos_evade { cardId | null, playerIdx }`**.
+Vybavení Zlaté horečky (Komplic, Láhev) okno neotevírá (`gear: true` v deskriptoru
+`_repeatBrownEffect`). **Útěk proti bang-efektu** je platná odpověď v RESPOND, která zruší
+celý efekt – jediný predikát **`escapeRespondOk`**; co kartou na jediný cíl není (Doc
+Holyday, Láhev, Roztříštěná kulka se dvěma cíli), nese v kontextu útoku **`vos.noEscape`**.
 Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art` = slug v
 `assets/card_art/udoli_stinu/`), postavy id 50–54 v characters.json, mixin
 [logic/valley.js](logic/valley.js), zrcadlo [core/valley.js](core/valley.js) (`vosOn`,
@@ -805,7 +820,7 @@ Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art` = slug v
 a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van Kliff –
 hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
 Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (postavy zatím
-tři z pěti, karty třináct z patnácti). **Art všech 15 karet i 5 portrétů je dodaný**
+čtyři z pěti, karty čtrnáct z patnácti). **Art všech 15 karet i 5 portrétů je dodaný**
 (`assets/card_art/udoli_stinu/*.webp`, `assets/characters/050–054.webp`) a s nimi
 **značka supa** (`assets/card_marks/udoli_stinu.webp`, `VOS_MARK_READY = true`). Značky rozšíření
 (býk i sup) mají **100×100 px** a pečou se v rozměru souboru × 0,5 (`MARK_LAYOUT.bullScale`, game.js),
@@ -813,11 +828,15 @@ kotva pravý horní roh – jiný rozměr souboru = jiná velikost na kartě.
 Štítky zůstávají jako záloha: karta bez artu, ale s `text`, jde přes `paintCardLabel`,
 postava s `portrait: false` přes `buildPortraitLabels` (game.js).
 Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js`, `test/vos.characters.test.js`,
-`test/vos.shots.test.js` (F3), `test/vos.round.test.js` (F4), `test/vos.ghost.test.js` (F5) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
+`test/vos.shots.test.js` (F3), `test/vos.round.test.js` (F4), `test/vos.ghost.test.js` (F5), `test/vos.reactions.test.js` (F6) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
 karta opravdu hrála), „(F2)" (stůl plný jedné postavy) a „(F3)" (karty F3 + stůl plný
 Evelyn, hlídá i to, že mrtvý hráč nikdy nezůstane na tahu) a „(F4)" (namnožené karty
 F4, hlídá, že kolečko nikdy nezůstane viset do fáze PLAY) a „(F5)" (balíček plný Duchů,
-hlídá, že vyřazený nikdy nezůstane na tahu a Duch nezíská život) v `test/server.bots.test.js`. Pravidla obou vydání (české Albi je
+hlídá, že vyřazený nikdy nezůstane na tahu a Duch nezíská život) a „(F6)" (balíček plný
+Útěků, stůl samých Micků Defenderů) v `test/server.bots.test.js`. **Zátěž pumpuje hru
+synchronně, ale timeouty serveru spouští po každé akci** (`mock.timers` v `pumpToWinner`) –
+server drží Paniku, Cat Balou, Krytý vůz i Kankán mimo odhoz, dokud je tam nedoveze
+animace, a bez toho karty ze hry postupně mizely. Pravidla obou vydání (české Albi je
 originál a u devíti karet se liší od mezinárodního) jsou v
 [docs/udoli-stinu.md](docs/udoli-stinu.md), plán karta po kartě s háky, rozhodnutími R1–R15
 a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md).
@@ -825,7 +844,7 @@ a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md
 původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
 pauza na reakci jen když reagovat jde, art dodává uživatel (co chybí, kreslí se
 jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
-text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F6
-(okno úniku `EVADE_OFFER`: Útěk a Mick Defender).
+text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F7
+(Henry Block – pozastavená akce).
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.

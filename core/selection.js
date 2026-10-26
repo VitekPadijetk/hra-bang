@@ -22,6 +22,7 @@
 //   { type: 'DUTCH_DISCARD', index, cardId }          – Dutch Will (Zlatá horečka): odhoď jednu z líznutých
 //   { type: 'VOS_PICK', index, cardId }               – Brokovnice (Údolí stínů): zasažený odhazuje kartu
 //   { type: 'VOS_LEMONADE', index, cardId }           – Limonádový Jim (Údolí stínů): odhoz za +1 život
+//   { type: 'VOS_EVADE', index, cardId }              – Útěk / Mick Defender (Údolí stínů): vyhnout se kartě
 //   { type: 'VOS_ROUND_TOGGLE', index, cardId }       – Divoká banda/Tornádo/Poker (Údolí stínů): označit kartu
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
@@ -129,6 +130,13 @@ function decideCardClick(ctx) {
     // tlačítko). Vynucenou kartu Práva západu odhodit nejde – ta je `playable === false`.
     if (state.phase === "LEMONADE_OFFER" && state.pendingLemonade?.playerIdx === myIndex) {
         return playable === true ? { type: 'VOS_LEMONADE', index, cardId: card.id }
+                                 : { type: 'UNPLAYABLE_FLASH' };
+    }
+
+    // Údolí stínů – okno úniku: klik na Útěk (nebo Mickovu kartu Vedle!) = vyhnout se
+    // efektu. Odmítnutí je tlačítko.
+    if (state.phase === "EVADE_OFFER" && state.pendingEvade?.targetIdx === myIndex) {
+        return playable === true ? { type: 'VOS_EVADE', index, cardId: card.id }
                                  : { type: 'UNPLAYABLE_FLASH' };
     }
 

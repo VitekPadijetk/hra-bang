@@ -366,11 +366,9 @@ const PlayMixin = {
                 this._processSpecialQueue();
                 return;
             }
-            target.board.push(card);
-            // Johnny Kisch (Fistful): vyložením Vězení odhodí všechna ostatní Vězení ve hře.
-            this._johnnyKischPurge(attIdx, card.name, card);
-            this.checkSuzyLafayette(attacker);
-            this._processSpecialQueue();
+            // Vyložení (+ Johnny Kisch: odhodí všechna ostatní Vězení ve hře) jde přes
+            // _placeOnTarget – Údolí stínů: cíl se smí vyhnout Útěkem / Mickem (F6).
+            this._placeOnTarget(card, attIdx, tarIdx);
             return;
         }
         else if (card.type === CardType.RATTLESNAKE || card.type === CardType.BOUNTY || card.type === CardType.DUCH) {
@@ -390,17 +388,9 @@ const PlayMixin = {
                 this._processSpecialQueue();
                 return;
             }
-            target.board.push(card);
-            // Duch: hráč je od teď zpátky ve hře. Příznak slouží JEN k úklidu po odchodu
-            // (_vosGhostSettle, logic/valley.js) – pravidla se ptají karty na stole.
-            if (card.type === CardType.DUCH) {
-                target._vosWasGhost = true;
-                this.logEvent('event', { card: 'Duch', who: target.name, msg: `vrací se do hry (zahrál ${attacker.name})` });
-            }
-            // Johnny Kisch (Fistful): vyložením odhodí stejnojmenné karty u stolu.
-            this._johnnyKischPurge(attIdx, card.name, card);
-            this.checkSuzyLafayette(attacker);
-            this._processSpecialQueue();
+            // Vyložení, Duch (návrat do hry) i Johnny Kisch jdou přes _placeOnTarget
+            // (logic/valley.js) – Chřestýši a Odměně se smí cíl vyhnout (F6).
+            this._placeOnTarget(card, attIdx, tarIdx);
             return;
         }
         else if (card.type === CardType.CAT_BALOU || card.type === CardType.PANIC) {
@@ -411,12 +401,12 @@ const PlayMixin = {
                 this._processSpecialQueue();
                 return;
             }
-            this.phase = "SELECTING_TARGET_CARD";
-            this.pendingSelection = {
+            // Údolí stínů – cíl se smí vyhnout Útěkem / Mickem (F6, _enterTargetSelection).
+            this._enterTargetSelection({
                 attackerIdx: attIdx,
                 targetIdx: tarIdx,
                 sourceCardType: card.type,
-            };
+            }, { evade: card.name });
             return;
         }
         else if (card.type === CardType.DUEL) {
@@ -430,7 +420,8 @@ const PlayMixin = {
                 this._processSpecialQueue();
                 return;
             }
-            this.pendingResponse = {
+            // Údolí stínů – duelu se smí cíl vyhnout jen PŘED začátkem (F6, _startDuel).
+            if (this._startDuel({
                 active: true,
                 originatorIdx: attIdx,
                 targetIdx: tarIdx,
@@ -438,8 +429,7 @@ const PlayMixin = {
                 requiredCard: CardType.BANG,
                 sourceCard: CardType.DUEL,
                 responded: []
-            };
-            this.phase = "RESPOND";
+            })) return;
             this._processSpecialQueue();
             return;
         }

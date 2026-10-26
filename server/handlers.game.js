@@ -713,6 +713,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // Pořadí ruky oběti PŘED resolvem → slot náhodně vzaté karty (stolenIndex).
                 const victimHandIds = (area === 'hand' && victim) ? victim.hand.map(c => c.id) : null;
                 gs.discardAnotherCard(attackerIdx, d.extraCardIdx);
+                // Údolí stínů – cíl se rozmýšlí, jestli se vyhne (Útěk / Mick Defender):
+                // nic se zatím neukradlo, animaci krádeže pošle až vos_evade.
+                if (gs.phase === 'EVADE_OFFER') { broadcastRoomDelayed(room, 500); return; }
                 // Ukradená karta je teď poslední v ruce útočníka (z ruky ji zná jen on).
                 const atkHand = gs.players[attackerIdx].hand;
                 const ownerStolenId = atkHand[atkHand.length - 1]?.id;
@@ -1097,6 +1100,62 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const res = gs.lemonadeChoice(idx, d ? (d.cardId ?? null) : null);
             if (!res) { broadcastRoom(room); return; }
             if (res.card) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    // Údolí stínů – okno úniku (Útěk / Mick Defender): cíl karty na jediného hráče se
+    // efektu vyhne (`cardId` = Útěk nebo Mickova karta Vedle!), nebo ho nechá proběhnout
+    // (`cardId: null`). Aktér se čte ze stavu; `playerIdx` hlídá guard proti opožděnému
+    // kliku. Vyložená karta (Vězení, Chřestýš, Odměna) při úniku odletí ze stolu do
+    // odhozu. Ragtime / Krytý vůz / Kankán mají oblast zvolenou předem, takže se po
+    // odmítnutí rovnou vyřeší – a animace krádeže / odhozu se pošle tady.
+    on('vos_evade', (d) => {
+        withRoom((room, p, gs) => {
+            const pe = gs.pendingEvade;
+            const idx = pe?.targetIdx;
+            if (idx === undefined || idx === null) return;
+            if (d && d.playerIdx != null && d.playerIdx !== idx) return;
+            const cardId = d ? (d.cardId ?? null) : null;
+            const victim = gs.players[idx];
+            const pick = (cardId == null && pe.resume?.kind === 'SELECTION') ? pe.resume.pick : null;
+            const pre = pick ? {
+                area: pick.area,
+                steal: pe.resume.sel.sourceCardType === 'Panika!',
+                atkIdx: pe.resume.sel.attackerIdx,
+                handIds: victim.hand.map(c => c.id),
+                id: pick.area === 'weapon' ? (victim.weapon?.id ?? null)
+                  : pick.area === 'board' ? (victim.board?.[pick.boardIdx]?.id ?? null) : null,
+                vis: pick.area === 'weapon' ? 0 : pick.area === 'board' ? 1 + (pick.boardIdx ?? 0) : null,
+                discardLen: gs.deck._discardPile.length,
+            } : null;
+            const res = gs.vosEvade(idx, cardId);
+            if (!res) { broadcastRoom(room); return; }
+            if (res.card) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+            if (res.placed) {
+                emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: idx, cardId: res.placed.card.id,
+                                 boardIdx: 1 + res.placed.boardIdx });
+            }
+            if (pre && pre.steal) {
+                const atkHand = gs.players[pre.atkIdx]?.hand || [];
+                const base = { type: 'ragtime_steal', attackerIdx: pre.atkIdx, targetIdx: idx,
+                               area: pre.area, boardIdx: pre.vis };
+                if (pre.area === 'hand' && victim.hand.length < pre.handIds.length) {
+                    const ownerId = atkHand[atkHand.length - 1]?.id ?? null;
+                    const si = pre.handIds.indexOf(ownerId);
+                    emitAnimPrivate(room, pre.atkIdx, { ...base, stolenIndex: si === -1 ? null : si, stolenCardId: ownerId },
+                                                      { ...base, stolenIndex: si === -1 ? null : si, stolenCardId: null });
+                } else if (pre.id != null && atkHand.some(c => c && c.id === pre.id)) {
+                    emitAnim(room, { ...base, stolenCardId: pre.id });
+                }
+            } else if (pre && gs.deck._discardPile.length > pre.discardLen) {
+                if (pre.area === 'hand') {
+                    const top = gs.deck.discardTop();
+                    if (top) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: top.id });
+                } else if (pre.id != null) {
+                    emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: idx, cardId: pre.id, boardIdx: pre.vis });
+                }
+            }
             handleReshuffleAndBroadcast(room, gs);
         });
     });

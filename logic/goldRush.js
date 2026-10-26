@@ -539,6 +539,9 @@ const GoldRushMixin = {
             effect: GEAR_MODE_EFFECT[pg.mode],
             name: `${pg.cardName} (${GEAR_MODE_LABEL[pg.mode]})`,
             suit: null,
+            // Údolí stínů: vybavení koupené z obchodu není „karta zahraná na cíl" – Útěk
+            // ani Mick Defender se mu vyhnout nedají (R11).
+            gear: true,
         }, targetIdx);
     },
 

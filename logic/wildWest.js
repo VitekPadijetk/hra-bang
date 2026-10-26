@@ -539,6 +539,9 @@ const WildWestMixin = {
         // fronta odložených akcí v něm stojí, takže by líznutí Barta Cassidyho za pokutu
         // nemělo kudy proběhnout. Pokuta počká, až kolečko doběhne.
         if (this.pendingVosRound) return false;
+        // Údolí stínů – okno úniku (Útěk / Mick Defender) taky: fronta v něm stojí
+        // a pokuta by mohla vyřadit útočníka, jehož efekt se teprve rozhoduje.
+        if (this.pendingEvade) return false;
         if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
         if (this.specialActionQueue?.length) return false;
         if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;
@@ -1184,19 +1187,21 @@ const WildWestMixin = {
                     // isEffect = bang-EFEKT (Úder, Springfield): bez Slabova bonusu.
                     // Limit 1× Bang!/tah nečerpá ani opakovaný pravý Bang! (viz výš),
                     // proto se `bangsPlayedThisTurn` nezvyšuje ani v jedné větvi.
-                    this._beginBangResolution(playerIdx, targetIdx, lb.effect !== 'BANG', lb.name);
+                    // Údolí stínů: Láhev jako BANG! je vybavení – Útěk ji nezruší (R11).
+                    this._beginBangResolution(playerIdx, targetIdx, lb.effect !== 'BANG', lb.name, null, null,
+                                              (lb.gear && this._vosOn()) ? { noEscape: true } : null);
                 }
                 break;
             }
             case 'DUEL': {
                 // `duel` – Zlatá horečka: Kalumet v duelu neúčinkuje (viz _apacheImmune).
                 if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx, { duel: true })) { done(); return; }
-                this.pendingResponse = {
+                // Údolí stínů – duelu se cíl smí vyhnout (F6); Komplicovi ze Zlaté horečky ne.
+                if (this._startDuel({
                     active: true, originatorIdx: playerIdx, targetIdx,
                     initialTargetIdx: targetIdx,
                     requiredCard: CardType.BANG, sourceCard: CardType.DUEL, responded: []
-                };
-                this.phase = "RESPOND";
+                }, !lb.gear)) return;
                 break;
             }
             case 'PANIC':
@@ -1205,15 +1210,16 @@ const WildWestMixin = {
                 if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx)) { done(); return; }
                 // Kartu si hráč vybere ve fázi SELECTING_TARGET_CARD (stejně jako po
                 // zahrání karty) – frontu proto nechej ležet, dobere ji resolveCardSelection.
-                this.phase = "SELECTING_TARGET_CARD";
-                this.pendingSelection = { attackerIdx: playerIdx, targetIdx, sourceCardType: type };
+                // Údolí stínů: cíl se smí vyhnout (F6) – ne však vybavení Zlaté horečky.
+                this._enterTargetSelection({ attackerIdx: playerIdx, targetIdx, sourceCardType: type },
+                                           { evade: lb.gear ? null : lb.name });
                 return;
             }
             case 'steal_any': {
                 // Ragtime: krádež bez ohledu na vzdálenost, i z vlastního stolu.
-                this.phase = "SELECTING_TARGET_CARD";
-                this.pendingSelection = { attackerIdx: playerIdx, targetIdx,
-                                          sourceCardType: CardType.PANIC, ignoreDistance: true };
+                this._enterTargetSelection({ attackerIdx: playerIdx, targetIdx,
+                                             sourceCardType: CardType.PANIC, ignoreDistance: true },
+                                           { evade: lb.gear ? null : lb.name });
                 return;
             }
             case 'INDIANS':

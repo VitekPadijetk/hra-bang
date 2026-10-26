@@ -322,86 +322,106 @@ const ResponseMixin = {
             const card = sourceArr[sourceIdx];
             if (!card) return;
 
-            let isValid = false;
-            if (fromBoard) {
-                // Zelená Vedle!-karta se počítá jako Vedle! (jen proti požadavku „Vedle!").
-                // Belle Star útočí → cizí karty na stole (i zelené) na jejím tahu neplatí.
-                isValid = card.green && card.activate === 'miss' &&
-                        this.pendingResponse.requiredCard === CardType.MISSED &&
-                        !this._boardDead() &&   // Fistful – Laso: karty na stole nemají efekt
-                        !this._belleIgnoresBoard(this.pendingResponse.originatorIdx);
-            } else if (this.pendingResponse.requiredCard === CardType.MISSED) {
-                // Co se počítá za Vedle! (Úhyb, Elena Fuente, Calamity Janet i Zúčtování
-                // z Divokého západu) drží jediný predikát v core/playability.js – klient
-                // i bot se ptají stejně, takže se výčet nemůže rozejít.
-                isValid = playsAsMissed(this, player, card);
-            } else if (this.pendingResponse.requiredCard === CardType.BANG) {
-                isValid = playsAsBang(this, player, card);
-                // High Noon – Kazatel: kartu Bang! nesmí hráč zahrát ani jako reakci
-                // v duelu, když je zrovna ON na tahu (FAQ H2). Duel pak automaticky
-                // prohrává, protože nemá čím odpovědět. Pod Zúčtováním (Divoký západ) je
-                // kartou Bang! každá karta, takže se duel na svém tahu prohrává vždycky.
-                if (isValid && preacherBlocks(this, player, playerIdx, card)) isValid = false;
-            }
-
-            // High Noon – Želízka: hráč na tahu smí i jako reakci zahrát jen kartu
-            // zvolené barvy (stejný výklad jako u Kazatele, FAQ H2). Platí to ale jen na
-            // karty Z RUKY – zelená Vedle!-karta už leží ve hře a barvou se neomezuje.
-            if (isValid && !fromBoard && this._suitBlocked(playerIdx, card)) isValid = false;
-
-            // Údolí stínů – Colorado Bill sejmul piky: tenhle BANG! nejde zrušit žádnou
-            // kartou (z ruky ani zelenou ze stolu). Zbývá schytat zásah, nebo zachránit
-            // poslední život – to jde jinými cestami (beerLastLifeSave, Sid, Batoh).
-            if (isValid && vosUnavoidable(this)) isValid = false;
-
-            if (!isValid) return;
-
-            const playedCard = sourceArr.splice(sourceIdx, 1)[0];
-            respondedWithCard = true;
-
-            // Úhyb (a zelené karty s draw): kromě uhnutí si majitel lízne kartu/y.
-            // Konzistentně s Bartem/Suzy to NEděláme automaticky – zařadíme líznutí do
-            // fronty (UHYB_DRAW) a hráč si pak klikne na balíček (viz _processSpecialQueue).
-            if (playedCard.draw) {
-                for (let k = 0; k < playedCard.draw; k++) {
-                    this.specialActionQueue.push({ type: 'UHYB_DRAW', playerIdx });
-                }
-            }
-
-            if (this.pendingResponse.requiredCard === CardType.MISSED && this.pendingResponse.sourceCard !== CardType.DUEL) {
-                if (!this.pendingResponse.partialMisses) this.pendingResponse.partialMisses = [];
-                this.pendingResponse.partialMisses.push({ card: playedCard, playerIdx });
-                this.deck.discard(playedCard);
-                this.missesPlayed = (this.missesPlayed || 0) + 1;
-                this._mollyPlayedOutOfTurn(playerIdx, false);   // Molly: lízne za každé Vedle! mimo tah
-                const required = this.missesRequired || 1;
-                if (this.missesPlayed < required) {
-                    // Suzy Lafayette: „jakmile nemá v ruce karty, hned si jednu lízne" –
-                    // platí i UPROSTŘED obrany. Proti Slabovi (2× Vedle!) jí zahráním
-                    // posledního Vedle! došly karty, takže si musí líznout hned; jinak by
-                    // druhé Vedle! nemohla dolíznout a schytala by zásah bez schopnosti.
-                    // Fáze se přes interruptedPhase vrátí zpátky do RESPOND.
-                    if (this.checkSuzyLafayette(player)) this._processSpecialQueue();
-                    return;
-                }
-                // Údolí stínů – Opětovná palba: obrana je dokončená a byla v ní Opětovná
-                // palba → střelec je terčem efektu BANG!. Proti Slabovi je potřeba ještě
-                // jedno Vedle!, proto se to posuzuje až TEĎ (samotná nestačí, dV).
-                this._vosBackfireCheck(this.pendingResponse, playerIdx);
+            // Údolí stínů – Útěk proti bang-EFEKTU na jediný cíl (Úder, Tomahawk,
+            // Springfield…): „vyhneš se efektu" – celému, takže na počtu karet Vedle!
+            // nezáleží a Opětovná palba se nespouští (nic se neodrazilo, uhnul jsi).
+            // Co se za takový útok počítá, říká escapeRespondOk (core/valley.js).
+            if (!fromBoard && escapeRespondOk(this, playerIdx, card)) {
+                const esc = sourceArr.splice(sourceIdx, 1)[0];
+                this.deck.discard(esc);
+                this.logEvent('special', { who: player.name, card: esc.name,
+                                           msg: `vyhýbá se: ${this.pendingResponse.sourceCardName || 'BANG!'}` });
+                // Molly Stark: dobrovolně zahraná karta mimo tah (R13).
+                this._mollyPlayedOutOfTurn(playerIdx, false);
                 this.pendingResponse.partialMisses = [];
                 this.missesPlayed = 0;
                 this.missesRequired = 1;
                 this.checkSuzyLafayette(player);
+                this.pendingResponse.responded.push(playerIdx);
+                respondedWithCard = true;
             } else {
-                this.deck.discard(playedCard);
-                if (this.pendingResponse.sourceCard !== CardType.DUEL) {
-                    this.checkSuzyLafayette(player);
-                }
-                // Molly: Bang! v Duelu mimo její tah → náhrada odložena do konce Duelu.
-                this._mollyPlayedOutOfTurn(playerIdx, this.pendingResponse.sourceCard === CardType.DUEL);
-            }
 
-            this.pendingResponse.responded.push(playerIdx);
+                let isValid = false;
+                if (fromBoard) {
+                    // Zelená Vedle!-karta se počítá jako Vedle! (jen proti požadavku „Vedle!").
+                    // Belle Star útočí → cizí karty na stole (i zelené) na jejím tahu neplatí.
+                    isValid = card.green && card.activate === 'miss' &&
+                            this.pendingResponse.requiredCard === CardType.MISSED &&
+                            !this._boardDead() &&   // Fistful – Laso: karty na stole nemají efekt
+                            !this._belleIgnoresBoard(this.pendingResponse.originatorIdx);
+                } else if (this.pendingResponse.requiredCard === CardType.MISSED) {
+                    // Co se počítá za Vedle! (Úhyb, Elena Fuente, Calamity Janet i Zúčtování
+                    // z Divokého západu) drží jediný predikát v core/playability.js – klient
+                    // i bot se ptají stejně, takže se výčet nemůže rozejít.
+                    isValid = playsAsMissed(this, player, card);
+                } else if (this.pendingResponse.requiredCard === CardType.BANG) {
+                    isValid = playsAsBang(this, player, card);
+                    // High Noon – Kazatel: kartu Bang! nesmí hráč zahrát ani jako reakci
+                    // v duelu, když je zrovna ON na tahu (FAQ H2). Duel pak automaticky
+                    // prohrává, protože nemá čím odpovědět. Pod Zúčtováním (Divoký západ) je
+                    // kartou Bang! každá karta, takže se duel na svém tahu prohrává vždycky.
+                    if (isValid && preacherBlocks(this, player, playerIdx, card)) isValid = false;
+                }
+
+                // High Noon – Želízka: hráč na tahu smí i jako reakci zahrát jen kartu
+                // zvolené barvy (stejný výklad jako u Kazatele, FAQ H2). Platí to ale jen na
+                // karty Z RUKY – zelená Vedle!-karta už leží ve hře a barvou se neomezuje.
+                if (isValid && !fromBoard && this._suitBlocked(playerIdx, card)) isValid = false;
+
+                // Údolí stínů – Colorado Bill sejmul piky: tenhle BANG! nejde zrušit žádnou
+                // kartou (z ruky ani zelenou ze stolu). Zbývá schytat zásah, nebo zachránit
+                // poslední život – to jde jinými cestami (beerLastLifeSave, Sid, Batoh).
+                if (isValid && vosUnavoidable(this)) isValid = false;
+
+                if (!isValid) return;
+
+                const playedCard = sourceArr.splice(sourceIdx, 1)[0];
+                respondedWithCard = true;
+
+                // Úhyb (a zelené karty s draw): kromě uhnutí si majitel lízne kartu/y.
+                // Konzistentně s Bartem/Suzy to NEděláme automaticky – zařadíme líznutí do
+                // fronty (UHYB_DRAW) a hráč si pak klikne na balíček (viz _processSpecialQueue).
+                if (playedCard.draw) {
+                    for (let k = 0; k < playedCard.draw; k++) {
+                        this.specialActionQueue.push({ type: 'UHYB_DRAW', playerIdx });
+                    }
+                }
+
+                if (this.pendingResponse.requiredCard === CardType.MISSED && this.pendingResponse.sourceCard !== CardType.DUEL) {
+                    if (!this.pendingResponse.partialMisses) this.pendingResponse.partialMisses = [];
+                    this.pendingResponse.partialMisses.push({ card: playedCard, playerIdx });
+                    this.deck.discard(playedCard);
+                    this.missesPlayed = (this.missesPlayed || 0) + 1;
+                    this._mollyPlayedOutOfTurn(playerIdx, false);   // Molly: lízne za každé Vedle! mimo tah
+                    const required = this.missesRequired || 1;
+                    if (this.missesPlayed < required) {
+                        // Suzy Lafayette: „jakmile nemá v ruce karty, hned si jednu lízne" –
+                        // platí i UPROSTŘED obrany. Proti Slabovi (2× Vedle!) jí zahráním
+                        // posledního Vedle! došly karty, takže si musí líznout hned; jinak by
+                        // druhé Vedle! nemohla dolíznout a schytala by zásah bez schopnosti.
+                        // Fáze se přes interruptedPhase vrátí zpátky do RESPOND.
+                        if (this.checkSuzyLafayette(player)) this._processSpecialQueue();
+                        return;
+                    }
+                    // Údolí stínů – Opětovná palba: obrana je dokončená a byla v ní Opětovná
+                    // palba → střelec je terčem efektu BANG!. Proti Slabovi je potřeba ještě
+                    // jedno Vedle!, proto se to posuzuje až TEĎ (samotná nestačí, dV).
+                    this._vosBackfireCheck(this.pendingResponse, playerIdx);
+                    this.pendingResponse.partialMisses = [];
+                    this.missesPlayed = 0;
+                    this.missesRequired = 1;
+                    this.checkSuzyLafayette(player);
+                } else {
+                    this.deck.discard(playedCard);
+                    if (this.pendingResponse.sourceCard !== CardType.DUEL) {
+                        this.checkSuzyLafayette(player);
+                    }
+                    // Molly: Bang! v Duelu mimo její tah → náhrada odložena do konce Duelu.
+                    this._mollyPlayedOutOfTurn(playerIdx, this.pendingResponse.sourceCard === CardType.DUEL);
+                }
+
+                this.pendingResponse.responded.push(playerIdx);
+            }   // konec větve „obyčejná karta obrany" (Útěk má vlastní, viz výš)
         }
 
         if (this.pendingResponse.sourceCard === CardType.DUEL) {

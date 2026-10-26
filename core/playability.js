@@ -93,6 +93,12 @@ if (typeof require === 'function') {
         globalThis.fanningTargets = __vos3.fanningTargets;
         globalThis.vosOn = __vos3.vosOn;
     }
+    // Údolí stínů (F6) – Útěk: odpověď na bang-efekt a okno úniku.
+    if (typeof escapeRespondOk === 'undefined') {
+        const __vos6 = require('./valley.js');
+        globalThis.escapeRespondOk = __vos6.escapeRespondOk;
+        globalThis.evadeOptions = __vos6.evadeOptions;
+    }
 }
 
 // Údolí stínů – Opětovná palba: „Počítá se jako karta VEDLE!." Je to tedy KARTA Vedle!
@@ -283,6 +289,8 @@ function nativePlayInTurn(state, me, myIndex, card) {
         return ricochetAvailable(state, me, myIndex) || sniperOffer(state, me, myIndex, card);
     }
     if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
+    // Údolí stínů – Útěk se hraje jen jako reakce (okno úniku, obrana proti bang-efektu).
+    if (card.type === "Útěk") return false;
     // Zelené karty se vykládají na stůl; nelze mít 2 stejného jména (D7).
     if (card.green) return !(me.board || []).some(c => c.name === card.name);
     // Dodge City „odhoď další kartu": potřebuje aspoň 1 další kartu k odhození +
@@ -398,6 +406,12 @@ function cardPlayability(state, me, myIndex, card) {
         if (state.pendingLemonade?.playerIdx !== myIndex) return null;
         return !lawProtectedCard(state, me, myIndex, card);
     }
+    // Údolí stínů – okno úniku: cíl karty se smí vyhnout Útěkem, Mick Defender i kartou
+    // Vedle! (evadeOptions). Odmítnutí je tlačítko. Je to v cizím tahu, proto tak brzy.
+    if (state.phase === "EVADE_OFFER") {
+        if (state.pendingEvade?.targetIdx !== myIndex) return null;
+        return evadeOptions(state, myIndex).some(c => c.id === card.id);
+    }
     // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): hráč na řadě si vybírá
     // z CELÉ ruky (označuje klikáním, odesílá tlačítkem – co je platná volba, říká
     // vosRoundPickOk). Ve výběru z vyložených karet Pokeru ruka klikací není.
@@ -430,7 +444,9 @@ function cardPlayability(state, me, myIndex, card) {
             return !beerBlockedFor(state);
         // Co se počítá za Vedle! (Elena Fuente, Zúčtování) řeší playsAsMissed.
         // Údolí stínů – Colorado Bill sejmul piky: tenhle BANG! nejde zrušit ničím.
-        if (req === "Vedle!") return playsAsMissed(state, me, card) && !vosUnavoidable(state);
+        // Údolí stínů – Útěk proti bang-efektu na jediný cíl (escapeRespondOk).
+        if (req === "Vedle!") return (playsAsMissed(state, me, card) && !vosUnavoidable(state)) ||
+                                     escapeRespondOk(state, myIndex, card);
         // Kazatel (High Noon): Bang! nesmí hráč zahrát ani jako reakci ve svém tahu (FAQ H2).
         if (req === "Bang!")  return playsAsBang(state, me, card) && !preacherBlocks(state, me, myIndex, card);
         return false;
@@ -492,6 +508,10 @@ function _lawHasTarget(state, me, myIndex, card) {
         case 'SHOOT':
             // Cíl je vždycky: když hráč nedosáhne na nikoho jiného, musí střelit SÁM NA SEBE
             // (viz lawSelfShootOnly – klient mu k tomu výjimečně zvýrazní vlastní postavu).
+            // Údolí stínů – Duch na sebe střílet nemůže (život ztratit nesmí, playBang ho
+            // jako cíl odmítne): bez jiného cíle se vynucená karta zahrát nedá. Bez téhle
+            // výjimky zůstal Duch v tahu zamčený – výstřel i „Ukončit tah" server odmítal.
+            if (isVosGhost(me)) return !lawSelfShootOnly(state, me, myIndex, card);
             return true;
         case 'Panika!':
             return state.players.some((p, i) => other(i) && hasCards(p) && computeDistance(state, myIndex, i) <= 1);

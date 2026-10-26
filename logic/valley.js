@@ -361,9 +361,11 @@ const ValleyMixin = {
     //
     // Výstřel je bang-EFEKT (žádný Slab, žádná Odměna, Brokovnice ani Colorado) a nese
     // kontext `vos.shot`, podle kterého se pozná, že zabil střelec, ne hráč na tahu.
-    _vosQueueShot(shooterIdx, targetIdx, source, sourceName) {
+    // `noEscape` = výstřel nemíří na JEDINÝ cíl (Roztříštěná kulka se dvěma cíli), takže
+    // se mu Útěkem vyhnout nejde (F6, escapeRespondOk).
+    _vosQueueShot(shooterIdx, targetIdx, source, sourceName, noEscape = false) {
         if (!this._vosShots) this._vosShots = [];
-        this._vosShots.push({ shooterIdx, targetIdx, source, sourceName });
+        this._vosShots.push({ shooterIdx, targetIdx, source, sourceName, ...(noEscape ? { noEscape: true } : {}) });
     },
 
     // Smí se teď odpálit další výstřel? Jen v klidu – stejná dohoda jako u odložené pokuty
@@ -399,7 +401,8 @@ const ValleyMixin = {
             }
             this.logEvent('bang', { who: sh.name, target: tg.name, card: s.sourceName });
             this.currentAttacker = s.shooterIdx;
-            this._beginBangResolution(s.shooterIdx, s.targetIdx, true, s.sourceName, null, null, { shot: s.source });
+            this._beginBangResolution(s.shooterIdx, s.targetIdx, true, s.sourceName, null, null,
+                                      { shot: s.source, ...(s.noEscape ? { noEscape: true } : {}) });
             return true;
         }
         return false;
@@ -514,7 +517,9 @@ const ValleyMixin = {
         this.deck.discard(a.hand.splice(cardIdx, 1)[0]);
         this.currentAttacker = attackerIdx;
         this.checkSuzyLafayette(a);
-        if (secondIdx != null) this._vosQueueShot(attackerIdx, secondIdx, 'FANNING', card.name);
+        // Se dvěma cíli nemíří kulka na jediného – Útěk ji nezruší ani jednomu (F6).
+        const multi = secondIdx != null;
+        if (multi) this._vosQueueShot(attackerIdx, secondIdx, 'FANNING', card.name, true);
 
         // Apache Kid: kárový efekt BANG! ho míjí (karta je 2♠, kárová být jen nemůže –
         // pojistka pro budoucí změny barvy).
@@ -523,7 +528,8 @@ const ValleyMixin = {
             this._processSpecialQueue();
             return true;
         }
-        this._beginBangResolution(attackerIdx, firstIdx, true, card.name, null, null, { shot: 'FANNING' });
+        this._beginBangResolution(attackerIdx, firstIdx, true, card.name, null, null,
+                                  { shot: 'FANNING', ...(multi ? { noEscape: true } : {}) });
         this._processSpecialQueue();
         return true;
     },
@@ -598,6 +604,156 @@ const ValleyMixin = {
         this.checkSuzyLafayette(p);
         this._resumeAfterSpecial();
         return { card, handIdx: i };
+    },
+
+    // ── Okno úniku (F6): Útěk a Mick Defender ───────────────────────────────
+    // Útěk: „Pokud jsi jediným cílem karty jiné než BANG!, vyhneš se efektu odhozením
+    // této karty." Mick Defender: „Pokud je Mick jediným cílem karty, může použít kartu
+    // VEDLE, aby se jejímu efektu vyhnul." Karty na jediný cíl, které nemají vlastní
+    // obranu (Panika, Cat Balou, Duel, Ragtime, Kankán, Krytý vůz, Vězení, Chřestýš,
+    // Odměna, opakování Lee Van Kliffem), jdou do hry jedním ze TŘÍ vstupů níž
+    // (_enterTargetSelection, _placeOnTarget, _startDuel) – a ten se zastaví ve fázi
+    // EVADE_OFFER, ale JEN když cíl reagovat může (R4, vosEvadable v core/valley.js).
+    // Bang-efekty okno nepotřebují: Útěk je pro ně platná odpověď v RESPOND
+    // (escapeRespondOk, handleResponse v logic/response.js).
+    //
+    // Pokračování po odmítnutí je DATA, ne funkce (`resume`):
+    //   SELECTION – uložený výběr karty soupeře (`sel`), u Ragtime / Krytého vozu /
+    //               Kankánu i předem zvolená oblast (`pick`), která se pak rovnou vyřeší,
+    //   PLACE     – karta UŽ LEŽÍ před cílem (`cardId`): vidí ji celý stůl a únik ji
+    //               jen odhodí; Johnny Kisch a Suzy se vyhodnotí až po rozhodnutí,
+    //   DUEL      – uložený `pendingResponse` duelu (únik jde jen PŘED začátkem, dV).
+    // Dokud okno visí, fronta odložených akcí stojí (_processSpecialQueue) a Roubík ho
+    // nepřeruší (_gagCalm) – Suzy Lafayette, která zahrála poslední kartu, si lízne až
+    // po rozhodnutí.
+
+    _vosEvadeGate(attackerIdx, targetIdx, cardName, resume) {
+        if (!vosEvadable(this, attackerIdx, targetIdx)) return false;
+        this.pendingEvade = { targetIdx, attackerIdx, cardName, resume };
+        this.phase = "EVADE_OFFER";
+        this.logEvent('special', { who: this.players[targetIdx]?.name, card: cardName,
+                                   msg: 'může se vyhnout (Útěk / Mick Defender)' });
+        return true;
+    },
+
+    // Vstup do výběru karty soupeře (SELECTING_TARGET_CARD) pro kartu na JEDINÝ cíl.
+    // Hromadné výběry (Rvačka, Daltonové, dělení mezi Vulture Samy) jdou dál napřímo –
+    // že nikdo jiný fázi nezakládá, hlídá strukturální test (test/vos.evade.test.js).
+    // `opts.evade` = jméno karty, když se jí smí cíl vyhnout (vybavení Zlaté horečky ne,
+    // R11); `opts.pick` = { area, boardIdx } u karet, které oblast volí předem.
+    // Vrací true, když se čeká na rozhodnutí cíle (volající pak na fázi nesahá).
+    _enterTargetSelection(sel, opts = {}) {
+        if (opts.evade && this._vosEvadeGate(sel.attackerIdx, sel.targetIdx, opts.evade,
+                { kind: 'SELECTION', sel, pick: opts.pick || null })) return true;
+        this.pendingSelection = sel;
+        this.phase = "SELECTING_TARGET_CARD";
+        if (opts.pick) this.resolveCardSelection(sel.attackerIdx, opts.pick.area, opts.pick.boardIdx);
+        return false;
+    },
+
+    // Vyložení karty před cíl (Vězení, Chřestýš, Odměna, Duch). Karta leží na stole hned,
+    // takže ji během rozmýšlení vidí celý stůl; únik ji odtamtud jen odhodí. Duch míří na
+    // vyřazeného hráče, ten se vyhýbat nemá čím (a nechtěl by).
+    _placeOnTarget(card, attIdx, tarIdx) {
+        const target = this.players[tarIdx];
+        target.board.push(card);
+        if (card.type !== CardType.DUCH &&
+            this._vosEvadeGate(attIdx, tarIdx, card.name, { kind: 'PLACE', cardId: card.id })) return true;
+        this._placeSettle(card, attIdx, tarIdx);
+        return false;
+    },
+
+    _placeSettle(card, attIdx, tarIdx) {
+        const target = this.players[tarIdx];
+        // Duch: hráč je od teď zpátky ve hře. Příznak slouží JEN k úklidu po odchodu
+        // (_vosGhostSettle) – pravidla se ptají karty na stole.
+        if (card.type === CardType.DUCH) {
+            target._vosWasGhost = true;
+            this.logEvent('event', { card: 'Duch', who: target.name, msg: `vrací se do hry (zahrál ${this.players[attIdx]?.name})` });
+        }
+        // Johnny Kisch (Fistful): vyložením odhodí stejnojmenné karty u stolu.
+        this._johnnyKischPurge(attIdx, card.name, card);
+        this.checkSuzyLafayette(this.players[attIdx]);
+        this._processSpecialQueue();
+    },
+
+    // Začátek duelu. `evadable` = smí se cíl duelu vyhnout (Komplic ze Zlaté horečky ne).
+    _startDuel(pr, evadable = true) {
+        if (evadable && this._vosEvadeGate(pr.originatorIdx, pr.targetIdx, 'Duel',
+                { kind: 'DUEL', pr })) return true;
+        this.pendingResponse = pr;
+        this.phase = "RESPOND";
+        return false;
+    },
+
+    // Cíl se rozhodl: `cardId` = karta, kterou se vyhýbá (Útěk, nebo Mickova karta Vedle!
+    // – co smí, říká evadeOptions), null = nevyhýbá se a efekt jede dál. Vrací
+    // { card, handIdx, placed } pro animaci, { declined: true }, nebo null u neplatného
+    // kliku (fáze pak trvá dál – odmítnout jde vždycky, takže neuvázne).
+    vosEvade(playerIdx, cardId) {
+        if (this.phase !== "EVADE_OFFER") return null;
+        const pe = this.pendingEvade;
+        if (!pe || pe.targetIdx !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        if (cardId == null) {
+            this.pendingEvade = null;
+            this.logEvent('special', { who: p.name, card: pe.cardName, msg: 'nevyhýbá se' });
+            this._evadeContinue(pe);
+            return { declined: true };
+        }
+        if (!evadeOptions(this, playerIdx).some(c => c.id === cardId)) return null;
+        const i = p.hand.findIndex(c => c && c.id === cardId);
+        const card = p.hand.splice(i, 1)[0];
+        this.deck.discard(card);
+        this.pendingEvade = null;
+        // Vyložená karta jde ze stolu cíle do odhozu – efekt nenastal.
+        let placed = null;
+        if (pe.resume.kind === 'PLACE') {
+            const t = this.players[pe.targetIdx];
+            const bi = t.board.findIndex(c => c && c.id === pe.resume.cardId);
+            if (bi !== -1) {
+                placed = { card: t.board.splice(bi, 1)[0], boardIdx: bi };
+                this.deck.discard(placed.card);
+            }
+        }
+        // Mick zahrál Úhyb jako kartu Vedle! – líznutí k němu patří (jako v obraně).
+        if (card.draw) for (let k = 0; k < card.draw; k++) this.specialActionQueue.push({ type: 'UHYB_DRAW', playerIdx });
+        this.logEvent('special', { who: p.name, card: card.name, target: this.players[pe.attackerIdx]?.name,
+                                   msg: `vyhýbá se: ${pe.cardName}` });
+        // Únik je DOBROVOLNĚ zahraná karta mimo tah → Molly Stark si lízne (R13).
+        this._mollyPlayedOutOfTurn(playerIdx, false);
+        this.checkSuzyLafayette(p);
+        this.checkSuzyLafayette(this.players[pe.attackerIdx]);
+        this.phase = "PLAY";
+        this._processSpecialQueue();
+        return { card, handIdx: i, placed };
+    },
+
+    // Odmítnutý únik: efekt pokračuje přesně tam, kde ho brána zastavila.
+    _evadeContinue(pe) {
+        const r = pe.resume;
+        if (r.kind === 'SELECTION') {
+            this.pendingSelection = r.sel;
+            this.phase = "SELECTING_TARGET_CARD";
+            if (r.pick) this.resolveCardSelection(r.sel.attackerIdx, r.pick.area, r.pick.boardIdx);
+            return;
+        }
+        if (r.kind === 'PLACE') {
+            const t = this.players[pe.targetIdx];
+            const card = (t.board || []).find(c => c && c.id === r.cardId);
+            this.phase = "PLAY";
+            if (card) { this._placeSettle(card, pe.attackerIdx, pe.targetIdx); return; }
+            this._processSpecialQueue();
+            return;
+        }
+        if (r.kind === 'DUEL') {
+            this.pendingResponse = r.pr;
+            this.phase = "RESPOND";
+            this._processSpecialQueue();
+            return;
+        }
+        this.phase = "PLAY";
+        this._processSpecialQueue();
     },
 
     // ── Duch (F5, R10) ───────────────────────────────────────────────────────

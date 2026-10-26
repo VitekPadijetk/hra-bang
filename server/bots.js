@@ -233,6 +233,8 @@ module.exports = function installBotService(ctx) {
             case 'POKER_TAKE': return { event: 'vos_poker_take', payload: { cardIds: [], playerIdx: idx } };
             // Údolí stínů – Limonádový Jim: nabídku jde vždycky odmítnout.
             case 'LEMONADE_OFFER': return { event: 'vos_lemonade', payload: { cardId: null, playerIdx: idx } };
+            // Údolí stínů – okno úniku: nevyhnout se jde vždycky.
+            case 'EVADE_OFFER': return { event: 'vos_evade', payload: { cardId: null, playerIdx: idx } };
             // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
             case 'GRINNER_GIVE': {
                 const c = gs.players[idx]?.hand?.[0];

@@ -70,6 +70,9 @@ function pendingActor(state) {
         // Údolí stínů – Limonádový Jim: za cizí Pivo odhodí kartu za +1 život, nebo odmítne.
         case 'LEMONADE_OFFER':   return state.pendingLemonade
             ? { idx: state.pendingLemonade.playerIdx, kind: 'LEMONADE_OFFER' } : null;
+        // Údolí stínů – okno úniku: cíl karty se rozmýšlí, jestli se vyhne (Útěk / Mick).
+        case 'EVADE_OFFER':      return state.pendingEvade
+            ? { idx: state.pendingEvade.targetIdx, kind: 'EVADE_OFFER' } : null;
         // Údolí stínů – kolečko voleb: Divoká banda (odhoz), Tornádo (karty pro souseda),
         // Poker (karta lícem dolů) a výběr z vyložených karet Pokeru. Z ruky vybírají
         // VŠICHNI NARÁZ (`pendingVosRound.waiting`) – tady se vrací první z nich (popisek,
@@ -149,6 +152,7 @@ const _WAIT_LABELS = {
     DUTCH_DISCARD:         'Dutch Will – odhazuje líznutou kartu',
     SHOTGUN_DISCARD:       'Brokovnice – odhazuje kartu',
     LEMONADE_OFFER:        'Limonádový Jim – rozmýšlí, jestli si za kartu doplní život',
+    EVADE_OFFER:           'rozmýšlí, jestli se vyhne',
     BANDIDOS_DISCARD:      'Divoká banda – odhazuje BANG!, nebo 2 karty',
     TORNADO_PICK:          'Tornádo – vybírá karty pro souseda po levici',
     POKER_PICK:            'Poker – vykládá kartu lícem dolů',
@@ -189,6 +193,9 @@ function waitingStatus(state) {
         if (state.pendingResponse.vos?.unavoidable) text += ' (nejde zrušit)';
         // Údolí stínů – Dvojitá rána: zásah stojí dva životy.
         if (state.pendingResponse.vos?.aim) text += ' + Dvojitá rána';
+    }
+    if (pa.kind === 'EVADE_OFFER' && state.pendingEvade?.cardName) {
+        text = 'rozmýšlí, jestli se vyhne kartě ' + state.pendingEvade.cardName;
     }
     // Sloučená odložená líznutí (Bart Cassidy, Boty, Madam Yto, Úhyb – viz
     // _processSpecialQueue v logic/characters.js) běží jako běžná fáze lízání.

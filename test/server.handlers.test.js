@@ -45,7 +45,7 @@ const GROUPS = {
         'peyote_guess', 'ranch_exchange', 'blood_brothers', 'roulette_discard',
         'grinner_give', 'valentine_discard',
         // Údolí stínů – výběr karet z ruky (Brokovnice; F4 Tornádo, Poker, Divoká banda).
-        'vos_pick', 'vos_poker_take', 'vos_lemonade', 'play_fanning',
+        'vos_pick', 'vos_poker_take', 'vos_lemonade', 'vos_evade', 'play_fanning',
         'sniper_choose', 'play_ricochet',
         'sid_ketchum_cancel', 'sid_save_discard', 'store_pick',
         'discard_extra_choose', 'discard_another_card', 'cancel_discard_another', 'activate_green_card',
@@ -74,15 +74,15 @@ for (const [name, { reg, events }] of Object.entries(GROUPS)) {
     });
 }
 
-test('všechny moduly dohromady pokrývají 105 unikátních eventů', () => {
+test('všechny moduly dohromady pokrývají 106 unikátních eventů', () => {
     const all = [];
     for (const { reg } of Object.values(GROUPS)) {
         const socket = mkSocket();
         reg(socket, mkCtx(), () => {});
         all.push(...socket._events);
     }
-    assert.equal(all.length, 105);
-    assert.equal(new Set(all).size, 105, 'žádný event se nesmí registrovat dvakrát');
+    assert.equal(all.length, 106);
+    assert.equal(new Set(all).size, 106, 'žádný event se nesmí registrovat dvakrát');
 });
 
 // Druhá polovina invariantu „bot se nikdy nezasekne" (první je v test/botPolicy.test.js):

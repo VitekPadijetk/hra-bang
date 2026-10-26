@@ -141,9 +141,11 @@ const DodgeCityMixin = {
                 this._processSpecialQueue();
                 return;
             }
-            this.pendingSelection = { attackerIdx: playerIdx, targetIdx, sourceCardType: CardType.PANIC, ignoreDistance: true };
-            this.phase = "SELECTING_TARGET_CARD";
-            this.resolveCardSelection(playerIdx, target.area, target.boardIdx);
+            // Údolí stínů – cíl se smí vyhnout Útěkem / Mickem (F6); oblast je zvolená
+            // předem, takže se po odmítnutí rovnou vyřeší (`pick`).
+            this._enterTargetSelection(
+                { attackerIdx: playerIdx, targetIdx, sourceCardType: CardType.PANIC, ignoreDistance: true },
+                { evade: mainName || 'Ragtime', pick: { area: target.area, boardIdx: target.boardIdx } });
         } else if (effect === 'sniper') {
             // Fistful – Odstřelovač: obě karty Bang! jsou zaplacené → útok, který jde
             // odrazit jen dvěma kartami Vedle! (viz _sniperAttack v logic/fistful.js).
@@ -313,14 +315,13 @@ const DodgeCityMixin = {
             }
             discardAndTrack();
             this.checkSuzyLafayette(player);
-            this.pendingSelection = {
+            const boardIdx = selfBoardId != null ? t.board.findIndex(c => c.id === selfBoardId) : target.boardIdx;
+            // Údolí stínů – cíl se smí vyhnout Útěkem / Mickem (F6); na sebe se nevyhýbá.
+            this._enterTargetSelection({
                 attackerIdx: playerIdx, targetIdx,
                 sourceCardType: eff === 'steal_any' ? CardType.PANIC : CardType.CAT_BALOU,
                 ignoreDistance: true,
-            };
-            this.phase = "SELECTING_TARGET_CARD";
-            const boardIdx = selfBoardId != null ? t.board.findIndex(c => c.id === selfBoardId) : target.boardIdx;
-            this.resolveCardSelection(playerIdx, target.area, boardIdx);
+            }, { evade: card.name, pick: { area: target.area, boardIdx } });
             return;
         }
     },

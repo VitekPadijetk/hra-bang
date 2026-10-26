@@ -1,7 +1,7 @@
 // Testy služby botů (server/bots.js): fake socket, createBot/removeBot a driver
 // (runBotTickOnce). Sestavíme ctx s fake io a no-op broadcasty (boti čtou gs přímo,
 // broadcasty jsou jen vizuál) → driver lze pumpovat synchronně bez timerů.
-const { test, before } = require('node:test');
+const { test, before, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { GameState } = require('../logic.js');
@@ -35,14 +35,24 @@ function mkRealSocket(id) {
 // Synchronně dohraje hru jen botů (broadcasty jsou v buildCtx no-op).
 // `onTick` (volitelný) se volá PŘED každou akcí bota – dá se jím sledovat, jakými
 // fázemi hra prošla, nebo do ní zasáhnout (např. doplnit valouny, ať se protočí obchod).
+//
+// Timeouty serveru se spouští hned po každé akci (mock.timers): server drží některé karty
+// MIMO odhoz, dokud je tam nedoveze animace (Panika, Cat Balou, Krytý vůz, Kankán –
+// setTimeout v server/handlers.game.js). Při synchronním pumpování by se timeouty nikdy
+// nespustily a karty by ze hry postupně mizely – po pár stech tazích v balíčku nezbyla
+// jediná Panika ani Cat Balou a hra samých Duchů (Údolí stínů) neměla jak skončit.
 function pumpToWinner(ctx, room, onTick) {
     let guard = 0;
-    while (!room.gameState.winner && guard++ < 8000) {
-        const pa = pendingActor(room.gameState);
-        if (!pa || !room.players[pa.idx]?.isBot) break;
-        if (onTick) onTick(room.gameState);
-        ctx.runBotTickOnce(room);
-    }
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        while (!room.gameState.winner && guard++ < 8000) {
+            const pa = pendingActor(room.gameState);
+            if (!pa || !room.players[pa.idx]?.isBot) break;
+            if (onTick) onTick(room.gameState);
+            ctx.runBotTickOnce(room);
+            mock.timers.runAll();
+        }
+    } finally { mock.timers.reset(); }
     return guard;
 }
 
@@ -1665,6 +1675,71 @@ test('Údolí stínů (F5): balíček plný Duchů – hra jen botů doběhne 3�
     assert.ok(seen.back > 0, 'Duch aspoň jednou vrátil hráče do hry');
     assert.ok(seen.ghostTurns > 0, 'Duch aspoň jednou odehrál tah');
     assert.ok(seen.left > 0, 'Duch aspoň jednou přišel o kartu a odešel ze hry');
+});
+
+// Údolí stínů (fáze F6): okno úniku. Balíček plný Útěků (a Tomahawků, proti kterým se
+// Útěk hraje v obraně), každá druhá hra se stolem samých Micků Defenderů, čtvrtina se
+// všemi rozšířeními (Lee Van Kliff, Zuřivá Doroty, Krytý vůz a Komplic jdou do výběru
+// karty jinými cestami). Hlídá, že okno úniku vždycky skončí a nezůstane viset mimo
+// svou fázi a že bot nikdy nepošle únik, který server odmítne.
+test('Údolí stínů (F6): balíček plný Útěků a stůl Micků Defenderů – hra jen botů doběhne 3–8 hráčů', () => {
+    const vosData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+    let nid = 74000;
+    const rich = [];
+    for (let copy = 0; copy < 10; copy++) {
+        vosData.filter(c => c.name === 'Útěk' || (copy < 4 && c.name === 'Tomahawk'))
+               .forEach(c => rich.push({ ...c, id: nid++ }));
+    }
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const seen = { offer: 0, escape: 0, mick: 0, respondEscape: 0, dangling: 0 };
+    try {
+        for (let k = 0; k < 16; k++) {
+            const n = 3 + (k % 6);
+            const all = k % 4 === 3;
+            const mick = k % 2 === 1;
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = rich;
+            const opts = { expansions: { udoli_stinu: true, dodge_city: all, high_noon: all,
+                                         fistful: all, divoky_zapad: all, zlata_horecka: all } };
+            const room = { id: 'vosf6_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e || e.ev !== 'special') return;
+                if (/může se vyhnout/.test(e.msg || '')) seen.offer++;
+                if (/^vyhýbá se: (Tomahawk|Úder|Springfield)/.test(e.msg || '')) seen.respondEscape++;
+                else if (/^vyhýbá se/.test(e.msg || '')) {
+                    if (e.card === 'Útěk') seen.escape++; else seen.mick++;
+                }
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            if (mick) gs.players.forEach(p => { p.charChoices = ['Mick Defender', 'Mick Defender']; });
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            if (mick) {
+                for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+                assert.ok(gs.players.every(pl => pl.character === 'Mick Defender'), 'stůl plný Micků');
+            }
+            const guard = pumpToWinner(ctx, room, () => {
+                if (gs.pendingEvade && gs.phase !== 'EVADE_OFFER') seen.dangling++;
+            });
+            assert.ok(gs.winner, `F6 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `F6 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci v okně úniku');
+    assert.equal(seen.dangling, 0, 'okno úniku nikdy nezůstalo viset mimo fázi EVADE_OFFER');
+    assert.ok(seen.offer > 0, 'okno úniku se aspoň jednou otevřelo');
+    assert.ok(seen.escape > 0, 'Útěk aspoň jednou zrušil kartu v okně úniku');
+    assert.ok(seen.respondEscape > 0, 'Útěk aspoň jednou zrušil bang-efekt v obraně');
+    assert.ok(seen.mick > 0, 'Mick Defender se aspoň jednou vyhnul kartou Vedle!');
 });
 
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
