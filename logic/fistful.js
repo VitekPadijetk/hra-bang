@@ -848,9 +848,9 @@ const FistfulMixin = {
     // Zasažené Vězení hráče osvobodí, sestřelená zbraň se vrací na Colt .45 – obojí
     // vyplyne samo z toho, že karta prostě zmizí ze stolu.
     _ricochetDestroy(ric) {
-        if (!ric) return;
+        if (!ric) return null;
         const p = this.players[ric.targetIdx];
-        if (!p) return;
+        if (!p) return null;
         let card = null, visBoardIdx = 0;
         if (ric.area === 'weapon') {
             if (p.weapon && p.weapon.id !== -1 && p.weapon.id === ric.cardId) {
@@ -861,12 +861,13 @@ const FistfulMixin = {
             const i = (p.board || []).findIndex(c => c && c.id === ric.cardId);
             if (i !== -1) { card = p.board.splice(i, 1)[0]; visBoardIdx = 1 + i; }
         }
-        if (!card) return;
+        if (!card) return null;
         this.deck.discard(card);
         // Vizuální slot v konvenci „slot 0 = zbraň" (stejně jako u dynamitu/vězení).
         this.lastAnimEvent = { type: 'board_to_discard', fromPlayerIdx: ric.targetIdx,
                                cardId: card.id, boardIdx: visBoardIdx };
         this.logEvent('event', { card: 'Odražená střela', who: p.name, msg: `přišel o ${card.name}` });
+        return card;   // Údolí stínů – Henry Block se ptá, jestli karta opravdu zanikla
     },
 
     // ── Mrtvý muž: „Hráč vyřazený jako první se ve svém tahu vrací se 2 životy ──

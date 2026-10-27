@@ -129,9 +129,12 @@ module.exports = function installRoomService(ctx) {
                 picks: (gs.pendingVosRound.picks || []).map(pk =>
                     pk.playerIdx === viewerIdx ? pk : { playerIdx: pk.playerIdx, cardIds: [] }) }
             : gs.pendingVosRound;
+        // Údolí stínů – Henry Block: zapsaný pohyb karty (`_henryAnim`) nese i ID karty
+        // ukradené z ruky. Posílá ho jen hák před broadcastem (flushHenryMove, server/anim.js),
+        // který ho hned vynuluje – tady je to jen pojistka, kdyby se stav odesílal bez něj.
         return { ...gs, players, deck, clausState, pendingDutchDiscard: dutch, pendingVosRound: vosRound,
                  eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck),
-                 wwsDeck: hideAll(gs.wwsDeck), gearDeck: hideAll(gs.gearDeck) };
+                 wwsDeck: hideAll(gs.wwsDeck), gearDeck: hideAll(gs.gearDeck), _henryAnim: null };
     }
 
     function roomPayload(room, viewerIdx = null, revealAll = false) {

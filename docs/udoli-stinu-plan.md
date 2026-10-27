@@ -8,14 +8,15 @@ a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_b
 **Stav: plán schválený (2026-10-21), hotové jsou fáze F0 (kostra), F1 (šest karet,
 2026-10-24), F2 (Colorado Bill, Limonádový Jim, 2026-10-24), F3 (fronta výstřelů:
 Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24), F4
-(kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25), F5 (Duch, 2026-10-25) a F6
-(okno úniku: Útěk, Mick Defender, 2026-10-26).**
+(kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25), F5 (Duch, 2026-10-25), F6
+(okno úniku: Útěk, Mick Defender, 2026-10-26) a F7 (Henry Block – pozastavená akce,
+2026-10-27).**
 Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js));
-do balíčku jde zatím 14 z 15 druhů karet a do výběru 4 z 5 postav (nápovědu v menu drží
+do balíčku jde zatím 14 z 15 druhů karet a do výběru všech 5 postav (nápovědu v menu drží
 v souladu test).
 Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
-1782 testů. Po F3: 1813 testů. Po F4: 1837 testů. Po F5: 1869 testů. Po F6: **1903
-testů, 0 chyb**.
+1782 testů. Po F3: 1813 testů. Po F4: 1837 testů. Po F5: 1869 testů. Po F6: 1903
+testů. Po F7: **1931 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -688,7 +689,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F4** ✓ | Divoká banda, Tornádo, Poker (+ redakce, animace) | samostatné, vzor Daltonové |
 | **F5** ✓ | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
 | **F6** ✓ | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
-| **F7** | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
+| **F7** ✓ | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
 | **F8** | Obětavý skok (brány + odměna + redakce) | riziko jako Teren Kill; bez držitele karty se hra nemění |
 | **F9** | Politika bota, zátěž (matice + „balíček samých X"), invarianty rozložení, výměna štítků za art, CLAUDE.md + `docs/pravidla/udoli-stinu.md` | uzavření |
 
@@ -1019,6 +1020,59 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 - **Zátěž F6:** balíček plný Útěků (+ Tomahawky), každá druhá hra se stolem samých Micků,
   čtvrtina se všemi rozšířeními; hlídá, že okno nikdy nezůstane viset mimo svou fázi
   a že se otevřelo, uniklo se Útěkem, Mickem i v obraně.
+
+### Co se ve fázi F7 odchýlilo od plánu (a proč)
+
+- **Pozastavená akce je `_vosSuspended = { kind, henryIdx, thiefIdx, … }`** (logic/valley.js)
+  se třemi druhy – `SELECTION` (uložený výběr + oblast + ID karty na stole), `DRAW` (Jesse
+  Jones / Pat Brennan: zdroj, cíl, oblast a `drawId` fáze lízání) a `GEAR` (ID vybavení).
+  Argumenty jsou POJMENOVANÁ pole, ne pole `args` (§2.9): sedadla v nich musí umět
+  přemapovat výměna míst Lady Růže, takže `henryIdx`/`thiefIdx` přibyly do `SEAT_KEYS`.
+  `SAVE` (odměna Obětavého skoku) přibude s F8 – stačí zavolat `_henrySuspend`.
+- **Kde se akce dokončí:** `_henryResume` sedí na začátku `_processSpecialQueue` (hned po
+  pročištění fronty) a v `_resumeAfterSpecial` – tedy PŘED schopnostmi, které výstřel
+  spustil (Bart Cassidy, El Gringo): krádež je pořád efekt zahrané karty („nejdřív doběhne
+  efekt"). El Gringo, kterého Henry zasáhl, mu tak bere kartu až PO krádeži. Pojistky
+  jsou v `tryEndTurn` a v háku před broadcastem; `nextTurn` nedoběhlou akci zahodí.
+  `_afterVosShot` nevznikl (stejně jako v F3) – konec výstřelu poznají ta místa sama
+  (fáze PLAY, žádná obrana / barel / sejmutí / klikaný zásah).
+- **Teren Kill jako zloděj** (Divoký západ): výstřel ho „vyřadil", ale vyřazení se
+  pozastavilo na sejmutí. Akce proto čeká, až fronta sejmutí odbaví: ♠ = umírá a karta
+  zůstává Henrymu, jinak si ji vezme (a pak si líže za přežití).
+- **Fáze lízání během výstřelu** (Jesse, Pat): `drawPhaseState` zůstává, jen dostane
+  `active: false`; po výstřelu se fáze DRAW obnoví a `drawCard` se zavolá znovu. Že jde
+  pořád o tutéž fázi lízání, hlídá `drawId`. Kterou kartu Jesse z ruky dostane, se
+  losuje až po výstřelu.
+- **Na koho se nestřílí:** Henry střílí jen na toho, kdo umí ztratit život – na Ducha,
+  stín ani ducha Města duchů na nule ne (pauza by nic neudělala, R4); akce pak proběhne
+  hned. Sám sobě (vlastní Cat Balou / Ragtime na svůj stůl) Henry nestřílí.
+- **Rvačka:** spouští Henryho jednou za jeho kartu – každý cíl Rvačky je vlastní výběr,
+  takže „jednou za akci" plyne samo. Po výstřelu Rvačka pokračuje dalším cílem.
+- **Zlatá horečka:** cena za vynucené odhození vybavení se platí HNED (je to „zahraná
+  karta" té akce, stejně jako Panika jde do odhozu před výstřelem); vybavení odejde až
+  po výstřelu (`_gearForceFinish`).
+- **Zabiják je Henry** (`vos.shot = 'HENRY'`, stejně jako u Opětovné palby): odměnu za
+  vyřazeného banditu dostává on. Útěk výstřel nezruší (`noEscape`); Opětovná palba ano
+  a výstřel zpět jde frontou výstřelů – odpálí se až po dokončené krádeži.
+- **Animace:** handlery (`select_target_card`, `discard_another_card`, `draw_card`)
+  při pozastavení let krádeže NEposílají – Panika / Cat Balou z ruky jen doletí do odhozu.
+  Pohyb karty si po výstřelu zapíšou pravidla (`_henryAnim`, ID karty hlásí sama akce
+  přes `_henryMovedId`) a pošle ho hák před broadcastem `flushHenryMove` (server/anim.js)
+  existujícími animacemi: `ragtime_steal` (z ruky líc jen zloděj), `jesse_jones_draw`,
+  `hand_to_discard` / `board_to_discard`. Redakce `_henryAnim` pro jistotu nuluje.
+  Banner obrany říká „Henry Block (X) střílí – sáhl jsi na jeho kartu!". **Render
+  neověřený.**
+- **Zjištěno mimochodem a opraveno:** `resolveCardSelection` brala jako kartu i Colt .45
+  (výchozí zbraň s `id: -1`) a se záporným indexem stolu by `splice(-1)` odebrala
+  poslední kartu. Obojí teď nevezme nic – klient ani bot to nikdy neposílali.
+- **Roubík** pozastavenou akci nepřeruší (`_gagCalm`) – pokuta by mohla vyřadit zloděje
+  i Henryho uprostřed efektu, který se ještě nedohrál.
+- **Bot** nepotřeboval nic: výstřel je obyčejná obrana (RESPOND). Že bot při výběru
+  cíle Paniky / Cat Balou Henryho zatím nezohledňuje, je věc F9 (politika bota).
+- **Zátěž F7:** stůl samých Henryů, nebo Henry + Jesse Jones + Pat Brennan, balíček
+  s pětinásobkem Panik a Cat Balou (a s Dodge City i Rvačky, Ragtime, Krytý vůz,
+  Kankán). Za běh ~190 výstřelů, 4–10× zloděj padl a karta zůstala Henrymu; nikdy
+  nezůstala viset akce ve fázi PLAY a žádná karta se nezdvojila.
 
 ## 9. Co plán vědomě nedělá
 

@@ -461,9 +461,10 @@ test('Duch pod Právem západu: vynucený BANG! bez jiného cíle ho v tahu nedr
 // ── Strukturální test: kdo zakládá výběr karty soupeře ───────────────────────
 // Každá karta na JEDINÝ cíl musí do SELECTING_TARGET_CARD přes _enterTargetSelection,
 // jinak by se jí cíl nemohl vyhnout (Útěk, Mick Defender). Napřímo smí fázi založit jen
-// hromadné výběry a pokračování po odmítnutém úniku.
+// hromadné výběry, pokračování po odmítnutém úniku a dokončení akce pozastavené Henrym
+// Blockem (F7 – výběr, který už jednou prošel _enterTargetSelection, se jen obnoví).
 test('SELECTING_TARGET_CARD zakládá jen _enterTargetSelection (+ hromadné výběry)', () => {
-    const ALLOWED = new Set(['_enterTargetSelection', '_evadeContinue',
+    const ALLOWED = new Set(['_enterTargetSelection', '_evadeContinue', '_henryResume',
                              '_advanceBrawl', '_nextVultureSplitPick', '_advanceDaltons']);
     const dir = path.join(__dirname, '..', 'logic');
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.js')).map(f => path.join(dir, f));

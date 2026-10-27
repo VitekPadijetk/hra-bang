@@ -79,7 +79,7 @@ const MENU_EXPANSIONS = [
     // Hratelné od fáze F1 (docs/udoli-stinu-plan.md §8) – karty přibývají po fázích,
     // do balíčku jdou jen hotové (VOS_CARDS_READY), proto ta poctivá nápověda. Čísla drží
     // v souladu s VOS_CARDS_READY a VOS_READY test (test/vos.cards.test.js).
-    { key: 'udoli_stinu', label: 'Údolí stínů', hint: 'Rozpracované: zatím 14 z 15 druhů karet a 4 z 5 postav' },
+    { key: 'udoli_stinu', label: 'Údolí stínů', hint: 'Rozpracované: zatím 14 z 15 druhů karet a 5 z 5 postav' },
 ];
 
 // Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".

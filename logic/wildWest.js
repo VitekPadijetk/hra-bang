@@ -39,6 +39,8 @@ const SEAT_KEYS = new Set([
     'victimIdx', 'secondIdx',
     // …a kolečko voleb (Divoká banda, Tornádo, Poker): kdo kartu zahrál.
     'byIdx',
+    // …a pozastavená akce Henryho Blocka (`_vosSuspended`): Henry a ten, kdo mu kartu bere.
+    'henryIdx', 'thiefIdx',
 ]);
 // Klíč, jehož hodnota je POLE sedadel (fronty, pořadí, seznamy):
 const SEAT_LIST_KEYS = new Set([
@@ -542,6 +544,9 @@ const WildWestMixin = {
         // Údolí stínů – okno úniku (Útěk / Mick Defender) taky: fronta v něm stojí
         // a pokuta by mohla vyřadit útočníka, jehož efekt se teprve rozhoduje.
         if (this.pendingEvade) return false;
+        // …a pozastavená akce Henryho Blocka (výstřel na zloděje, krádež čeká): pokuta by
+        // mohla vyřadit zloděje i Henryho uprostřed efektu, který se ještě nedohrál.
+        if (this._vosSuspended) return false;
         if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
         if (this.specialActionQueue?.length) return false;
         if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;

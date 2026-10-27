@@ -374,6 +374,8 @@ const ValleyMixin = {
     _vosShotCalm() {
         if (!this._vosShots || !this._vosShots.length) return false;
         if (this.winner || this._vosHold) return false;
+        // Henry Block (F7): akce čeká na dokončení – efekt zahrané karty ještě neskončil.
+        if (this._vosSuspended) return false;
         if (this.phase !== "PLAY") return false;
         if (this._autoEndTurnPending || this._dorothyOwnerIdx != null) return false;
         if ((this.specialActionQueue || []).length) return false;
@@ -776,6 +778,7 @@ const ValleyMixin = {
     _vosGhostCalm() {
         if (this.winner || this.phase !== "PLAY") return false;
         if (this._dorothyOwnerIdx != null) return false;
+        if (this._vosSuspended) return false;   // Henry Block: akce ještě nedoběhla
         if ((this.specialActionQueue || []).length) return false;
         if (this.drawPhaseState?.active || this.pendingCheckDraw?.active) return false;
         if (this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
@@ -848,6 +851,173 @@ const ValleyMixin = {
     // tahu, posune se tah (_vosGhostSettle) – start tahu mrtvému se dotáčet nesmí.
     _vosGhostTurnStep() {
         return this._vosGhostSettle(true);
+    },
+
+    // ── Henry Block (F7, R7): pozastavená akce ──────────────────────────────
+    // „Hráč, který si vezme nebo odhodí kartu z Henryho ruky nebo ležící před ním, je
+    // cílem efektu BANG!." + dV: „Karta se vezme (odhodí) až POTOM, co se automatický
+    // BANG! vyhodnotí" a „když zloděj umře, karta zůstává Henrymu". Je to tedy OPAK fronty
+    // výstřelů (R6): nejdřív výstřel, teprve pak přesun karty.
+    //
+    // Hák sedí jen tam, kde kartu bere / odhazuje HRÁČ SVÝM ROZHODNUTÍM (Albi: „Vzít =
+    // Panika, Ragtime, Krytý vůz, Jesse Jones, Pat Brennan; odhodit = Cat Balou, Rvačka,
+    // Kankán"; DB: „neuplatní se u schopností spouštěných herními efekty jako El Gringo"):
+    //   SELECTION – resolveCardSelection (Panika, Cat Balou, Ragtime, Rvačka, Kankán,
+    //               Krytý vůz, opakování Lee Van Kliffem, Komplic/Láhev, Zuřivá Doroty),
+    //   DRAW      – drawCard (Jesse Jones z ruky, Pat Brennan ze stolu),
+    //   GEAR      – gearForceDiscard (Zlatá horečka: donucení odhodit vybavení).
+    // Odražená střela (Fistful) kartu ničí uprostřed obrany – tam jde Henryho výstřel
+    // výjimečně frontou výstřelů, až po zničení (_henryRicochet).
+    // Nespouští se: El Gringo, Vulture Sam, Johnny Kisch, Gary Looter (automatické),
+    // Daltonové a Brokovnice (odhazuje sám Henry), Divoká banda, Tornádo, Poker, Flint
+    // Westwood (výměna) ani Youl Grinner (kartu dává Henry).
+    //
+    // Akce se místo přesunu karty zapíše do `_vosSuspended` (pokračování jako DATA, vzor
+    // okna úniku) a spustí se výstřel Henry → zloděj: bang-efekt bez dostřelu, nese
+    // `vos.shot = 'HENRY'` (zabil Henry, ne hráč na tahu) a `noEscape` (Útěk ho nezruší –
+    // není to karta). Až obrana doběhne, _henryResume akci zavolá znovu se stejnými
+    // argumenty a s `_henryPass`, takže se podruhé nestřílí („jednou za akci"). Zloděj
+    // mimo hru → akce propadá a karta zůstává Henrymu. Smrt zloděje na tahu ukončí tah
+    // obvyklou cestou (_turnOwnerGone).
+
+    // Vystřelí Henry na zloděje? Jen když je Henry ve hře, zloděj je někdo jiný a umí
+    // ztratit život – na Ducha (i stín a ducha Města duchů na nule) by byl výstřel jen
+    // zbytečná pauza (R4), akce pak proběhne hned.
+    _henryFires(henryIdx, thiefIdx) {
+        if (!this._vosOn() || this._henryPass || this.winner) return false;
+        if (henryIdx == null || thiefIdx == null || henryIdx === thiefIdx) return false;
+        const h = this.players[henryIdx], t = this.players[thiefIdx];
+        if (!h || !t || !isInPlay(h) || !hasAbility(h, "Henry Block")) return false;
+        if (!isInPlay(t) || isVosGhost(t) || t.health <= 0) return false;
+        return true;
+    },
+
+    // Pozastav akci `s` ({ kind, … }) a vystřel. Vrací true, když se akce pozastavila –
+    // volající pak kartu NEPŘESOUVÁ a na fázi nesahá.
+    _henrySuspend(henryIdx, thiefIdx, s) {
+        if (!this._henryFires(henryIdx, thiefIdx)) return false;
+        this._vosSuspended = { ...s, henryIdx, thiefIdx };
+        this.logEvent('special', { who: this.players[henryIdx].name, card: 'Henry Block',
+                                   target: this.players[thiefIdx].name, msg: 'střílí na toho, kdo mu bere kartu' });
+        this.currentAttacker = henryIdx;
+        this._beginBangResolution(henryIdx, thiefIdx, true, 'Henry Block', null, null,
+                                  { shot: 'HENRY', noEscape: true });
+        return true;
+    },
+
+    // Doběhl výstřel? Volá se z _processSpecialQueue (hned po pročištění fronty, tedy
+    // PŘED schopnostmi, které výstřel spustil – Bart Cassidy, El Gringo: „nejdřív doběhne
+    // efekt zahrané karty") a z _resumeAfterSpecial. Vrací true, když se akce rozeběhla
+    // (volající pak na fázi nesahá); false = nic se nedělo, nebo akce propadla.
+    _henryResume() {
+        const s = this._vosSuspended;
+        if (!s) return false;
+        if (this.winner) { this._vosSuspended = null; return false; }
+        // Výstřel ještě běží (obrana, barel, sejmutí, klikaný zásah).
+        if (this.phase !== "PLAY") return false;
+        if (this.pendingResponse?.active || this.pendingBarrelCheck?.active ||
+            this.pendingCheckDraw?.active || this.currentCheck?.active || this.luckyDukeState ||
+            this.pendingDynamiteDamage || this.pendingNoonDamage) return false;
+        // Divoký západ – Teren Kill: výstřel zloděje „vyřadil", ale vyřazení se pozastavilo
+        // na sejmutí. Jestli umře (a karta zůstane Henrymu), se ví až po něm – fronta
+        // odložených akcí ho rozhodne dřív, než se sem vrátíme.
+        if (this.pendingTerenKill && this.pendingTerenKill.playerIdx === s.thiefIdx) return false;
+        this._vosSuspended = null;
+        const thief = this.players[s.thiefIdx];
+        if (!isInPlay(thief)) {
+            this.logEvent('special', { who: this.players[s.henryIdx]?.name, card: 'Henry Block',
+                                       target: thief?.name, msg: 'zloděj padl – karta zůstává Henrymu' });
+            return false;
+        }
+        const before = this._henrySnap(s.henryIdx);
+        delete this._henryMovedId;
+        this._henryPass = true;
+        try {
+            if (s.kind === 'SELECTION') {
+                this.pendingSelection = s.sel;
+                this.phase = "SELECTING_TARGET_CARD";
+                this.resolveCardSelection(s.sel.attackerIdx, s.area, this._henryCardPos(s));
+            } else if (s.kind === 'DRAW') {
+                const ds = this.drawPhaseState;
+                if (!ds || ds.drawId !== s.drawId || ds.playerIdx !== s.thiefIdx) {
+                    this._processSpecialQueue();   // (pojistka – fáze lízání mezitím zanikla)
+                } else {
+                    ds.active = true;
+                    this.phase = "DRAW";
+                    this.drawCard(s.source, s.sourceIdx, s.area, this._henryCardPos(s));
+                }
+            } else if (s.kind === 'GEAR') {
+                this._gearForceFinish(s.thiefIdx, s.henryIdx, s.cardId);
+                this.phase = "PLAY";
+                this._processSpecialQueue();
+            }
+        } finally {
+            delete this._henryPass;
+        }
+        this._henryMoveAnim(s, before);
+        return true;
+    },
+
+    // Index karty na stole podle ID – mezi zahráním a dokončením se stůl smí přeskládat.
+    // Karta, která zmizela, dá -1 (resolveCardSelection i drawCard pak nevezmou nic).
+    _henryCardPos(s) {
+        if (s.area !== 'board') return s.cardIdx;
+        const h = this.players[s.henryIdx];
+        return (h?.board || []).findIndex(c => c && c.id === s.cardId);
+    },
+
+    // Co Henry drží PŘED dokončením akce (jen ID) – z toho se dopočítá slot, odkud vzatá
+    // karta odešla (vějíř ruky / pás stolu / zbraň).
+    _henrySnap(idx) {
+        const p = this.players[idx] || {};
+        return { hand: (p.hand || []).map(c => c.id), board: (p.board || []).map(c => c.id),
+                 weapon: (p.weapon && p.weapon.id !== -1) ? p.weapon.id : null };
+    },
+
+    // Animace přesunu karty po výstřelu. Akce doběhla uvnitř CIZÍ socket akce (obrana,
+    // barel, záchrana Pivem…), takže si ji pravidla jen zapíšou a pošle ji hák před
+    // broadcastem (flushHenryMove v server/anim.js). Vizuální slot stolu je v konvenci
+    // „slot 0 = zbraň", `stolenIndex` = slot ve vějíři (karta z ruky se bere náhodně).
+    // Kterou kartu akce vzala, si zapíše sama (`_henryMovedId` v resolveCardSelection
+    // a drawCard) – rozdíl ruky by nestačil: hned za akcí se odbavuje fronta a ta smí
+    // Henrymu sebrat další karty (odchod Ducha mu odhodí celou ruku).
+    _henryMoveAnim(s, before) {
+        const id = this._henryMovedId;
+        delete this._henryMovedId;
+        if (id == null || s.kind === 'GEAR') return;
+        let m = null;
+        const hi = before.hand.indexOf(id), bi = before.board.indexOf(id);
+        if (hi !== -1) m = { area: 'hand', cardId: id, boardIdx: null, stolenIndex: hi };
+        else if (bi !== -1) m = { area: 'board', cardId: id, boardIdx: 1 + bi, stolenIndex: null };
+        else if (before.weapon === id) m = { area: 'weapon', cardId: id, boardIdx: 0, stolenIndex: null };
+        if (!m) return;
+        const thief = this.players[s.thiefIdx];
+        const stolen = (thief?.hand || []).some(c => c && c.id === id);
+        const mode = !stolen ? 'discard' : (s.kind === 'DRAW' && m.area === 'hand' ? 'jesse' : 'steal');
+        this._henryAnim = { mode, thiefIdx: s.thiefIdx, henryIdx: s.henryIdx, ...m };
+    },
+
+    // Zlatá horečka – vynucené odhození vybavení (gearForceDiscard) po Henryho výstřelu.
+    // Zaplaceno je už od začátku (cena je „zahraná karta"); vybavení se dohledává podle
+    // ID, a kdyby mezitím zmizelo, prostě se nic neodhodí.
+    _gearForceFinish(playerIdx, targetIdx, cardId) {
+        const t = this.players[targetIdx];
+        const gi = (t?.gear || []).findIndex(c => c && c.id === cardId);
+        if (gi === -1) return null;
+        const card = t.gear.splice(gi, 1)[0];
+        this._gearDiscard(card);
+        this.logEvent('gear', { act: 'force', who: this.players[playerIdx]?.name, target: t.name, card: card.name });
+        return card;
+    },
+
+    // Fistful – Odražená střela zničila Henrymu kartu na stole. Karta zaniká uprostřed
+    // obrany, takže se tu výjimečně nic nepozastavuje: výstřel jde do fronty výstřelů
+    // (R6) a odpálí se, až obrana doběhne.
+    _henryRicochet(henryIdx, shooterIdx) {
+        if (!this._henryFires(henryIdx, shooterIdx)) return;
+        this._vosQueueShot(henryIdx, shooterIdx, 'HENRY', 'Henry Block', true);
+        this.logEvent('special', { who: this.players[henryIdx].name, card: 'Henry Block',
+                                   target: this.players[shooterIdx].name, msg: 'střílí na toho, kdo mu zničil kartu' });
     },
 };
 

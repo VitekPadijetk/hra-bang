@@ -156,6 +156,15 @@ const DrawMixin = {
         if (source === 'board' && hasAbility(player, "Pat Brennan") && ds.cardsDrawn === 0) {
             const target = this.players[sourceIdx];
             if (!target || !isInPlay(target)) return;   // i Duchovi (Údolí stínů)
+            // Údolí stínů – Henry Block (F7): Pat si bere kartu ležící před Henrym → nejdřív
+            // je cílem BANG! a kartu dostane, jen když výstřel přežije (_henryResume).
+            const hc = area === 'weapon' ? (target.weapon && target.weapon.id !== -1 ? target.weapon : null)
+                     : area === 'board' ? (target.board || [])[cardIdx] : null;
+            if (hc && this._henrySuspend(sourceIdx, ds.playerIdx, {
+                    kind: 'DRAW', drawId: ds.drawId, source, sourceIdx, area, cardIdx, cardId: hc.id })) {
+                ds.active = false;
+                return;
+            }
             let card = null;
             if (area === 'weapon') {
                 if (target.weapon && target.weapon.id !== -1) {
@@ -163,9 +172,10 @@ const DrawMixin = {
                     target.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
                 }
             } else if (area === 'board') {
-                if (target.board && target.board[cardIdx]) card = target.board.splice(cardIdx, 1)[0];
+                if (target.board && cardIdx >= 0 && target.board[cardIdx]) card = target.board.splice(cardIdx, 1)[0];
             }
             if (!card) return;
+            if (this._henryPass) this._henryMovedId = card.id;   // Henry Block – animace
             if (card.green) delete card._playedTurn;   // v ruce už není „položená tento tah"
             player.hand.push(card);
             this.logEvent('draw', { who: player.name, source: 'board', cards: [card.name] });
@@ -178,8 +188,16 @@ const DrawMixin = {
         if (source === 'opponent_hand' && hasAbility(player, "Jesse Jones") && ds.cardsDrawn === 0) {
             const opponent = this.players[sourceIdx];
             if (!opponent || !isInPlay(opponent) || opponent.hand.length === 0) return;
+            // Údolí stínů – Henry Block (F7): Jesse si bere kartu z Henryho ruky → nejdřív je
+            // cílem BANG!. Kterou kartu dostane, se losuje až po výstřelu (_henryResume).
+            if (this._henrySuspend(sourceIdx, ds.playerIdx, {
+                    kind: 'DRAW', drawId: ds.drawId, source, sourceIdx, area: 'hand', cardIdx: null, cardId: null })) {
+                ds.active = false;
+                return;
+            }
             const randomIdx = Math.floor(Math.random() * opponent.hand.length);
             const stolen = opponent.hand.splice(randomIdx, 1)[0];
+            if (this._henryPass) this._henryMovedId = stolen.id;   // Henry Block – animace
             player.hand.push(stolen);
             this.logEvent('draw', { who: player.name, source: 'opponent_hand', cards: [stolen.name] });
             player.stats.cardsDrawn++;

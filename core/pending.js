@@ -193,6 +193,8 @@ function waitingStatus(state) {
         if (state.pendingResponse.vos?.unavoidable) text += ' (nejde zrušit)';
         // Údolí stínů – Dvojitá rána: zásah stojí dva životy.
         if (state.pendingResponse.vos?.aim) text += ' + Dvojitá rána';
+        // Údolí stínů – Henry Block: střílí na toho, kdo mu bere kartu (karta počká).
+        if (state.pendingResponse.vos?.shot === 'HENRY') text = 'brání se výstřelu Henryho Blocka';
     }
     if (pa.kind === 'EVADE_OFFER' && state.pendingEvade?.cardName) {
         text = 'rozmýšlí, jestli se vyhne kartě ' + state.pendingEvade.cardName;
@@ -298,6 +300,8 @@ function describePendingResponse(state, viewerIdx) {
         unavoidable,
         // Údolí stínů – Dvojitá rána: zásah stojí 2 životy (UI to řekne ve výzvě).
         aim: !!(pr.vos && pr.vos.aim),
+        // Údolí stínů – Henry Block: výstřel za kartu, kterou mu obránce bere.
+        henry: !!(pr.vos && pr.vos.shot === 'HENRY'),
     };
 }
 

@@ -115,12 +115,13 @@ const VALLEY_CHARACTERS = [
     "Colorado Bill", "Evelyn Shebang", "Henry Block", "Limonádový Jim", "Mick Defender"
 ];
 
-// …a podmnožina, která už MÁ schopnost (vzor WILD_WEST_READY). Roste po fázích
-// implementace (F3, F6, F7); do té doby se dají vybrat jen v debug hře.
+// …a podmnožina, která už MÁ schopnost (vzor WILD_WEST_READY). Od fáze F7 je to celý
+// seznam a zůstává jen jako pojistka pro další rozšíření.
 const VOS_READY = [
     "Colorado Bill", "Limonádový Jim",   // F2
     "Evelyn Shebang",                    // F3
     "Mick Defender",                     // F6
+    "Henry Block",                       // F7
 ];
 
 class Card {

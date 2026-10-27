@@ -624,6 +624,10 @@ const GoldRushMixin = {
         if (!p || !card || !isInPlay(t)) return null;
         const cost = Math.max(0, card.cost || 0) + 1;
         if (!this._payNuggets(playerIdx, cost)) return null;
+        // Údolí stínů – Henry Block (F7): vybavení leží „před ním", takže kdo ho donutí
+        // odhodit, je nejdřív cílem BANG!. Zaplaceno je hned (cena je to, čím se akce
+        // „zahrála"); karta odejde, až výstřel doběhne a plátce ho přežije (_henryResume).
+        if (this._henrySuspend(targetIdx, playerIdx, { kind: 'GEAR', cardId: card.id })) return card;
         t.gear.splice(gearIdx, 1);
         this._gearDiscard(card);
         this.logEvent('gear', { act: 'force', who: p.name, target: t.name, card: card.name, cost });

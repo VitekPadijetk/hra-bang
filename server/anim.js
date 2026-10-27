@@ -652,12 +652,50 @@ module.exports = function installAnimService(ctx) {
         if (hold) room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + hold);
     }
 
+    // ── Údolí stínů – Henry Block: karta se pohne až po jeho výstřelu ──────────
+    // Krádež / odhoz Henryho karty se pozastaví (logic/valley.js, _henrySuspend) a dokončí
+    // se uvnitř CIZÍ socket akce – té, která výstřel ukončila (obrana, barel, záchrana
+    // Pivem…). Pravidla si proto pohyb jen zapíšou (`_henryAnim`) a tady se pošle těsně
+    // před stavem stejnými animacemi, jaké by poslal handler bez Henryho: krádež jako
+    // Ragtime (z ruky líc vidí jen zloděj), Jesse Jones jako Jesse Jones, odhoz do odhozu.
+    function flushHenryMove(room) {
+        const gs = room.gameState;
+        const a = gs && gs._henryAnim;
+        if (!a) return;
+        gs._henryAnim = null;
+        if (a.mode === 'jesse') {
+            const base = { type: 'jesse_jones_draw', playerIdx: a.thiefIdx, fromPlayerIdx: a.henryIdx,
+                           stolenIndex: a.stolenIndex };
+            emitAnimPrivate(room, a.thiefIdx, { ...base, cardId: a.cardId }, base);
+        } else if (a.mode === 'steal') {
+            const base = { type: 'ragtime_steal', attackerIdx: a.thiefIdx, targetIdx: a.henryIdx,
+                           area: a.area, boardIdx: a.boardIdx, stolenIndex: a.stolenIndex };
+            if (a.area === 'hand') {
+                emitAnimPrivate(room, a.thiefIdx, { ...base, stolenCardId: a.cardId }, { ...base, stolenCardId: null });
+            } else {
+                emitAnim(room, { ...base, stolenCardId: a.cardId });
+            }
+        } else if (a.area === 'hand') {
+            // Odhozená karta leží navrchu odhozu = je veřejná (jako u Cat Balou z ruky).
+            emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: a.henryIdx, cardId: a.cardId });
+        } else {
+            emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: a.henryIdx, cardId: a.cardId, boardIdx: a.boardIdx });
+        }
+        // Boti počkají, až karta doletí – klient do té doby drží stav ve frontě.
+        room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + RAGTIME_MS + 60);
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
     // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost
     // a teprve za ní (poslední krok startu tahu) může přijít Miláček Valentýn.
     function beforeBroadcast(room) {
         ctx.flushBotQuips?.(room);
         flushDorothy(room);
+        // Údolí stínů – Henry Block: pojistka pozastavené akce (výstřel doběhl cestou,
+        // která frontu odložených akcí nebere). Před frontou výstřelů – je to pořád
+        // efekt zahrané karty – a před flushHenryMove, který pohyb karty pošle.
+        room?.gameState?._henryResume?.();
+        flushHenryMove(room);
         // Údolí stínů – pojistka fronty výstřelů: kdyby se hra vrátila do fáze PLAY
         // cestou, která frontu odložených akcí nebere, odpálí se odložený výstřel (Opětovná
         // palba, Roztříštěná kulka, Evelyn) tady – jinak by čekal až na konec tahu.

@@ -3700,8 +3700,12 @@ function drawPhaseOverlays(ctx) {
             if (d.forMe) {
                 // Údolí stínů – Dvojitá rána: zásah stojí dva životy (jedno Vedle! stačí).
                 const _aim = d.aim ? ' + 🎯 Dvojitá rána (−2 ❤)' : '';
+                // Údolí stínů – Henry Block: střílí, protože mu bereš / odhazuješ kartu.
+                // Karta se pohne, až výstřel přežiješ.
                 let l1 = gameScene.add.text(960, 66,
-                    _rcName ? `⚔️ Odražená střela${_from} – ${_rcName}!` : `⚔️ ${d.sourceLabel}${_aim}${_from}!${_more}`,
+                    _rcName ? `⚔️ Odražená střela${_from} – ${_rcName}!`
+                    : d.henry ? `⚔️ Henry Block (${d.attackerName}) střílí – sáhl jsi na jeho kartu!`
+                    : `⚔️ ${d.sourceLabel}${_aim}${_from}!${_more}`,
                     { fontSize: '34px', color: '#ff6666', fontStyle: 'bold' }).setOrigin(0.5);
                 mAdd(l1, 206);
                 // Údolí stínů – Colorado Bill sejmul piky: nic se zahrát nedá (jen zachránit
@@ -3716,6 +3720,7 @@ function drawPhaseOverlays(ctx) {
                 let l1 = gameScene.add.text(960, 92,
                     _rcName
                         ? `⏳ Čeká se na hráče ${d.targetName} – brání ${_rcName} před Odraženou střelou${_from ? ' (' + _from.trim() + ')' : ''}`
+                        : d.henry ? `⏳ Čeká se na hráče ${d.targetName} – brání se výstřelu Henryho Blocka (${d.attackerName}), karta se pohne až po něm`
                         : `⏳ Čeká se na hráče ${d.targetName} – brání se proti ${d.sourceLabel}${_from ? ' (' + _from.trim() + ')' : ''}${_more}`,
                     { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
                 mAdd(l1, 206);

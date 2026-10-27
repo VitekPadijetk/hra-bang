@@ -275,7 +275,11 @@ const ResponseMixin = {
             // karta na jeho stole (životy se nehýbou, takže se nic z toho, co na zásah
             // navazuje, nespouští – ani Bart Cassidy, ani El Gringo, ani smrt).
             if (this.pendingResponse.ricochet) {
-                this._ricochetDestroy(this.pendingResponse.ricochet);
+                // Údolí stínů – Henry Block: zničená karta ležela před ním → střelec je
+                // cílem BANG! (frontou výstřelů, až obrana doběhne – _henryRicochet).
+                if (this._ricochetDestroy(this.pendingResponse.ricochet)) {
+                    this._henryRicochet(this.pendingResponse.ricochet.targetIdx, this.pendingResponse.originatorIdx);
+                }
             } else {
                 // Údolí stínů – zásah KARTOU BANG!: Brokovnice a Odměna jdou do fronty
                 // PŘED zraněním, tedy před Barta Cassidyho a El Gringa (pořadí dV:

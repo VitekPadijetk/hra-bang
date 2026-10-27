@@ -521,6 +521,8 @@ class GameState {
         // Údolí stínů: výstřel, který se do konce tahu nestihl odpálit (střelec nebo cíl
         // mezitím odešel, tah skončil smrtí), propadá – patřil efektu tohohle tahu.
         if (this._vosShots && this._vosShots.length) this._vosShots = [];
+        // Henry Block: pozastavená krádež, jejíž zloděj tah ukončil smrtí, propadá taky.
+        this._vosSuspended = null;
         // Kolečko voleb (Divoká banda, Tornádo, Poker) končí vždy ve fázi PLAY, takže tu
         // viset nemá – pojistka, ať nedoběhlé kolečko nepřežije do cizího tahu.
         this.pendingVosRound = null;
@@ -695,6 +697,8 @@ class GameState {
         // než tah skončí. Běžně se odpálí sám hned po efektu; tohle chytá cesty, které se
         // vrátily do fáze PLAY bez fronty odložených akcí.
         if (this.phase === "PLAY" && this._drainVosShots()) return;
+        // …a stejně tak pozastavená akce Henryho Blocka (výstřel doběhl, karta ještě ne).
+        if (this.phase === "PLAY" && this._vosSuspended && this._henryResume()) return;
         const p = this.getCurrentPlayer();
         if (!p) {
             this.nextTurn();

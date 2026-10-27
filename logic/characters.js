@@ -204,6 +204,10 @@ const CharactersMixin = {
         // nedoběhl, takže fronta stojí taky. vosEvade si ji zavolá samo.
         if (this.pendingEvade) return true;
         this._pruneSuzyQueue();
+        // Údolí stínů – Henry Block (F7): výstřel na zloděje doběhl, takže se dokončí
+        // pozastavená akce (krádež / odhoz). Je to pořád efekt zahrané karty, proto jde
+        // PŘED frontu – schopnosti, které výstřel spustil (Bart Cassidy, El Gringo), počkají.
+        if (this._vosSuspended && this._henryResume()) return true;
         // Údolí stínů – Duch: efekt doběhl a fronta je prázdná, takže je klid uklidit po
         // Duchovi, kterému karta Duch zmizela ze stolu (_vosGhostSettle). Odešel-li hráč
         // na tahu, tah se tím posunul – volající na fázi sahat nesmí.
@@ -363,6 +367,10 @@ const CharactersMixin = {
             // Divoký západ – Zuřivá Doroty: efekt poručené karty doběhl včetně fronty,
             // takže se vypůjčené sedadlo vrací jeho majiteli (viz `_dorothySettle`).
             this._dorothySettle();
+            // Údolí stínů – Henry Block: akce čekala, až fronta rozhodne o zlodějově
+            // vyřazení (Teren Kill) – výš se _processSpecialQueue ptal ještě ve fázi
+            // právě dokončené schopnosti, teprve teď je zase PLAY.
+            if (this._vosSuspended && this._henryResume()) return;
             // Údolí stínů – Duch: úklid po odchodu (viz _processSpecialQueue).
             if (this._vosGhostSettle()) return;
             // Divoký západ – Roubík: fáze je obnovená a nic neběží, takže je teprve TEĎ

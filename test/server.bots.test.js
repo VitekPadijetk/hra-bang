@@ -1742,6 +1742,82 @@ test('Údolí stínů (F6): balíček plný Útěků a stůl Micků Defenderů �
     assert.ok(seen.mick > 0, 'Mick Defender se aspoň jednou vyhnul kartou Vedle!');
 });
 
+// Údolí stínů (fáze F7): Henry Block – pozastavená akce. Balíček navíc plný Panik a Cat
+// Balou (a s Dodge City i Rvaček, Ragtimů, Krytých vozů a Kankánů), polovina her se stolem
+// samých Henryů, druhá polovina střídá Henryho s Jesse Jonesem a Patem Brennanem (ti
+// berou Henrymu karty ve fázi lízání). Hlídá, že pozastavená akce nikdy nezůstane viset
+// (fáze PLAY s nedokončenou krádeží), že se žádná karta nezdvojí (krádež proběhne jednou)
+// a že výstřel padl, krádež doběhla i propadla smrtí zloděje.
+test('Údolí stínů (F7): stůl Henryů Blocků a balíček plný krádeží – hra jen botů doběhne 3–8 hráčů', () => {
+    let nid = 76000;
+    const richBase = [...cardData];
+    for (let copy = 0; copy < 4; copy++) {
+        cardData.filter(c => c.type === 'PANIC' || c.type === 'CAT_BALOU')
+                .forEach(c => richBase.push({ ...c, id: nid++ }));
+    }
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const seen = { shot: 0, kept: 0, dangling: 0, dup: 0, moved: 0 };
+    const dupCheck = (gs) => {
+        const ids = new Set();
+        const add = (c) => {
+            if (!c || c.id == null || c.id === -1) return;
+            if (ids.has(c.id)) seen.dup++;
+            ids.add(c.id);
+        };
+        gs.players.forEach(p => { p.hand.forEach(add); p.board.forEach(add); add(p.weapon); });
+        gs.deck._drawPile.forEach(add);
+        gs.deck._discardPile.forEach(add);
+    };
+    try {
+        for (let k = 0; k < 18; k++) {
+            const n = 3 + (k % 6);
+            const all = k % 3 === 2;
+            const henryTable = k % 2 === 1;
+            const gs = new GameState();
+            gs.cardData = richBase;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+            const opts = { expansions: { udoli_stinu: true, dodge_city: all || k % 3 === 1, high_noon: all,
+                                         fistful: all, divoky_zapad: all, zlata_horecka: all } };
+            const room = { id: 'vosf7_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e || e.card !== 'Henry Block') return;
+                if (/^střílí/.test(e.msg || '')) seen.shot++;
+                if (/karta zůstává Henrymu/.test(e.msg || '')) seen.kept++;
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            const mix = ['Henry Block', 'Jesse Jones', 'Pat Brennan'];
+            gs.players.forEach((p, i) => {
+                const ch = henryTable ? 'Henry Block' : mix[i % mix.length];
+                p.charChoices = [ch, ch];
+            });
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+            const guard = pumpToWinner(ctx, room, () => {
+                if (gs._vosSuspended && gs.phase === 'PLAY') seen.dangling++;
+                if (gs._henryAnim) { seen.moved++; gs._henryAnim = null; }
+                dupCheck(gs);
+            });
+            assert.ok(gs.winner, `F7 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `F7 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci');
+    assert.equal(seen.dangling, 0, 'pozastavená akce nikdy nezůstala viset ve fázi PLAY');
+    assert.equal(seen.dup, 0, 'žádná karta se krádeží nezdvojila');
+    assert.ok(seen.shot > 0, 'Henry aspoň jednou vystřelil');
+    assert.ok(seen.moved > 0, 'krádež / odhoz aspoň jednou doběhly po výstřelu');
+    assert.ok(seen.kept > 0, 'aspoň jednou zloděj padl a karta zůstala Henrymu');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

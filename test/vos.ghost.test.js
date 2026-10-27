@@ -427,6 +427,7 @@ const LIFE_OK = {
     ],
     'logic/valley.js': [
         ['if (p.health > 0) { p._vosWasGhost = false', 'úklid Ducha: živý Duch není (pojistka)'],
+        ['isVosGhost(t) || t.health <= 0', 'Henry Block střílí – na toho, kdo nemůže ztratit život, ne'],
     ],
     'logic/wildWest.js': [
         ['if (!p || p.health <= 0) return false;', 'Madam Zuzana / Roubík berou život'],

@@ -75,6 +75,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const phaseBefore = gs.phase, drawnBefore = ds?.cardsDrawn ?? -1;
             const handBefore = gs.players[playerIdx]?.hand.length ?? -1;
             gs.drawCard(data.source, data.sourceIdx, data.area, data.cardIdx);
+            // Údolí stínů – Henry Block: Jesse / Pat sahají na Henryho kartu → nejdřív
+            // výstřel (stav ho nese jako RESPOND), karta se pohne až po něm a její animaci
+            // pošle hák před broadcastem (flushHenryMove v server/anim.js). Teď neletí nic.
+            if (gs._vosSuspended) { broadcastRoom(room); return; }
             // Klik navíc na balíček (pomalá linka: klient ještě nemá stav, kde už dolízal)
             // – logika ho zahodila, takže se nic nelízlo ani nezměnila fáze. NEANIMUJ nic:
             // jinak by poslední karta z ruky „znovu přiletěla" z balíčku. Jen sesynchronizuj.
@@ -345,6 +349,15 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                     if (hi !== -1) atkH.splice(hi, 1);
                 }
                 gs.resolveCardSelection(d.attackerIdx, d.area, d.cardIdx);
+                // Údolí stínů – Henry Block: krádež / odhoz čeká, až Henryho výstřel doběhne
+                // (karta se pohne až po něm, animaci pošle flushHenryMove). Zahraná Panika /
+                // Cat Balou ale odešla už teď – doletí rovnou do odhozu.
+                if (gs._vosSuspended) {
+                    held.forEach(c => gs.deck.discard(c));
+                    emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: attackerIdx, cardId: held[0]?.id ?? pending.cardId });
+                    broadcastRoomDelayed(room, 420);
+                    return;
+                }
                 // Cat Balou z ruky: odhozená karta je teď navrchu odhozu = VEŘEJNÁ, takže
                 // pošli její skutečné ID – ať se za letu odhalí (rub→líc) a natočí do odhozu
                 // (u soupeře naproti se dřív posílal jen rub → karta se ani neotočila, ani
@@ -431,6 +444,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 }
             }
             gs.resolveCardSelection(d.attackerIdx, d.area, d.cardIdx);
+            // Údolí stínů – Henry Block: výběr padl na jeho kartu → nejdřív výstřel, karta se
+            // pohne až po něm (animaci pošle flushHenryMove v server/anim.js).
+            if (gs._vosSuspended) { broadcastRoom(room); return; }
             // Obyčejný výběr, který pravidla odmítla (Panika mimo dosah…), nechá výběr
             // viset – pak se nic neanimuje. Z ruky se navíc nemuselo mít co vzít.
             const plainDone = isPlainSel && gs.pendingSelection !== sel &&
@@ -716,6 +732,8 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // Údolí stínů – cíl se rozmýšlí, jestli se vyhne (Útěk / Mick Defender):
                 // nic se zatím neukradlo, animaci krádeže pošle až vos_evade.
                 if (gs.phase === 'EVADE_OFFER') { broadcastRoomDelayed(room, 500); return; }
+                // Údolí stínů – Henry Block: krádež čeká na jeho výstřel (flushHenryMove).
+                if (gs._vosSuspended) { broadcastRoomDelayed(room, 500); return; }
                 // Ukradená karta je teď poslední v ruce útočníka (z ruky ji zná jen on).
                 const atkHand = gs.players[attackerIdx].hand;
                 const ownerStolenId = atkHand[atkHand.length - 1]?.id;

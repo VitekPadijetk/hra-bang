@@ -519,6 +519,23 @@ const PlayMixin = {
             }
         }
 
+        // Údolí stínů – Henry Block (F7): kdo mu kartu bere nebo odhazuje, je NEJDŘÍV cílem
+        // BANG!. Akce se pozastaví a dokončí ji _henryResume (logic/valley.js), až výstřel
+        // doběhne – a jen když zloděj přežil. Daltonové (odhazuje sám Henry) a dělení mezi
+        // Vulture Samy (Henry je mrtvý) se to netýká. Bez karty, kterou by šlo vzít, se
+        // nestřílí. Rvačka spouští Henryho jednou za jeho kartu – každý cíl je vlastní výběr.
+        if (!sel.isDaltons && !sel.isVultureSplit) {
+            const tc = targetCardArea === 'hand' ? (target.hand.length ? target.hand[0] : null)
+                     : targetCardArea === 'weapon' ? (target.weapon && target.weapon.id !== -1 ? target.weapon : null)
+                     : (target.board[targetCardIdx] || null);
+            if (tc && this._henrySuspend(sel.targetIdx, sel.attackerIdx, {
+                    kind: 'SELECTION', sel, area: targetCardArea, cardIdx: targetCardIdx,
+                    cardId: targetCardArea === 'hand' ? null : tc.id })) {
+                this.pendingSelection = null;
+                return;
+            }
+        }
+
         let cardToMove = null;
 
         if (targetCardArea === 'hand') {
@@ -526,12 +543,18 @@ const PlayMixin = {
             cardToMove = target.hand.splice(randomIndex, 1)[0];
         }
         else if (targetCardArea === 'weapon') {
-            cardToMove = target.weapon;
-            target.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+            // Colt .45 je jen výchozí dostřel, ne karta – vzít ani odhodit se nedá.
+            if (target.weapon && target.weapon.id !== -1) {
+                cardToMove = target.weapon;
+                target.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
+            }
         }
-        else {
+        else if (targetCardIdx >= 0 && target.board[targetCardIdx]) {
+            // (-1 = karta, kterou šlo vzít, mezitím zmizela – Henry Block, viz _henryCardPos)
             cardToMove = target.board.splice(targetCardIdx, 1)[0];
         }
+        // Henry Block: kterou kartu dokončená akce vzala (animace, _henryMoveAnim).
+        if (this._henryPass && cardToMove) this._henryMovedId = cardToMove.id;
 
         if (cardToMove) {
             if (sel.sourceCardType === CardType.PANIC) {
