@@ -224,6 +224,14 @@ if (typeof vosEvadable === 'undefined' && typeof require === 'function') {
     globalThis.escapeRespondOk = __vos.escapeRespondOk;
 }
 
+// Údolí stínů (F8): okno záchrany – Obětavý skok.
+if (typeof saveCandidates === 'undefined' && typeof require === 'function') {
+    const __vos = require('./core/valley.js');
+    globalThis.saveCandidates = __vos.saveCandidates;
+    globalThis.saveEligible = __vos.saveEligible;
+    globalThis.saveRewardHandCount = __vos.saveRewardHandCount;
+}
+
 // Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum, karta Zlatá horečka
 // a Wanted („zahraj na libovolného hráče"): co jde s nákupem udělat a na koho. Stejným
 // predikátem se ptá okno obchodu i bot – kdyby se rozešly, server by nákup mlčky odmítl
@@ -395,6 +403,12 @@ class GameState {
         // smí efektu vyhnout – fáze EVADE_OFFER. Pokračování po odmítnutí je DATA
         // (`resume`), ne funkce. Viz _vosEvadeGate v logic/valley.js.
         this.pendingEvade = null;
+        // Údolí stínů – okno záchrany (Obětavý skok): kdo právě ztrácí život, kdo ho smí
+        // zachránit (to vidí jen on – redactState) a kam se po rozhodnutí vrátit – fáze
+        // SAVE_OFFER. Odměna za záchranu (2 karty z ruky zachráněného, nebo z balíčku)
+        // čeká v `_vosSaveRewards`, až efekt doběhne, a volí se ve fázi SAVE_REWARD.
+        this.pendingSave = null;
+        this.pendingSaveReward = null;
         // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): kdo je na řadě,
         // kdo ještě čeká, co si kdo vybral (tajné, viz redactState) a u Pokeru vyložené
         // karty. Fáze BANDIDOS_DISCARD / TORNADO_PICK / POKER_PICK / POKER_TAKE.

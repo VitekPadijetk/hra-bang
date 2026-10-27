@@ -237,7 +237,7 @@ kartě**, nebo jen výklad v pravidlech.
 1. Český text karet **Black Flower, Spot-Burst Ringer, Tuco the Franciscan** (návrh v §3).
 2. Lícové strany karet Dynamite Boxu (viz §6.2) a barva druhého Ducha v českém tisku.
 3. „Karta BANG!" – anglická pravidla počítají i karty „jako BANG!" (LeMat, Calamity Janet), německá jen karty toho jména. Pro Black Flower to nikdo oficiálně neřekl.
-4. Obětavý skok „přežije-li" – stačí přežít ten jeden zásah, nebo celý efekt (dynamit, Dvojitá rána)?
+4. Obětavý skok „přežije-li" – stačí přežít ten jeden zásah, nebo celý efekt (dynamit, Dvojitá rána)? *Rozhodnuto v F8 (plán §8): celý efekt – odměna se vyplácí až po jeho doběhnutí.*
 5. Duch během tahu Belle Star (Laso ho oficiálně vyřazuje, Belle nikdo neřešil).
 6. Tuco a zelené karty Dodge City (nejsou modré – odvozeno z `isBlueCard`).
 7. Dvojitá rána a El Gringo (1, nebo 2 krádeže) – fanoušci se rozcházejí.

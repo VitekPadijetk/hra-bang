@@ -129,12 +129,21 @@ module.exports = function installRoomService(ctx) {
                 picks: (gs.pendingVosRound.picks || []).map(pk =>
                     pk.playerIdx === viewerIdx ? pk : { playerIdx: pk.playerIdx, cardIds: [] }) }
             : gs.pendingVosRound;
+        // Údolí stínů – okno záchrany (Obětavý skok): KDO kartu drží a smí zachránit, vidí
+        // jen on sám (R4) – ostatní poznají jen to, že se čeká. Totéž `declined` (kdo už
+        // odmítl – i ten ji drží). Pod Sacagaway je to vidět z odkrytých rukou tak jako tak.
+        const save = (gs.pendingSave && gs.pendingSave.saverIdx !== viewerIdx)
+            ? { ...gs.pendingSave, saverIdx: null, declined: [] }
+            : gs.pendingSave;
         // Údolí stínů – Henry Block: zapsaný pohyb karty (`_henryAnim`) nese i ID karty
         // ukradené z ruky. Posílá ho jen hák před broadcastem (flushHenryMove, server/anim.js),
         // který ho hned vynuluje – tady je to jen pojistka, kdyby se stav odesílal bez něj.
+        // Totéž odměna Obětavého skoku z ruky (`_vosSaveAnim`, flushSaveTake).
         return { ...gs, players, deck, clausState, pendingDutchDiscard: dutch, pendingVosRound: vosRound,
+                 pendingSave: save,
                  eventDeck: hideAll(gs.eventDeck), ffDeck: hideAll(gs.ffDeck),
-                 wwsDeck: hideAll(gs.wwsDeck), gearDeck: hideAll(gs.gearDeck), _henryAnim: null };
+                 wwsDeck: hideAll(gs.wwsDeck), gearDeck: hideAll(gs.gearDeck), _henryAnim: null,
+                 _vosSaveAnim: null };
     }
 
     function roomPayload(room, viewerIdx = null, revealAll = false) {

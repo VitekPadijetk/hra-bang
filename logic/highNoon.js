@@ -434,13 +434,19 @@ const HighNoonMixin = {
         if (this.phase !== "NOON_DAMAGE") return;
         const pnd = this.pendingNoonDamage;
         if (!pnd || pnd.playerIdx !== playerIdx) return;
+        // Údolí stínů – Obětavý skok (F8, R9): ztrátě života smí zabránit jiný hráč
+        // (hráč na tahu je oběť, takže zachránce je vždycky někdo jiný).
+        const _save = this._vosSaveGate(playerIdx, 'NOON');
+        if (_save === 'WAIT') return;
         this.pendingNoonDamage = null;
         // Fáze musí být PLAY dřív, než zásah padne: handlePlayerDeath z ní pozná, že
         // umřel hráč na tahu, a nastaví _autoEndTurnPending (server posune tah).
         this.phase = "PLAY";
-        this.handleDamage(playerIdx, null);
-        if (this.winner) return;
-        if (this.players[playerIdx].health <= 0) return;   // smrt → tah posune server
+        if (_save !== 'SAVED') {
+            this.handleDamage(playerIdx, null);
+            if (this.winner) return;
+            if (this.players[playerIdx].health <= 0) return;   // smrt → tah posune server
+        }
 
         // Zranění mohlo do fronty přidat odloženou akci (Bart Cassidy si líže za zásah).
         // Ta musí doběhnout dřív, než se rozjedou kontroly na Dynamit/Vězení.

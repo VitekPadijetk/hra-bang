@@ -1178,6 +1178,52 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
+    // Údolí stínů – okno záchrany (Obětavý skok): zachránce zabrání oběti ztratit život
+    // (`use: true`), nebo ne. Aktér se čte ze stavu; `playerIdx` hlídá guard proti
+    // opožděnému kliku. Zahraná karta letí do odhozu – od té chvíle je veřejné, kdo
+    // zachraňoval (do té doby to věděl jen on, redactState). Zásah se pak dohraje cestou,
+    // ze které přišel (obrana, klikaný zásah, Pravé poledne).
+    on('vos_save', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingSave?.saverIdx;
+            if (idx === undefined || idx === null) return;
+            if (d && d.playerIdx != null && d.playerIdx !== idx) return;
+            const victimIdx = gs.pendingSave.victimIdx;
+            const res = gs.vosSave(idx, !!(d && d.use));
+            if (!res) { broadcastRoom(room); return; }
+            if (res.card) {
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: res.card.id });
+                // Ledger chování: záchrana je pomoc (bot z ní odvozuje spojence).
+                ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: victimIdx, kind: 'support' });
+            }
+            // Nezachránil-li nikdo, zásah se dohrál právě TADY (a ne v respond_to_card /
+            // take_dynamite_hit / take_noon_hit, odkud přišel) – takže tady musí proběhnout
+            // i to, co ty handlery dělají po zásahu: animace vyřazení a konec tahu hráče,
+            // který na svém tahu umřel (jinak by mrtvý zůstal na tahu ve fázi PLAY).
+            if (gs.lastAnimEvent) { emitAnim(room, gs.lastAnimEvent); gs.lastAnimEvent = null; }
+            if (gs._deathAnimPlayerIdx !== undefined && gs._deathAnimPlayerIdx !== null) {
+                emitDeathAnim(room, gs, gs._deathAnimPlayerIdx);
+                gs._deathAnimPlayerIdx = null;
+            }
+            handleAutoEndTurn(room, gs);
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
+    // …a odměna za záchranu: `from: 'hand'` = 2 náhodné karty z ruky zachráněného
+    // (animaci krádeže pošle hák flushSaveTake v server/anim.js – karty se u Henryho
+    // Blocka berou až po jeho výstřelu), `from: 'deck'` = 2 karty z balíčku klikáním.
+    on('vos_save_reward', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingSaveReward?.saverIdx;
+            if (idx === undefined || idx === null) return;
+            if (d && d.playerIdx != null && d.playerIdx !== idx) return;
+            const res = gs.vosSaveReward(idx, d && d.from);
+            if (!res) { broadcastRoom(room); return; }
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+
     on('valentine_discard', (d) => {
         withRoom((room, p, gs) => {
             const idx = gs.pendingValentine?.playerIdx;

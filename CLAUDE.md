@@ -716,9 +716,10 @@ vybavení) uzavřela celé rozšíření.
 ## Rozšíření Údolí stínů (Valley of Shadows) — rozpracované
 
 **Hotové jsou fáze F0 (kostra), F1 (šest karet na existující mašinerii), F2 (dvě postavy),
-F3 (fronta výstřelů), F4 (kolečko voleb), F5 (Duch), F6 (okno úniku) a F7 (Henry Block)** a rozšíření
-jde zapnout v menu jako každé jiné (`MENU_EXPANSIONS`, nápověda poctivě říká, kolik je
-hotovo – čísla drží v souladu s `VOS_CARDS_READY`/`VOS_READY` test v `test/vos.cards.test.js`).
+F3 (fronta výstřelů), F4 (kolečko voleb), F5 (Duch), F6 (okno úniku), F7 (Henry Block)
+a F8 (Obětavý skok)** – **všech 15 druhů karet i 5 postav má efekt** – a rozšíření
+jde zapnout v menu jako každé jiné (`MENU_EXPANSIONS`; že nápověda sedí s
+`VOS_CARDS_READY`/`VOS_READY`, hlídá test v `test/vos.cards.test.js`).
 F1 = **Tomahawk** (jen data – bang-efekt s dostřelem 2), **Poslední pivo** (`cardEffects`
 v `playCard`, není to karta Pivo), **Chřestýš** (sejmutí v `logic/checks.js` po Dynamitu
 a Vězení – `_rattlesnakePending`/`_rattlesnakeOrDraw`, ♠ = klikaný zásah se `source:
@@ -829,14 +830,39 @@ Odražená střela jde výjimečně frontou výstřelů (`_henryRicochet`). Hand
 pozastavení let krádeže neposílají; pohyb si po výstřelu zapíšou pravidla (`_henryAnim`,
 ID z `_henryMovedId`) a pošle ho **`flushHenryMove`** (server/anim.js) jako `ragtime_steal` /
 `jesse_jones_draw` / odhoz. Roubík ji nepřeruší, `nextTurn` ji zahodí.
+F8 = **Obětavý skok – okno záchrany `SAVE_OFFER` a odměna `SAVE_REWARD`** (logic/valley.js).
+**Brána `_vosSaveGate(victimIdx, resume)` stojí na TŘECH místech, kde ztráta života vychází
+z rozhodnutí oběti (R9)**: oběť bere zásah v `handleResponse` (`'RESPOND'` – BANG!, bang-efekty,
+Kulomet, Indiáni, prohraný Duel, výstřely mimo pořadí, Fistful of Cards), klikaný zásah
+`takeDynamiteHit` (`'CLICK'` – dynamit, Chřestýš, Ruská ruleta, Madam Zuzana, Roubík i oba
+životy Dvojité rány zvlášť) a `takeNoonHit` (`'NOON'`). **Každý nový vstup ke ztrátě života
+musí jít přes ni, nebo být vyjmenovaný s důvodem** (dobrovolná ztráta – Chuck Wengam, Pokrevní
+bratři) – hlídá to strukturální test v `test/vos.save.test.js`. Okno se otevře jen se
+zachráncem (`saveCandidates` v core/valley.js: drží kartu, je ve hře, není oběť a NENÍ NA TAHU
+– `_turnOwner`); víc zachránců (namnožená data) dostává nabídku po směru od oběti po jednom.
+**Kdo zachraňuje, vidí jen on** – `redactState` ostatním nuluje `pendingSave.saverIdx`
+i `declined`, takže jim `pendingActor` vrátí `null` (R4). Pokračování je ZNOVUZAVOLÁNÍ téže
+funkce: rozhodnutí se zapíše do `_vosSaveDecision` a brána ho při druhém průchodu spotřebuje
+(`_vosSaveContinue`); zachráněný klik jen odečte zásah (`_vosSavedClick`, vzor Pivo). Záchrana
+není zásah – žádná Odměna, Brokovnice ani valoun. **Zásah se po rozhodnutí dohrává uvnitř
+handleru `vos_save`, takže ten musí udělat totéž co `respond_to_card`/`take_dynamite_hit`**
+(animace vyřazení + `handleAutoEndTurn`) – jinak mrtvý zůstane na tahu. **Odměna až po
+doběhnutí CELÉHO efektu** (dV 1588981): záchrana se zapíše do `_vosSaveRewards` a vyřídí se
+v klidu (`_drainSaveReward` na začátku `_drainVosShots`, klid = `_vosQuiet`, tedy i po
+Kulometu, po všech zásazích dynamitu, po startu tahu); „přežije-li" se posuzuje až tehdy.
+Volba `vos_save_reward { from: 'hand'|'deck', playerIdx }`: z ruky 2 NÁHODNÉ karty (animaci
+zapíše `_vosSaveAnim`, pošle `flushSaveTake` v server/anim.js), z balíčku `KILL_REWARD` se
+štítkem; zachráněný bez karet → rovnou balíček. Z ruky **Henryho Blocka** = jeho výstřel na
+zachránce (`_henrySuspend` s `kind: 'SAVE'`). Dokud okno nebo volba visí, fronta odložených
+akcí stojí a Roubík je nepřeruší.
 Data `cards.udoli_stinu.json` (id 700–715, `text` pro štítek, `art` = slug v
 `assets/card_art/udoli_stinu/`), postavy id 50–54 v characters.json, mixin
 [logic/valley.js](logic/valley.js), zrcadlo [core/valley.js](core/valley.js) (`vosOn`,
 **`VOS_CARDS_READY`** = druhy, které smí do balíčku, `VOS_MARK_READY`, `hasDuchCard`
 a tabulka **`VOS_KINDS`** = co smí poručit Zuřivá Doroty a zopakovat Lee Van Kliff –
 hlídá ji strukturální test), kostra časování [core/vosAnim.js](core/vosAnim.js).
-Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (postavy už
-všech pět, karty zatím čtrnáct z patnácti – chybí Obětavý skok). **Art všech 15 karet i 5 portrétů je dodaný**
+Do balíčku jdou jen hotové druhy a do ostré hry jen postavy z `VOS_READY` (od F8 jsou
+to všechny – oba seznamy zůstávají jen jako pojistka). **Art všech 15 karet i 5 portrétů je dodaný**
 (`assets/card_art/udoli_stinu/*.webp`, `assets/characters/050–054.webp`) a s nimi
 **značka supa** (`assets/card_marks/udoli_stinu.webp`, `VOS_MARK_READY = true`). Značky rozšíření
 (býk i sup) mají **100×100 px** a pečou se v rozměru souboru × 0,5 (`MARK_LAYOUT.bullScale`, game.js),
@@ -844,13 +870,15 @@ kotva pravý horní roh – jiný rozměr souboru = jiná velikost na kartě.
 Štítky zůstávají jako záloha: karta bez artu, ale s `text`, jde přes `paintCardLabel`,
 postava s `portrait: false` přes `buildPortraitLabels` (game.js).
 Testy: `test/vos.setup.test.js`, `test/vos.cards.test.js`, `test/vos.characters.test.js`,
-`test/vos.shots.test.js` (F3), `test/vos.round.test.js` (F4), `test/vos.ghost.test.js` (F5), `test/vos.reactions.test.js` (F6), `test/vos.henry.test.js` (F7) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
+`test/vos.shots.test.js` (F3), `test/vos.round.test.js` (F4), `test/vos.ghost.test.js` (F5), `test/vos.reactions.test.js` (F6), `test/vos.henry.test.js` (F7), `test/vos.save.test.js` (F8) a zátěž „Údolí stínů (F1)" (namnožená data, aby se každá
 karta opravdu hrála), „(F2)" (stůl plný jedné postavy) a „(F3)" (karty F3 + stůl plný
 Evelyn, hlídá i to, že mrtvý hráč nikdy nezůstane na tahu) a „(F4)" (namnožené karty
 F4, hlídá, že kolečko nikdy nezůstane viset do fáze PLAY) a „(F5)" (balíček plný Duchů,
 hlídá, že vyřazený nikdy nezůstane na tahu a Duch nezíská život) a „(F6)" (balíček plný
 Útěků, stůl samých Micků Defenderů) a „(F7)" (stůl Henryů, balíček plný Panik a Cat Balou;
-hlídá, že akce nezůstane viset a karta se nezdvojí) v `test/server.bots.test.js`. **Zátěž pumpuje hru
+hlídá, že akce nezůstane viset a karta se nezdvojí) a „(F8)" (balíček plný Obětavých skoků;
+hlídá, že okno ani volba odměny nezůstanou viset a mrtvý nezůstane na tahu – polovina her
+přehazuje odměnu na „z ruky", protože bot od spojence bere z balíčku) v `test/server.bots.test.js`. **Zátěž pumpuje hru
 synchronně, ale timeouty serveru spouští po každé akci** (`mock.timers` v `pumpToWinner`) –
 server drží Paniku, Cat Balou, Krytý vůz i Kankán mimo odhoz, dokud je tam nedoveze
 animace, a bez toho karty ze hry postupně mizely. Pravidla obou vydání (české Albi je
@@ -861,8 +889,8 @@ a pořadím fází F0–F9 v [docs/udoli-stinu-plan.md](docs/udoli-stinu-plan.md
 původního českého vydání (tři bonusové patří do budoucího mini-rozšíření Nejhledanější),
 pauza na reakci jen když reagovat jde, art dodává uživatel (co chybí, kreslí se
 jako štítek). **Pravidla platí podle plánu a art je NEMĚNÍ** – zásada „zdroj pravdy =
-text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F8
-(Obětavý skok – okno záchrany a odměna; odměna „2 karty z ruky" Henryho spouští přes
-`_henrySuspend`).
+text na artu" z Divokého západu se na Údolí stínů nevztahuje. Další krok je fáze F9
+(politika bota, zátěž „rozšíření × 3–8 hráčů", invarianty rozložení a přesun popisu
+z CLAUDE.md do `docs/pravidla/udoli-stinu.md`).
 **Pozor na jména:** v kódu prefix `vos`, nikdy `shadow` (= Stínoví pistolníci) ani `ghost`
 (= duch Města duchů) – karta Duch je `DUCH` / `hasDuchCard`.

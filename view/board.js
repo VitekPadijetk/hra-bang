@@ -2575,10 +2575,15 @@ function drawMyArea(ctx) {
                 const _isEvadePick = !isMySidActive && playable === true && !isStagedCard &&
                     state.phase === "EVADE_OFFER" && state.pendingEvade?.targetIdx === myIndex;
                 if (_isEvadePick) cSprite.setTint(0xffff44);
+                // Údolí stínů – okno záchrany: zachránci svítí Obětavý skok.
+                const _isSavePick = !isMySidActive && playable === true && !isStagedCard &&
+                    state.phase === "SAVE_OFFER" && state.pendingSave?.saverIdx === myIndex;
+                if (_isSavePick) cSprite.setTint(0xffff44);
                 // Kombinovaný flag: karta musí zůstat žlutá i po hover-out
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
                                        _isGrinnerPick || _isValentinePick || _isDutchPick ||
-                                       _isShotgunPick || _isLemonadePick || _isEvadePick || _isLawForced;
+                                       _isShotgunPick || _isLemonadePick || _isEvadePick || _isSavePick ||
+                                       _isLawForced;
 
                 if (selectedState.cardIndex === index) {
                     cSprite.y -= 20;
@@ -2807,6 +2812,15 @@ function drawMyArea(ctx) {
                             App.blockInput = true;
                             renderUI();
                             return;
+                        case 'VOS_SAVE':
+                            // Údolí stínů – okno záchrany: klik na Obětavý skok = zabránit
+                            // ztrátě života (odmítnutí je tlačítko).
+                            socket.emit('vos_save', { use: true, playerIdx: myIndex });
+                            optimisticRemoveCard(intent.index);
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                            return;
                         case 'VOS_LEMONADE':
                             // Údolí stínů – Limonádový Jim: klik na kartu = odhodit ji za
                             // +1 život (banner nahoře to říká, odmítnutí je tlačítko).
@@ -3015,7 +3029,7 @@ function drawMyArea(ctx) {
             && !['SID_SAVE', 'DISCARD', 'CHARACTER_SELECT', 'MENU', 'RESPOND', 'DYNAMITE_DAMAGE',
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
                  'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE',
-                 'SHOTGUN_DISCARD', 'LEMONADE_OFFER', 'EVADE_OFFER',
+                 'SHOTGUN_DISCARD', 'LEMONADE_OFFER', 'EVADE_OFFER', 'SAVE_OFFER', 'SAVE_REWARD',
                  'BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
@@ -3235,6 +3249,49 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _evSkip.setAlpha(0.45); _evSkip.disableInteractive(); }
+        }
+
+        // ── Údolí stínů – okno záchrany: nezachraňovat ───────────────────────────
+        // Záchrana je klik na Obětavý skok v ruce (VOS_SAVE), tady je „nechat to být".
+        if (state.phase === "SAVE_OFFER" && state.pendingSave?.saverIdx === myIndex) {
+            const { bg: _svSkip } = themeButton(gameScene, L.btnEndX, L.btnEndY, 300, L.btnH, 'NEZACHRAŇOVAT ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('vos_save', { use: false, playerIdx: myIndex });
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _svSkip.setAlpha(0.45); _svSkip.disableInteractive(); }
+        }
+
+        // ── Údolí stínů – odměna za záchranu: z ruky zachráněného, nebo z balíčku ──
+        // Dvě tlačítka ve slotu schopnosti a v místě „Ukončit tah" (fáze PLAY to není,
+        // takže jsou oba sloty volné). Z balíčku se pak líže klikáním jako každá odměna.
+        if (state.phase === "SAVE_REWARD" && state.pendingSaveReward?.saverIdx === myIndex) {
+            const _srN = saveRewardHandCount(state);
+            const _srName = state.players[state.pendingSaveReward.victimIdx]?.name || '?';
+            const _srEmit = (from) => {
+                if (App.blockInput) return;
+                App.blockInput = true;
+                socket.emit('vos_save_reward', { from, playerIdx: myIndex });
+                renderUI();
+            };
+            if (_srN > 0) {
+                const { bg: _srHand } = themeButton(gameScene, _abilX, L.btnAbilY, 360, L.btnH,
+                    `🃏 Z RUKY: ${_srName} (${_srN})`, {
+                    ...themeToggleStyle(true), fontSize: '21px',
+                    onClick: () => _srEmit('hand'),
+                });
+                if (App.blockInput) { _srHand.setAlpha(0.45); _srHand.disableInteractive(); }
+            }
+            const { bg: _srDeck } = themeButton(gameScene, L.btnEndX, L.btnEndY, 300, L.btnH, '🂠 Z BALÍČKU (2)', {
+                ...themeToggleStyle(true), fontSize: '22px',
+                onClick: () => _srEmit('deck'),
+            });
+            if (App.blockInput) { _srDeck.setAlpha(0.45); _srDeck.disableInteractive(); }
         }
 
         // ── Zlatá horečka: zrušit nabité „donutit odhodit vybavení" ─────────────
@@ -3944,6 +4001,62 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_eName} – může se vyhnout kartě ${_pe.cardName}`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Údolí stínů – okno záchrany: „zachráníš ho Obětavým skokem?" ─────────────
+    // Kdo je zachránce, ví jen on (redactState mu jedinému nechá `saverIdx`). Ostatní –
+    // i oběť – vidí jen to, že se čeká, jestli někdo nezasáhne (R4).
+    if (state.phase === "SAVE_OFFER" && state.pendingSave) {
+        const _ps = state.pendingSave;
+        const _sMine = _ps.saverIdx != null && _ps.saverIdx === myIndex;
+        const _vName = state.players[_ps.victimIdx]?.name || '?';
+        const _what = _ps.resume === 'NOON' ? 'Pravé poledne'
+            : _ps.resume === 'CLICK'
+                ? ({ RATTLESNAKE: 'Chřestýš', ROULETTE: 'Ruská ruleta', ZUZANA: 'Madam Zuzana',
+                     GAG: 'Roubík', AIM: 'Dvojitá rána' }[state.pendingDynamiteDamage?.source] || 'Dynamit')
+                : (state.pendingResponse?.sourceCardName || state.pendingResponse?.sourceCard || 'zásah');
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _sMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_sMine) {
+            let l1 = gameScene.add.text(960, 66, `🦸 ${_vName} ztrácí život (${_what}) – zachráníš ho?`,
+                { fontSize: '30px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112,
+                'Klikni na Obětavý skok (pak si vezmeš 2 karty), nebo „Nezachraňovat"',
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ ${_vName} ztrácí život (${_what}) – čeká se, jestli někdo nezasáhne…`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Údolí stínů – odměna za záchranu ─────────────────────────────────────────
+    if (state.phase === "SAVE_REWARD" && state.pendingSaveReward) {
+        const _pr = state.pendingSaveReward;
+        const _rMine = _pr.saverIdx === myIndex;
+        const _sName = state.players[_pr.saverIdx]?.name || '?';
+        const _vName = state.players[_pr.victimIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _rMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_rMine) {
+            let l1 = gameScene.add.text(960, 66, `🦸 Obětavý skok – ${_vName} přežil, vezmi si odměnu`,
+                { fontSize: '30px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112,
+                `2 karty z ruky hráče ${_vName} (náhodně), nebo 2 karty z balíčku – kombinovat nejde`,
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_sName} – Obětavý skok (vybírá odměnu)`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }

@@ -23,6 +23,7 @@
 //   { type: 'VOS_PICK', index, cardId }               – Brokovnice (Údolí stínů): zasažený odhazuje kartu
 //   { type: 'VOS_LEMONADE', index, cardId }           – Limonádový Jim (Údolí stínů): odhoz za +1 život
 //   { type: 'VOS_EVADE', index, cardId }              – Útěk / Mick Defender (Údolí stínů): vyhnout se kartě
+//   { type: 'VOS_SAVE', index, cardId }               – Obětavý skok (Údolí stínů): zachránit cizí život
 //   { type: 'VOS_ROUND_TOGGLE', index, cardId }       – Divoká banda/Tornádo/Poker (Údolí stínů): označit kartu
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
@@ -137,6 +138,14 @@ function decideCardClick(ctx) {
     // efektu. Odmítnutí je tlačítko.
     if (state.phase === "EVADE_OFFER" && state.pendingEvade?.targetIdx === myIndex) {
         return playable === true ? { type: 'VOS_EVADE', index, cardId: card.id }
+                                 : { type: 'UNPLAYABLE_FLASH' };
+    }
+
+    // Údolí stínů – okno záchrany: klik na Obětavý skok = zabránit ztrátě života
+    // (odmítnutí je tlačítko). Kdo je zachránce, ví jen on sám (redactState).
+    if (state.phase === "SAVE_OFFER" && state.pendingSave?.saverIdx != null &&
+        state.pendingSave.saverIdx === myIndex) {
+        return playable === true ? { type: 'VOS_SAVE', index, cardId: card.id }
                                  : { type: 'UNPLAYABLE_FLASH' };
     }
 

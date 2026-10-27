@@ -255,6 +255,15 @@ const ResponseMixin = {
         let respondedWithCard = false;
 
         if (cardIdx === null && boardCardId == null) {
+            // Údolí stínů – Obětavý skok (F8, R9): oběť bere zásah → jiný hráč mimo svůj
+            // tah jí smí zabránit ztratit život. Okno se otevře jen se zachráncem; jeho
+            // rozhodnutí sem vrátí `_vosSaveContinue` (stejné volání, rozhodnutí už známé).
+            // Odražená střela život neohrožuje a Dvojitá rána se zachraňuje až po
+            // jednotlivých klikaných zásazích (takeDynamiteHit).
+            const _vosPr0 = this.pendingResponse;
+            const _save = (_vosPr0.ricochet || (_vosPr0.vos && _vosPr0.vos.aim))
+                ? 'PASS' : this._vosSaveGate(playerIdx, 'RESPOND');
+            if (_save === 'WAIT') return;
             // Rozehraná Vedle! (proti Slabovi to první ze dvou) se hráči NEVRACÍ – zahráním
             // se spotřebovala a zůstává v odhozu, i když druhé Vedle! nepřišlo. Hráč prostě
             // schytá zásah. Odměna za Úhyb (UHYB_DRAW ve frontě) proto platí dál: karta byla
@@ -263,18 +272,23 @@ const ResponseMixin = {
                 this.pendingResponse.partialMisses = [];
                 this.missesPlayed = 0;
             }
-            if (this.pendingResponse.sourceCard === CardType.BANG ||
+            if (_save !== 'SAVED' && (this.pendingResponse.sourceCard === CardType.BANG ||
                 this.pendingResponse.sourceCard === CardType.GATLING ||
-                this.pendingResponse.sourceCard === CardType.INDIANS) {
+                this.pendingResponse.sourceCard === CardType.INDIANS)) {
                 const orig = this.players[this.pendingResponse.originatorIdx];
                 if (orig) {
                     orig.stats.bangsHit++;
                 }
             }
-            // Fistful – Odražená střela: hráč neuhnul → místo zásahu se zničí zasažená
-            // karta na jeho stole (životy se nehýbou, takže se nic z toho, co na zásah
-            // navazuje, nespouští – ani Bart Cassidy, ani El Gringo, ani smrt).
-            if (this.pendingResponse.ricochet) {
+            if (_save === 'SAVED') {
+                // Údolí stínů – Obětavý skok: ztrátě života někdo zabránil. Zásahem to
+                // tedy nebylo – žádná Odměna, Brokovnice, Bart Cassidy, El Gringo ani
+                // valoun; obrana jinak končí úplně stejně (konec Duelu, další cíl
+                // Kulometu, série Fistfulu).
+            } else if (this.pendingResponse.ricochet) {
+                // Fistful – Odražená střela: hráč neuhnul → místo zásahu se zničí zasažená
+                // karta na jeho stole (životy se nehýbou, takže se nic z toho, co na zásah
+                // navazuje, nespouští – ani Bart Cassidy, ani El Gringo, ani smrt).
                 // Údolí stínů – Henry Block: zničená karta ležela před ním → střelec je
                 // cílem BANG! (frontou výstřelů, až obrana doběhne – _henryRicochet).
                 if (this._ricochetDestroy(this.pendingResponse.ricochet)) {

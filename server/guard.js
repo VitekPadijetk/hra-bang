@@ -36,6 +36,10 @@ module.exports = function installActionGuard(ctx) {
         'vos_pick', 'vos_poker_take', 'vos_lemonade',
         // Údolí stínů (F6) – okno úniku: Útěk / Mick Defender (cíl karty, mimo tah).
         'vos_evade',
+        // Údolí stínů (F8) – okno záchrany a odměna (Obětavý skok, zachránce mimo tah).
+        // Hraje se jen ve vlastní fázi, takže aktér je vždy pendingActor – výjimka
+        // „mimo pořadí" jako u Sida Ketchuma potřeba není.
+        'vos_save', 'vos_save_reward',
         // Údolí stínů (F3) – Roztříštěná kulka (BANG! na dva cíle) hraje hráč na tahu.
         'play_fanning',
         'sniper_choose', 'play_ricochet',
@@ -95,7 +99,8 @@ module.exports = function installActionGuard(ctx) {
             if (!many.some(a => a.idx === idx)) return `na #${idx} se už nečeká`;
             return null;
         }
-        if ((event === 'vos_pick' || event === 'vos_poker_take' || event === 'vos_lemonade' || event === 'vos_evade') &&
+        if ((event === 'vos_pick' || event === 'vos_poker_take' || event === 'vos_lemonade' || event === 'vos_evade' ||
+             event === 'vos_save' || event === 'vos_save_reward') &&
             payload && payload.playerIdx != null) {
             const cur = pendingActor(gs);
             if (cur && cur.idx !== payload.playerIdx) {

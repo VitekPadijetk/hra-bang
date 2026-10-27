@@ -76,10 +76,10 @@ const MENU_EXPANSIONS = [
     { key: 'fistful', label: 'Fistful', hint: '15 karet událostí a 3 postavy; hraje se i vedle High Noonu' },
     { key: 'divoky_zapad', label: 'Divoký západ', hint: '10 karet událostí a 8 postav; otáčí je Dostavník a Wells Fargo' },
     { key: 'zlata_horecka', label: 'Zlatá horečka', hint: 'Zlaté valouny za zranění a obchod s 24 kartami vybavení' },
-    // Hratelné od fáze F1 (docs/udoli-stinu-plan.md §8) – karty přibývají po fázích,
-    // do balíčku jdou jen hotové (VOS_CARDS_READY), proto ta poctivá nápověda. Čísla drží
-    // v souladu s VOS_CARDS_READY a VOS_READY test (test/vos.cards.test.js).
-    { key: 'udoli_stinu', label: 'Údolí stínů', hint: 'Rozpracované: zatím 14 z 15 druhů karet a 5 z 5 postav' },
+    // Hratelné od fáze F1 (docs/udoli-stinu-plan.md §8), od F8 jsou hotové všechny karty
+    // i postavy. Kdyby nějaký druh z VOS_CARDS_READY / VOS_READY vypadl, nápověda by
+    // lhala – hlídá to test (test/vos.cards.test.js).
+    { key: 'udoli_stinu', label: 'Údolí stínů', hint: '16 karet a 5 postav; karty hrané mimo tah a Duch' },
 ];
 
 // Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".

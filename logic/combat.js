@@ -296,6 +296,11 @@ const CombatMixin = {
         if (this.phase !== "DYNAMITE_DAMAGE") return;
         const pdd = this.pendingDynamiteDamage;
         if (!pdd || pdd.playerIdx !== playerIdx) return;
+        // Údolí stínů – Obětavý skok (F8, R9): každý klikaný zásah je jeden život, kterému
+        // smí jiný hráč mimo svůj tah zabránit. Rozhodnutí sem vrátí `_vosSaveContinue`.
+        const _save = this._vosSaveGate(playerIdx, 'CLICK');
+        if (_save === 'WAIT') return;
+        if (_save === 'SAVED') { this._vosSavedClick(); return; }
         // Údolí stínů – zásah S ÚTOČNÍKEM (Dvojitá rána): jde přes handleDamage, takže se
         // veze valoun, El Gringo, Bart Cassidy, Teren Kill i zabiják (R8).
         if (pdd.attackerIdx != null) { this._vosAimClick(playerIdx); return; }

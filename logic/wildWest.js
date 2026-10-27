@@ -41,6 +41,8 @@ const SEAT_KEYS = new Set([
     'byIdx',
     // …a pozastavená akce Henryho Blocka (`_vosSuspended`): Henry a ten, kdo mu kartu bere.
     'henryIdx', 'thiefIdx',
+    // …a okno záchrany / odměna Obětavého skoku (oběť je `victimIdx`).
+    'saverIdx',
 ]);
 // Klíč, jehož hodnota je POLE sedadel (fronty, pořadí, seznamy):
 const SEAT_LIST_KEYS = new Set([
@@ -48,6 +50,8 @@ const SEAT_LIST_KEYS = new Set([
     '_gagPending', 'visible', 'peek', 'playerIdxs', 'idxs',
     // Údolí stínů – kolečko voleb: kdo ještě vybírá (vybírá se naráz).
     'waiting',
+    // …a okno záchrany: kdo už Obětavý skok odmítl zahrát.
+    'declined',
 ]);
 // Klíč, který se na sedadlo jen podobá – je to index do JINÉHO pole (stůl, ruka,
 // nabídka postav) a přemapovat se nesmí:
@@ -544,6 +548,10 @@ const WildWestMixin = {
         // Údolí stínů – okno úniku (Útěk / Mick Defender) taky: fronta v něm stojí
         // a pokuta by mohla vyřadit útočníka, jehož efekt se teprve rozhoduje.
         if (this.pendingEvade) return false;
+        // …okno záchrany (Obětavý skok): oběť čeká, jestli o život přijde – pokuta by
+        // jí ho mohla vzít dřív, a zásah, o kterém se rozhoduje, by pak mířil na mrtvého.
+        // Volba odměny po záchraně taky (na nikoho jiného se při ní nečeká).
+        if (this.pendingSave || this.pendingSaveReward) return false;
         // …a pozastavená akce Henryho Blocka (výstřel na zloděje, krádež čeká): pokuta by
         // mohla vyřadit zloděje i Henryho uprostřed efektu, který se ještě nedohrál.
         if (this._vosSuspended) return false;

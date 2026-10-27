@@ -685,6 +685,26 @@ module.exports = function installAnimService(ctx) {
         room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + RAGTIME_MS + 60);
     }
 
+    // ── Údolí stínů – Obětavý skok: odměna „2 karty z ruky zachráněného" ─────────
+    // Karty se berou buď v handleru vos_save_reward, nebo až po výstřelu Henryho Blocka
+    // uvnitř cizí akce (obrana, barel…), proto si je pravidla jen zapíšou (`_vosSaveAnim`)
+    // a pošlou se tady. Bere se NÁHODNĚ (DB), takže jako krádež z ruky: líc vidí jen
+    // zachránce, ostatním letí rub (pod Sacagaway s gestem zamíchané ruky – bez `chosen`).
+    // Pořadí emitů = pořadí braní: klient si kartu z vějíře odebírá podle `stolenIndex`.
+    function flushSaveTake(room) {
+        const gs = room.gameState;
+        const a = gs && gs._vosSaveAnim;
+        if (!a) return;
+        gs._vosSaveAnim = null;
+        (a.taken || []).forEach(({ id, slot }) => {
+            const base = { type: 'ragtime_steal', attackerIdx: a.saverIdx, targetIdx: a.victimIdx,
+                           area: 'hand', boardIdx: null, stolenIndex: slot };
+            emitAnimPrivate(room, a.saverIdx, { ...base, stolenCardId: id }, { ...base, stolenCardId: null });
+        });
+        const n = (a.taken || []).length;
+        if (n) room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + n * RAGTIME_MS + 60);
+    }
+
     // Hák před odesláním stavu (viz broadcastRoom v server/rooms.js). Pořadí = pořadí
     // v čase: duch odejde na konci svého tahu, teprve pak může šerif odkrýt novou událost
     // a teprve za ní (poslední krok startu tahu) může přijít Miláček Valentýn.
@@ -696,6 +716,8 @@ module.exports = function installAnimService(ctx) {
         // efekt zahrané karty – a před flushHenryMove, který pohyb karty pošle.
         room?.gameState?._henryResume?.();
         flushHenryMove(room);
+        // Údolí stínů – Obětavý skok: karty z ruky zachráněného (i po výstřelu Henryho).
+        flushSaveTake(room);
         // Údolí stínů – pojistka fronty výstřelů: kdyby se hra vrátila do fáze PLAY
         // cestou, která frontu odložených akcí nebere, odpálí se odložený výstřel (Opětovná
         // palba, Roztříštěná kulka, Evelyn) tady – jinak by čekal až na konec tahu.

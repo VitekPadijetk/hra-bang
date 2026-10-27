@@ -185,6 +185,9 @@ module.exports = function installBotService(ctx) {
             // Údolí stínů – Tornádo a Poker: volba se jen zapíše (karty se hýbou až po
             // posledním), takže pokrok je vidět jen na tom, kdo je na řadě a kolik voleb je.
             gs.pendingVosRound ? `${(gs.pendingVosRound.waiting || []).length}:${(gs.pendingVosRound.picks || []).length}:${gs.pendingVosRound.playerIdx}` : '-',
+            // Údolí stínů – okno záchrany: odmítnutí posune nabídku dalšímu zachránci
+            // (namnožená data), fáze ani karty se přitom nehnou.
+            gs.pendingSave ? `${gs.pendingSave.saverIdx}:${(gs.pendingSave.declined || []).length}` : '-',
         ].join('|');
     }
 
@@ -235,6 +238,9 @@ module.exports = function installBotService(ctx) {
             case 'LEMONADE_OFFER': return { event: 'vos_lemonade', payload: { cardId: null, playerIdx: idx } };
             // Údolí stínů – okno úniku: nevyhnout se jde vždycky.
             case 'EVADE_OFFER': return { event: 'vos_evade', payload: { cardId: null, playerIdx: idx } };
+            // Údolí stínů – okno záchrany: nezachraňovat jde vždycky; odměna z balíčku taky.
+            case 'SAVE_OFFER': return { event: 'vos_save', payload: { use: false, playerIdx: idx } };
+            case 'SAVE_REWARD': return { event: 'vos_save_reward', payload: { from: 'deck', playerIdx: idx } };
             // Divoký západ – Youl Grinner: dát kartu je povinné, dá se ta první v ruce.
             case 'GRINNER_GIVE': {
                 const c = gs.players[idx]?.hand?.[0];

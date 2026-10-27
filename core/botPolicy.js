@@ -135,6 +135,10 @@ if (typeof require === 'function') {
         globalThis.evadeOptions = __vos6.evadeOptions;
         globalThis.escapeRespondOk = __vos6.escapeRespondOk;
     }
+    // Údolí stínů (F8) – okno záchrany: Obětavý skok.
+    if (typeof saveRewardHandCount === 'undefined') {
+        globalThis.saveRewardHandCount = require('./valley.js').saveRewardHandCount;
+    }
     if (typeof aimCardFor === 'undefined') {
         globalThis.aimCardFor = require('./playability.js').aimCardFor;
     }
@@ -256,7 +260,7 @@ const T = {
     LAST_CALL: 'Poslední pivo', RATTLESNAKE: 'Chřestýš', BOUNTY: 'Odměna',
     BACKFIRE: 'Opětovná palba', FANNING: 'Roztříštěná kulka', AIM: 'Dvojitá rána',
     BANDIDOS: 'Divoká banda', TORNADO: 'Tornádo', POKER: 'Poker', DUCH: 'Duch',
-    ESCAPE: 'Útěk',
+    ESCAPE: 'Útěk', SAVED: 'Obětavý skok',
 };
 
 // Údolí stínů – má aspoň jeden jiný hráč ve hře kartu v ruce? (Divoká banda a Poker
@@ -363,6 +367,10 @@ const ENEMY_EPS = 0.1;
 // NEJPRAVDĚPODOBNĚJŠÍHO nepřítele – ale jen na toho, u kterého má „nepřítel" aspoň takovou
 // šanci. Jistý spojenec (šance 0) tak zůstává nedotknutelný vždycky.
 const DESPERATE_ENEMY_P = 0.25;
+
+// Údolí stínů – Obětavý skok: komu bot ztrátu života zachrání. Jen hráči, který je
+// nepřítelem nanejvýš s touhle šancí (stejný práh jako brzda proti přátelské palbě).
+const SAVE_ALLY_P = 0.2;
 
 // Cíle, jejichž očekávaná nepřátelskost se liší jen o tohle, jsou pro bota NEROZLIŠITELNÉ –
 // mezi nimi se nesmí rozhodovat podle „kdo má nejmíň životů". Postavy, které mají od přírody
@@ -660,6 +668,7 @@ function keepScore(card) {
         case T.POKER: return 4;                   // až 2 karty navíc
         case T.TORNADO: return 2;                 // výměna 2 za 2
         case T.ESCAPE: return 5;                  // uhne i Vězení a Panice, ne však BANG!u
+        case T.SAVED: return 5;                   // život spojenci + 2 karty mně
         default: return 1;
     }
 }
@@ -2002,6 +2011,31 @@ function decideBotAction(state, myIndex, beliefs) {
             if (!pool.length) return decline;
             const pick = pool.reduce((a, b) => keepScore(b) < keepScore(a) ? b : a);
             return { event: 'vos_evade', payload: { cardId: pick.id, playerIdx: myIndex } };
+        }
+
+        // Údolí stínů – okno záchrany (Obětavý skok). Zachraňuje se jen pravděpodobný
+        // spojenec: za jednu kartu mu zůstane život a já si vezmu dvě. Na posledním životě
+        // stačí, když je spíš spojenec než nepřítel – jinak by zbytečně umřel. Nepříteli
+        // nikdy. Odmítnout jde vždycky, takže se nezasekne.
+        case 'SAVE_OFFER': {
+            const ps = state.pendingSave;
+            const decline = { event: 'vos_save', payload: { use: false, playerIdx: myIndex } };
+            const v = ps && state.players[ps.victimIdx];
+            if (!v || !me.hand.some(c => c && c.type === T.SAVED)) return decline;
+            const ep = enemyProbability(teamRole(me), beliefs[ps.victimIdx], hostOpts(state, beliefs, myIndex));
+            const save = ep <= SAVE_ALLY_P || (v.health <= 1 && ep < 0.5);
+            return save ? { event: 'vos_save', payload: { use: true, playerIdx: myIndex } } : decline;
+        }
+
+        // …a odměna: spojence neokrádám (2 z balíčku), nepříteli beru z ruky, má-li dvě
+        // karty. Henry Block by na mě za kartu z ruky vystřelil – od něj radši z balíčku.
+        case 'SAVE_REWARD': {
+            const r = state.pendingSaveReward;
+            const deck = { event: 'vos_save_reward', payload: { from: 'deck', playerIdx: myIndex } };
+            const v = r && state.players[r.victimIdx];
+            if (!v || saveRewardHandCount(state) < 2 || hasAbility(v, 'Henry Block')) return deck;
+            const ep = enemyProbability(teamRole(me), beliefs[r.victimIdx], hostOpts(state, beliefs, myIndex));
+            return ep >= 0.5 ? { event: 'vos_save_reward', payload: { from: 'hand', playerIdx: myIndex } } : deck;
         }
 
         // High Noon (přibalené) – Nová identita: vyměň postavu jen tehdy, když jsem na tom

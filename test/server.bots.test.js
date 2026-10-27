@@ -1818,6 +1818,88 @@ test('Údolí stínů (F7): stůl Henryů Blocků a balíček plný krádeží �
     assert.ok(seen.kept > 0, 'aspoň jednou zloděj padl a karta zůstala Henrymu');
 });
 
+// Údolí stínů (fáze F8): Obětavý skok – okno záchrany a odměna. Balíček plný Obětavých
+// skoků (a Dvojitých ran, jejichž zásahy se zachraňují po jednom klikem), třetina her se
+// stolem samých Henryů Blocků (odměna z ruky Henryho = jeho výstřel), čtvrtina se všemi
+// rozšířeními (dynamit, Ruská ruleta, Pravé poledne, Roubík – všechny vstupy ztráty
+// života). Hlídá, že okno ani volba odměny nikdy nezůstanou viset mimo svou fázi, že
+// mrtvý hráč nezůstane na tahu (zásah se dohrává v handleru vos_save) a že se zachraňovalo,
+// odměňovalo z ruky i z balíčku.
+test('Údolí stínů (F8): balíček plný Obětavých skoků – hra jen botů doběhne 3–8 hráčů', () => {
+    const vosData = JSON.parse(fs.readFileSync(__dirname + '/../cards.udoli_stinu.json', 'utf8'));
+    let nid = 77000;
+    const rich = [...vosData];
+    for (let copy = 0; copy < 10; copy++) {
+        vosData.filter(c => c.name === 'Obětavý skok' || (copy < 3 && c.name === 'Dvojitá rána'))
+               .forEach(c => rich.push({ ...c, id: nid++ }));
+    }
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const { saveRewardHandCount } = require('../core/valley.js');
+    const seen = { offer: 0, saved: 0, hand: 0, deck: 0, lost: 0, henrySave: 0, dangling: 0, ownerKilled: 0 };
+    try {
+        for (let k = 0; k < 18; k++) {
+            const n = 3 + (k % 6);
+            const all = k % 4 === 3;
+            const henry = k % 3 === 1;
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = rich;
+            const opts = { expansions: { udoli_stinu: true, dodge_city: all, high_noon: all,
+                                         fistful: all, divoky_zapad: all, zlata_horecka: all } };
+            const room = { id: 'vosf8_' + k, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e || e.card !== 'Obětavý skok') return;
+                const m = e.msg || '';
+                if (/může ho zachránit/.test(m)) seen.offer++;
+                if (/zabraňuje ztrátě života/.test(m)) seen.saved++;
+                if (/odměna: karty z ruky/.test(m)) seen.hand++;
+                if (/odměna: 2 karty z balíčku/.test(m)) seen.deck++;
+                if (/bez odměny/.test(m)) seen.lost++;
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            if (henry) gs.players.forEach(p => { p.charChoices = ['Henry Block', 'Henry Block']; });
+            // Bot zachraňuje jen spojence a od spojence bere z balíčku – cesta „z ruky"
+            // (animace krádeže, výstřel Henryho na zachránce) by se v zátěži nespustila.
+            // V polovině her se proto volba přehodí na ruku, kdykoli v ní něco je.
+            if (k % 2 === 0) {
+                gs.vosSaveReward = function (i, from) {
+                    return GameState.prototype.vosSaveReward.call(this, i, saveRewardHandCount(this) ? 'hand' : from);
+                };
+            }
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            if (henry) {
+                for (let g = 0; g < 50 && gs.phase === 'CHARACTER_SELECT'; g++) ctx.runBotTickOnce(room);
+            }
+            const guard = pumpToWinner(ctx, room, () => {
+                if (gs._vosSuspended && gs._vosSuspended.kind === 'SAVE') seen.henrySave++;
+                if (gs.pendingSave && gs.phase !== 'SAVE_OFFER') seen.dangling++;
+                if (gs.pendingSaveReward && gs.phase !== 'SAVE_REWARD') seen.dangling++;
+                const cur = gs.players[gs.currentPlayerIndex];
+                if (gs.phase === 'PLAY' && cur && cur.health <= 0 && !cur._ghost && !cur._shadow &&
+                    !(cur.board || []).some(c => c && c.type === 'Duch')) seen.ownerKilled++;
+            });
+            assert.ok(gs.winner, `F8 hra #${k} (${n}p) doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `F8 hra #${k} (${n}p) nebyla patologicky dlouhá (guard=${guard})`);
+        }
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci v okně záchrany');
+    assert.equal(seen.dangling, 0, 'okno záchrany ani volba odměny nikdy nezůstaly viset mimo svou fázi');
+    assert.equal(seen.ownerKilled, 0, 'mrtvý hráč na tahu nikdy nezůstal viset ve fázi PLAY');
+    assert.ok(seen.offer > 0, 'okno záchrany se aspoň jednou otevřelo');
+    assert.ok(seen.saved > 0, 'aspoň jednou někdo zachránil');
+    assert.ok(seen.hand > 0, 'odměna aspoň jednou z ruky zachráněného');
+    assert.ok(seen.deck > 0, 'odměna aspoň jednou z balíčku');
+});
+
 test('afterBroadcast naplánuje bot tick (auto-loop wiring)', () => {
     const ctx = buildCtx();
     ctx.botThinkTime = 1000;

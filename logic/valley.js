@@ -373,6 +373,12 @@ const ValleyMixin = {
     // pokračování (viz „Rodina resume příznaků" v CLAUDE.md).
     _vosShotCalm() {
         if (!this._vosShots || !this._vosShots.length) return false;
+        return this._vosQuiet();
+    },
+
+    // Je klid – efekt doběhl celý? Sdílí ho fronta výstřelů i odměna Obětavého skoku
+    // (F8: „líznuté karty jdou použít až po doběhnutí efektu", dV 1588981).
+    _vosQuiet() {
         if (this.winner || this._vosHold) return false;
         // Henry Block (F7): akce čeká na dokončení – efekt zahrané karty ještě neskončil.
         if (this._vosSuspended) return false;
@@ -392,6 +398,10 @@ const ValleyMixin = {
     // obranu) – volající pak nesmí sahat na fázi. Výstřel, jehož střelec nebo cíl mezitím
     // odešel ze hry, propadá.
     _drainVosShots() {
+        // Obětavý skok (F8): odměna za záchranu patří efektu, který právě doběhl, takže
+        // jde PŘED další výstřel z fronty (ten je už nový efekt). Sedí tady, aby se ptala
+        // na všech místech, kde se odpaluje výstřel (fronta, konec tahu, hák před broadcastem).
+        if (this._drainSaveReward()) return true;
         if (!this._vosShotCalm()) return false;
         while (this._vosShots.length) {
             const s = this._vosShots.shift();
@@ -950,6 +960,12 @@ const ValleyMixin = {
                 this._gearForceFinish(s.thiefIdx, s.henryIdx, s.cardId);
                 this.phase = "PLAY";
                 this._processSpecialQueue();
+            } else if (s.kind === 'SAVE') {
+                // Obětavý skok (F8): zachránce si bere odměnu z Henryho ruky. Henry
+                // vystřelil a zachránce přežil – teprve teď si karty vezme.
+                this.phase = "PLAY";
+                this._vosSaveTakeHand(s.thiefIdx, s.henryIdx);
+                this._processSpecialQueue();
             }
         } finally {
             delete this._henryPass;
@@ -1018,6 +1034,203 @@ const ValleyMixin = {
         this._vosQueueShot(henryIdx, shooterIdx, 'HENRY', 'Henry Block', true);
         this.logEvent('special', { who: this.players[henryIdx].name, card: 'Henry Block',
                                    target: this.players[shooterIdx].name, msg: 'střílí na toho, kdo mu zničil kartu' });
+    },
+
+    // ── Obětavý skok (F8, R9): okno záchrany a odměna ────────────────────────
+    // „Lze zahrát pouze mimo tvůj tah. Odhozením této karty zabráníš jinému hráči ztratit
+    // 1 život. Přežije-li, vezmi si 2 karty z jeho ruky, nebo z balíčku." (Dynamite Box)
+    //
+    // Brána `_vosSaveGate` stojí na začátku TŘÍ míst, kde ztráta života vychází
+    // z rozhodnutí oběti (R9) – a jinde ztrátu života zachránit nejde:
+    //   RESPOND – oběť bere zásah (handleResponse s `null`): BANG!, bang-efekty, Kulomet,
+    //             Indiáni, prohraný Duel, výstřely mimo pořadí, Fistful of Cards,
+    //   CLICK   – klikaný zásah (takeDynamiteHit): dynamit, Chřestýš, Ruská ruleta,
+    //             Madam Zuzana, Roubík a oba životy Dvojité rány – každý zvlášť,
+    //   NOON    – Pravé poledne (takeNoonHit).
+    // Dobrovolná ztráta (Chuck Wengam, Pokrevní bratři) se nezachraňuje. Že žádná jiná
+    // cesta ke ztrátě života nevznikla, hlídá strukturální test (test/vos.save.test.js).
+    //
+    // Okno se otevře jen tehdy, když zachránce existuje (R4, saveCandidates v
+    // core/valley.js). Kdo to je, vidí jen on sám – ostatní poznají jen to, že se čeká
+    // (redactState v server/rooms.js). Zachránců může být víc (namnožená data) – pak se
+    // okno nabízí jednomu po druhém, po směru od oběti.
+    //
+    // Pokračování je ZNOVUZAVOLÁNÍ téže funkce (plán §2.10): rozhodnutí se zapíše do
+    // `_vosSaveDecision` a brána ho při druhém průchodu spotřebuje – zbytek toku (fronta,
+    // Teren Kill, konec Duelu, další cíl Kulometu…) se tak nemění o řádek.
+    //
+    // Odměna přijde až po doběhnutí CELÉHO efektu (dV 1588981 – „líznuté karty jdou použít
+    // až po doběhnutí efektu"): záchrana se zapíše do `_vosSaveRewards` a vyřídí se v klidu
+    // (`_drainSaveReward`, stejná místa jako fronta výstřelů). „Přežije-li" se posuzuje až
+    // tehdy – kdo uprostřed dynamitu přežil první zásah díky záchraně, ale třetí ho
+    // vyřadil, nepřežil (otázka 4 v docs/udoli-stinu.md §7).
+
+    // Vrací 'PASS' (zásah jede dál), 'SAVED' (zásah se neuplatní) nebo 'WAIT' (otevřelo se
+    // okno – volající končí a na nic nesahá).
+    _vosSaveGate(victimIdx, resume) {
+        const d = this._vosSaveDecision;
+        if (d && d.victimIdx === victimIdx && d.resume === resume) {
+            this._vosSaveDecision = null;
+            return d.saved ? 'SAVED' : 'PASS';
+        }
+        if (this.winner) return 'PASS';
+        const savers = saveCandidates(this, victimIdx);
+        if (!savers.length) return 'PASS';
+        this.pendingSave = { victimIdx, saverIdx: savers[0], declined: [], resume, backPhase: this.phase };
+        this.phase = "SAVE_OFFER";
+        this.logEvent('special', { who: this.players[victimIdx]?.name, card: 'Obětavý skok',
+                                   msg: 'ztrácí život – může ho zachránit ' + this.players[savers[0]]?.name });
+        return 'WAIT';
+    },
+
+    // Zachránce se rozhodl (`vos_save`): `use` = zahraje Obětavý skok. Vrací
+    // { card, handIdx, victimIdx } pro animaci, { declined: true }, nebo null u neplatného
+    // kliku (fáze pak trvá dál – odmítnout jde vždycky, takže neuvázne).
+    vosSave(playerIdx, use) {
+        if (this.phase !== "SAVE_OFFER") return null;
+        const ps = this.pendingSave;
+        if (!ps || ps.saverIdx !== playerIdx) return null;
+        const p = this.players[playerIdx];
+        if (!use) {
+            ps.declined.push(playerIdx);
+            this.logEvent('special', { who: p?.name, card: 'Obětavý skok', target: this.players[ps.victimIdx]?.name,
+                                       msg: 'nezachraňuje' });
+            // Další zachránce v pořadí (jen s namnoženými daty – kus je jinak jeden).
+            const next = saveCandidates(this, ps.victimIdx).find(i => !ps.declined.includes(i));
+            if (next != null) { ps.saverIdx = next; return { declined: true }; }
+            this.pendingSave = null;
+            this._vosSaveContinue(ps, false);
+            return { declined: true };
+        }
+        const i = (p?.hand || []).findIndex(c => c && c.type === CardType.SAVED);
+        if (i === -1) return null;
+        const card = p.hand.splice(i, 1)[0];
+        this.deck.discard(card);
+        this.pendingSave = null;
+        this.logEvent('special', { who: p.name, card: card.name, target: this.players[ps.victimIdx]?.name,
+                                   msg: 'zabraňuje ztrátě života' });
+        if (!this._vosSaveRewards) this._vosSaveRewards = [];
+        this._vosSaveRewards.push({ saverIdx: playerIdx, victimIdx: ps.victimIdx });
+        // Dobrovolně zahraná karta mimo tah → Molly Stark si lízne (R13), Suzy Lafayette
+        // s vyprázdněnou rukou taky.
+        this._mollyPlayedOutOfTurn(playerIdx, false);
+        this.checkSuzyLafayette(p);
+        this._vosSaveContinue(ps, true);
+        return { card, handIdx: i, victimIdx: ps.victimIdx };
+    },
+
+    // Vrať se tam, kde brána zastavila, a zavolej tutéž funkci znovu – tentokrát
+    // s rozhodnutím, takže se okno podruhé neotevře.
+    _vosSaveContinue(ps, saved) {
+        this._vosSaveDecision = { victimIdx: ps.victimIdx, resume: ps.resume, saved };
+        this.phase = ps.backPhase;
+        try {
+            if (ps.resume === 'RESPOND') this.handleResponse(ps.victimIdx, null);
+            else if (ps.resume === 'CLICK') this.takeDynamiteHit(ps.victimIdx);
+            else if (ps.resume === 'NOON') this.takeNoonHit(ps.victimIdx);
+        } finally {
+            this._vosSaveDecision = null;
+        }
+    },
+
+    // Klikaný zásah, kterému Obětavý skok zabránil (takeDynamiteHit): zásah se jen
+    // odečte – stejně jako Pivo na posledním životě – a pokračuje se tam, kam by vedl
+    // zásah odkliknutý. U dynamitu se zachraňuje každý ze tří životů zvlášť.
+    _vosSavedClick() {
+        const pdd = this.pendingDynamiteDamage;
+        pdd.hitsLeft--;
+        // Zbývají další zásahy: líznutí Molly Stark doběhne hned a hra se přes
+        // interruptedPhase vrátí do DYNAMITE_DAMAGE.
+        if (pdd.hitsLeft > 0) { this._processSpecialQueue(); return; }
+        this.pendingDynamiteDamage = null;
+        // Dvojitá rána: dohraj konec obrany (frontu si bere sám – druhé volání fronty
+        // by přepsalo fázi, kterou rozeběhl).
+        if (pdd.resume === 'RESPOND_TAIL') { this._vosAimTail(); return; }
+        this._pruneSuzyQueue();   // viz „nejdřív doběhne efekt" v CLAUDE.md
+        if (this.specialActionQueue.length > 0) {
+            this._afterDamageClicks(pdd.resume, true);
+            this._processSpecialQueue();
+        } else {
+            this._afterDamageClicks(pdd.resume, false);
+        }
+    },
+
+    // Odměna v klidu (volá _drainVosShots, tedy fronta odložených akcí, konec tahu
+    // i hák před broadcastem). Vrací true, když se rozeběhla (volba, nebo rovnou líznutí).
+    _drainSaveReward() {
+        const list = this._vosSaveRewards;
+        if (!list || !list.length) return false;
+        if (!this._vosQuiet()) return false;
+        while (list.length) {
+            const r = list.shift();
+            const saver = this.players[r.saverIdx], victim = this.players[r.victimIdx];
+            // „Přežije-li": zachráněný musí být po doběhnutí efektu pořád ve hře – a se
+            // životem (Duch ani duch Města duchů na nule nepřežil). Zachránce taky.
+            if (!isInPlay(saver) || !isInPlay(victim) || !(victim.health > 0)) {
+                this.logEvent('special', { who: saver?.name, card: 'Obětavý skok', target: victim?.name,
+                                           msg: 'bez odměny (zachráněný nepřežil)' });
+                continue;
+            }
+            // Zachráněný nemá v ruce nic → volit není z čeho, líže se z balíčku.
+            if (!victim.hand.length) {
+                this.logEvent('special', { who: saver.name, card: 'Obětavý skok', msg: 'odměna: 2 karty z balíčku' });
+                this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: r.saverIdx, cardsNeeded: 2, label: 'Obětavý skok' });
+                return this._processSpecialQueue();
+            }
+            this.pendingSaveReward = { saverIdx: r.saverIdx, victimIdx: r.victimIdx };
+            this.phase = "SAVE_REWARD";
+            return true;
+        }
+        return false;
+    },
+
+    // Zachránce volí odměnu (`vos_save_reward`): 'hand' = 2 náhodné karty z ruky
+    // zachráněného (s jednou kartou ta jedna), 'deck' = 2 z balíčku. Kombinovat nejde (DB).
+    // Vrací { from, taken? , suspended? } nebo null u neplatné volby.
+    vosSaveReward(playerIdx, from) {
+        if (this.phase !== "SAVE_REWARD") return null;
+        const r = this.pendingSaveReward;
+        if (!r || r.saverIdx !== playerIdx) return null;
+        if (from !== 'hand' && from !== 'deck') return null;
+        const victim = this.players[r.victimIdx];
+        if (from === 'hand' && !(victim?.hand || []).length) return null;
+        this.pendingSaveReward = null;
+        this.phase = "PLAY";
+        if (from === 'deck') {
+            this.logEvent('special', { who: this.players[playerIdx]?.name, card: 'Obětavý skok', msg: 'odměna: 2 karty z balíčku' });
+            // Líže se klikáním jako každá jiná odměna (KILL_REWARD → fáze lízání).
+            this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 2, label: 'Obětavý skok' });
+            this._processSpecialQueue();
+            return { from };
+        }
+        // Henry Block: kdo si vezme kartu z jeho ruky, je cílem BANG! – a karty si vezme,
+        // jen když výstřel přežije (pozastavená akce, _henryResume → kind SAVE).
+        if (this._henrySuspend(r.victimIdx, playerIdx, { kind: 'SAVE' })) return { from, suspended: true };
+        const taken = this._vosSaveTakeHand(playerIdx, r.victimIdx);
+        this._processSpecialQueue();
+        return { from, taken };
+    },
+
+    // Vezmi zachránci až 2 NÁHODNÉ karty z ruky zachráněného („karty od hráče si vybíráte
+    // náhodně", DB). Animaci zapíše pravidlo (`_vosSaveAnim`) a pošle ji hák před
+    // broadcastem (flushSaveTake v server/anim.js) – karty se berou buď z handleru
+    // vos_save_reward, nebo až po výstřelu Henryho Blocka uvnitř cizí akce.
+    _vosSaveTakeHand(saverIdx, victimIdx) {
+        const s = this.players[saverIdx], v = this.players[victimIdx];
+        const taken = [];
+        for (let k = 0; k < 2 && v.hand.length; k++) {
+            const slot = Math.floor(Math.random() * v.hand.length);
+            taken.push({ card: v.hand.splice(slot, 1)[0], slot });
+        }
+        taken.forEach(x => s.hand.push(x.card));
+        this.logEvent('special', { who: s.name, card: 'Obětavý skok', target: v.name,
+                                   taken: taken.map(x => x.card.name).join(', '), msg: 'odměna: karty z ruky zachráněného' });
+        if (taken.length) {
+            this._vosSaveAnim = { saverIdx, victimIdx, taken: taken.map(x => ({ id: x.card.id, slot: x.slot })) };
+        }
+        // Zachráněnému se mohla vyprázdnit ruka → Suzy Lafayette.
+        this.checkSuzyLafayette(v);
+        return taken.map(x => x.card);
     },
 };
 

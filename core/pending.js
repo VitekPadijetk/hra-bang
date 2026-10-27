@@ -73,6 +73,14 @@ function pendingActor(state) {
         // Údolí stínů – okno úniku: cíl karty se rozmýšlí, jestli se vyhne (Útěk / Mick).
         case 'EVADE_OFFER':      return state.pendingEvade
             ? { idx: state.pendingEvade.targetIdx, kind: 'EVADE_OFFER' } : null;
+        // Údolí stínů – okno záchrany: zachránce se rozmýšlí, jestli zahraje Obětavý skok.
+        // KDO to je, vidí jen on sám (redactState mu jedinému nechá `saverIdx`) – ostatním
+        // tady vyjde null: že se čeká, poznají, na koho, ne (R4).
+        case 'SAVE_OFFER':       return state.pendingSave && state.pendingSave.saverIdx != null
+            ? { idx: state.pendingSave.saverIdx, kind: 'SAVE_OFFER' } : null;
+        // …a odměna: zachránce volí 2 karty z ruky zachráněného, nebo z balíčku (veřejné).
+        case 'SAVE_REWARD':      return state.pendingSaveReward
+            ? { idx: state.pendingSaveReward.saverIdx, kind: 'SAVE_REWARD' } : null;
         // Údolí stínů – kolečko voleb: Divoká banda (odhoz), Tornádo (karty pro souseda),
         // Poker (karta lícem dolů) a výběr z vyložených karet Pokeru. Z ruky vybírají
         // VŠICHNI NARÁZ (`pendingVosRound.waiting`) – tady se vrací první z nich (popisek,
@@ -153,6 +161,8 @@ const _WAIT_LABELS = {
     SHOTGUN_DISCARD:       'Brokovnice – odhazuje kartu',
     LEMONADE_OFFER:        'Limonádový Jim – rozmýšlí, jestli si za kartu doplní život',
     EVADE_OFFER:           'rozmýšlí, jestli se vyhne',
+    SAVE_OFFER:            'Obětavý skok – rozmýšlí, jestli zachrání',
+    SAVE_REWARD:           'Obětavý skok – vybírá odměnu',
     BANDIDOS_DISCARD:      'Divoká banda – odhazuje BANG!, nebo 2 karty',
     TORNADO_PICK:          'Tornádo – vybírá karty pro souseda po levici',
     POKER_PICK:            'Poker – vykládá kartu lícem dolů',
@@ -198,6 +208,11 @@ function waitingStatus(state) {
     }
     if (pa.kind === 'EVADE_OFFER' && state.pendingEvade?.cardName) {
         text = 'rozmýšlí, jestli se vyhne kartě ' + state.pendingEvade.cardName;
+    }
+    // Údolí stínů – Obětavý skok: komu zachránce brání ztratit život.
+    if (pa.kind === 'SAVE_OFFER') {
+        const v = state.players?.[state.pendingSave?.victimIdx];
+        if (v) text = `Obětavý skok – rozmýšlí, jestli zachrání hráče ${v.name}`;
     }
     // Sloučená odložená líznutí (Bart Cassidy, Boty, Madam Yto, Úhyb – viz
     // _processSpecialQueue v logic/characters.js) běží jako běžná fáze lízání.

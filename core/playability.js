@@ -291,6 +291,8 @@ function nativePlayInTurn(state, me, myIndex, card) {
     if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
     // Údolí stínů – Útěk se hraje jen jako reakce (okno úniku, obrana proti bang-efektu).
     if (card.type === "Útěk") return false;
+    // …a Obětavý skok taky – „lze zahrát pouze mimo tvůj tah" (okno záchrany, F8).
+    if (card.type === "Obětavý skok") return false;
     // Zelené karty se vykládají na stůl; nelze mít 2 stejného jména (D7).
     if (card.green) return !(me.board || []).some(c => c.name === card.name);
     // Dodge City „odhoď další kartu": potřebuje aspoň 1 další kartu k odhození +
@@ -412,6 +414,14 @@ function cardPlayability(state, me, myIndex, card) {
         if (state.pendingEvade?.targetIdx !== myIndex) return null;
         return evadeOptions(state, myIndex).some(c => c.id === card.id);
     }
+    // Údolí stínů – okno záchrany (F8): zachránce smí zahrát Obětavý skok (odmítnutí je
+    // tlačítko). Kdo zachránce je, vidí jen on sám (redactState), takže ostatním nesvítí nic.
+    if (state.phase === "SAVE_OFFER") {
+        if (state.pendingSave?.saverIdx == null || state.pendingSave.saverIdx !== myIndex) return null;
+        return card.type === "Obětavý skok";
+    }
+    // …a odměna za záchranu se volí tlačítky (z ruky zachráněného / z balíčku).
+    if (state.phase === "SAVE_REWARD") return null;
     // Údolí stínů – kolečko voleb (Divoká banda, Tornádo, Poker): hráč na řadě si vybírá
     // z CELÉ ruky (označuje klikáním, odesílá tlačítkem – co je platná volba, říká
     // vosRoundPickOk). Ve výběru z vyložených karet Pokeru ruka klikací není.

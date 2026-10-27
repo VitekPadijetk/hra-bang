@@ -9,14 +9,14 @@ a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_b
 2026-10-24), F2 (Colorado Bill, Limonádový Jim, 2026-10-24), F3 (fronta výstřelů:
 Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24), F4
 (kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25), F5 (Duch, 2026-10-25), F6
-(okno úniku: Útěk, Mick Defender, 2026-10-26) a F7 (Henry Block – pozastavená akce,
-2026-10-27).**
+(okno úniku: Útěk, Mick Defender, 2026-10-26), F7 (Henry Block – pozastavená akce,
+2026-10-27) a F8 (Obětavý skok – okno záchrany a odměna, 2026-10-27).**
 Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js));
-do balíčku jde zatím 14 z 15 druhů karet a do výběru všech 5 postav (nápovědu v menu drží
+do balíčku jde všech 15 druhů karet a do výběru všech 5 postav (nápovědu v menu drží
 v souladu test).
 Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
 1782 testů. Po F3: 1813 testů. Po F4: 1837 testů. Po F5: 1869 testů. Po F6: 1903
-testů. Po F7: **1931 testů, 0 chyb**.
+testů. Po F7: 1931 testů. Po F8: **1966 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -690,7 +690,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F5** ✓ | Duch: audit `health > 0` + strukturální test, `isInPlay`/`canHeal`, settle hák, výhra, kreslení | velký audit – samostatně, ať se dá revertovat |
 | **F6** ✓ | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
 | **F7** ✓ | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
-| **F8** | Obětavý skok (brány + odměna + redakce) | riziko jako Teren Kill; bez držitele karty se hra nemění |
+| **F8** ✓ | Obětavý skok (brány + odměna + redakce) | riziko jako Teren Kill; bez držitele karty se hra nemění |
 | **F9** | Politika bota, zátěž (matice + „balíček samých X"), invarianty rozložení, výměna štítků za art, CLAUDE.md + `docs/pravidla/udoli-stinu.md` | uzavření |
 
 ### Co se ve fázi F0 odchýlilo od plánu (a proč)
@@ -1073,6 +1073,60 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
   s pětinásobkem Panik a Cat Balou (a s Dodge City i Rvačky, Ragtime, Krytý vůz,
   Kankán). Za běh ~190 výstřelů, 4–10× zloděj padl a karta zůstala Henrymu; nikdy
   nezůstala viset akce ve fázi PLAY a žádná karta se nezdvojila.
+
+### Co se ve fázi F8 odchýlilo od plánu (a proč)
+
+- **Brána má tři výsledky** – `_vosSaveGate(victimIdx, resume)` vrací `'PASS'` (zásah jede
+  dál), `'SAVED'` (zásah se neuplatní) a `'WAIT'` (okno se otevřelo, volající končí).
+  Pokračování je opravdu znovuzavolání téže funkce (§2.10): rozhodnutí se zapíše do
+  `_vosSaveDecision`, `_vosSaveContinue` vrátí fázi (`pendingSave.backPhase`) a zavolá
+  `handleResponse` / `takeDynamiteHit` / `takeNoonHit` znovu – brána rozhodnutí spotřebuje.
+  Zbytek toku (konec Duelu, další cíl Kulometu, série Fistfulu, Teren Kill) se nezměnil.
+- **Dvojitá rána se v RESPOND neptá** – její dva životy jsou klikané zásahy, takže se okno
+  otevírá u KAŽDÉHO z nich zvlášť (brána CLICK). Stejně dynamit: každý ze tří zásahů je
+  „1 život" a dá se zachránit zvlášť. Odražená střela (Fistful) život neohrožuje – brána
+  se přeskakuje.
+- **Záchrana není zásah.** Karta říká „zabráníš ztratit život" – na rozdíl od Piva na
+  posledním životě (které život vrací) se tedy nespouští nic, co patří zásahu: Odměna,
+  Brokovnice, valoun, Bart Cassidy, El Gringo, statistika zásahů.
+- **Pořadí vůči Pivu:** okno se otevře, až oběť zásah PŘIJME (klik na životy). Oběť
+  na posledním životě si tedy může vybrat Pivo dřív, než se zeptá zachránce – plán chtěl
+  „před Pivem", jenže kdo kartu drží, oběť neví (R4), takže by se rozhodovala naslepo
+  tak jako tak. Když zachránce odmítne, život padá (Pivo už oběť nezahrála).
+- **Víc zachránců:** kus je v balíčku jeden, ale s namnoženými daty (zátěž, debug) jich
+  může být víc – nabídka jde po směru od oběti jednomu po druhém (`pendingSave.declined`).
+  Zachránce smí být i Duch (je ve hře); duch Města duchů a stín ne (ve hře jsou jen na
+  svůj tah, a ten je pak „jejich tah").
+- **Redakce:** ostatním se nuluje `saverIdx` i `declined` (i odmítnutí prozrazuje, kdo kartu
+  drží), takže jim `pendingActor` vrátí `null`. Štítek u hráče se nekreslí nikomu; banner
+  nahoře říká „X ztrácí život (zdroj) – čeká se, jestli někdo nezasáhne…".
+- **Odměna jde přes `_vosSaveRewards`, ne přes frontu odložených akcí.** Fronta se
+  odbavuje i uprostřed efektu (Bart Cassidy mezi zásahy dynamitu, mezi cíli Kulometu),
+  kdežto odměna má přijít až „po doběhnutí efektu" (dV 1588981). Vyřizuje se proto
+  v klidu – `_drainSaveReward` na začátku `_drainVosShots`, takže všude, kde se odpaluje
+  fronta výstřelů (fronta odložených akcí, konec tahu, hák před broadcastem). Klid
+  (`_vosQuiet`) sdílí s frontou výstřelů. U dynamitu a Pravého poledne tak odměna přijde
+  až po startu tahu oběti (fáze lízání je pořád součást startu tahu). Tím je rozhodnutá
+  i otevřená otázka 4 (podklad §7): „přežije-li" = přežije CELÝ efekt.
+- **Odměna z balíčku se líže klikáním** (`KILL_REWARD` se štítkem „Obětavý skok"), jako
+  každé jiné líznutí – žádná nová animace (paměť „líznutí jsou jednotná"). Z ruky se berou
+  náhodné karty; animaci (`ragtime_steal` bez `chosen`, tedy pod Sacagaway s gestem) zapíše
+  pravidlo do `_vosSaveAnim` a pošle `flushSaveTake` – karty se u Henryho berou až po jeho
+  výstřelu uvnitř cizí akce, stejně jako u F7.
+- **Zjištěno při zátěži a opraveno:** zásah, o kterém se rozhodovalo, se dohrává uvnitř
+  handleru `vos_save` – ne v `respond_to_card` / `take_dynamite_hit`, odkud přišel. Ty po
+  zásahu posílají animaci vyřazení a volají `handleAutoEndTurn`; bez toho samého v
+  `vos_save` zůstal hráč, kterého na jeho tahu zabil Henryho výstřel, mrtvý na tahu.
+- **Bot:** zachraňuje pravděpodobného spojence (šance „nepřítel" ≤ 0,2), na posledním
+  životě i toho, kdo je spíš spojenec než nepřítel; nepříteli nikdy. Odměnu od spojence
+  bere z balíčku, od nepřítele se dvěma kartami z ruky – kromě Henryho Blocka (vystřelil
+  by). `keepScore` Obětavého skoku 5. Protože bot zachraňuje jen spojence, cestu „z ruky"
+  v zátěži F8 vynucuje polovina her přepsáním volby (jinak by se nespustila).
+- **Strukturální test** (test/vos.save.test.js): každé `handleDamage(`, `takeDynamiteHit(`,
+  `takeNoonHit(` a `health--` v logic.js a logic/* má v tabulce důvod – brána, nebo
+  dobrovolná ztráta (Chuck Wengam, Pokrevní bratři).
+- **Menu:** nápověda je teď „16 karet a 5 postav; karty hrané mimo tah a Duch" (test hlídá,
+  že „Rozpracované" zmizí, až je hotovo všechno).
 
 ## 9. Co plán vědomě nedělá
 

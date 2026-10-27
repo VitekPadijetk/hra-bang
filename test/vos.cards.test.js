@@ -72,10 +72,13 @@ function takeHit(g, idx) {
 
 // ── Hotové druhy a menu ──────────────────────────────────────────────────────
 
-test('F1 + F3 + F4 + F5 + F6: do balíčku jde čtrnáct hotových druhů', () => {
+test('po F8 jde do balíčku všech patnáct druhů karet', () => {
     assert.deepEqual([...V.VOS_CARDS_READY].sort(),
-        ['Brokovnice', 'Chřestýš', 'Divoká banda', 'Duch', 'Dvojitá rána', 'Lemat', 'Odměna',
-         'Opětovná palba', 'Poker', 'Poslední pivo', 'Roztříštěná kulka', 'Tomahawk', 'Tornádo', 'Útěk']);
+        ['Brokovnice', 'Chřestýš', 'Divoká banda', 'Duch', 'Dvojitá rána', 'Lemat', 'Obětavý skok',
+         'Odměna', 'Opětovná palba', 'Poker', 'Poslední pivo', 'Roztříštěná kulka', 'Tomahawk',
+         'Tornádo', 'Útěk']);
+    assert.deepEqual([...V.VOS_CARDS_READY].sort(), kinds.map(k => k.name).sort(),
+        'každý druh z cards.udoli_stinu.json je hotový');
 });
 
 test('menu: Údolí stínů jde zapnout (už není „již brzy")', () => {

@@ -36,6 +36,8 @@ const VOS_CARDS_READY = [
     'Duch',
     // F6 – okno úniku (EVADE_OFFER) a Útěk jako odpověď na bang-efekt
     'Útěk',
+    // F8 – okno záchrany (SAVE_OFFER) a odměna (SAVE_REWARD)
+    'Obětavý skok',
 ];
 
 // ── Zbraně (F1) ──────────────────────────────────────────────────────────────
@@ -319,6 +321,53 @@ function escapeRespondOk(state, idx, card) {
     return true;
 }
 
+// ── Okno záchrany (F8): Obětavý skok ────────────────────────────────────────
+// „Lze zahrát pouze mimo tvůj tah. Odhozením této karty zabráníš jinému hráči ztratit
+// 1 život. Přežije-li, vezmi si 2 karty z jeho ruky, nebo z balíčku." (Dynamite Box)
+//
+// R9: ptá se na TŘECH místech, kde ztráta života vychází z rozhodnutí oběti – oběť
+// v RESPOND bere zásah, klikaný zásah (dynamit, Chřestýš, Ruská ruleta, Madam Zuzana,
+// Roubík, Dvojitá rána) a Pravé poledne. Dobrovolná ztráta (Chuck Wengam, Pokrevní
+// bratři) se nezachraňuje. Okno se otevře jen tehdy, když zachránce existuje (R4).
+//
+// Kdo smí zachránit hráče `victimIdx`? Kdo drží Obětavý skok, je ve hře, není oběť
+// a NENÍ NA TAHU („pouze mimo tvůj tah"; pod Zuřivou Doroty je na tahu ten, komu
+// sedadlo patří). Duch Města duchů a stín jsou ve hře jen na svůj tah, takže
+// zachraňovat nemůžou nikdy; Duch (karta) ano – hraje jako normální hráč. Oběť musí
+// mít co ztratit (Duch ani duch Města duchů na nule život neztrácí).
+// Vrací sedadla po směru od oběti – kus je sice jen jeden, ale s namnoženými daty
+// (zátěž, debug) jich může být víc a okno se pak nabízí jednomu po druhém.
+function saveCandidates(state, victimIdx) {
+    if (!vosOn(state)) return [];
+    const players = (state && state.players) || [];
+    const v = players[victimIdx];
+    if (!v || !(v.health > 0)) return [];
+    const owner = state._dorothyOwnerIdx != null ? state._dorothyOwnerIdx : state.currentPlayerIndex;
+    const n = players.length;
+    const out = [];
+    for (let k = 1; k < n; k++) {
+        const i = (victimIdx + k) % n;
+        if (i === owner) continue;
+        const p = players[i];
+        if (!isInPlay(p)) continue;
+        if ((p.hand || []).some(c => c && !c._placeholder && c.type === 'Obětavý skok')) out.push(i);
+    }
+    return out;
+}
+
+function saveEligible(state, victimIdx) {
+    return saveCandidates(state, victimIdx).length > 0;
+}
+
+// Odměna: „vezmi si 2 karty z jeho ruky, nebo z balíčku" – kombinovat se nesmí (DB).
+// Má-li zachráněný jedinou kartu, bere se ta jedna (nebo 2 z balíčku); bez karet v ruce
+// se volba nenabízí a líže se z balíčku rovnou. Ptá se server, klient (tlačítka) i bot.
+function saveRewardHandCount(state) {
+    const r = state && state.pendingSaveReward;
+    const v = r && state.players && state.players[r.victimIdx];
+    return v ? Math.min(2, (v.hand || []).length) : 0;
+}
+
 // „Karta Vedle!" pro Micka Defendera – Big Spencer, Elena Fuente, Calamity i Zúčtování
 // jdou stejným predikátem jako v obraně (playability.js se na valley.js ptá sám, kruh).
 function _playsAsMissedLazy(state, p, card) {
@@ -392,5 +441,6 @@ if (typeof module !== 'undefined' && module.exports) {
                        fanningSeconds, fanningTargets, evelynTargets, evelynOffer,
                        VOS_ROUND_PHASES, vosRoundPhase, vosRoundWaiting, vosRoundWaitsFor, vosRoundPickCount,
                        vosRoundPickOk, pokerTakeOk, pokerHasAce,
-                       evadeOptions, vosEvadable, escapeRespondOk };
+                       evadeOptions, vosEvadable, escapeRespondOk,
+                       saveCandidates, saveEligible, saveRewardHandCount };
 }

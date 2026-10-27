@@ -203,6 +203,9 @@ const CharactersMixin = {
         // Údolí stínů – okno úniku (Útěk / Mick Defender): efekt zahrané karty ještě
         // nedoběhl, takže fronta stojí taky. vosEvade si ji zavolá samo.
         if (this.pendingEvade) return true;
+        // Údolí stínů – okno záchrany (Obětavý skok, F8): zásah se ještě nevyhodnotil
+        // a vosSave si ho po rozhodnutí dohraje samo. Volba odměny je taky rozdělaná.
+        if (this.pendingSave || this.pendingSaveReward) return true;
         this._pruneSuzyQueue();
         // Údolí stínů – Henry Block (F7): výstřel na zloděje doběhl, takže se dokončí
         // pozastavená akce (krádež / odhoz). Je to pořád efekt zahrané karty, proto jde
