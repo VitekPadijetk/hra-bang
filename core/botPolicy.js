@@ -139,6 +139,10 @@ if (typeof require === 'function') {
     if (typeof saveRewardHandCount === 'undefined') {
         globalThis.saveRewardHandCount = require('./valley.js').saveRewardHandCount;
     }
+    // Údolí stínů (F9) – Henry Block: kdo mu vezme kartu, je cílem jeho BANG!.
+    if (typeof henryFires === 'undefined') {
+        globalThis.henryFires = require('./valley.js').henryFires;
+    }
     if (typeof aimCardFor === 'undefined') {
         globalThis.aimCardFor = require('./playability.js').aimCardFor;
     }
@@ -542,6 +546,44 @@ function _hasWorthTaking(p) {
         || (p.board || []).some(c => boardCardValue(c) > 0);
 }
 
+// ── Údolí stínů – Henry Block ────────────────────────────────────────────────
+// „Kdo mu vezme nebo odhodí kartu, je cílem jeho BANG!" Krádež od Henryho stojí bota
+// výstřel (kartu Vedle!, nebo život), takže na něj sáhne až jako na POSLEDNÍ možnost –
+// a když by ho výstřel mohl vyřadit, vůbec. Kdo vystřelí, říká `henryFires`
+// (core/valley.js), tentýž predikát, jakým se ptá server. Ptá se toho každá cesta, kudy
+// bot cizí kartu bere nebo odhazuje: Panika, Cat Balou, Ragtime, Krytý vůz, Kankán, Lee
+// Van Kliff, Komplic / Láhev, vynucené odhození vybavení, Jesse Jones, Pat Brennan
+// i Rvačka. Odměnu Obětavého skoku hlídá větev SAVE_REWARD zvlášť.
+
+// Vyřadil by mě výstřel? Poslední život a nic, čím se ubránit.
+function henryShotDeadly(state, myIndex) {
+    const me = state.players[myIndex];
+    if (!me || me.health > 1) return false;
+    return !(me.hand || []).some(c => c && !c._placeholder && playsAsMissed(state, me, c));
+}
+
+// Z kandidátů v pořadí od nejlepšího (`list` z rankEnemies) vyber prvního, který projde
+// `ok` – přednostně takového, který na mě nevystřelí. Henry přijde na řadu, jen když
+// jiný cíl není a výstřel přežiju.
+function henryAwarePick(state, myIndex, list, ok) {
+    const deadly = henryShotDeadly(state, myIndex);
+    let fallback = null;
+    for (const e of list) {
+        if (!ok(e)) continue;
+        if (!henryFires(state, e.idx, myIndex)) return e;
+        if (!fallback && !deadly) fallback = e;
+    }
+    return fallback;
+}
+
+// Rvačka bere kartu KAŽDÉMU ostatnímu, takže se Henrymu vyhnout nedá: s výstřelem, který
+// by mě vyřadil, ji bot nehraje vůbec.
+function henryBrawlDeadly(state, myIndex) {
+    if (!henryShotDeadly(state, myIndex)) return false;
+    return state.players.some((p, i) => henryFires(state, i, myIndex) &&
+        ((p.hand || []).length > 0 || (p.board || []).length > 0 || (p.weapon && p.weapon.id !== -1)));
+}
+
 // Zlatá horečka – Láhev a Komplic „jako" jiná karta: kolik stojí režim za to a na koho.
 // Jediné místo, kde se to rozhoduje – ptá se ho nákup (decidePlay) i výběr cíle ve fázi
 // GEAR_TARGET, takže bot nekoupí kartu na cíl, který by pak nevybral. `targets` = legální
@@ -564,8 +606,8 @@ function gearModePick(state, myIndex, beliefs, mode, targets) {
         }
         case 'PANIC':
         case 'CAT_BALOU': {
-            const t = rankEnemies(state, myIndex, beliefs, false)
-                .find(e => inTargets(e) && _hasWorthTaking(state.players[e.idx]));
+            const t = henryAwarePick(state, myIndex, rankEnemies(state, myIndex, beliefs, false),
+                e => inTargets(e) && _hasWorthTaking(state.players[e.idx]));
             return t ? { score: 14, targetIdx: t.idx } : null;
         }
         case 'BEER':
@@ -669,6 +711,7 @@ function keepScore(card) {
         case T.TORNADO: return 2;                 // výměna 2 za 2
         case T.ESCAPE: return 5;                  // uhne i Vězení a Panice, ne však BANG!u
         case T.SAVED: return 5;                   // život spojenci + 2 karty mně
+        case T.DUCH: return 3;                    // vrátí vyřazeného spojence – jen až nějaký bude
         default: return 1;
     }
 }
@@ -1121,9 +1164,11 @@ function decidePlay(state, myIndex, beliefs) {
         // Ducha se nestřílí –, takže se hledá zvlášť a před obyčejnou krádeží.
         if (action === T.PANIC || action === T.CAT_BALOU) {
             const maxDist = action === T.PANIC ? 1 : Infinity;
+            // Vyřadit nepřítele stojí i za výstřel Henryho – jen ne za ten, který by vyřadil mě.
             const ghost = state.players.findIndex((p, idx) => idx !== myIndex && isVosGhost(p) &&
                 hostilityOf(state, myIndex, idx, beliefs) > ENEMY_EPS &&
-                computeDistance(state, myIndex, idx) <= maxDist);
+                computeDistance(state, myIndex, idx) <= maxDist &&
+                !(henryFires(state, idx, myIndex) && henryShotDeadly(state, myIndex)));
             if (ghost !== -1) {
                 consider(31, { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: ghost, cardIdx: i } });
                 return;
@@ -1131,7 +1176,7 @@ function decidePlay(state, myIndex, beliefs) {
         }
         if (action === T.PANIC || action === T.CAT_BALOU) {
             const maxDist = action === T.PANIC ? 1 : Infinity;
-            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e =>
+            const tgt = henryAwarePick(state, myIndex, rankEnemies(state, myIndex, beliefs, false), e =>
                 _hasWorthTaking(state.players[e.idx]) && computeDistance(state, myIndex, e.idx) <= maxDist);
             if (tgt) consider(action === T.CAT_BALOU ? 22 : 18,
                 { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
@@ -1145,7 +1190,8 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
         if (action === 'DE_STEAL') { // Ragtime: ukradni kartu libovolnému nepříteli
-            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => _hasWorthTaking(state.players[e.idx]));
+            const tgt = henryAwarePick(state, myIndex, rankEnemies(state, myIndex, beliefs, false),
+                e => _hasWorthTaking(state.players[e.idx]));
             if (tgt) {
                 const a = chooseTargetCardArea(state.players[tgt.idx], T.PANIC);
                 consider(24, { event: 'discard_extra_choose', payload: { cardIdx: i, targetIdx: tgt.idx, area: a.area, boardIdx: a.cardIdx ?? 0 } });
@@ -1168,7 +1214,9 @@ function decidePlay(state, myIndex, beliefs) {
                 if (canHeal(me)) consider(me.health <= 2 ? 28 : 10, { event: 'discard_extra_choose', payload: { cardIdx: i } });
             } else if (card.discardExtra === 'brawl') {
                 const { pos, neg } = aoeBalance();
-                if (pos >= 1 && pos > neg) consider(20, { event: 'discard_extra_choose', payload: { cardIdx: i } });
+                if (pos >= 1 && pos > neg && !henryBrawlDeadly(state, myIndex)) {
+                    consider(20, { event: 'discard_extra_choose', payload: { cardIdx: i } });
+                }
             }
             return;
         }
@@ -1284,7 +1332,8 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
         if (card.activate === 'steal_any' || card.activate === 'discard_any') {
-            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => _hasWorthTaking(state.players[e.idx]));
+            const tgt = henryAwarePick(state, myIndex, rankEnemies(state, myIndex, beliefs, false),
+                e => _hasWorthTaking(state.players[e.idx]));
             if (tgt) {
                 const a = chooseTargetCardArea(state.players[tgt.idx], card.activate === 'steal_any' ? T.PANIC : T.CAT_BALOU);
                 consider(24, { event: 'activate_green_card', payload: { playerIdx: myIndex, cardId, target: { targetIdx: tgt.idx, area: a.area, boardIdx: a.cardIdx ?? 0 } } });
@@ -1432,8 +1481,8 @@ function decidePlay(state, myIndex, beliefs) {
                 case 'panic':
                 case 'catbalou':
                 case 'steal': {
-                    const t = rankEnemies(state, myIndex, beliefs)
-                        .find(e => okTarget(e.idx) && _hasWorthTaking(state.players[e.idx]));
+                    const t = henryAwarePick(state, myIndex, rankEnemies(state, myIndex, beliefs),
+                        e => okTarget(e.idx) && _hasWorthTaking(state.players[e.idx]));
                     if (t) { targetIdx = t.idx; score = 26; }
                     break;
                 }
@@ -1449,7 +1498,7 @@ function decidePlay(state, myIndex, beliefs) {
                     if (_lvk.effect === 'WELLS_FARGO') score = drawCardWorth(state, me, 3) ? 34 : 0;
                     else if (_lvk.effect === 'STAGECOACH') score = drawCardWorth(state, me, 2) ? 30 : 0;
                     else if (_lvk.effect === 'STORE') score = drawCardWorth(state, me, 2) ? 30 : 0;
-                    else if (_lvk.effect === 'brawl') score = 24;
+                    else if (_lvk.effect === 'brawl') score = henryBrawlDeadly(state, myIndex) ? 0 : 24;
                     else if (_lvk.effect === 'BEER' || _lvk.effect === 'SALOON' || _lvk.effect === 'heal_self_2') {
                         if (canHeal(me)) score = me.health <= 2 ? 30 : 8;
                     } else if (_lvk.effect === 'INDIANS' || _lvk.effect === 'GATLING') {
@@ -1517,11 +1566,15 @@ function decidePlay(state, myIndex, beliefs) {
         state.players.forEach((t, i) => {
             if (i === myIndex || !isInPlay(t)) return;
             if (hostilityOf(state, myIndex, i, beliefs) <= ENEMY_EPS) return;
+            // Údolí stínů – Henry Block za odhozené vybavení vystřelí: s výstřelem, který
+            // by bota vyřadil, vůbec, jinak jen za poloviční cenu.
+            const henry = henryFires(state, i, myIndex);
+            if (henry && henryShotDeadly(state, myIndex)) return;
             (t.gear || []).forEach((g, gearIdx) => {
                 if (!gearForceOk(state, myIndex, i, gearIdx)) return;
                 // Cena po MAJITELI: Kalumet Apache Kida nebo vybavení ducha nestojí
                 // za valouny – cíl z nich nic nemá, nebo o ně na konci tahu přijde sám.
-                const val = gearValueFor(state, i, g) / 2;
+                const val = gearValueFor(state, i, g) / (henry ? 4 : 2);
                 if (val > 0 && spendOk(val)) consider(val, { event: 'gear_force_discard', payload: { targetIdx: i, gearIdx } });
             });
         });
@@ -1707,14 +1760,18 @@ function decideBotAction(state, myIndex, beliefs) {
                 canHeal(me) && me.hand.length >= 3) {
                 return { event: 'draw_card', payload: { source: 'liquor', sourceIdx: null } };
             }
+            // Jesse Jones a Pat Brennan od Henryho Blocka nelížou nikdy: balíček je vždycky
+            // po ruce zadarmo, kdežto karta od Henryho stojí výstřel.
             if (ds.cardsDrawn === 0 && opts.includes('opponent_hand')) {
-                const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => state.players[e.idx].hand.length > 0);
+                const tgt = rankEnemies(state, myIndex, beliefs, false).find(e =>
+                    state.players[e.idx].hand.length > 0 && !henryFires(state, e.idx, myIndex));
                 if (tgt) return { event: 'draw_card', payload: { source: 'opponent_hand', sourceIdx: tgt.idx } };
             }
             // Pat Brennan: místo lízání vezmi hodnotnou kartu ze STOLU nepřítele (zbraň/modrou).
             if (ds.cardsDrawn === 0 && opts.includes('board')) {
                 const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => {
                     const p = state.players[e.idx];
+                    if (henryFires(state, e.idx, myIndex)) return false;
                     return (p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0;
                 });
                 if (tgt) {
@@ -2204,5 +2261,6 @@ if (typeof module !== 'undefined' && module.exports) {
                        CHAR_RANK, chooseCharacter, cardDrawGain, shootTargets, allyRisk,
                        keepScore, computeBeliefs, chooseTargetCardArea, boardCardValue,
                        weaponValue, keepCharacterChance, decideKeepCharacter,
-                       gearValueFor, gearSaveFor };
+                       gearValueFor, gearSaveFor,
+                       henryShotDeadly, henryAwarePick, henryBrawlDeadly };
 }

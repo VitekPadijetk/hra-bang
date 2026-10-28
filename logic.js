@@ -231,6 +231,10 @@ if (typeof saveCandidates === 'undefined' && typeof require === 'function') {
     globalThis.saveEligible = __vos.saveEligible;
     globalThis.saveRewardHandCount = __vos.saveRewardHandCount;
 }
+// Údolí stínů (F7/F9): Henry Block – sdílený se botem (komu kartu vzít).
+if (typeof henryFires === 'undefined' && typeof require === 'function') {
+    globalThis.henryFires = require('./core/valley.js').henryFires;
+}
 
 // Zlatá horečka – Láhev a Komplic („může být zahrána jako…"), Rum, karta Zlatá horečka
 // a Wanted („zahraj na libovolného hráče"): co jde s nákupem udělat a na koho. Stejným

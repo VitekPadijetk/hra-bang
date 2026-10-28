@@ -890,16 +890,12 @@ const ValleyMixin = {
     // mimo hru → akce propadá a karta zůstává Henrymu. Smrt zloděje na tahu ukončí tah
     // obvyklou cestou (_turnOwnerGone).
 
-    // Vystřelí Henry na zloděje? Jen když je Henry ve hře, zloděj je někdo jiný a umí
-    // ztratit život – na Ducha (i stín a ducha Města duchů na nule) by byl výstřel jen
-    // zbytečná pauza (R4), akce pak proběhne hned.
+    // Vystřelí Henry na zloděje? Kdo smí střílet a na koho, říká `henryFires`
+    // (core/valley.js) – stejným predikátem se ptá bot, komu kartu vzít. Navíc tu je
+    // jen „v téhle akci už vystřelil" (`_henryPass`, jednou za akci – R7).
     _henryFires(henryIdx, thiefIdx) {
-        if (!this._vosOn() || this._henryPass || this.winner) return false;
-        if (henryIdx == null || thiefIdx == null || henryIdx === thiefIdx) return false;
-        const h = this.players[henryIdx], t = this.players[thiefIdx];
-        if (!h || !t || !isInPlay(h) || !hasAbility(h, "Henry Block")) return false;
-        if (!isInPlay(t) || isVosGhost(t) || t.health <= 0) return false;
-        return true;
+        if (this._henryPass) return false;
+        return henryFires(this, henryIdx, thiefIdx);
     },
 
     // Pozastav akci `s` ({ kind, … }) a vystřel. Vrací true, když se akce pozastavila –

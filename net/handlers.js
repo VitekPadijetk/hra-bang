@@ -3224,6 +3224,8 @@ function playTornadoPass(data, h) {
 function playPokerReveal(data, h) {
     if (!gameScene || !state) return;
     const P = VOS_ANIM.poker;
+    const GL = currentLayout();
+    const G = pokerRow(GL);   // výška řady, velikost karet a rozteč (profil rozložení)
     const cards = data.cards || [];
     const n = cards.length;
     if (!n) return;
@@ -3254,20 +3256,20 @@ function playPokerReveal(data, h) {
                 .setDepth(820 + i).setAlpha(0.98);
             sprites[i] = spr;
             if (stateIn && !data.ace) { spr.destroy(); return; }
-            gameScene.tweens.add({ targets: spr, x: pokerSlotX(i, n), y: P.rowY, angle: 0,
-                                   scaleY: P.scale, duration: P.flyMs, ease: 'Cubic.easeOut' });
+            gameScene.tweens.add({ targets: spr, x: pokerSlotX(GL, i, n), y: G.y, angle: 0,
+                                   scaleY: G.scale, duration: P.flyMs, ease: 'Cubic.easeOut' });
             gameScene.tweens.add({ targets: spr, scaleX: 0, duration: P.flyMs / 2, ease: 'Sine.easeIn',
                 onComplete: () => {
                     if (!spr.active) return;
                     spr.setTexture(getCardTex(c.id));
-                    gameScene.tweens.add({ targets: spr, scaleX: P.scale, duration: P.flyMs / 2, ease: 'Sine.easeOut' });
+                    gameScene.tweens.add({ targets: spr, scaleX: G.scale, duration: P.flyMs / 2, ease: 'Sine.easeOut' });
                 } });
         });
     });
     if (!data.ace) return;
     const shownAt = (n - 1) * P.staggerMs + P.flyMs;
     const ai = data.aceIdx >= 0 ? data.aceIdx : cards.findIndex(c => c.value === 'A');
-    const big = P.scale * P.aceScale;
+    const big = G.scale * P.aceScale;
     // Eso: zvětšit (navrch řady) a pak nechat blikat hodnotu.
     gameScene.time.delayedCall(shownAt, () => {
         const spr = sprites[ai];
@@ -3300,6 +3302,8 @@ function playPokerReveal(data, h) {
 function playPokerTake(data, h) {
     if (!gameScene || !state) return;
     const P = VOS_ANIM.poker;
+    const GL = currentLayout();
+    const G = pokerRow(GL);
     const pool = state.pendingVosRound?.pool || [];
     const n = pool.length;
     if (!n) return;
@@ -3309,12 +3313,15 @@ function playPokerTake(data, h) {
     onNextState(() => { stateIn = true; App.vosPoolHide = false; });
     renderUI();
     const taken = data.taken || [];
+    // Kdo vybíral, měl vybrané karty na desce zvednuté – ať let nezačne o kus níž.
+    const lifted = data.playerIdx === myIndex;
     pool.forEach((e, i) => {
         const take = taken.includes(e.card.id);
         const to = take ? getPlayerHandPos(data.playerIdx) : discardTopPos();
-        animateCard(pokerSlotX(i, n), P.rowY, to.x, to.y, getCardTex(e.card.id), P.landMs, null, {
+        const fromY = G.y - (take && lifted ? G.lift : 0);
+        animateCard(pokerSlotX(GL, i, n), fromY, to.x, to.y, getCardTex(e.card.id), P.landMs, null, {
             delay: i * P.landStaggerMs,
-            startScale: P.scale,
+            startScale: G.scale,
             endScale: take ? h.sideScale(data.playerIdx, 'hand') : h.pileScale(),
             startAngle: 0, endAngle: take ? h.sideAngle(data.playerIdx) : 0, exactAngle: !take,
             holdUntil: () => stateIn,

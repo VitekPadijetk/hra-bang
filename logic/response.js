@@ -471,9 +471,12 @@ const ResponseMixin = {
         else {
             this.pendingResponse.active = false;
             this.phase = "PLAY";
-            // Údolí stínů: výstřel mimo pořadí (Opětovná palba…) mohl zabít hráče na tahu.
-            // Smrt přišla ve fázi RESPOND, takže ji handlePlayerDeath tahu nepřipsal.
-            if (this.pendingResponse.vos && this.pendingResponse.vos.shot && this._turnOwnerGone()) return;
+            // Výstřel mohl zabít HRÁČE NA TAHU: výstřel mimo pořadí z Údolí stínů (Opětovná
+            // palba, Henry Block…), ale i jeho vlastní Bang! – pod Právem západu (Fistful)
+            // musí vynucený Bang! bez jiného cíle poslat na sebe. Smrt přišla ve fázi RESPOND,
+            // takže ji handlePlayerDeath tahu nepřipsal a mrtvý by zůstal na tahu ve fázi PLAY.
+            // Série zásahů Fistful of Cards běží ve startu tahu a smrt si řeší krokovač sám.
+            if (!this.pendingFistful && this._turnOwnerGone()) return;
             // Fistful of Cards: běží-li série zásahů, pošli hned další (viz logic/fistful.js).
             if (!this._afterFistfulHit()) this._processSpecialQueue();
             this.targetPlayer = null;

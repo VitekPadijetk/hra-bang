@@ -932,3 +932,125 @@ test('getSeatPortraitPos: spodní sedadlo diváka sedí na kartě životů drawS
     assert.equal(pos.scale, 0.27);
     assert.equal(pos.x, 960, 'bez vyložených karet stojí karta životů uprostřed');
 });
+
+// ── Údolí stínů (F9): řada Pokeru a přepínač Dvojité rány ────────────────────
+// Na stůl rozšíření nepřidává nic trvalého; jediné, co se kreslí NAVÍC, je řada
+// vyložených karet Pokeru (fáze POKER_TAKE – leží, dokud si hráč nevybere) a tlačítko
+// „+ DVOJITÁ RÁNA" nad slotem schopností. Obojí se kreslí přes ostatní, takže by
+// kolize nebyla vidět jako rozbitá deska – jen by něco tiše zakrývalo (na mobilu ležel
+// přepínač přesně na „Ukončit tah" a řada Pokeru přes vyložené karty soupeřů).
+const VOS_VARIANTS = [
+    ['desktop', (fn) => withStage(1920, 1080, fn)],
+    ['široké', (fn) => withStage(1600, 800, fn)],
+    ['vysoké', (fn) => withStage(1200, 900, fn)],
+    ['mobil', (fn) => withMobile(844, 390, fn)],
+    ['mobil 16:9', (fn) => withMobile(1920, 1080, fn)],
+];
+const btnRect = (x, y, w, h) => ({ x0: x - w / 2, x1: x + w / 2, y0: y - h / 2, y1: y + h / 2 });
+// Karta životů soupeře (portrét): otočená jako jeho stůl.
+function portraitRect(pos) {
+    const rot = Math.abs(pos.angle) === 90;
+    const w = 325 * pos.scale, h = 500 * pos.scale;
+    return btnRect(pos.x, pos.y, rot ? h : w, rot ? w : h);
+}
+// Všechno, co u stolu leží (soupeři: stůl, vějíř, portrét; já: stůl a ruka se zvednutou
+// vybranou kartou), pro `total` hráčů s plným stolem a plnou rukou.
+function tableRects(L, st, total) {
+    const players = Array.from({ length: total }, () => ({
+        health: 4, maxHealth: 4, weapon: { id: 1 },
+        hand: Array.from({ length: 7 }, (_, i) => ({ id: 100 + i })),
+        board: Array.from({ length: 5 }, (_, i) => ({ id: 2 + i })),
+    }));
+    setWorld(players, 0);
+    const anchors = getOpponentAnchors(total);
+    const compact = anchors[0].side === 'compact';
+    const scaleO = compact ? compactMetrics(total - 1, L, st).scale : oppScale(L, total - 1);
+    const out = [];
+    for (let opp = 1; opp < total; opp++) {
+        const side = anchors[opp - 1].side;
+        for (let b = 0; b < 6; b++) out.push([`soupeř ${opp} stůl ${b}`, cardRect(getBoardCardPos(opp, b), side, scaleO)]);
+        for (let h = 0; h < 7; h++) out.push([`soupeř ${opp} ruka ${h}`, cardRect(getHandSlotPos(opp, h, 7), side, scaleO)]);
+        out.push([`soupeř ${opp} portrét`, portraitRect(getSeatPortraitPos(players[opp], opp, 0))]);
+    }
+    for (let b = 0; b < 6; b++) out.push([`můj stůl ${b}`, cardRect(getBoardCardPos(0, b), 'bottom', L.scaleMe)]);
+    for (let h = 0; h < 7; h++) {
+        const p = getHandSlotPos(0, h, 7);
+        out.push([`moje ruka ${h}`, cardRect({ x: p.x, y: p.y - 20 }, 'bottom', L.scaleHand)]);
+    }
+    return out;
+}
+
+test('Poker: řada vyložených karet je vystředěná a jmenovka sedí pod kartou', () => {
+    const { pokerRow, pokerSlotX } = require('../core/layout.js');
+    ['desktop', 'mobile'].forEach(name => {
+        const L = LAYOUT_PROFILES[name];
+        const P = pokerRow(L);
+        assert.equal(pokerSlotX(L, 0, 1), 960, `${name}: jedna karta uprostřed`);
+        assert.equal((pokerSlotX(L, 0, 7) + pokerSlotX(L, 6, 7)) / 2, 960, `${name}: sedm karet kolem středu`);
+        assert.equal(P.labelY, P.y + 500 * P.scale / 2 + 18, `${name}: jmenovka pod kartou`);
+    });
+    // Na desktopu zůstává velikost karet, jen řada sjela pod druhou řadu stolu horního
+    // soupeře a karty se k sobě přiblížily (F9) – kreslí se tam i cinematika poker_reveal.
+    assert.equal(pokerRow(DSK).scale, 0.46);
+});
+
+test('Poker: řada vyložených karet (1–7) minula soupeře i můj stůl a vejde se na jeviště', () => {
+    const { pokerRow, pokerSlotX } = require('../core/layout.js');
+    VOS_VARIANTS.forEach(([name, run]) => run((st, L) => {
+        const P = pokerRow(L);
+        const w = 325 * P.scale, h = 500 * P.scale;
+        for (let total = 3; total <= 8; total++) {
+            const n = total - 1;                       // každý ostatní vyloží jednu kartu
+            const table = tableRects(L, st, total);
+            for (let i = 0; i < n; i++) {
+                const x = pokerSlotX(L, i, n);
+                // Karta i se zvednutím (označená) a jmenovka „kdo ji vyložil" pod ní.
+                const card = { x0: x - w / 2, x1: x + w / 2, y0: P.y - h / 2 - P.lift, y1: P.y + h / 2 };
+                const label = btnRect(x, P.labelY, 150, 26);
+                assert.ok(card.x0 >= st.left && card.x1 <= st.right, `${name}, ${n} karet: karta ${i} mimo jeviště`);
+                if (i > 0) assert.ok(x - pokerSlotX(L, i - 1, n) >= w, `${name}: karty v řadě se překrývají`);
+                table.forEach(([what, r]) => {
+                    assert.ok(!overlaps(card, r), `${name}, ${total} hráčů: karta Pokeru ${i} leží přes ${what}`);
+                    assert.ok(!overlaps(label, r), `${name}, ${total} hráčů: jmenovka Pokeru ${i} leží přes ${what}`);
+                });
+            }
+        }
+        global.state = null; global.myIndex = null;
+    }));
+});
+
+test('+ DVOJITÁ RÁNA: na desktopu sedí přepínač beze změny o řádek nad slotem schopností', () => {
+    const { abilExtraSlot } = require('../core/layout.js');
+    const s = abilExtraSlot(DSK, DSK.btnAbilX);
+    assert.deepEqual([s.x, s.y], [DSK.btnAbilX, DSK.btnAbilY - DSK.btnH - 12]);
+});
+
+test('+ DVOJITÁ RÁNA: přepínač minul Ukončit tah, slot schopností, moje karty i soupeře', () => {
+    const { abilExtraSlot, greyAbilShift, myLivesGeom, CARD_ART_W: CW, CARD_ART_H: CH } = require('../core/layout.js');
+    VOS_VARIANTS.forEach(([name, run]) => run((st, L) => {
+        // Bez dvojice Greygoryho Decka – a s ní (slot schopností uhne doprava). S dvojicí
+        // se hlídají jen tlačítka: posunutý slot schopností sám na desktopu sahá na stůl
+        // pravého soupeře (starší stav z Divokého západu, Údolí stínů ho nemění).
+        [0, 2].forEach(grey => {
+            const abilX = L.btnAbilX + greyAbilShift(L, grey);
+            const s = abilExtraSlot(L, abilX);
+            const t = btnRect(s.x, s.y, s.w, s.h);
+            assert.ok(!overlaps(t, btnRect(L.btnEndX, L.btnEndY, 260, L.btnH)), `${name}: přepínač leží na Ukončit tah`);
+            assert.ok(!overlaps(t, btnRect(abilX, L.btnAbilY, 360, L.btnH)), `${name}: přepínač leží na slotu schopností`);
+            assert.ok(t.x0 >= st.left && t.x1 <= st.right, `${name}: přepínač mimo jeviště`);
+            if (grey) return;
+            for (let hp = 1; hp <= 10; hp++) {
+                const geo = myLivesGeom(L, hp, Math.max(hp, 4));
+                const cy = geo.baseY - hp * geo.track.step;
+                const r = btnRect(L.livesX, cy, CW * geo.scale, CH * geo.scale);
+                assert.ok(!overlaps(t, r), `${name}, ${hp} životů: přepínač leží na mém portrétu`);
+            }
+            for (let total = 2; total <= 8; total++) {
+                tableRects(L, st, total).forEach(([what, r]) => {
+                    assert.ok(!overlaps(t, r), `${name}, ${total} hráčů: přepínač leží přes ${what}`);
+                });
+            }
+        });
+        global.state = null; global.myIndex = null;
+    }));
+});

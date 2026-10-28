@@ -256,6 +256,26 @@ test('Právo západu: Bang! bez dosažitelného cíle musí hráč poslat sám n
     assert.equal(h._lawSelfShootOnly(0, hf.card), false);
 });
 
+// Nalezeno zátěží Údolí stínů (F9): výstřel na sebe na POSLEDNÍM životě hráče vyřadí
+// ve fázi RESPOND – a handlePlayerDeath posouvá tah jen ve fázi PLAY/DRAW, takže mrtvý
+// zůstal na tahu ve fázi PLAY (člověk by mohl dál hrát karty). Tah se musí posunout.
+test('Právo západu: vynucený Bang! na sebe na posledním životě ukončí tah', () => {
+    const g = mkEv([{ role: 'Outlaw', health: 1 }, { role: 'Sheriff' }, {}, {}, {}], 'PRAVO_ZAPADU');
+    [1, 2, 3, 4].forEach(i => board(g, i, CardType.EQUIPMENT, { effect: 'mustang' }));
+    stackDeck(g, 2, CardType.BANG);
+    g.startDrawPhase();
+    g.drawCard('deck'); g.drawCard('deck');
+    const forced = g._lawForced(0);
+    g.playBang(0, 0, forced.idx);
+    assert.equal(g.pendingResponse.targetIdx, 0);
+    g.handleResponse(0, null);
+    assert.equal(g.players[0].health, 0, 'bandita padl vlastní ranou');
+    assert.equal(g._autoEndTurnPending, true, 'tah se posune (server: handleAutoEndTurn)');
+    assert.equal(g._deadPlayerIdx, 0);
+    assert.ok(!g.specialActionQueue.some(a => a.type === 'KILL_REWARD' && a.playerIdx === 0),
+        'za vlastní vyřazení si mrtvý odměnu nebere');
+});
+
 test('Právo západu: Cat Balou bez cíle s kartami tah nezamkne', () => {
     const g = mkEv([{ role: 'Sheriff' }, { role: 'Outlaw' }], 'PRAVO_ZAPADU');
     stackDeck(g, 2, CardType.CAT_BALOU);

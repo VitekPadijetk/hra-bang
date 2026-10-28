@@ -10,13 +10,15 @@ a odpovědi dV na BGG, tabulka rozporů) + PDF `us_rules_cz.pdf`, `us_dynamite_b
 Opětovná palba, Roztříštěná kulka, Dvojitá rána, Evelyn Shebang, 2026-10-24), F4
 (kolečko voleb: Divoká banda, Tornádo, Poker, 2026-10-25), F5 (Duch, 2026-10-25), F6
 (okno úniku: Útěk, Mick Defender, 2026-10-26), F7 (Henry Block – pozastavená akce,
-2026-10-27) a F8 (Obětavý skok – okno záchrany a odměna, 2026-10-27).**
+2026-10-27), F8 (Obětavý skok – okno záchrany a odměna, 2026-10-27) a F9 (bot, zátěž,
+rozložení, dokumentace, 2026-10-28) – rozšíření je HOTOVÉ.**
 Rozšíření jde zapnout v menu (`MENU_EXPANSIONS` v [core/menuModel.js](../core/menuModel.js));
 do balíčku jde všech 15 druhů karet a do výběru všech 5 postav (nápovědu v menu drží
-v souladu test).
+v souladu test). Popis hotového stavu pro další práci je v
+[docs/pravidla/udoli-stinu.md](pravidla/udoli-stinu.md) (přestěhovaný z CLAUDE.md).
 Po F0: `npm test` = 1714 testů (výchozí stav byl 1697). Po F1: 1752 testů. Po F2:
 1782 testů. Po F3: 1813 testů. Po F4: 1837 testů. Po F5: 1869 testů. Po F6: 1903
-testů. Po F7: 1931 testů. Po F8: **1966 testů, 0 chyb**.
+testů. Po F7: 1931 testů. Po F8: 1966 testů. Po F9: **1982 testů, 0 chyb**.
 
 > **Rozhodnutí uživatele (2026-10-21), viz §10:**
 > 1. **Česká mechanika ve znění Dynamite Boxu 2023**, ale **jen 5 postav původního českého
@@ -691,7 +693,7 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
 | **F6** ✓ | Okno úniku: helpery §2.8 + strukturální test, Útěk, Mick Defender | mění vstup do výběru karty pro všechny karty |
 | **F7** ✓ | Henry Block (pozastavená akce) | nejsložitější tok, potřebuje F3 |
 | **F8** ✓ | Obětavý skok (brány + odměna + redakce) | riziko jako Teren Kill; bez držitele karty se hra nemění |
-| **F9** | Politika bota, zátěž (matice + „balíček samých X"), invarianty rozložení, výměna štítků za art, CLAUDE.md + `docs/pravidla/udoli-stinu.md` | uzavření |
+| **F9** ✓ | Politika bota, zátěž (matice + „balíček samých X"), invarianty rozložení, výměna štítků za art, CLAUDE.md + `docs/pravidla/udoli-stinu.md` | uzavření |
 
 ### Co se ve fázi F0 odchýlilo od plánu (a proč)
 
@@ -1127,6 +1129,58 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
   dobrovolná ztráta (Chuck Wengam, Pokrevní bratři).
 - **Menu:** nápověda je teď „16 karet a 5 postav; karty hrané mimo tah a Duch" (test hlídá,
   že „Rozpracované" zmizí, až je hotovo všechno).
+
+### Co se ve fázi F9 odchýlilo od plánu (a proč)
+
+- **Politika bota přibývala průběžně** – větve pro všechny fáze z §6 vznikly už s F1–F8
+  (a hlídá je strukturální test „každý kind z pendingActor má větev"). Na F9 zbyl jen
+  **Henry Block ve výběru cíle**, odložený v F7: krádež od Henryho až jako poslední
+  možnost a s výstřelem, který by bota vyřadil (poslední život, žádná karta Vedle!), vůbec
+  (`henryAwarePick`/`henryShotDeadly`/`henryBrawlDeadly`, core/botPolicy.js). Platí pro
+  Paniku, Cat Balou, Ragtime, Krytý vůz, Kankán, Lee Van Kliffa, Komplic / Láhev, vynucené
+  odhození vybavení (s Henrym za poloviční hodnotu) a Rvačku (tu s Henrym u stolu na
+  posledním životě nehraje). **Jesse Jones a Pat Brennan od Henryho nelížou nikdy** –
+  balíček je vždycky po ruce zadarmo. Kdo vystřelí, se ptá **jediný predikát
+  `henryFires`** (core/valley.js) – `_henryFires` na serveru k němu přidává jen
+  `_henryPass`. Duch dostal `keepScore` 3 (padal na výchozí 1, takže ho bot odhazoval jako
+  první) a nový test hlídá, že `keepScore` zná každý druh karty.
+- **Zátěž se přestěhovala do vlastního souboru** `test/vos.load.test.js` (sady F1–F8 beze
+  změny + nový „balíček samých X" pro každý z 15 druhů) se sdíleným harnessem
+  `test/_botHarness.js`. `node --test` pouští soubory souběžně, takže délku sady určuje
+  nejdelší soubor – `test/server.bots.test.js`. Celá sada tím zrychlila z 24 s na 21 s,
+  i když zátěže přibylo. Údolí stínů je navíc čtvrtý rozměr hlavní matice „rozšíření ×
+  3–8 hráčů" (16 kombinací × 6 počtů hráčů) s kontrolou, že je v balíčku všech 16 karet.
+- **„Balíček samých X" hlídá obecné invarianty**, ne konkrétní kartu: nic nezůstane viset
+  mimo svou fázi (okno úniku, okno záchrany, odměna, nabídka Jima, kolečko voleb,
+  pozastavená akce Henryho), vyřazený nezůstane na tahu, žádná karta se nezdvojí a Duch
+  nezíská život. Každý druh se musí aspoň jednou ozvat.
+- **Zátěž F7 vynucuje cesty, kterým se bot teď vyhýbá:** v polovině her srazí zloděje, na
+  kterého Henry střílí, na poslední život a pošle Jesseho / Pata lízat k Henrymu – jinak by
+  „zloděj padl, karta zůstává Henrymu" ani pozastavené líznutí v zátěži nenastaly (stejně
+  jako F8 vynucuje odměnu „z ruky").
+- **Zjištěno zátěží a opraveno (Fistful, ne Údolí stínů):** vynucený Bang! na sebe pod
+  **Právem západu** na posledním životě nechal mrtvého hráče na tahu ve fázi PLAY –
+  `handlePlayerDeath` posouvá tah jen ve fázi PLAY/DRAW a `_turnOwnerGone` se volal jen
+  po výstřelech mimo pořadí a po Duelu. Teď se volá na konci každé obrany (kromě série
+  Fistful of Cards, tu si řeší krokovač startu tahu). Log navíc sliboval „+3 karty"
+  i mrtvému banditovi, který se zastřelil sám (odměna sama byla hlídaná správně).
+- **Invarianty rozložení našly dvě kolize** a obě se opravily:
+  1. **Přepínač „+ DVOJITÁ RÁNA" ležel na mobilu přesně na „Ukončit tah"** (oba sloupce
+     tlačítek u pravého okraje). Slot dává `abilExtraSlot` (core/layout.js): o řádek nad
+     slotem schopností, na mobilu ještě o řádek výš. Desktop beze změny.
+  2. **Řada vyložených karet Pokeru** ležela na mobilu přes vyložené karty kompaktních
+     soupeřů a na desktopu (se zvednutou kartou) přes druhou řadu stolu horního soupeře.
+     Geometrie je teď v profilu rozložení (`pokerRowY`/`pokerScale`/`pokerStepX`,
+     `pokerRow`/`pokerSlotX` v core/layout.js – z core/vosAnim.js zmizela): desktop
+     y 560 a rozteč 165 (velikost karet 0,46 zůstává), mobil y 546 a velikost 0,32. Na
+     mobilu vyhoví jen y 544–548 – užší pásmo mezi soupeři a mým stolem není.
+  Testy jedou desktop, široké a vysoké okno, mobil i mobil 16:9 pro 3–8 hráčů s plným
+  stolem i rukou. **Render neověřený** – čeká na kontrolu v prohlížeči.
+- **Zjištěno mimochodem, neopraveno:** slot tlačítka schopností posunutý za dvojici
+  Greygoryho Decka (Divoký západ, `greyAbilShift`) na desktopu sahá při 5–8 hráčích na
+  stůl pravého soupeře. Je to starší stav, Údolí stínů ho nemění; test přepínače Dvojité
+  rány s dvojicí proto hlídá jen tlačítka.
+- **Výměna štítků za art** nebyla potřeba – všechno dorazilo už v F1 (2026-10-24).
 
 ## 9. Co plán vědomě nedělá
 

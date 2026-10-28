@@ -215,7 +215,9 @@ const CombatMixin = {
             if (killerIdx !== null && killerIdx !== deadIdx) deathReward = `${killerName} +3 karty`;
             if (this._winClaim3p !== null) deathReward += ' a vyhrává (vlastní cíl)';
         }
-        else if (deadPlayer.role === "Outlaw") deathReward = `${killerName} +3 karty`;
+        // Odměnu za banditu dostává jen zabiják, který není on sám (a není to dynamit) –
+        // stejná podmínka jako u fronty KILL_REWARD výš, jinak by log sliboval karty mrtvému.
+        else if (deadPlayer.role === "Outlaw" && killerIdx !== null && killerIdx !== deadIdx) deathReward = `${killerName} +3 karty`;
         else if (deadPlayer.role === "Deputy" && this.players[killerIdx]?.role === "Sheriff") deathReward = `Šerif ${killerName} ztrácí všechny karty`;
         this.logEvent('death', { who: deadPlayer.name, role: deadPlayer.role, killer: killerName, reward: deathReward });
 

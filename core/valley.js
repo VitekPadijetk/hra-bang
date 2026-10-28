@@ -368,6 +368,23 @@ function saveRewardHandCount(state) {
     return v ? Math.min(2, (v.hand || []).length) : 0;
 }
 
+// ── Henry Block (F7) ─────────────────────────────────────────────────────────
+// „Kdo mu vezme nebo odhodí kartu, je cílem jeho BANG!" Vystřelí Henry `henryIdx` na
+// zloděje `thiefIdx`? Henry musí být ve hře a schopnost mít, zloděj je někdo jiný
+// a umí ztratit život – na Ducha (i stín a ducha Města duchů na nule) by byl výstřel
+// jen zbytečná pauza (R4), akce pak proběhne hned. Ptá se server (`_henryFires`,
+// logic/valley.js – ten k tomu přidává jen „Henry už v téhle akci vystřelil") i bot,
+// který podle toho volí, komu kartu vzít.
+function henryFires(state, henryIdx, thiefIdx) {
+    if (!vosOn(state) || !state || state.winner) return false;
+    if (henryIdx == null || thiefIdx == null || henryIdx === thiefIdx) return false;
+    const h = state.players && state.players[henryIdx];
+    const t = state.players && state.players[thiefIdx];
+    if (!h || !t || !isInPlay(h) || !hasAbility(h, 'Henry Block')) return false;
+    if (!isInPlay(t) || isVosGhost(t) || t.health <= 0) return false;
+    return true;
+}
+
 // „Karta Vedle!" pro Micka Defendera – Big Spencer, Elena Fuente, Calamity i Zúčtování
 // jdou stejným predikátem jako v obraně (playability.js se na valley.js ptá sám, kruh).
 function _playsAsMissedLazy(state, p, card) {
@@ -442,5 +459,5 @@ if (typeof module !== 'undefined' && module.exports) {
                        VOS_ROUND_PHASES, vosRoundPhase, vosRoundWaiting, vosRoundWaitsFor, vosRoundPickCount,
                        vosRoundPickOk, pokerTakeOk, pokerHasAce,
                        evadeOptions, vosEvadable, escapeRespondOk,
-                       saveCandidates, saveEligible, saveRewardHandCount };
+                       saveCandidates, saveEligible, saveRewardHandCount, henryFires };
 }

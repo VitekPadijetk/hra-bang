@@ -27,9 +27,8 @@ const VOS_ANIM = {
         landStaggerMs: 90,
         landMs:     400,  // řada → odhoz / ruka
         bufMs:      120,
-        rowY:       470,  // výška řady (= Rum, REVEAL_CY v game.js)
-        stepX:      175,  // rozteč karet v řadě
-        scale:     0.46,  // velikost karty v řadě
+        // Geometrie řady (výška, velikost karet, rozteč) závisí na profilu rozložení
+        // (mobil ji má jinde a menší) – dává ji pokerRow / pokerSlotX v core/layout.js.
     },
 };
 
@@ -59,11 +58,6 @@ function pokerTakeMs(n) {
     return (n - 1) * P.landStaggerMs + P.landMs + P.bufMs;
 }
 
-// Střed i-té karty řady vyložených karet (vystředěná na střed stolu, jako Rum).
-function pokerSlotX(i, n) {
-    return 960 + (i - (Math.max(1, n) - 1) / 2) * VOS_ANIM.poker.stepX;
-}
-
 // Jak dlouho drží boty animace zapsaná pravidly (`_vosAnim`, server/anim.js).
 function vosAnimMs(a) {
     if (!a) return 0;
@@ -74,5 +68,5 @@ function vosAnimMs(a) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { VOS_ANIM, tornadoPassMs, pokerRevealMs, pokerTakeMs, pokerSlotX, vosAnimMs };
+    module.exports = { VOS_ANIM, tornadoPassMs, pokerRevealMs, pokerTakeMs, vosAnimMs };
 }

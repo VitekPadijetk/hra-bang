@@ -143,6 +143,11 @@ const LAYOUT_DESKTOP = {
     // pásma nevešly, takže se otevírá klikem na tenhle rub jako překryvné okno
     // (view/screens.js `renderGearShopOverlay`).
     gearPileX: 1385,
+    // Údolí stínů – Poker: řada vyložených karet uprostřed stolu (pokerRow). Leží přes
+    // balíčky, ale mimo soupeře: shora ji omezuje druhá řada stolu horního soupeře (363),
+    // zespodu tlačítka (769) a při 8 hráčích do stran stoly bočních soupeřů – sedm karet
+    // se proto řadí po 165 px (vyhoví y 504–620, střed 560). Hlídá test/positions.test.js.
+    pokerRowY: 560, pokerScale: 0.46, pokerStepX: 165,
 };
 const LAYOUT_MOBILE = {
     ...LAYOUT_DESKTOP, name: 'mobile',
@@ -180,6 +185,10 @@ const LAYOUT_MOBILE = {
     // soupeřů (440) a vrchem mojí zóny (660) je pásmo 220 px a dvě řady karet potřebují
     // 320. Fistful proto leží zrcadlově vlevo od dobíracího balíčku.
     eventStack: 'horizontal',
+    // Poker: řada vyložených karet se musí vejít do téhož pásma 440–660 (i se jmenovkou
+    // pod kartou a s označenou kartou zvednutou o pokerRow().lift) – desktopová velikost
+    // by ležela přes vyložené karty kompaktních soupeřů. Vyhoví jen y 544–548.
+    pokerRowY: 546, pokerScale: 0.32, pokerStepX: 175,
 };
 
 const LAYOUT_PROFILES = { desktop: LAYOUT_DESKTOP, mobile: LAYOUT_MOBILE };
@@ -597,6 +606,38 @@ function gearSlot(L) {
     return { x: P.gearPileX, y: P.pileY };
 }
 
+// Údolí stínů – Poker: řada vyložených karet, ze které si hráč bere (fáze POKER_TAKE),
+// i místo, kam ji přiveze cinematika poker_reveal a odkud ji odveze poker_take. `y` je
+// střed karty, `labelY` střed jmenovky „kdo kartu vyložil" pod ní a `lift` o kolik se
+// označená karta zvedne. Vodorovně dává střed i-té z `n` karet pokerSlotX.
+const POKER_LABEL_GAP = 18, POKER_LIFT = 24;
+function pokerRow(L) {
+    const P = L || LAYOUT_DESKTOP;
+    return { y: P.pokerRowY, scale: P.pokerScale, stepX: P.pokerStepX,
+             labelY: P.pokerRowY + CARD_ART_H * P.pokerScale / 2 + POKER_LABEL_GAP,
+             lift: POKER_LIFT };
+}
+// Řada je vystředěná na střed stolu (jako Rum).
+function pokerSlotX(L, i, n) {
+    const P = L || LAYOUT_DESKTOP;
+    return 960 + (i - (Math.max(1, n) - 1) / 2) * P.pokerStepX;
+}
+
+// Druhé tlačítko k vybrané kartě (Údolí stínů – „+ DVOJITÁ RÁNA") patří o řádek NAD
+// slot tlačítka schopností (`abilX` = jeho x, i s posunem za dvojici Greygoryho). Na
+// mobilu je ale nad ním „Ukončit tah" (obě tlačítka jsou ve sloupci u pravého okraje),
+// takže jde ještě o řádek výš. Šířka je pevná (ABIL_EXTRA_W) – kreslí ho view/board.js.
+const ABIL_EXTRA_W = 340, END_BTN_W = 260;
+function abilExtraSlot(L, abilX) {
+    const P = L || LAYOUT_DESKTOP;
+    const x = abilX == null ? P.btnAbilX : abilX;
+    const step = P.btnH + 12;
+    let y = P.btnAbilY - step;
+    const sameCol = Math.abs(P.btnEndX - x) < (END_BTN_W + ABIL_EXTRA_W) / 2;
+    if (sameCol && Math.abs(P.btnEndY - y) < P.btnH + 12) y = P.btnEndY - step;
+    return { x, y, w: ABIL_EXTRA_W, h: P.btnH };
+}
+
 // O kolik se sloupce událostí zvednou při cinematice hokynářství. Řada rozdaných karet
 // leží `storeRowOffY` pod balíčky, takže při svislém srovnání nad sebe by na spodní
 // sloupec dosáhla – zvedají se proto o kus víc než balíčky.
@@ -663,7 +704,7 @@ if (typeof module !== 'undefined' && module.exports) {
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile, shouldAskLayout,
         resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
         boardBand, boardSlot,
-        gearSlot,
+        gearSlot, pokerRow, pokerSlotX, abilExtraSlot, ABIL_EXTRA_W,
         GREY_SCALE, GREY_GAP, greyDetached, greyScale, greyStep, greyAbilShift,
         greyMySlot, greyOppSlot,
         LIVES_PER_CARD, livesTrack, livesSlot, livesCardsShown, livesFitScale, myLivesGeom,

@@ -3353,14 +3353,16 @@ function drawMyArea(ctx) {
         // ── Údolí stínů – Dvojitá rána: přidat k vybrané kartě BANG! ─────────────
         // Nabídne se jen u karty, která se právě míří jako KARTA BANG! (aimCardFor –
         // tentýž predikát jako server a bot). Sedí NAD slotem schopností, protože ten si
-        // v tu chvíli může brát Zúčtování / Lemat nebo Odstřelovač.
+        // v tu chvíli může brát Zúčtování / Lemat nebo Odstřelovač – na mobilu ještě
+        // o řádek výš, nad „Ukončit tah" (abilExtraSlot v core/layout.js).
         {
             const _aimCard = (_selHandCard && selectedState.action === 'SHOOT' && !selectedState.sniper &&
                 state.phase === "PLAY" && state.currentPlayerIndex === myIndex && typeof aimCardFor === 'function')
                 ? aimCardFor(state, me, myIndex, _selHandCard) : null;
             if (_aimCard) {
                 const _aimArmed = selectedState.aim != null;
-                const { bg: _aimBtn } = themeButton(gameScene, _abilX, L.btnAbilY - L.btnH - 12, 340, L.btnH,
+                const _aimSlot = abilExtraSlot(L, _abilX);
+                const { bg: _aimBtn } = themeButton(gameScene, _aimSlot.x, _aimSlot.y, _aimSlot.w, _aimSlot.h,
                     _aimArmed ? 'DVOJITÁ RÁNA: zrušit ↩' : '🎯 + DVOJITÁ RÁNA (−2 ❤)', {
                     ...themeToggleStyle(_aimArmed), fontSize: '20px',
                     onClick: () => {
@@ -4106,14 +4108,16 @@ function drawPhaseOverlays(ctx) {
         }
     }
     // Poker – vyložené karty leží v řadě uprostřed stolu (stejná místa jako cinematika
-    // poker_reveal, core/vosAnim.js). Hráč, který Poker zahrál, si klikáním označí až 2.
+    // poker_reveal – geometrie je pokerRow v core/layout.js, na mobilu jinde a menší).
+    // Hráč, který Poker zahrál, si klikáním označí až 2.
     if (_vr && _vr.pool && state.phase === 'POKER_TAKE' && !App.vosPoolHide) {
-        const P = VOS_ANIM.poker;
+        const _pL = currentLayout();
+        const P = pokerRow(_pL);
         const n = _vr.pool.length;
         const _take = _vr.playerIdx === myIndex;
         _vr.pool.forEach((e, i) => {
             const sel = App.vosTakeSel.has(e.card.id);
-            const spr = gameScene.add.image(pokerSlotX(i, n), P.rowY - (sel ? 24 : 0), getTex(e.card.id))
+            const spr = gameScene.add.image(pokerSlotX(_pL, i, n), P.y - (sel ? P.lift : 0), getTex(e.card.id))
                 .setScale(P.scale);
             mAdd(spr, 820 + i);
             if (sel) spr.setTint(0xddffdd);
@@ -4128,7 +4132,7 @@ function drawPhaseOverlays(ctx) {
             }
             const from = state.players[e.fromIdx]?.name;
             if (from) {
-                mAdd(gameScene.add.text(pokerSlotX(i, n), P.rowY + 500 * P.scale / 2 + 18, from,
+                mAdd(gameScene.add.text(pokerSlotX(_pL, i, n), P.labelY, from,
                     { fontSize: '18px', color: '#ffeedd', backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 6, y: 2 } })
                     .setOrigin(0.5), 821 + i);
             }

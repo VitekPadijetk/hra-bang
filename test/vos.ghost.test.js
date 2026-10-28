@@ -427,7 +427,6 @@ const LIFE_OK = {
     ],
     'logic/valley.js': [
         ['if (p.health > 0) { p._vosWasGhost = false', 'úklid Ducha: živý Duch není (pojistka)'],
-        ['isVosGhost(t) || t.health <= 0', 'Henry Block střílí – na toho, kdo nemůže ztratit život, ne'],
         ['!(victim.health > 0)', 'Obětavý skok – „přežije-li": zachráněný musí mít život (Duch nepřežil)'],
     ],
     'logic/wildWest.js': [
@@ -459,6 +458,7 @@ const LIFE_OK = {
     'core/valley.js': [
         ["t.health <= 0 && !isInPlay(t)", 'Duch se vykládá před vyřazeného'],
         ['!(v.health > 0)', 'Obětavý skok – zachraňuje se jen ten, kdo může ztratit život'],
+        ['isVosGhost(t) || t.health <= 0', 'Henry Block střílí – na toho, kdo nemůže ztratit život, ne'],
     ],
 };
 
