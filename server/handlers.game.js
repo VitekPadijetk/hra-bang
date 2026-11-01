@@ -153,9 +153,14 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                                              gs._pendingFistfulReveal);
                     const stageCards = revealPending && drawnBefore >= 0
                         ? hand.slice(-Math.min(hand.length, drawnBefore + 1)) : undefined;
+                    // Ostatní karty neznají, ale stav jim za cinematikou dorazí stejně pozdě –
+                    // soupeři by se líznutá karta v ruce objevila až po odkrytí karty události.
+                    // Pošleme jim proto aspoň, kolik karet má po líznutí v ruce (délka ruky je
+                    // veřejná) a klient mu po dosednutí doplní placeholdery.
+                    const stageHandLen = revealPending ? hand.length : undefined;
                     emitAnimPrivate(room, playerIdx,
-                        { type: 'draw', playerIdx, cardId: drawnId, stageCards },
-                        { type: 'draw', playerIdx });
+                        { type: 'draw', playerIdx, cardId: drawnId, stageCards, stageHandLen },
+                        { type: 'draw', playerIdx, stageHandLen });
                 }
             }
             if (isKitCarlson || isClaus) {

@@ -2292,8 +2292,29 @@ function _playCardAnim(data) {
                 // startScale/endScale: karta vzlétne ve velikosti balíčku a za letu se
                 // zmenší na velikost vějíře v soupeřově ruce (na mobilu je jeho vějíř
                 // výrazně menší než balíček – bez toho karta dosedla a teprve pak skočila).
+                // Totéž jako staging majitele výš, jen pro CIZÍ ruku: za posledním líznutím
+                // Dostavníku / Wells Farga čeká stav až za cinematikou karty události, takže
+                // by se soupeři karta v ruce objevila teprve po ní. Server proto poslal, kolik
+                // karet má po líznutí v ruce (`stageHandLen`), a my mu je PŘI DOSEDNUTÍ
+                // doplníme. Do skryté ruky jde placeholder bez ID (to pošle i redakce), do
+                // odkryté (Sacagaway, debug, divák hry botů – tam přišla varianta majitele
+                // i se `stageCards`) skutečné karty, jinak by se s příchodem stavu přetočily.
+                const stageOpp = () => {
+                    const h = state?.players?.[pIdx]?.hand;
+                    if (!h) return;
+                    let staged = false;
+                    if (data.stageCards && handFaceUp(pIdx)) {
+                        data.stageCards.forEach(sc => {
+                            if (sc && !h.some(c => c.id === sc.id)) { h.push(sc); staged = true; }
+                        });
+                        if (staged) registerCardTexAliases(state);
+                    }
+                    while (h.length < (data.stageHandLen || 0)) { h.push({ id: null, _placeholder: true }); staged = true; }
+                    if (staged) renderUI();
+                };
                 const oppDone = () => {
                     App.oppDrawPending[pIdx] = Math.max(0, (App.oppDrawPending[pIdx] || 1) - 1);
+                    stageOpp();
                     mineDone();
                 };
                 if (_mineFace) {

@@ -455,6 +455,44 @@ test('poslední líznutí Dostavníku nese majiteli data všech líznutých kare
     ids.forEach(id => assert.ok(me.hand.some(c => c.id === id), 'a jsou to opravdu karty v jeho ruce'));
 });
 
+// Dávka S (hlášení 2026-10-25T05-38-40-408Z_game2): u SOUPEŘE se poslední karta Dostavníku
+// objevila v ruce až po kartě Divokého západu – staging dostával jen majitel. Ostatní karty
+// neznají, ale dostanou aspoň počet karet v ruce po líznutí (veřejný) a doplní placeholdery.
+test('poslední líznutí Dostavníku nese ostatním počet karet v ruce (stageHandLen), ne karty', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const socks = ['s1', 's2', 's3'].map(id => mkSocket(id));
+    socks[0].fire('create_room', { name: 'X', maxPlayers: 3, playerName: 'A', options: { singleChar: true } });
+    const room = [...ctx.rooms.values()][0];
+    socks[1].fire('join_room', { roomId: room.id, playerName: 'B' });
+    socks[2].fire('join_room', { roomId: room.id, playerName: 'C' });
+    socks[0].fire('start_game');
+    const gs = room.gameState;
+    const anims = {};
+    socks.forEach(s => { anims[s.id] = []; s.emit = (ev, p) => { if (ev === 'card_animation' && p.type === 'draw') anims[s.id].push(p); }; });
+    const drawer = room.players.find(rp => rp.socketId === 's2').playerIdx;
+    // Balíček Divokého západu s jedinou kartou, jejíž příchod nic nedělá.
+    gs.wwsDeck = [Object.assign({}, wwsCardData.find(c => c.key === 'ZUCTOVANI'))];
+    gs.phase = 'PLAY';
+    gs.currentPlayerIndex = drawer;
+    const p = gs.players[drawer];
+    p.hand.push(new Card(9001, 'Dostavník', CardType.STAGECOACH, 'Srdce', 'A'));
+    gs.playCard(p.hand.length - 1);
+    assert.equal(gs.drawPhaseState.wwsFlip, true);
+
+    socks[1].fire('draw_card', { source: 'deck' });
+    socks[1].fire('draw_card', { source: 'deck' });
+    assert.ok(gs.activeWws, 'druhé líznutí kartu události otočilo');
+
+    const own = anims.s2, other = anims.s1;
+    assert.equal(other.length, 2);
+    assert.equal(other[0].stageHandLen, undefined, 'první líznutí nic nestaguje');
+    assert.equal(other[1].stageHandLen, p.hand.length, 'poslední nese délku ruky po líznutí');
+    assert.equal(other[1].cardId, undefined, 'ostatním se karta neprozradí');
+    assert.equal(other[1].stageCards, undefined, 'ani data karet');
+    assert.equal(own[1].stageHandLen, p.hand.length, 'majitel ho dostane taky');
+    assert.equal((own[1].stageCards || []).length, 2, 'a k tomu data obou karet');
+});
+
 // ── Další hra: účast (S12 / S13, docs/menu-ui-plan.md D8) ──────────────────────
 // Místnost po konci hry: čtyři hráči přes skutečné handlery, stav hry s vítězem.
 // Emity socketů se zaznamenávají (`emits[id]`), ať jde poznat, kdo šel do menu.
