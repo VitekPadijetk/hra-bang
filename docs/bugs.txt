@@ -9,7 +9,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
   a leží v soukromém repu VitekPadijetk/hra-bang-reports (naklonované do reports/,
   aktualizace `git -C reports pull`): reports/*.json = text + snímek stavu,
   logs/*.jsonl.gz = herní log k hlášení. Sem se zapisuje až HOTOVÝ bug – dostane
-  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 85
+  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 87
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -101,18 +101,9 @@ Q — boti a server              24, 46, 53   HOTOVO
 TŘETÍ VLNA (hlášení z 18.–28. 10.) — čísla dostanou až hotové, tady jen plán a příčiny
 
 R — rychlé opravy              80, 81, 82, 83, 84   HOTOVO
-S — animace karet do cizí ruky a balíčky po Hokynářství
-      - 2026-10-25T05-38-40-408Z_game2 (Dostavník/WF u SOUPEŘE: poslední karta až po
-        kartě Divokého západu) – staging z bugů 67/70 dostává jen majitel
-        (server/handlers.game.js ~154: ostatním jde jen { type:'draw', playerIdx }),
-        klient staguje jen pro myIndex (net/handlers.js case 'draw'). Ostatním poslat
-        počet karet (stageHandLen, jen když se čeká na odkrytí) a při dosednutí doplnit
-        placeholdery; pod Sacagaway/debug skutečné stageCards.
-      - 2026-10-24T07-27-12-596Z_game1 (bot hraje po Hokynářství moc brzy) – bot po
-        zavření obchodu nečeká na animatePileLift(0) (320 ms, game.js); a cíl letu do
-        odhozu se bere při startu (discardTopPos → _pileTopY s App.storePileLiftY), takže
-        to potká i lidi. Cíl brát z lift, KAM balíčky míří, + držet boty
-        (room._storeBlockUntil v store_pick, server/bots.js).
+S — animace karet do cizí ruky a balíčky po Hokynářství   85, 86   HOTOVO
+      server/handlers.game.js, net/handlers.js, game.js, server/anim.js, server/bots.js
+      (+ state.js u 86 – App.storePileLiftTo)
 T — Zlatá horečka              view/screens.js, view/board.js, core/selection.js,
                                net/handlers.js, server/anim.js, logic/combat.js
       - 2026-10-18T07-07-59-834Z_game1 (Pivo za valoun tlačítkem u karty, ne v obchodě) –
@@ -136,6 +127,9 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 86 když bot zahraje hokynářství, dej mu tam chvíli pauzu, aby mohl hrát další kartu až balíček z pozice nahoře se dostane zase dolů (takhle jeho zahraná karta letí nahoru a mezitím jí balíček ujede) [hlášení 2026-10-24T07-27-12-596Z_game1] → oprava: 0013e22 (cíl letu do odhozu se bral při startu, tedy nahoře – teď discardTopPos míří tam, kam balíčky jedou (App.storePileLiftTo), takže se to netýká ani lidí; karty startující z odhozu berou dál místo, kde hromádka je. Boty k tomu drží room._storeBlockUntil ze store_pick: dolet vybrané karty, případné míchání a spuštění balíčků)
+- 85 líznutí u dostavníku/wf je stále špatně, když si líže někdo jiný než já – poslední karta se mu v ruce objeví až po odhalení karty Divokého západu [hlášení 2026-10-25T05-38-40-408Z_game2] → oprava: 92a1829 (staging z bugů 67/70 dostával jen majitel. Ostatní teď k poslednímu líznutí dostanou stageHandLen – počet karet v ruce, ten je veřejný – a klient mu při dosednutí doplní placeholdery; do odkryté ruky (Sacagaway, debug, divák hry botů) skutečné stageCards)
 
 - 84 pokud na mě hráč dá jinou kartu než bang jako bang během zúčtování, ať to v tom štítku je jasné co se děje, text "Saloon od hráče XY" není úplně vypovídající, takže třeba Saloon jako Bang! od XY - jinak tam je ještě chyba, že saloon se píše jako "Saloon" ne jako "Salón" [hlášení 2026-10-25T05-55-22-026Z_game2] → oprava: 1c1c7e2 (playBang dává do sourceCardName „<karta> jako BANG!" u každé karty, která kartou Bang! není – Zúčtování, Calamity Janet, Lemat), 551e57b (karta se jmenuje „Saloon" jako na artu – v datech byla „Salón"; vnitřní typ 'Salon' zůstává)
 - 83 když má někdo vyloženého ducha, jeho postava se bude zobrazovat neprůhledně (absolutně nic tam není vidět) [hlášení 2026-10-28T06-21-24-778Z_game1] → oprava: 502a763 (portrét Ducha byl na 55 % průhlednosti a na nule životů leží přesně na kartě životů – prosvítaly náboje. Kreslí se teď jako hrající, Ducha ukazuje karta v pásu)
