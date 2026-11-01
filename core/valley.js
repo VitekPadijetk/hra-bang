@@ -236,6 +236,17 @@ function vosRoundPickCount(kind, n) {
     return 0;
 }
 
+// Klik na kartu v kolečku voleb nebo ve výběru z Pokeru (klient). Druhý klik označení
+// zruší; když by výběr přerostl strop `cap`, vypadne NEJSTARŠÍ označená karta – u Pokeru
+// (strop 1) se tak výběr jen přesune na novou kartu. Pořadí `ids` = pořadí označování.
+function vosToggleCapped(ids, id, cap) {
+    const prev = ids || [];
+    const list = prev.filter(x => x !== id);
+    if (list.length !== prev.length || !(cap > 0)) return list;
+    list.push(id);
+    return list.slice(Math.max(0, list.length - cap));
+}
+
 // Je `cardIds` platná volba hráče `idx` v právě běžícím kolečku? Jediný zdroj pravdy pro
 // server (vosPick), klienta (kdy se rozsvítí potvrzovací tlačítko) i bota.
 function vosRoundPickOk(state, idx, cardIds) {
@@ -253,11 +264,14 @@ function vosRoundPickOk(state, idx, cardIds) {
     return cards.length === vosRoundPickCount(r.kind, hand.length);
 }
 
+// Kolik vyložených karet si hráč Pokeru smí vzít.
+const POKER_TAKE_MAX = 2;
+
 // Poker – výběr z vyložených karet: až 2 RŮZNÉ karty z `pool` (i žádná).
 function pokerTakeOk(state, idx, cardIds) {
     const r = state && state.pendingVosRound;
     if (!r || r.kind !== 'POKER' || !r.pool || !vosRoundWaitsFor(state, idx)) return false;
-    if (!Array.isArray(cardIds) || cardIds.length > 2) return false;
+    if (!Array.isArray(cardIds) || cardIds.length > POKER_TAKE_MAX) return false;
     if (new Set(cardIds).size !== cardIds.length) return false;
     return cardIds.every(id => r.pool.some(e => e && e.card && e.card.id === id));
 }
@@ -457,7 +471,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        vosUnavoidable, lemonadeEligible,
                        fanningSeconds, fanningTargets, evelynTargets, evelynOffer,
                        VOS_ROUND_PHASES, vosRoundPhase, vosRoundWaiting, vosRoundWaitsFor, vosRoundPickCount,
-                       vosRoundPickOk, pokerTakeOk, pokerHasAce,
+                       vosRoundPickOk, vosToggleCapped, POKER_TAKE_MAX, pokerTakeOk, pokerHasAce,
                        evadeOptions, vosEvadable, escapeRespondOk,
                        saveCandidates, saveEligible, saveRewardHandCount, henryFires };
 }

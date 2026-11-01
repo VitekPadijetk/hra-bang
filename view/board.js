@@ -2726,9 +2726,14 @@ function drawMyArea(ctx) {
                             return;
                         case 'VOS_ROUND_TOGGLE':
                             // Údolí stínů – kolečko voleb: jen označit/odznačit, odesílá
-                            // tlačítko (viz drawVosRoundButtons).
-                            if (App.vosSel.has(intent.cardId)) App.vosSel.delete(intent.cardId);
-                            else App.vosSel.add(intent.cardId);
+                            // tlačítko (viz drawVosRoundButtons). Víc karet, než se vybírá,
+                            // označit nejde – nová vytlačí nejstarší (Poker = jen 1, bug 82).
+                            {
+                                const _cap = vosRoundPickCount(state.pendingVosRound?.kind, (me.hand || []).length);
+                                const _next = vosToggleCapped([...App.vosSel], intent.cardId, _cap);
+                                App.vosSel.clear();
+                                _next.forEach(id => App.vosSel.add(id));
+                            }
                             renderUI();
                             return;
                         case 'RANCH_TOGGLE':
@@ -4125,8 +4130,10 @@ function drawPhaseOverlays(ctx) {
                 spr.setInteractive({ useHandCursor: true });
                 spr.on('pointerdown', () => {
                     if (App.blockInput) return;
-                    if (App.vosTakeSel.has(e.card.id)) App.vosTakeSel.delete(e.card.id);
-                    else if (App.vosTakeSel.size < 2) App.vosTakeSel.add(e.card.id);
+                    // Stejné pravidlo jako výběr z ruky v kolečku: třetí karta vytlačí nejstarší.
+                    const _next = vosToggleCapped([...App.vosTakeSel], e.card.id, POKER_TAKE_MAX);
+                    App.vosTakeSel.clear();
+                    _next.forEach(id => App.vosTakeSel.add(id));
                     renderUI();
                 });
             }

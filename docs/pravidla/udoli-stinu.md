@@ -124,6 +124,9 @@ se čeká na víc hráčů najednou, proto **`pendingActors`/`waitingStatusFor`*
 za vlastní místo), `decideBotAction` i jantarové zvýraznění na desce. U Tornáda a Pokeru
 se volba jen zapíše do `picks` (redakce ji nechává jen vlastníkovi) a karty se hýbou až po
 posledním. Platnou volbu říká `vosRoundPickOk`/`pokerTakeOk` (core/valley.js).
+Klient víc karet, než se vybírá, označit nedovolí: `vosToggleCapped` (strop
+`vosRoundPickCount`, u výběru z Pokeru `POKER_TAKE_MAX`) – nová karta vytlačí nejstarší
+označenou, u Pokeru se tedy výběr jen přesune (bug 82).
 
 **Dokud kolečko běží, `_processSpecialQueue` nic nespouští (vrací `true`) a Roubík ho
 nepřeruší** – Suzy Lafayette si lízne až po přesunu. Karta jde z ruky ven dřív, než se

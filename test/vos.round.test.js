@@ -359,3 +359,19 @@ test('bot: Poker – vybere platné karty a pak si vezme nejvýš 2', () => {
     assert.ok(V.pokerTakeOk(g, 0, a.payload.cardIds));
     assert.equal(a.payload.cardIds.length, 2);
 });
+
+// Bug 82: výběr v kolečku nesmí přerůst počet vybíraných karet – nová karta vytlačí
+// nejstarší označenou (Poker = 1, Tornádo/Divoká banda = 2, výběr z Pokeru = 2).
+test('vosToggleCapped: Poker (strop 1) – druhá karta jen přesune výběr', () => {
+    assert.deepEqual(V.vosToggleCapped([], 5, 1), [5]);
+    assert.deepEqual(V.vosToggleCapped([5], 7, 1), [7]);
+    assert.deepEqual(V.vosToggleCapped([7], 7, 1), []);
+});
+
+test('vosToggleCapped: strop 2 – třetí karta vytlačí nejstarší, druhý klik odznačí', () => {
+    assert.deepEqual(V.vosToggleCapped([1], 2, 2), [1, 2]);
+    assert.deepEqual(V.vosToggleCapped([1, 2], 3, 2), [2, 3]);
+    assert.deepEqual(V.vosToggleCapped([2, 3], 2, 2), [3]);
+    assert.deepEqual(V.vosToggleCapped([], 4, 0), []);        // prázdná ruka – nic
+    assert.deepEqual(V.vosToggleCapped([], 4, V.POKER_TAKE_MAX), [4]);
+});
