@@ -619,6 +619,9 @@ function renderGearShopOverlay() {
         img.on('pointerdown', () => {
             if (!ok || modes) return;
             socket.emit('gear_buy', { rowIdx: i });
+            // Okno se zavře: koupená karta vyletí z balíčku vybavení na desce na místo
+            // před hráčem (gear_acquire) a okno v hloubce GEAR_DEPTH by ten let zakrylo.
+            App.gearShop = false;
             App.blockInput = true;
             renderUI();
         });
@@ -639,6 +642,7 @@ function renderGearShopOverlay() {
                     onClick: () => {
                         if (!mOk || App.blockInput) return;
                         socket.emit('gear_buy', { rowIdx: i, mode });
+                        App.gearShop = false;   // let karty z balíčku (viz klik na kartu výš)
                         App.blockInput = true;
                         renderUI();
                     },

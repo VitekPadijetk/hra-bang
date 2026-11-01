@@ -1397,11 +1397,13 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         withRoom((room, p, gs) => {
             const idx = gs.currentPlayerIndex;
             const rowIdx = d && d.rowIdx;
-            // Animace letu karty z obchodu zatím žádná (plán §10) – nákup je vidět ze stavu.
             // `mode` = jak se zahraje Láhev / Komplic (Panika!/Pivo/BANG!, Hokynářství/
             // Duel/Cat Balou); u ostatních karet se ignoruje.
             gs._gearRumReveal = null;
             const bought = gs.gearBuy(idx, rowIdx, { mode: d && d.mode });
+            // Karta vyletí z balíčku vybavení na místo před hráčem (hnědá pak pod
+            // balíček) – PŘED cinematikou efektu (Rum), ať jde v pořadí, jak se to stalo.
+            if (bought) ctx.emitGearAcquire?.(room, gs, idx, bought);
             // Rum: otočené karty se ukážou celému stolu (jsou veřejné – leží v odhozu).
             // Stav dorazí až za cinematikou (fronta animací), boti o stejnou dobu počkají.
             const rum = gs._gearRumReveal;
@@ -1432,7 +1434,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const idx = pg?.playerIdx;
             if (idx === undefined || idx === null) return;
             const targetIdx = d && d.targetIdx;
+            const wanted = pg.card || null;   // Wanted: karta teprve teď dosedne před cíl
             const ok = gs.resolveGearTarget(idx, targetIdx);
+            if (ok && wanted) ctx.emitGearAcquire?.(room, gs, idx, wanted);
             if (ok && targetIdx != null && targetIdx !== idx) {
                 ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx,
                                              kind: (pg.mode || pg.card) ? 'hostile' : 'support' });
@@ -1533,12 +1537,14 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    // Josh McCloud: 2 valouny za vrchní kartu balíčku vybavení. Animace letu karty
-    // z balíčku zatím žádná (stejně jako u nákupu z obchodu, plán §10).
+    // Josh McCloud: 2 valouny za vrchní kartu balíčku vybavení. Letí stejně jako
+    // koupená karta (gear_acquire) – i on ji bere z vršku balíčku.
     on('josh_mccloud', () => {
         withRoom((room, p, gs) => {
             gs._gearRumReveal = null;
-            gs.useJoshMcCloud(gs.currentPlayerIndex);
+            const joshIdx = gs.currentPlayerIndex;
+            const drawn = gs.useJoshMcCloud(joshIdx);
+            if (drawn) ctx.emitGearAcquire?.(room, gs, joshIdx, drawn);
             // Lízl Rum: otočené karty se ukážou celému stolu (jsou veřejné) – stejně
             // jako při nákupu, viz gear_buy.
             const rum = gs._gearRumReveal;

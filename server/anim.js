@@ -7,6 +7,7 @@ const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs,
         seatSwapMs, greygoryDealMs } = require('../core/wwsAnim.js');
 const { vosAnimMs } = require('../core/vosAnim.js');
+const { gearAcquireMs } = require('../core/goldRushAnim.js');
 const { eventActive } = require('../core/highNoon.js');
 const { hasAbility, isInPlay } = require('../core/distance.js');
 
@@ -599,6 +600,27 @@ module.exports = function installAnimService(ctx) {
             + (gear.length ? penaltyDiscardMs(gear.length) : 0));
     }
 
+    // ── Zlatá horečka: koupená karta vyletí z balíčku vybavení ────────────────
+    // Nákup (gear_buy), líznutí Joshe McClouda i vyložení Wanted na cíl (gear_target).
+    // Kam karta doletí, se pozná až z výsledku pravidel: leží-li před někým, letí
+    // tam ('gear'); jinak se použila (hnědá) nebo ji Josh odhodil (černá, kterou už má)
+    // a jde pod balíček ('under'). Wanted, který teprve čeká na cíl (GEAR_TARGET),
+    // nikde neleží – poletí až s výběrem cíle. Emituje se HNED po akci, ať let předběhne
+    // cinematiky efektu karty (Rum, Hokynářství).
+    function emitGearAcquire(room, gs, playerIdx, card) {
+        if (!card || !gs) return;
+        if (gs.pendingGearTarget?.card?.id === card.id) return;
+        const owner = (gs.players || []).findIndex(p => (p?.gear || []).some(c => c.id === card.id));
+        const to = owner === -1 ? 'under' : 'gear';
+        emitAnim(room, {
+            type: 'gear_acquire', playerIdx, to,
+            card: { id: card.id, effect: card.effect },
+            toIdx: owner === -1 ? playerIdx : owner,
+            slot: owner === -1 ? null : gs.players[owner].gear.findIndex(c => c.id === card.id),
+        });
+        room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + gearAcquireMs(to));
+    }
+
     // ── Johnny Kisch: stejnojmenné karty odcházejí ze stolu do odhozu ────────
     // Pravidla jen označí, co se odhodilo (gs._johnnyPurgeAnim); emit řeší tenhle hák,
     // protože karta může na stůl přijít třemi cestami (zbraň, modrá/zelená, Vězení).
@@ -768,7 +790,7 @@ module.exports = function installAnimService(ctx) {
         flushVosAnim(room);
     }
 
-    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
+    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, emitGearAcquire,
                          handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
                          storeCloseUntil, applyGagPenalty,
                          revealCinematicMs, confirmRolePeek,

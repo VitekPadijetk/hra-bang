@@ -138,6 +138,42 @@ test('odchod ducha / stínu: vybavení jde do animace odchodu (beforeBroadcast)'
     assert.ok(anims.some(a => a.type === 'ragtime_steal' && a.attackerIdx === 0));
 });
 
+// Hlášení 2026-10-25T05-51-37-094Z_game2: koupená karta vyletí z balíčku vybavení a se
+// přetočením dosedne na místo před hráčem. Kam, se pozná z výsledku pravidel.
+test('emitGearAcquire: černé vybavení letí před majitele, hnědé pod balíček, Wanted čeká na cíl', () => {
+    const { io, emits } = mkIo();
+    const ctx = { io, broadcastRoomDelayed() {} };
+    installAnimService(ctx);
+    const { gearAcquireMs } = require('../core/goldRushAnim.js');
+    const black = { id: 6000, effect: 'ZH_PODKOVA' };
+    const brown = { id: 6001, effect: 'ZH_PANAK' };
+    const wanted = { id: 6002, effect: 'ZH_WANTED' };
+    const gs = { players: [{ gear: [{ id: 5999 }, black] }, { gear: [] }] };
+    const room = { id: 'g1', players: [] };
+    const anims = () => emits.filter(e => e.ev === 'card_animation' && e.scope === 'to:g1_spectators')
+        .map(e => e.payload);
+
+    const t0 = Date.now();
+    ctx.emitGearAcquire(room, gs, 0, black);
+    assert.deepEqual(anims()[0], { type: 'gear_acquire', playerIdx: 0, to: 'gear',
+        card: { id: 6000, effect: 'ZH_PODKOVA' }, toIdx: 0, slot: 1 });
+    assert.ok(room._revealBlockUntil >= t0 + gearAcquireMs('gear'), 'boti počkají na dolet');
+
+    ctx.emitGearAcquire(room, gs, 0, brown);
+    assert.equal(anims()[1].to, 'under');
+    assert.equal(anims()[1].toIdx, 0);
+
+    // Wanted s vybraným cílem (leží před hráčem 1) letí k němu.
+    gs.pendingGearTarget = { playerIdx: 0, card: wanted };
+    ctx.emitGearAcquire(room, gs, 0, wanted);
+    assert.equal(anims().length, 2, 'Wanted čekající na cíl ještě nikam neletí');
+    gs.pendingGearTarget = null;
+    gs.players[1].gear.push(wanted);
+    ctx.emitGearAcquire(room, gs, 0, wanted);
+    assert.equal(anims()[2].toIdx, 1);
+    assert.equal(anims()[2].to, 'gear');
+});
+
 test('handleAutoEndTurn zavolá nextTurn jen když je pending a není vítěz', () => {
     const { io } = mkIo();
     const ctx = { io, broadcastRoomDelayed() {} };

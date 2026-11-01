@@ -828,18 +828,24 @@ function _deathFlyToDiscard(it, o) {
 // rub (drawGearPile), takže karta doletí lícem nahoru k balíčku ze strany, odkud jde,
 // a zasune se POD něj. „Pod" dělá dočasný kryt: kopie vrchního rubu nad letící kartou,
 // na pixel tam, kde leží skutečný (ten je v hloubce 0, letící karta v 800).
-// Délka (flyMs + slideMs) se vejde do rozestupu cinematiky vyřazení – vybavení v ní
-// letí jako první, takže nic nepřečnívá.
-const GEAR_UNDER = { flyMs: 300, slideMs: 200 };
+// Délka (GEAR_ANIM v core/goldRushAnim.js) se vejde do rozestupu cinematiky vyřazení –
+// vybavení v ní letí jako první, takže nic nepřečnívá. Týmž pohybem odchází pod balíček
+// i použitá hnědá karta po nákupu (playGearAcquire).
+function _gearPileTopY(slot) {
+    // Vrchní rub hromádky leží o kousek výš než střed slotu (drawGearPile, 0.25 px/kartu).
+    const left = (state?.gearDeck?.length || 0) + (state?.gearPile?.length || 0);
+    return slot.y - (Math.max(1, Math.min(left, 40)) - 1) * 0.25 / 2;
+}
+function _gearFaceTex(effect) {
+    return gameScene && gameScene.textures.exists('zh_' + effect) ? 'zh_' + effect : gearBackTex();
+}
 function _flyGearUnderDeck(it, o, onDone) {
     const done = () => { if (onDone) onDone(); };
     if (!gameScene) { done(); return; }
     const slot = gearDeckSlot();
     const end = currentLayout().scaleDeck;
-    const tex = (gameScene.textures.exists('zh_' + it.effect) ? 'zh_' + it.effect : gearBackTex());
-    // Vrchní rub hromádky leží o kousek výš než střed slotu (drawGearPile, 0.25 px/kartu).
-    const left = (state?.gearDeck?.length || 0) + (state?.gearPile?.length || 0);
-    const topY = slot.y - (Math.max(1, Math.min(left, 40)) - 1) * 0.25 / 2;
+    const tex = _gearFaceTex(it.effect);
+    const topY = _gearPileTopY(slot);
     const dx = it.from.x - slot.x, dy = it.from.y - topY;
     const len = Math.hypot(dx, dy) || 1;
     const reach = 500 * end * 0.85;
@@ -849,12 +855,12 @@ function _flyGearUnderDeck(it, o, onDone) {
         .setScale(o.sc || end).setAngle(startAngle).setDepth(800).setAlpha(0.97);
     gameScene.tweens.add({
         targets: spr, x: near.x, y: near.y, scaleX: end, scaleY: end,
-        angle: nearestAngle360(startAngle, 0), duration: GEAR_UNDER.flyMs, ease: 'Power2',
+        angle: nearestAngle360(startAngle, 0), duration: GEAR_ANIM.underFlyMs, ease: 'Power2',
         onComplete: () => {
             if (!spr.active || !gameScene) { done(); return; }
             const cover = gameScene.add.image(slot.x, topY, gearBackTex()).setScale(end).setDepth(801);
             gameScene.tweens.add({
-                targets: spr, x: slot.x, y: topY, duration: GEAR_UNDER.slideMs, ease: 'Sine.easeInOut',
+                targets: spr, x: slot.x, y: topY, duration: GEAR_ANIM.underSlideMs, ease: 'Sine.easeInOut',
                 onComplete: () => { if (spr.active) spr.destroy(); if (cover.active) cover.destroy(); done(); },
             });
         },
@@ -3054,6 +3060,10 @@ function _playCardAnim(data) {
         case 'gear_rum':
             playGearRum(data);
             break;
+        // Zlatá horečka – koupená (nebo Joshem líznutá) karta vyletí z balíčku vybavení.
+        case 'gear_acquire':
+            playGearAcquire(data);
+            break;
         // Údolí stínů – kolečko voleb (core/vosAnim.js).
         case 'tornado_pass':
             playTornadoPass(data, { sideAngle, sideScale });
@@ -3164,6 +3174,50 @@ function startLawReveal(data) {
 // Stav (karty v odhozu, doléčené životy) dorazí až za cinematikou – fronta animací ho
 // drží. Sprity v odhozu proto zaniknou přesně na jeho příchodu (onNextState), ne podle
 // toho, jestli karta v odhozu je: kartu, kterou si vzal John Pain, tam stav mít nebude.
+// ── Zlatá horečka: koupená karta vyletí z balíčku vybavení ───────────────────
+// Na stole je z obchodu vidět jen rub balíčku (nabídka je v překryvném okně), takže
+// koupená karta – i ta, kterou si lízl Josh McCloud – vyletí z něj, cestou se překlopí
+// rub→líc a dosedne na místo před hráčem: na konec jeho pásu vybavení, u Wanted před
+// vybraný cíl. Objeví se tam až s příchodem stavu (letící sprite na něj počká).
+// Hnědá karta (`to: 'under'`) se hned použije: chvíli leží u kupujícího a pak se
+// zasune pod balíček – stejně jako vybavení vyřazeného. Časování: core/goldRushAnim.js.
+function playGearAcquire(data) {
+    if (!gameScene || !state) return;
+    const card = data.card || {};
+    const under = data.to === 'under';
+    const toIdx = under ? data.playerIdx : data.toIdx;
+    if (!state.players?.[toIdx]) return;
+    const pile = gearDeckSlot();
+    const fromY = _gearPileTopY(pile);
+    const k = !under && data.slot != null ? data.slot : (state.players[toIdx].gear || []).length;
+    const dest = getGearCardPos(toIdx, k);
+    const ang = _renderSideAngle(toIdx), sc = _renderSideScale(toIdx);
+    const tex = _gearFaceTex(card.effect);
+    const geo = { flip: true, startAngle: 0, endAngle: ang, startScale: currentLayout().scaleDeck,
+                  endScale: sc, duration: GEAR_ANIM.buyMs };
+    if (!under) {
+        animateCardFlip(pile.x, fromY, dest.x, dest.y, gearBackTex(), tex, {
+            ...geo,
+            holdUntil: () => (state?.players?.[toIdx]?.gear || []).some(c => c.id === card.id),
+        });
+        return;
+    }
+    // Hnědá: po dosednutí ji drží statický sprite (letící zaniká hned v onComplete),
+    // pak odjede pod balíček.
+    animateCardFlip(pile.x, fromY, dest.x, dest.y, gearBackTex(), tex, {
+        ...geo,
+        onComplete: () => {
+            if (!gameScene) return;
+            const still = gameScene.add.image(dest.x, dest.y, tex).setScale(sc)
+                .setAngle(nearestAngle360(0, ang)).setDepth(800).setAlpha(0.97);
+            gameScene.time.delayedCall(GEAR_ANIM.showMs, () => {
+                if (still.active) still.destroy();
+                _flyGearUnderDeck({ effect: card.effect, from: dest }, { ang: nearestAngle360(0, ang), sc });
+            });
+        },
+    });
+}
+
 function playGearRum(data) {
     if (!gameScene || !state) return;
     const D = RUM_ANIM;
@@ -3597,6 +3651,8 @@ function _animDurationMs(data) {
     if (data.type === 'ranch_discard') return ranchDiscardMs((data.cardIds || []).length);
     // Zlatá horečka – Rum: řada otočených karet uprostřed stolu, pak do odhozu.
     if (data.type === 'gear_rum') return rumRevealMs((data.cards || []).length, data.shuffle);
+    // Zlatá horečka – koupená karta z balíčku vybavení (hnědá pak ještě pod balíček).
+    if (data.type === 'gear_acquire') return gearAcquireMs(data.to);
     // Údolí stínů – Tornádo (předání karet), Poker (odhalení vyložených karet, výběr).
     // Stejný vzorec drží boty na serveru (flushVosAnim v server/anim.js).
     if (data.type === 'tornado_pass' || data.type === 'poker_reveal' || data.type === 'poker_take') {

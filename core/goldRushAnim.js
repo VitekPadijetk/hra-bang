@@ -1,6 +1,6 @@
 // core/goldRushAnim.js — časování cinematik rozšíření Zlatá horečka.
 // Jediný zdroj pravdy: klient je podle těchhle čísel přehrává (net/handlers.js), server
-// o stejnou dobu drží boty (room._revealBlockUntil v server/handlers.game.js) a fronta
+// o stejnou dobu drží boty (room._revealBlockUntil v server/handlers.game.js a anim.js) a fronta
 // animací si podle nich spočítá, jak dlouho zdržet stav (_animDurationMs v net/handlers.js).
 // Izomorfní: globál v prohlížeči, require v Node. Vzor: core/fistfulAnim.js.
 
@@ -75,6 +75,34 @@ function rumSlotX(i, n) {
     return 960 + (i - (Math.max(1, n) - 1) / 2) * RUM_ANIM.stepX;
 }
 
+// ── Karta vybavení: z balíčku vybavení a zpátky pod něj ──────────────────────
+// Na stole je z obchodu vidět jen rub balíčku vybavení (nabídka je v překryvném okně),
+// takže koupená karta (i líznutá Joshem McCloudem) vyletí z něj, cestou se překlopí
+// rub→líc a dosedne na místo před hráčem (`gear_acquire`, net/handlers.js). Hnědá se
+// hned použije: chvíli leží u kupujícího a pak se zasune pod balíček – stejným pohybem,
+// jakým tam odchází vybavení vyřazeného hráče (`_flyGearUnderDeck`).
+// Server o stejnou dobu drží boty (room._revealBlockUntil, server/anim.js).
+const GEAR_ANIM = {
+    buyMs:        450,   // balíček → místo před hráčem (uvnitř překlopení rub→líc)
+    showMs:       350,   // použitá (hnědá) karta chvíli leží u kupujícího
+    underFlyMs:   300,   // let k balíčku vybavení
+    underSlideMs: 200,   // zasunutí pod balíček
+    bufMs:         60,   // rezerva, ať stav nedorazí přesně na hranu dosednutí
+};
+
+// Let pod balíček vybavení (vyřazení, odchod ducha / stínu, použitá hnědá karta).
+function gearUnderMs() {
+    return GEAR_ANIM.underFlyMs + GEAR_ANIM.underSlideMs;
+}
+
+// Celý let koupené karty. `to` = 'gear' (zůstane ležet před hráčem) | 'under' (jde pod
+// balíček – hnědý rám, nebo černý, který už Josh McCloud má).
+function gearAcquireMs(to) {
+    const D = GEAR_ANIM;
+    return D.buyMs + (to === 'under' ? D.showMs + gearUnderMs() : 0) + D.bufMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { RUM_ANIM, rumLandStartMs, rumRevealMs, rumSlotX, rumFlipAtMs, rumShuffleAtMs };
+    module.exports = { RUM_ANIM, rumLandStartMs, rumRevealMs, rumSlotX, rumFlipAtMs, rumShuffleAtMs,
+                       GEAR_ANIM, gearUnderMs, gearAcquireMs };
 }
