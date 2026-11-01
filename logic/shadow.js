@@ -89,7 +89,7 @@ const ShadowMixin = {
             p.board = [];
             p.weapon = new Card(-1, "Colt .45", CardType.WEAPON, null, null, { range: 1 });
         }
-        this._gearDropAll(idx);
+        this._gearDropAll(idx, { leaveAnim: true });
         p.health = 0;
     },
 

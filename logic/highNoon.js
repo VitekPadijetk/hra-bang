@@ -383,7 +383,7 @@ const HighNoonMixin = {
         // Zlatá horečka: co si duch za svůj tah koupil, leží před ním jako před každým
         // hráčem – a odchodem ze hry jde pod balíček vybavení stejně jako při vyřazení
         // (Vulture Sam ho nedostává). Bez toho by zůstalo ležet před mrtvým napořád.
-        this._gearDropAll(idx);
+        this._gearDropAll(idx, { leaveAnim: true });
 
         this.players.forEach((p, i) => {
             if (i === idx || p.health <= 0) return;

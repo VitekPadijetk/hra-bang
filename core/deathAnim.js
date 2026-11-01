@@ -30,7 +30,8 @@ const DEATH_ANIM = {
 };
 
 // Offsety fází od začátku sekvence (ms). `cardCount` = počet položek odhozu včetně
-// zbraně/Coltu (viz _deathCardSeq v net/handlers.js): blue + 1 + hand.
+// zbraně/Coltu (viz _deathCardSeq v net/handlers.js): blue + 1 + hand + gear (vybavení
+// Zlaté horečky letí pod balíček vybavení, ale ve stejném rozestupu jako ostatní karty).
 // `skipReveal` = kroky 5–9 (odhalení role) se vynechají. Používá se u ŠERIFA: jeho roli
 // zná od začátku celý stůl, takže není co odhalovat – jen se počká na odhození karet
 // a hra skončí. Klient i server musí počítat stejně (server o tu dobu drží boty).
@@ -67,7 +68,8 @@ function deathRevealMs(skipReveal = false) {
 // Šerif zabil pomocníka → přijde o všechny karty. Odhazování vypadá stejně jako
 // při vyřazení (karty odlétají po jedné do odhozu), ale hráč žije dál: žádný pokles
 // životů, žádné odhalení role a Colt .45 mu zůstává. `cardCount` = modré + zbraň
-// (jen skutečná) + ruka. Klient i server počítají stejně.
+// (jen skutečná) + ruka (+ vybavení – stejnou animací odchází duch / stín). Klient
+// i server počítají stejně.
 function penaltyDiscardMs(cardCount) {
     const D = DEATH_ANIM;
     const n = Math.max(1, cardCount | 0);

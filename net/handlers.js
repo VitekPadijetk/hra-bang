@@ -735,9 +735,16 @@ function _renderHandScale(playerIdx) {
         playerIdx === (myIndex === null ? 0 : myIndex));
 }
 
-function _deathCardSeq(pid, blue, weapon, hand) {
+function _deathCardSeq(pid, blue, weapon, hand, gear = []) {
     const hasW = !!weapon;
     const seq = [];
+    // Zlatá horečka: vybavení leží na KONCI pásu (za modrými a dvojicí Greygoryho), takže
+    // odchází první – odzadu jako modré. Neletí do odhozu, ale pod balíček vybavení
+    // (_flyGearUnderDeck). Skrývá se vlastním klíčem, ID vybavení s hracími kartami nesdílí.
+    for (let g = gear.length - 1; g >= 0; g--) {
+        seq.push({ kind: 'gear', id: gear[g].id, effect: gear[g].effect, hideKey: 'gear:' + gear[g].id,
+                   from: getGearCardPos(pid, g) });
+    }
     // Slot 0 na MÉM stole drží zbraň, a když žádnou nemám, výchozí Colt .45 (drawMyArea);
     // soupeři Colt nekreslí, takže bez zbraně jim modré začínají hned na slotu 0.
     const _selfView = pid === (myIndex === null ? 0 : myIndex);
@@ -758,7 +765,9 @@ function _deathCardSeq(pid, blue, weapon, hand) {
 // se skrývají podle ID (stejná cesta jako u Paniky/Cat Balou), karty z ruky podle
 // SLOTU (ruby soupeřů žádné ID nemají). Colt .45 nemá ID → vlastní klíč '_colt'.
 function _deathHideSource(pid, it) {
-    if (it.kind === 'hand') {
+    if (it.kind === 'gear') {
+        App.stealHideIds.add(it.hideKey);
+    } else if (it.kind === 'hand') {
         (App.deathHandHide[pid] || (App.deathHandHide[pid] = new Set())).add(it.slot);
     } else if (it.kind === 'colt') {
         // Colt .45 kreslí jen drawMyArea, tedy VÝHRADNĚ na mém místě. `stealHideIds` je
@@ -776,7 +785,7 @@ function _deathSeqCleanup(pid, seq) {
     delete App.deathSeq[pid];
     delete App.deathHandHide[pid];
     App.stealHideIds.delete('_colt');
-    seq.forEach(it => { if (it.id != null) App.stealHideIds.delete(it.id); });
+    seq.forEach(it => { if (it.id != null) App.stealHideIds.delete(it.hideKey || it.id); });
     if (gameScene) renderUI();
 }
 
@@ -812,6 +821,44 @@ function _deathFlyToDiscard(it, o) {
         animateCardFlip(it.from.x, it.from.y, discard.x, discard.y, 'card_back', getCardTex(it.id),
             { flip: true, startAngle: ang, endAngle: 0, startScale: sc, endScale: 0.3, duration: 400, onComplete: reveal, holdUntil: hold });
     }
+}
+
+// ── Zlatá horečka: karta vybavení odchází pod balíček vybavení ───────────────
+// „…se odhodí na spodek balíčku vybavení lícem vzhůru." Z hromádky je na stole vidět jen
+// rub (drawGearPile), takže karta doletí lícem nahoru k balíčku ze strany, odkud jde,
+// a zasune se POD něj. „Pod" dělá dočasný kryt: kopie vrchního rubu nad letící kartou,
+// na pixel tam, kde leží skutečný (ten je v hloubce 0, letící karta v 800).
+// Délka (flyMs + slideMs) se vejde do rozestupu cinematiky vyřazení – vybavení v ní
+// letí jako první, takže nic nepřečnívá.
+const GEAR_UNDER = { flyMs: 300, slideMs: 200 };
+function _flyGearUnderDeck(it, o, onDone) {
+    const done = () => { if (onDone) onDone(); };
+    if (!gameScene) { done(); return; }
+    const slot = gearDeckSlot();
+    const end = currentLayout().scaleDeck;
+    const tex = (gameScene.textures.exists('zh_' + it.effect) ? 'zh_' + it.effect : gearBackTex());
+    // Vrchní rub hromádky leží o kousek výš než střed slotu (drawGearPile, 0.25 px/kartu).
+    const left = (state?.gearDeck?.length || 0) + (state?.gearPile?.length || 0);
+    const topY = slot.y - (Math.max(1, Math.min(left, 40)) - 1) * 0.25 / 2;
+    const dx = it.from.x - slot.x, dy = it.from.y - topY;
+    const len = Math.hypot(dx, dy) || 1;
+    const reach = 500 * end * 0.85;
+    const near = { x: slot.x + dx / len * reach, y: topY + dy / len * reach };
+    const startAngle = o.ang || 0;
+    const spr = gameScene.add.image(it.from.x, it.from.y, tex)
+        .setScale(o.sc || end).setAngle(startAngle).setDepth(800).setAlpha(0.97);
+    gameScene.tweens.add({
+        targets: spr, x: near.x, y: near.y, scaleX: end, scaleY: end,
+        angle: nearestAngle360(startAngle, 0), duration: GEAR_UNDER.flyMs, ease: 'Power2',
+        onComplete: () => {
+            if (!spr.active || !gameScene) { done(); return; }
+            const cover = gameScene.add.image(slot.x, topY, gearBackTex()).setScale(end).setDepth(801);
+            gameScene.tweens.add({
+                targets: spr, x: slot.x, y: topY, duration: GEAR_UNDER.slideMs, ease: 'Sine.easeInOut',
+                onComplete: () => { if (spr.active) spr.destroy(); if (cover.active) cover.destroy(); done(); },
+            });
+        },
+    });
 }
 
 // Smrt s Vulture Samem → karty letí do JEHO ruky (ne do odhozu). Otáčení rub/líc
@@ -993,7 +1040,7 @@ function playDeathSequence(data) {
     const isMine = pid === myIndex;   // umírám já → odhalení role nevidím, jen čekám
 
     // Pozice/orientace zachyť TEĎ, dokud je stav ještě „živý" (viz komentář výše).
-    const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || []);
+    const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || [], data.gear || []);
     // Šerifovu roli zná celý stůl od začátku → neodhaluje se. Sekvence končí odhozením
     // karet (pak už jen doběhne hra). Ve hře pro 3 (Město duchů) leží lícem nahoru role
     // všech, takže se neodhaluje nikdo. Server počítá stejně (server/anim.js).
@@ -1005,7 +1052,7 @@ function playDeathSequence(data) {
         ? { pid, isMine, isVulture: data.toPlayerIdx === myIndex, vid: data.toPlayerIdx,
             ang: _renderSideAngle(pid), sc: _renderSideScale(pid), scHand: _renderHandScale(pid),
             baseLen: state?.players?.[data.toPlayerIdx]?.hand?.length ?? 0,
-            incoming: seq.filter(s => s.kind !== 'colt').length,
+            incoming: seq.filter(s => s.kind !== 'colt' && s.kind !== 'gear').length,
             holdTries: Math.ceil(T.total / 16) }
         : { isMine, ang: _renderSideAngle(pid), sc: _renderSideScale(pid),
             scHand: _renderHandScale(pid), discard: discardTopPos() };
@@ -1016,7 +1063,7 @@ function playDeathSequence(data) {
     App.deathSeq[pid] = 'dying';
     App.deathHandHide[pid] = new Set();
     if (isVulture) _vultureStageIncoming(pid, flyCtx, seq);
-    else seq.forEach(it => { if (it.id != null) App.deathDiscardHideIds.add(it.id); });
+    else seq.forEach(it => { if (it.id != null && it.kind !== 'gear') App.deathDiscardHideIds.add(it.id); });
 
     // 1) Postava klesne po kartě životů na nulu – stejný posun jako u každého zásahu.
     App.healthAnims[pid] = { fromHealth: Math.max(1, p.health) };
@@ -1030,7 +1077,7 @@ function playDeathSequence(data) {
     seq.forEach((it, k) => {
         // U Sama je slot ve vějíři daný POŘADÍM VE STAVU (flyCtx.slotOf), ne pořadím letu –
         // jinak by se ruka po příchodu stavu přeskládala (viz _vultureStageIncoming).
-        const myMoved = it.kind === 'colt' ? -1
+        const myMoved = (it.kind === 'colt' || it.kind === 'gear') ? -1
                       : (isVulture ? (flyCtx.slotOf?.[it.id] ?? moved++) : moved++);
         setTimeout(() => {
             if (!gameScene) return;
@@ -1038,6 +1085,8 @@ function playDeathSequence(data) {
             _deathHideSource(pid, it);
             renderUI();
             if (it.kind === 'colt') { if (isMine) _fadeOutColt(it.from); return; }
+            // Vybavení Vulture Sam nezískává – i u něj jde pod balíček vybavení.
+            if (it.kind === 'gear') { _flyGearUnderDeck(it, flyCtx); return; }
             if (isVulture) _deathFlyToVulture(it, flyCtx, myMoved);
             else _deathFlyToDiscard(it, flyCtx);
         }, T.cards + k * _DEATH_STAGGER);
@@ -1050,6 +1099,7 @@ function playDeathSequence(data) {
         if (!gameScene || !dp) return;
         dp.hand = [];
         dp.board = [];
+        dp.gear = [];
         dp.weapon = { id: -1, name: 'Colt .45', type: 'Zbraň', props: { range: 1 } };
         // Roli zapiš do stavu UŽ TEĎ (chodí v datech animace – ve stavu je do konce
         // cinematiky schovaná, viz redactState). Karta role se v téhle fázi ještě nekreslí
@@ -1121,6 +1171,7 @@ function playDeathRoleReveal(data) {
     App.blockInput = true;
     p.hand = [];
     p.board = [];
+    p.gear = [];
     p.weapon = { id: -1, name: 'Colt .45', type: 'Zbraň', props: { range: 1 } };
     if (data.role) p.role = data.role;   // viz playDeathSequence: karta role musí dosednout se SPRÁVNOU rolí
     App.deathSeq[pid] = 'settled';
@@ -1142,7 +1193,7 @@ function playSheriffPenaltyDiscard(data) {
     const pid = data.playerIdx;
     const p = state?.players?.[pid];
     if (!gameScene || !p) return;
-    const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || [])
+    const seq = _deathCardSeq(pid, data.blue || [], data.weapon || null, data.hand || [], data.gear || [])
         .filter(it => it.kind !== 'colt');
     if (!seq.length) return;
     const flyCtx = { isMine: pid === myIndex, ang: _renderSideAngle(pid),
@@ -1150,7 +1201,7 @@ function playSheriffPenaltyDiscard(data) {
 
     App.blockInput = true;
     App.deathHandHide[pid] = new Set();
-    seq.forEach(it => { if (it.id != null) App.deathDiscardHideIds.add(it.id); });
+    seq.forEach(it => { if (it.id != null && it.kind !== 'gear') App.deathDiscardHideIds.add(it.id); });
     renderUI();
 
     seq.forEach((it, k) => {
@@ -1158,7 +1209,9 @@ function playSheriffPenaltyDiscard(data) {
             if (!gameScene) return;
             _deathHideSource(pid, it);
             renderUI();
-            _deathFlyToDiscard(it, flyCtx);
+            // Zlatá horečka: vybavení odchodem ducha / stínu jde pod balíček vybavení.
+            if (it.kind === 'gear') _flyGearUnderDeck(it, flyCtx);
+            else _deathFlyToDiscard(it, flyCtx);
         }, DEATH_ANIM.pauseMs + k * _DEATH_STAGGER);
     });
 
@@ -1172,7 +1225,7 @@ function playSheriffPenaltyDiscard(data) {
         seq.forEach(it => {
             if (it.id == null) return;
             App.deathDiscardHideIds.delete(it.id);
-            App.stealHideIds.delete(it.id);
+            App.stealHideIds.delete(it.hideKey || it.id);
         });
         if (gameScene) renderUI();
     };
@@ -3518,16 +3571,19 @@ const ANIM_MS = {
 
 function _animDurationMs(data) {
     // Smrt: celá cinematika vyřazení (pokles na nulu → odhoz karet → odhalení role).
-    // Počet položek odhozu = modré + zbraň/Colt (vždy jedna) + ruka, viz _deathCardSeq;
-    // stejný vzorec počítá server (server/anim.js), aby o tu dobu podržel boty.
+    // Počet položek odhozu = modré + zbraň/Colt (vždy jedna) + ruka + vybavení (Zlatá
+    // horečka), viz _deathCardSeq; stejný vzorec počítá server (server/anim.js), aby
+    // o tu dobu podržel boty.
     if (data.type === 'player_death_discard' || data.type === 'vulture_sam_steal') {
         const dIdx = data.type === 'vulture_sam_steal' ? data.fromPlayerIdx : data.playerIdx;
         const skipReveal = !!state?.mode3p || (data.role || state?.players?.[dIdx]?.role) === 'Sheriff';
-        return deathSequenceMs((data.blue?.length || 0) + 1 + (data.hand?.length || 0), skipReveal);
+        return deathSequenceMs((data.blue?.length || 0) + 1 + (data.hand?.length || 0) + (data.gear?.length || 0), skipReveal);
     }
     // Šerifova ztráta karet za zabití pomocníka (bez Coltu → bez „+1" jako u smrti).
+    // Stejnou animací odchází duch / stín (i s vybavením).
     if (data.type === 'sheriff_penalty_discard') {
-        return penaltyDiscardMs((data.blue?.length || 0) + (data.weapon ? 1 : 0) + (data.hand?.length || 0));
+        return penaltyDiscardMs((data.blue?.length || 0) + (data.weapon ? 1 : 0) + (data.hand?.length || 0)
+            + (data.gear?.length || 0));
     }
     // High Noon: odkrytí karty události (let doprostřed → překlopení → výdrž → na stůl).
     if (data.type === 'high_noon_reveal') return hnRevealMs();

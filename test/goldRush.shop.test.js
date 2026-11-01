@@ -307,6 +307,33 @@ test('vybavení vyřazeného jde pod balíček vybavení a Vulture Sam ho nedost
     assert.ok(!g.players[1].hand.some(c => c.effect && c.effect.startsWith('ZH_')));
 });
 
+// Hlášení 2026-10-25T05-50-40-089Z_game2: vybavení se má při vyřazení odhodit spolu
+// s ostatními kartami, jen ne do odhozu, ale pod balíček vybavení. Klient k tomu
+// potřebuje vybavení ve snímku smrti (ID na skrytí na stole, effect na líc karty).
+test('snímek smrti nese vybavení (ID + effect) – cinematika ho pošle pod balíček vybavení', () => {
+    const g = mkZH();
+    const a = gearCard('ZH_PODKOVA'), b = gearCard('ZH_BOTY');
+    g.players[2].gear = [a, b];
+    g.players[2].health = 0;
+    g.handlePlayerDeath(2);
+    assert.deepEqual(g._deathAnimData[2].gear,
+        [{ id: a.id, effect: 'ZH_PODKOVA' }, { id: b.id, effect: 'ZH_BOTY' }]);
+});
+
+test('odchod bez karet, jen s vybavením: animace odchodu vznikne i tak', () => {
+    const g = mkZH();
+    const a = gearCard('ZH_PODKOVA');
+    g.players[2].gear = [a];
+    g._gearDropAll(2, { leaveAnim: true });
+    assert.deepEqual(g._ghostLeaveAnim,
+        { playerIdx: 2, blue: [], weapon: null, hand: [], gear: [{ id: a.id, effect: 'ZH_PODKOVA' }] });
+    // Animace odchodu jiného hráče (Laso – odchází dva naráz) se nepřepisuje.
+    g.players[3].gear = [gearCard('ZH_BOTY')];
+    g._gearDropAll(3, { leaveAnim: true });
+    assert.equal(g._ghostLeaveAnim.playerIdx, 2);
+    assert.equal(g._ghostLeaveAnim.gear.length, 1);
+});
+
 // ── Zrcadlo pro klienta a bota (core/goldRush.js) ────────────────────────────
 // Server, klient i bot se MUSÍ ptát jedním predikátem: kdyby se rozešly, klient nabídne
 // nákup, server ho mlčky odmítne a hra jen botů se zasekne na akci, co nic nemění.

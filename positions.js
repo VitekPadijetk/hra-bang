@@ -209,8 +209,11 @@ function getBoardCardPos(playerIdx, boardIdx) {
 
     // Karta role zabírá první slot skupiny: u vyřazeného hráče (odhalí se při smrti) a ve
     // hře pro 3 (Město duchů) u každého od začátku hry. MUSÍ zrcadlit `_roleSlot`
-    // v drawOpponents (view/board.js), jinak by animace mířily o kartu vedle.
-    const hasRoleCard = !!state.mode3p || player.health <= 0;
+    // v drawOpponents (view/board.js), jinak by animace mířily o kartu vedle. Dokud
+    // vyřazenému ještě leží karty (cinematika vyřazení, dělení mezi víc Vulture Samů),
+    // slot role deska nekreslí – deathCardsStillShown je z view/board.js, v Node chybí.
+    const hasRoleCard = !!state.mode3p || (player.health <= 0 &&
+        !(typeof deathCardsStillShown === 'function' && deathCardsStillShown(playerIdx)));
     // Divoký západ – Greygory Deck: dvojice postav leží vedle portrétu (getGreygoryCardPos);
     // slot v pásu si bere jen v kompaktním profilu, a to na KONCI – do počtu slotů se pak
     // počítá, ale displayIdx skutečných karet neposouvá.
@@ -281,6 +284,24 @@ function getGreygoryCardPos(playerIdx, k, countOverride) {
     if (!anchor) return { x: 960, y: 540 };
     const c = _oppPortraitPos(player, anchor, L, scaleOpp);
     return _greyOppSlot(anchor.side, c.x, c.y, scaleOpp, k, count);
+}
+
+// ── Zlatá horečka: kde leží k-tá karta vybavení hráče ────────────────────────
+// Vybavení sedí v pásu vyložených karet AŽ ZA skutečnými kartami a za dvojicí
+// Greygoryho Decka (drawOpponents / drawMyArea). `k` smí být i o jedna za koncem
+// (`player.gear.length`) – tam dosedne karta, která teprve přiletí z obchodu
+// (getBoardCardPos počet slotů roztáhne sám).
+function getGearCardPos(playerIdx, k) {
+    if (!state) return { x: 960, y: 540 };
+    const player = state.players[playerIdx];
+    if (!player) return { x: 960, y: 540 };
+    const L = _L();
+    const view = myIndex === null ? 0 : myIndex;
+    const before = (playerIdx === view
+        ? 1 + (player.board?.length || 0)
+        : ((player.weapon && player.weapon.id !== -1) ? 1 : 0) + (player.board?.length || 0))
+        + _greyBandCount(player, L);
+    return getBoardCardPos(playerIdx, before + k);
 }
 
 // Kde stojí PORTRÉT soupeře (jede po kartě životů). MUSÍ zrcadlit drawOpponents.
@@ -364,5 +385,5 @@ function getLuckySlotPos(i, count) {
 
 // Izomorfní: v prohlížeči globály, v Node/testech require('./positions.js').
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getSeatPortraitPos, getDeadRoleCardPos, getStoreSlotPos, getLuckySlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
+    module.exports = { getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getGearCardPos, getSeatPortraitPos, getDeadRoleCardPos, getStoreSlotPos, getLuckySlotPos, getOpponentAnchors, OPPONENT_ANCHORS };
 }

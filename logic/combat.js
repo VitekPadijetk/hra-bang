@@ -91,11 +91,14 @@ const CombatMixin = {
         // Snapshot karet PŘED přesunem (animace odhozu/krádeže – Návrh 2): modré karty
         // (player.board, pořadí nejstarší→nejnovější), zbraň (jen skutečná, ne Colt),
         // a ruka. Identity jsou po odhození/sebrání veřejné → posílají se všem.
+        // Zlatá horečka: vybavení (veřejné, leží lícem vzhůru) letí pod balíček vybavení,
+        // ne do odhozu ani k Vulture Samovi – viz _gearDropAll níž.
         this._deathAnimData = this._deathAnimData || {};
         this._deathAnimData[deadIdx] = {
             blue: deadPlayer.board.map(c => ({ id: c.id })),
             weapon: (deadPlayer.weapon && deadPlayer.weapon.id !== -1) ? { id: deadPlayer.weapon.id } : null,
             hand: deadPlayer.hand.map(c => ({ id: c.id })),
+            gear: this._gearAnimList(deadPlayer.gear),
         };
 
         // Vulture Samů může být u stolu víc – prakticky Vulture Sam + Vera Custer, která

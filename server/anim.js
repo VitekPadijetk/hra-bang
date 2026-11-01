@@ -158,6 +158,9 @@ module.exports = function installAnimService(ctx) {
         const info = gs._deathAnimData?.[deadIdx];
         if (!info) return;
         const blue = info.blue || [], weapon = info.weapon || null, hand = info.hand || [];
+        // Zlatá horečka: vybavení mrtvého jde pod balíček vybavení (_gearDropAll), ne do
+        // odhozu ani k Vulture Samovi – v sekvenci letí jako první (leží na konci pásu).
+        const gear = info.gear || [];
         // Šerif zabil pomocníka → přijde o všechny karty. Odhozová animace jde ve frontě
         // hned za cinematikou vyřazení (klient ji přehraje až po ní).
         const emitSheriffPenalty = () => {
@@ -174,6 +177,13 @@ module.exports = function installAnimService(ctx) {
         if (gs.pendingVultureSplit?.deadIdx === deadIdx) {
             emitAnim(room, { type: 'vulture_split_death', playerIdx: deadIdx });
             room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + deathFallMs());
+            // Vybavení se nedělí (Samové ho nezískávají) – odejde pod balíček vybavení hned
+            // po poklesu na nulu, stejnou animací jako odchod ducha (jen vybavení).
+            if (gear.length) {
+                emitAnim(room, { type: 'sheriff_penalty_discard', playerIdx: deadIdx,
+                                 blue: [], weapon: null, hand: [], gear });
+                room._deathBlockUntil += penaltyDiscardMs(gear.length);
+            }
             emitSheriffPenalty();
             if (gs._deathAnimData) delete gs._deathAnimData[deadIdx];
             return;
@@ -191,21 +201,21 @@ module.exports = function installAnimService(ctx) {
         // sem posíláme právem.
         const deadRole = gs.players[deadIdx]?.role || null;
         if (vultureIdx !== -1) {
-            emitAnim(room, { type: 'vulture_sam_steal', fromPlayerIdx: deadIdx, toPlayerIdx: vultureIdx, blue, weapon, hand, role: deadRole });
+            emitAnim(room, { type: 'vulture_sam_steal', fromPlayerIdx: deadIdx, toPlayerIdx: vultureIdx, blue, weapon, hand, gear, role: deadRole });
         } else {
-            emitAnim(room, { type: 'player_death_discard', playerIdx: deadIdx, blue, weapon, hand, role: deadRole });
+            emitAnim(room, { type: 'player_death_discard', playerIdx: deadIdx, blue, weapon, hand, gear, role: deadRole });
         }
         // Klient hraje celou cinematiku vyřazení (pokles na nulu → odhoz karet po jedné →
         // odhalení role uprostřed obrazovky) a stav si do jejího konce drží ve frontě.
         // Boti o tu dobu nesmí hrát, jinak by hráli „přes" ni – viz scheduleBotTick.
         // Počet položek odhozu musí sedět s _deathCardSeq: modré + zbraň/Colt (vždy
-        // jedna) + ruka.
+        // jedna) + ruka + vybavení.
         // Šerif svou roli neodhaluje (zná ji celý stůl) → jeho sekvence končí odhozením
         // karet a je o odhalovací část kratší (core/deathAnim.js, klient počítá stejně).
         // Ve hře pro 3 (Město duchů) jsou lícem nahoru role všech, takže se neodhaluje nikdo.
         const skipReveal = !!gs.mode3p || gs.players[deadIdx]?.role === 'Sheriff';
         room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
-            Date.now() + deathSequenceMs(blue.length + 1 + hand.length, skipReveal));
+            Date.now() + deathSequenceMs(blue.length + 1 + hand.length + gear.length, skipReveal));
         emitSheriffPenalty();
         if (gs._deathAnimData) delete gs._deathAnimData[deadIdx];
     }
@@ -550,11 +560,20 @@ module.exports = function installAnimService(ctx) {
         const gl = gs && gs._ghostLeaveAnim;
         if (!gl) return;
         gs._ghostLeaveAnim = null;
+        // Zlatá horečka: vybavení (`gl.gear`, _gearLeaveAnim) jde pod balíček vybavení –
+        // v odhozové animaci letí jako první, k Vulture Samovi nikdy.
+        const gear = gl.gear || [];
         if (gl.toIdx == null) {
             emitAnim(room, { type: 'sheriff_penalty_discard', ...gl });
             room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + penaltyDiscardMs(
-                (gl.blue?.length || 0) + (gl.weapon ? 1 : 0) + (gl.hand?.length || 0)));
+                (gl.blue?.length || 0) + (gl.weapon ? 1 : 0) + (gl.hand?.length || 0) + gear.length));
             return;
+        }
+        if (gear.length) {
+            emitAnim(room, { type: 'sheriff_penalty_discard', playerIdx: gl.playerIdx,
+                             blue: [], weapon: null, hand: [], gear });
+            room._deathBlockUntil = Math.max(room._deathBlockUntil || 0,
+                Date.now() + penaltyDiscardMs(gear.length));
         }
         // Pořadí jako v cinematice vyřazení (_deathCardSeq na klientu): modré odzadu,
         // pak zbraň, pak ruka. Vizuální slot je v jednotné konvenci „slot 0 = zbraň".
@@ -576,7 +595,8 @@ module.exports = function installAnimService(ctx) {
                 emitAnim(room, { ...base, stolenCardId: st.id });
             }
         });
-        room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + steps.length * RAGTIME_MS);
+        room._deathBlockUntil = Math.max(room._deathBlockUntil || 0, Date.now() + steps.length * RAGTIME_MS
+            + (gear.length ? penaltyDiscardMs(gear.length) : 0));
     }
 
     // ── Johnny Kisch: stejnojmenné karty odcházejí ze stolu do odhozu ────────

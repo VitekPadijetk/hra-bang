@@ -815,6 +815,7 @@ function drawOpponents(ctx) {
         // indexy karet na stole se tím nehnou a klikací větve výš se ho netýkají.
         const _gearCards = (player.gear || []).map((g, k) => ({
             _pseudo: true, _gear: k, _tex: gearTexKey(g), _zoomKey: 'gear:' + actualIdx + ':' + g.id,
+            _gearHide: 'gear:' + g.id,
         }));
         const displayCards = (_roleSlot
             ? [{ _isRole: true, _pseudo: true, _zoomKey: 'role:' + actualIdx,
@@ -1151,6 +1152,9 @@ function drawOpponents(ctx) {
             // ale zůstává obsazený – jiné karty se neposunou), objeví se zpět po doletu.
             // Stejnou cestou mizí i karty odlétající při smrti – jedna po druhé.
             if (!card._pseudo && App.stealHideIds.has(card.id)) return;
+            // Zlatá horečka: vybavení zrovna letí pod balíček vybavení (vyřazení, odchod
+            // ducha / stínu) – vlastní klíč, ID vybavení s hracími kartami nesdílí.
+            if (card._gearHide && App.stealHideIds.has(card._gearHide)) return;
             // Karta role letí zrovna doprostřed obrazovky (odhalení) – slot drž prázdný.
             if (card._isRole && _deathStage === 'settled') return;
             // Divoký západ – Hřbitov / Helena Zontero: karta role zrovna letí doprostřed
@@ -2172,6 +2176,8 @@ function drawMyArea(ctx) {
             const gy = myBaseY - s2.row * (boardCardH + L.boardGap);
             const gTex = gearTexKey(g);
             if (!gTex || !gameScene.textures.exists(gTex)) return;
+            // Karta zrovna letí pod balíček vybavení (moje vyřazení / odchod stínu).
+            if (App.stealHideIds.has('gear:' + g.id)) return;
             const gKey = 'gear:me:' + g.id;
             const gSprite = gameScene.add.image(gx, gy, gTex).setScale(scaleMe);
             gameScene.cardsSprites.add(gSprite);

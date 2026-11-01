@@ -850,7 +850,7 @@ const ValleyMixin = {
             p.board = [];
             p.weapon = new Card(-1, "Colt .45", CardType.WEAPON, null, null, { range: 1 });
         }
-        this._gearDropAll(idx);   // Zlatá horečka: vybavení jako při vyřazení
+        this._gearDropAll(idx, { leaveAnim: true });   // Zlatá horečka: vybavení jako při vyřazení
         p.health = 0;
         this.logEvent('event', { card: 'Duch', who: p.name,
             msg: laso ? 'pod Lasem karta Duch nemá efekt – odchází ze hry' : 'přišel o kartu Duch – odchází ze hry' });

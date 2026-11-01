@@ -763,12 +763,34 @@ const GoldRushMixin = {
     // lícem vzhůru. Vulture Sam je nezískává." Že je Sam nedostane, plyne z R3
     // STRUKTURÁLNĚ – gear leží mimo `board`/`hand`, takže se do jeho hrsti nemá jak
     // dostat; tady se jen uklidí. Volá handlePlayerDeath (logic/combat.js).
-    _gearDropAll(playerIdx) {
+    //
+    // Cinematika: při vyřazení nese vybavení snímek smrti (`_deathAnimData`, logic/combat.js).
+    // Odchod ducha / stínu / Ducha vyřazením není, má vlastní animaci odhozu
+    // (`_ghostLeaveAnim`) – tam ho přidá `opts.leaveAnim`. Klient pak kartu pošle pod
+    // balíček vybavení (net/handlers.js, _flyGearUnderDeck).
+    _gearDropAll(playerIdx, opts = {}) {
         const p = this.players[playerIdx];
         if (!p || !(p.gear || []).length) return;
+        if (opts.leaveAnim) this._gearLeaveAnim(playerIdx, p.gear);
         this.logEvent('gear', { act: 'death_drop', who: p.name, n: p.gear.length });
         this._gearDiscard(...p.gear);
         p.gear = [];
+    },
+
+    // Co z karty vybavení potřebuje klient k animaci: ID (skrývá se podle něj na stole)
+    // a `effect` (podle něj se kreslí líc, gearTexKey). Vybavení je veřejné.
+    _gearAnimList(cards) {
+        return (cards || []).map(c => ({ id: c.id, effect: c.effect }));
+    },
+
+    // Přidá vybavení do animace odchodu (`_ghostLeaveAnim`). Hráč, který měl JEN vybavení,
+    // ji do teď nedostal vůbec – založí se tedy i prázdná. Slot je jeden: odchází-li
+    // naráz dva (Laso, Údolí stínů), druhý odloží karty bez animace – stejně jako zbytek.
+    _gearLeaveAnim(playerIdx, cards) {
+        const gear = this._gearAnimList(cards);
+        const gl = this._ghostLeaveAnim;
+        if (!gl) this._ghostLeaveAnim = { playerIdx, blue: [], weapon: null, hand: [], gear };
+        else if (gl.playerIdx === playerIdx) gl.gear = gear;
     },
 
     // ══ POSTAVY ROZŠÍŘENÍ (fáze 6) ═══════════════════════════════════════════

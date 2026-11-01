@@ -85,6 +85,59 @@ test('emitDeathAnim nastaví _deathBlockUntil na délku celé cinematiky (boti �
     assert.ok(room._deathBlockUntil <= Date.now() + want);
 });
 
+// Zlatá horečka: vybavení mrtvého letí v cinematice pod balíček vybavení – i když karty
+// sebere Vulture Sam. Počítá se do délky sekvence (klient počítá stejně, _animDurationMs).
+test('emitDeathAnim: vybavení jde v payloadu a prodlouží cinematiku', () => {
+    const { io, emits } = mkIo();
+    const ctx = { io, broadcastRoomDelayed() {} };
+    installAnimService(ctx);
+    const { deathSequenceMs } = require('../core/deathAnim.js');
+    const gear = [{ id: 6000, effect: 'ZH_PODKOVA' }, { id: 6001, effect: 'ZH_BOTY' }];
+    const gs = { players: [{ character: 'Bart Cassidy', health: 0 }, { character: 'Vulture Sam', health: 3 }],
+        _deathAnimData: { 0: { blue: [], weapon: null, hand: [{ id: 3 }], gear } } };
+    const room = { id: 'g1', players: [] };
+    const t0 = Date.now();
+    ctx.emitDeathAnim(room, gs, 0);
+    const a = emits.find(e => e.ev === 'card_animation');
+    assert.equal(a.payload.type, 'vulture_sam_steal');
+    assert.deepEqual(a.payload.gear, gear);
+    // Colt + 1 z ruky + 2 vybavení = 4 položky
+    assert.ok(room._deathBlockUntil >= t0 + deathSequenceMs(4));
+});
+
+test('emitDeathAnim při dělení mezi víc Vulture Samů pošle vybavení zvlášť', () => {
+    const { io, emits } = mkIo();
+    const ctx = { io, broadcastRoomDelayed() {} };
+    installAnimService(ctx);
+    const gear = [{ id: 6000, effect: 'ZH_PODKOVA' }];
+    const gs = { players: [{ character: 'Bart Cassidy', health: 0 }, { character: 'Vulture Sam', health: 3 }],
+        pendingVultureSplit: { deadIdx: 0 },
+        _deathAnimData: { 0: { blue: [], weapon: null, hand: [{ id: 3 }], gear } } };
+    ctx.emitDeathAnim({ id: 'g1', players: [] }, gs, 0);
+    const types = emits.filter(e => e.ev === 'card_animation' && e.scope === 'to:g1_spectators')
+        .map(e => e.payload.type);
+    assert.deepEqual(types, ['vulture_split_death', 'sheriff_penalty_discard']);
+    const pen = emits.find(e => e.ev === 'card_animation' && e.payload.type === 'sheriff_penalty_discard');
+    assert.deepEqual(pen.payload.gear, gear);
+    assert.deepEqual(pen.payload.hand, [], 'karty z ruky si rozeberou Samové');
+});
+
+test('odchod ducha / stínu: vybavení jde do animace odchodu (beforeBroadcast)', () => {
+    const { io, emits } = mkIo();
+    const ctx = { io, broadcastRoomDelayed() {} };
+    installAnimService(ctx);
+    const gear = [{ id: 6000, effect: 'ZH_PODKOVA' }];
+    const room = { id: 'g1', players: [], gameState: { players: [{}, {}],
+        _ghostLeaveAnim: { playerIdx: 1, toIdx: 0, blue: [{ id: 5 }], weapon: null, hand: [], gear } } };
+    ctx.beforeBroadcast(room);
+    const anims = emits.filter(e => e.ev === 'card_animation' && e.scope === 'to:g1_spectators')
+        .map(e => e.payload);
+    // Vybavení pod balíček (Sam ho nedostává), modrá karta k Samovi.
+    assert.equal(anims[0].type, 'sheriff_penalty_discard');
+    assert.deepEqual(anims[0].gear, gear);
+    assert.ok(anims.some(a => a.type === 'ragtime_steal' && a.attackerIdx === 0));
+});
+
 test('handleAutoEndTurn zavolá nextTurn jen když je pending a není vítěz', () => {
     const { io } = mkIo();
     const ctx = { io, broadcastRoomDelayed() {} };
