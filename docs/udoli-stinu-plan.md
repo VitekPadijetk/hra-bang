@@ -380,7 +380,7 @@ karet jako Dodge City, Duch leží před vyřazeným hráčem. Přibude:
 - **dvoukrokové míření** Roztříštěné kulky (první cíl → zvýraznění povolených druhých);
 - volba Evelyn ve fázi lízání (tlačítko „Vystřelit místo karty" + klik na cíl);
 - **Duch:** vyřazený hráč s Duchem se kreslí jako hrající (stejně jako duch Města duchů),
-  jen průsvitně a s kartou Duch v pásu;
+  s kartou Duch v pásu (průsvitný portrét byl nečitelný, bug 83);
 - animace: `tornado_pass` (karty z ruky k levému sousedovi), `poker_reveal` (karty doprostřed
   lícem dolů → otočení → k hráči / do odhozu), výstřel zpět Opětovné palby jde existujícím
   BANG! letem.
@@ -940,8 +940,8 @@ Fáze s UI končí prosbou o kontrolu v prohlížeči.
   Doroty), v ledgeru chování je to pomoc (`support`). Doroty smí Ducha poručit (cíl =
   vyřazený), Duel poručit na Ducha nejde.
 - **Klient:** s vybraným Duchem jde kliknout na portrét vyřazeného hráče (jinak je
-  neinteraktivní); Duch se kreslí jako hrající, jen s průsvitným portrétem
-  (`VOS_GHOST_ALPHA`, view/board.js). Krádeže (Panika, Cat Balou, Ragtime, Krytý vůz,
+  neinteraktivní); Duch se kreslí úplně jako hrající (průsvitný portrét na kartě životů
+  byl nečitelný, bug 83 – poznává se podle karty Duch v pásu). Krádeže (Panika, Cat Balou, Ragtime, Krytý vůz,
   Kankán, Pat Brennan) Ducha zvýrazní. **Render neověřený** – čeká na kontrolu v prohlížeči.
 - **Bot:** karta Duch na stole má hodnotu 10 (`boardCardValue`) – Daltoni ani Rvačka
   ji spojenci nesundají a Cat Balou / Panika nepříteli sáhnou rovnou po ní

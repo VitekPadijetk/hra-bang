@@ -19,9 +19,10 @@
 // Než dorazí art oboustranné karty, stojí za ni karta té strany. Ostatním vrací `fallback`.
 const SHADOW_ROLE_TEX = { Deputy: 'role_shadow_deputy', Outlaw: 'role_shadow_outlaw' };
 
-// Údolí stínů – Duch: vyřazený hráč s kartou Duch hraje dál s nulou životů. Kreslí se
-// jako hrající, jen jeho portrét je průsvitný (isVosGhost, core/distance.js).
-const VOS_GHOST_ALPHA = 0.55;
+// Údolí stínů – Duch: vyřazený hráč s kartou Duch hraje dál s nulou životů a kreslí se
+// úplně stejně jako hrající. Průsvitný portrét být nesmí: na nule leží přesně na kartě
+// životů, takže by prosvítaly náboje a nedalo se nic přečíst (bug 83). Ducha poznáš podle
+// vyložené karty Duch.
 function roleTexFor(player, fallback) {
     const side = player && player._shadowSide;
     if (!side) return fallback;
@@ -1322,7 +1323,6 @@ function drawOpponents(ctx) {
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
-            if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
             gameScene.cardsSprites.add(charOpp);
             const _slidingL = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 1, 0, angle, scaleOpp, getCharTex(player.character),
                 player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
@@ -1398,7 +1398,6 @@ function drawOpponents(ctx) {
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
-            if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
             gameScene.cardsSprites.add(charOpp);
             const _slidingT = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 0, 1, angle, scaleOpp, getCharTex(player.character),
                 player.role === "Sheriff" ? { dx: cardW * 0.42, dy: cardH * 0.45, scale: starScale } : null, livesT.slots);
@@ -1473,7 +1472,6 @@ function drawOpponents(ctx) {
             else if (isCurrent) applyTurnTint(charOpp);
             else if (isWaiting) charOpp.setTint(WAIT_TINT);
             addCharInteraction(charOpp);
-            if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
             gameScene.cardsSprites.add(charOpp);
             const _slidingR = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, -1, 0, angle, scaleOpp, getCharTex(player.character),
                 player.role === "Sheriff" ? { dx: -cardH * 0.45, dy: cardW * 0.42, scale: starScale } : null, livesT.slots);
@@ -1595,7 +1593,6 @@ function drawCompactOpponent(ctx) {
     else if (isCurrent) applyTurnTint(charOpp);
     else if (isWaiting) charOpp.setTint(waitTint);
     addCharInteraction(charOpp);
-    if (isVosGhost(player)) charOpp.setAlpha(VOS_GHOST_ALPHA);
     gameScene.cardsSprites.add(charOpp);
     const _slidingC = runHealthSlide(actualIdx, player.health, charOpp.x, charOpp.y, bulletH, 1, 0, angle, scaleOpp, getCharTex(player.character),
         player.role === "Sheriff" ? { dx: cardH * 0.45, dy: -cardW * 0.42, scale: starScale } : null, livesT.slots);
@@ -1850,7 +1847,6 @@ function drawMyArea(ctx) {
         // Nová identita (High Noon, přibalené): stará postava se během cinematiky výměny
         // překlápí na rub a sjíždí na slot odložené karty → na svém místě zatím není.
         if (App.niHideChar) charImg.setVisible(false);
-        if (isVosGhost(me)) charImg.setAlpha(VOS_GHOST_ALPHA);   // Údolí stínů – jsem Duch
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, myLivesScale, getCharTex(me.character), null, myLivesT.slots)) charImg.setVisible(false);
         // Střílím zrovna na někoho? Červeně se útočník rozsvítí OSTATNÍM u stolu
