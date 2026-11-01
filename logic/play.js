@@ -232,16 +232,21 @@ const PlayMixin = {
             return;
         }
 
+        // Karta, která sama kartou Bang! není a letí jako Bang! (Zúčtování, Calamity Janet,
+        // Lemat): cíl musí ze štítku poznat, proč se brání proti Salónu (bug 84). Jméno je
+        // jen na zobrazení a do logu – žádné pravidlo se na sourceCardName neptá.
+        const shownName = (!isEffect && card.type !== CardType.BANG) ? `${card.name} jako BANG!` : card.name;
+
         // Údolí stínů – Colorado Bill: „Když zahraješ kartu BANG!, sejmi." Sejmutí jde
         // PŘED obranou (i před Barelem) – rozhoduje, jestli se dá vůbec bránit. Karta
         // BANG! je to podle R5 (`vos.bangCard`), takže bang-efekty ani Kulomet sem nejdou.
         if (vos && hasAbility(attacker, "Colorado Bill")) {
-            this._startColorado(attackerIdx, targetIdx, isEffect, card.name, vos);
+            this._startColorado(attackerIdx, targetIdx, isEffect, shownName, vos);
             this._processSpecialQueue();
             return;
         }
 
-        this._beginBangResolution(attackerIdx, targetIdx, isEffect, card.name, null, null, vos);
+        this._beginBangResolution(attackerIdx, targetIdx, isEffect, shownName, null, null, vos);
         this._processSpecialQueue();
     },
 

@@ -14,7 +14,7 @@ const { cardPlayability, nativePlayInTurn, showdownBangOk, playsAsBang, playsAsM
 const { getActionForCard } = require('../core/cardRules.js');
 const { decideCardClick } = require('../core/selection.js');
 const { decideBotAction } = require('../core/botPolicy.js');
-const { pendingActor } = require('../core/pending.js');
+const { pendingActor, describePendingResponse } = require('../core/pending.js');
 
 before(() => { console.log = () => {}; });
 
@@ -111,6 +111,21 @@ test('Zúčtování: karta si svoji vlastní akci ponechává (Pivo se pořád s
     assert.equal(intent.action, getActionForCard(card, null));
     g.playCard(i);
     assert.equal(g.players[0].health, 3);
+});
+
+// Bug 84: štítek obrany musí říct, že cizí karta letí jako Bang! – „Salón od hráče XY"
+// nedával smysl. Pravá karta Bang! zůstává beze změny.
+test('Zúčtování: štítek obrany ukáže „Salón jako BANG!"', () => {
+    const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    const i = give(g, 0, CardType.SALOON, { name: 'Salón' });
+    g.playBang(0, 1, i);
+    assert.equal(g.phase, 'RESPOND');
+    assert.equal(g.pendingResponse.sourceCardName, 'Salón jako BANG!');
+    assert.equal(describePendingResponse(g, 1).sourceLabel, 'Salón jako BANG!');
+
+    const h = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
+    h.playBang(0, 1, bang(h, 0));
+    assert.equal(h.pendingResponse.sourceCardName, 'Bang!', 'pravý Bang! se nepřejmenovává');
 });
 
 test('Zúčtování: limit 1× Bang!/tah platí dál (pumpa z toho není)', () => {
