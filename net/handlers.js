@@ -828,7 +828,7 @@ function _deathFlyToDiscard(it, o) {
 // na Samovu – bez toho karty dosedaly placaté a v cizí velikosti.
 // `n` = pořadí PŘENÁŠENÉ karty (Colt .45 se nepřenáší, ten se rozplyne na místě).
 function _deathFlyToVulture(it, o, n) {
-    const { isMine, isVulture, vid, baseLen, incoming, ang, sc, scHand, holdTries } = o;
+    const { pid, isMine, isVulture, vid, baseLen, incoming, ang, sc, scHand, holdTries } = o;
     const fc = getCardTex(it.id);
     const endAngle = _renderSideAngle(vid);
     // Divák kreslí spodního hráče v měřítku specScale – to už _renderHandScale ví (bug 77).
@@ -1002,7 +1002,7 @@ function playDeathSequence(data) {
     // Vulture Sam: karty míří na FINÁLNÍ sloty jeho vějíře, takže potřebujeme, kolik jich
     // v ruce má teď (baseLen) a kolik jich přiletí (incoming – Colt .45 se nepřenáší).
     const flyCtx = isVulture
-        ? { isMine, isVulture: data.toPlayerIdx === myIndex, vid: data.toPlayerIdx,
+        ? { pid, isMine, isVulture: data.toPlayerIdx === myIndex, vid: data.toPlayerIdx,
             ang: _renderSideAngle(pid), sc: _renderSideScale(pid), scHand: _renderHandScale(pid),
             baseLen: state?.players?.[data.toPlayerIdx]?.hand?.length ?? 0,
             incoming: seq.filter(s => s.kind !== 'colt').length,
