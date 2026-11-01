@@ -623,7 +623,8 @@ function pokerSlotX(L, i, n) {
     return 960 + (i - (Math.max(1, n) - 1) / 2) * P.pokerStepX;
 }
 
-// Druhé tlačítko k vybrané kartě (Údolí stínů – „+ DVOJITÁ RÁNA") patří o řádek NAD
+// Druhé tlačítko k vybrané kartě (Údolí stínů – „DVOJITÁ RÁNA: zrušit", Zlatá horečka
+// – „ZA VALOUN") patří o řádek NAD
 // slot tlačítka schopností (`abilX` = jeho x, i s posunem za dvojici Greygoryho). Na
 // mobilu je ale nad ním „Ukončit tah" (obě tlačítka jsou ve sloupci u pravého okraje),
 // takže jde ještě o řádek výš. Šířka je pevná (ABIL_EXTRA_W) – kreslí ho view/board.js.

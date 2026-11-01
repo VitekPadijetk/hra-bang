@@ -211,7 +211,7 @@ function renderGameBoard() {
         // Fistful – Odražená střela: s vybraným Bang! se klikem na CIZÍ vyloženou kartu
         // střílí na ni (klikatelná je jen tehdy, viz isRicochetTarget v drawOpponents).
         if (area !== 'hand' && targetIdx !== myIndex && selectedState.action === 'SHOOT' &&
-            selectedState.cardIndex !== null && !selectedState.sniper &&
+            selectedState.cardIndex !== null && !selectedState.sniper && selectedState.aim == null &&
             ricochetOffer(state, me, myIndex, me.hand[selectedState.cardIndex])) {
             const victim = state.players[targetIdx];
             const shotId = area === 'weapon' ? victim?.weapon?.id : victim?.board?.[boardIdx]?.id;
@@ -580,9 +580,11 @@ function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false) {
 }
 
 // ── Údolí stínů – Dvojitá rána a Roztříštěná kulka (F3) ─────────────────────
-// Dvojitá rána se „nabije" tlačítkem u vybrané karty BANG! (`selectedState.aim` = ID
-// karty Dvojitá rána). Platí, jen dokud ji pravidla k té kartě pořád pouštějí (aimOk) –
-// stav se mezi nabitím a výstřelem mohl změnit a server by celé zahrání mlčky odmítl.
+// Dvojitá rána se hraje jako karta (bug U): klik na ni ji vybere (akce 'AIM'), klik na
+// kartu BANG! ji k ní připojí (akce 'SHOOT') a míří se jako obvykle – `selectedState.aim`
+// = ID karty Dvojitá rána, rozhoduje decideCardClick (core/selection.js). Platí, jen
+// dokud ji pravidla k té kartě pořád pouštějí (aimOk) – stav se mezi výběrem a výstřelem
+// mohl změnit a server by celé zahrání mlčky odmítl.
 function _vosAimFor(me, card) {
     const id = selectedState.aim;
     if (id == null || !me || !card || typeof aimOk !== 'function') return null;
@@ -667,8 +669,9 @@ function drawOpponents(ctx) {
     // mezi nabitím a klikem změnit a server by akci mlčky zahodil.
     const _sniperArmed = !!selectedState.sniper && !!_selCard && selectedState.action === 'SHOOT' &&
         sniperOffer(state, _selMe, myIndex, _selCard);
+    // (S připojenou Dvojitou ranou se na vyloženou kartu nestřílí – ta „zasáhnout" nejde.)
     const _ricoArmed = !App.blockInput && !_sniperArmed && selectedState.action === 'SHOOT' &&
-        !!_selCard && ricochetOffer(state, _selMe, myIndex, _selCard);
+        selectedState.aim == null && !!_selCard && ricochetOffer(state, _selMe, myIndex, _selCard);
     const _shootAtPlayer = !_selCard || bangAtPlayerOk(state, _selMe, myIndex, _selCard);
     let oppIdx = 0;
     for (let i = 1; i < state.players.length; i++) {
@@ -1659,15 +1662,38 @@ function drawMyArea(ctx) {
     // _lawLocked) i bot – rozejít se nesmí, jinak by UI slibovalo akce, které server
     // tiše odmítá.
     const _lawForced = lawForcedCard(state, me, myIndex);
+    // Údolí stínů – Dvojitá rána (bug U): vybraná karta, ke které se kliká karta BANG!
+    // (`_aimPicking`), nebo už připojená ke kartě BANG!, se kterou se míří (`_aimAttached`).
+    // Stav se mezi kliky mohl změnit (karta odešla, skončil tah, karta BANG! už nejde),
+    // takže se výběr nejdřív srovná – jinak by se kreslil podle už neplatného režimu.
+    let _aimSel = null;
+    if (selectedState.aim != null) {
+        _aimSel = (me.hand || []).find(c => c && c.id === selectedState.aim) || null;
+        const _aimLive = !!_aimSel && state.phase === "PLAY" && state.currentPlayerIndex === myIndex;
+        if (selectedState.action === 'AIM') {
+            if (_aimLive && aimPartners(state, me, myIndex, _aimSel).length > 0) {
+                selectedState.cardIndex = me.hand.indexOf(_aimSel);   // index se mohl posunout
+            } else {
+                selectedState = { cardIndex: null, action: null };
+                _aimSel = null;
+            }
+        } else if (!_aimLive || selectedState.action !== 'SHOOT') {
+            delete selectedState.aim;   // karta BANG! zůstává vybraná, jen bez Dvojité rány
+            _aimSel = null;
+        }
+    }
+    const _aimPicking = !!_aimSel && selectedState.action === 'AIM';
+    const _aimAttached = !!_aimSel && selectedState.action === 'SHOOT';
     // Fistful – Odstřelovač: s vybranou kartou Bang! jde nabídnout útok dvěma kartami
     // naráz (cíl se pak ubrání JEN dvěma Vedle!). Tlačítko obsadí slot schopností, takže
     // se v tu chvíli Sid/Chuck/José/Doc/Will nekreslí – hráč zrovna míří.
+    // S připojenou Dvojitou ranou se nenabízí (platí se druhou kartou BANG!, ne Dvojitou ranou).
     const _selHandCard = selectedState.cardIndex != null ? me.hand[selectedState.cardIndex] : null;
     // (Pod Zúčtováním se `action` na SHOOT přepíná tlačítkem – dokud je nabité, drží se
     //  slot přepínači, ať jde výstřel zase odznačit. Odstřelovač se nabízí z karty Bang!
     //  přímo, takže o možnost nikdo nepřijde.)
     const _sniperCan = selectedState.action === 'SHOOT' && !!_selHandCard && !selectedState.showdown &&
-        sniperOffer(state, me, myIndex, _selHandCard);
+        !_aimAttached && sniperOffer(state, me, myIndex, _selHandCard);
     // Divoký západ – Zúčtování: každá karta smí jít jako Bang!, ale svou vlastní akci
     // si přitom ponechává (obě věty na kartě jsou povolující, R1). Které z toho hráč
     // chce, se z kliknutí poznat nedá – u Vězení/Paniky/Duelu je cílem taky soupeř –
@@ -1675,7 +1701,9 @@ function drawMyArea(ctx) {
     // vlastní akce (Vedle!, Úhyb, druhý Barel) se proto jen vybere a čeká na tlačítko:
     // dřív mířila rovnou a klik na vlastní postavu z ní udělal výstřel do sebe (bug 34).
     // Údolí stínů – Lemat dělá z karty BANG! stejným přepínačem (altBangOk).
-    const _showdownCan = !!_selHandCard && !_sniperCan &&
+    // Karta připojená k Dvojité ráně už jako BANG! letí (vybrala se jako karta BANG!),
+    // takže přepínač nepotřebuje; vybraná Dvojitá rána sama ho pod Zúčtováním má dál.
+    const _showdownCan = !!_selHandCard && !_sniperCan && !_aimAttached &&
         altBangOk(state, me, myIndex, _selHandCard);
     // Fistful – Odražená střela: v obraně nejde o život, ale o konkrétní vyloženou kartu.
     const _ricoDefend = (state.phase === "RESPOND" && state.pendingResponse?.active &&
@@ -2408,9 +2436,15 @@ function drawMyArea(ctx) {
         // Zlatá horečka – Pivo za valoun: Pivo, které nejde zahrát na život (plné životy),
         // jde pořád vyměnit za valoun tlačítkem u karty – svítí tedy jako hratelné
         // (a „Ukončit tah" kvůli němu nebliká). Výběr bez akce řeší decideCardClick.
+        // Údolí stínů – Dvojitá rána se vybírá jako první a k ní karta BANG! (bug U): sama
+        // hratelná není (cardPlayability – server ji bez karty BANG! nepustí), ale dokud je
+        // v ruce karta BANG!, se kterou jde (aimPartners), svítí jako hratelná.
         const getCardPlayability = (card) => {
             const p = cardPlayability(state, me, myIndex, card);
-            return (p === false && card && card.type === "Pivo" && beerNuggetOk(state, myIndex, card)) ? true : p;
+            if (p === false && card && card.type === "Pivo" && beerNuggetOk(state, myIndex, card)) return true;
+            if (p === false && card && card.type === "Dvojitá rána" && state.phase === "PLAY" &&
+                aimPartners(state, me, myIndex, card).length > 0) return true;
+            return p;
         };
         if (me.hand.length > 0) {
             // Ruka má vlastní řadu i měřítko (na mobilu je pod stolem a větší, na
@@ -2472,6 +2506,13 @@ function drawMyArea(ctx) {
                 // kartu": platné karty červeně, ostatní zašedle.
                 const _lvkPayMode = !!selectedState.lvk && selectedState.lvk.cardId == null;
                 const _lvkPayOk = _lvkPayMode && lvkPayOk(state, me, myIndex, card);
+                // Údolí stínů – Dvojitá rána (bug U): vybraná čeká na kartu BANG! – ty, se
+                // kterými jde, svítí žlutě (jako volba v obraně), zbytek ruky zašedne.
+                // Připojená ke kartě BANG! zůstává vysunutá vedle ní (`_isAimAttached`).
+                const _isAimCard = !!_aimSel && card.id === _aimSel.id;
+                const _aimPartner = _aimPicking && !_isAimCard && aimPartnerOk(state, me, myIndex, card, _aimSel);
+                const _aimGrey = _aimPicking && !_isAimCard && !_aimPartner;
+                const _isAimAttached = _aimAttached && _isAimCard;
                 // Fistful – Ranč: po fázi lízání se z ruky vybírá, co vyměnit. Označená karta
                 // se zmenší a zašedne – stejná řeč jako u Sida/Doca („tahle jde pryč“).
                 const isRanchMine = state.phase === "RANCH" && state.pendingRanch?.playerIdx === myIndex;
@@ -2517,6 +2558,8 @@ function drawMyArea(ctx) {
                 if (isDocStaged) cSprite.setTint(0xbbbbbb);
                 if (isJoseBlue) cSprite.setTint(0xffff44);
                 if (_lvkPayMode) cSprite.setTint(_lvkPayOk ? 0xff6666 : 0x777777);
+                if (_aimPartner) cSprite.setTint(0xffff44);
+                if (_aimGrey) cSprite.setTint(0x777777);
                 // Ranč: celá ruka je klikací (světle modře), označené karty zašednou.
                 if (isRanchMine) cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff);
                 if (isVosMine) cSprite.setTint(isVosPicked ? 0xbbbbbb : 0xaaddff);
@@ -2591,9 +2634,11 @@ function drawMyArea(ctx) {
                 const _keepHighlight = _isLastLifeBeer || _isResponsePlayable || _isRoulettePick ||
                                        _isGrinnerPick || _isValentinePick || _isDutchPick ||
                                        _isShotgunPick || _isLemonadePick || _isEvadePick || _isSavePick ||
-                                       _isLawForced;
+                                       _aimPartner || _isLawForced;
 
-                if (selectedState.cardIndex === index) {
+                // Vybraná karta se vysune – s připojenou Dvojitou ranou obě (hrají se spolu).
+                const _isSelected = selectedState.cardIndex === index || _isAimAttached;
+                if (_isSelected) {
                     cSprite.y -= 20;
                     cSprite.setTint(0xddffdd);
                 }
@@ -2625,7 +2670,8 @@ function drawMyArea(ctx) {
                     if (isMySidActive || isDocActive || isWillActive || isRanchMine || state.phase === "DISCARD") return;
                     // „Odhoď další kartu": drž červené zvýraznění ceny i při hoveru (jako Sid).
                     if (isDiscardAnother) { if (!isDAmain) cSprite.setScale(baseScale * 1.05); return; }
-                    if (selectedState.cardIndex === index) return;
+                    if (_isSelected) return;
+                    if (_aimGrey) return;   // Dvojitá rána s ní nejde – zůstává šedá
 
                     if (_isLawForced) {
                         cSprite.setTint(0xffdd77); // světlejší zlatá při hoveru
@@ -2652,8 +2698,9 @@ function drawMyArea(ctx) {
                         cSprite.setTint(isVosPicked ? 0xbbbbbb : 0xaaddff);
                         return;
                     }
-                    if (selectedState.cardIndex === index) return;
+                    if (_isSelected) return;
                     cSprite.setScale((isDAmain || isDocStaged || isRanchPicked) ? baseScale * 0.88 : baseScale);
+                    if (_aimGrey) { cSprite.setTint(0x777777); return; }
                     if (isRanchMine) { cSprite.setTint(isRanchPicked ? 0xbbbbbb : 0xaaddff); return; }
                     if (isDiscardAnother) { cSprite.setTint(isDAmain ? 0xbbbbbb : 0xff6666); return; }
                     if (isDocActive) { cSprite.setTint(isDocStaged ? 0xbbbbbb : 0xff6666); return; }
@@ -2730,6 +2777,17 @@ function drawMyArea(ctx) {
                             return;
                         case 'DESELECT':
                             selectedState = { cardIndex: null, action: null };
+                            renderUI();
+                            return;
+                        // Údolí stínů – Dvojitá rána (bug U): vybrat ji (čeká na kartu BANG!)…
+                        case 'AIM_ARM':
+                            selectedState = { cardIndex: intent.index, action: 'AIM', aim: intent.cardId };
+                            renderUI();
+                            return;
+                        // …a připojit k ní kartu BANG!, se kterou se pak míří jako obvykle.
+                        case 'AIM_PICK':
+                            selectedState = { cardIndex: intent.index, action: 'SHOOT', aim: intent.aimCardId,
+                                              reach: bangEffectReach(me.hand[intent.index]) };
                             renderUI();
                             return;
                         case 'VOS_ROUND_TOGGLE':
@@ -2873,7 +2931,9 @@ function drawMyArea(ctx) {
                             cSprite.setTint(0xff2222);
                             gameScene.time.delayedCall(500, () => {
                                 if (cSprite.scene && selectedState.cardIndex !== index) {
-                                    if (isHovered) {
+                                    if (_aimGrey) {
+                                        cSprite.setTint(0x777777);   // k Dvojité ráně nejde
+                                    } else if (isHovered) {
                                         cSprite.setTint(0xff6666);
                                     } else {
                                         cSprite.clearTint();
@@ -3347,14 +3407,23 @@ function drawMyArea(ctx) {
                     if (App.blockInput) return;
                     if (_sdArmed) {
                         delete selectedState.showdown;
-                        // Karta bez vlastní akce se vrací do „jen vybraná" (action null),
-                        // ne do akce, kterou zahrát nesmí – viz decideCardClick.
-                        selectedState.action = nativePlayInTurn(state, me, myIndex, _selHandCard)
-                            ? getActionForCard(_selHandCard, abilitiesOf(me)) : null;
+                        if (_selHandCard.type === "Dvojitá rána" &&
+                            aimPartners(state, me, myIndex, _selHandCard).length > 0) {
+                            // Dvojitá rána se vrací k výběru karty BANG! (bug U).
+                            selectedState.action = 'AIM';
+                            selectedState.aim = _selHandCard.id;
+                        } else {
+                            // Karta bez vlastní akce se vrací do „jen vybraná" (action null),
+                            // ne do akce, kterou zahrát nesmí – viz decideCardClick.
+                            selectedState.action = nativePlayInTurn(state, me, myIndex, _selHandCard)
+                                ? getActionForCard(_selHandCard, abilitiesOf(me)) : null;
+                        }
                         selectedState.reach = bangEffectReach(_selHandCard);
                     } else {
                         selectedState.showdown = true;
                         selectedState.action = 'SHOOT';
+                        // Vybraná Dvojitá rána letí sama jako BANG! – už nic nepřipojuje.
+                        delete selectedState.aim;
                         selectedState.reach = bangEffectReach(_selHandCard);
                     }
                     renderUI();
@@ -3368,7 +3437,7 @@ function drawMyArea(ctx) {
         // odhoz Pivo zahraje na život (jen když léčit jde), tohle tlačítko na valoun.
         // Sedí NAD slotem schopností (abilExtraSlot), tedy vedle „ZAHRÁT JAKO BANG!" pod
         // Zúčtováním – a když je výstřel nabitý, nekreslí se (hráč se rozhodl střílet).
-        if (_selHandCard && _selHandCard.type === "Pivo" && !selectedState.showdown &&
+        if (_selHandCard && _selHandCard.type === "Pivo" && !selectedState.showdown && !_aimAttached &&
             beerNuggetOk(state, myIndex, _selHandCard)) {
             const _bnSlot = abilExtraSlot(L, _abilX);
             const _bnIdx = selectedState.cardIndex;
@@ -3388,31 +3457,25 @@ function drawMyArea(ctx) {
             if (App.blockInput) { _bnBtn.setAlpha(0.45); _bnBtn.disableInteractive(); }
         }
 
-        // ── Údolí stínů – Dvojitá rána: přidat k vybrané kartě BANG! ─────────────
-        // Nabídne se jen u karty, která se právě míří jako KARTA BANG! (aimCardFor –
-        // tentýž predikát jako server a bot). Sedí NAD slotem schopností, protože ten si
-        // v tu chvíli může brát Zúčtování / Lemat nebo Odstřelovač – na mobilu ještě
-        // o řádek výš, nad „Ukončit tah" (abilExtraSlot v core/layout.js).
-        {
-            const _aimCard = (_selHandCard && selectedState.action === 'SHOOT' && !selectedState.sniper &&
-                state.phase === "PLAY" && state.currentPlayerIndex === myIndex && typeof aimCardFor === 'function')
-                ? aimCardFor(state, me, myIndex, _selHandCard) : null;
-            if (_aimCard) {
-                const _aimArmed = selectedState.aim != null;
-                const _aimSlot = abilExtraSlot(L, _abilX);
-                const { bg: _aimBtn } = themeButton(gameScene, _aimSlot.x, _aimSlot.y, _aimSlot.w, _aimSlot.h,
-                    _aimArmed ? 'DVOJITÁ RÁNA: zrušit ↩' : '🎯 + DVOJITÁ RÁNA (−2 ❤)', {
-                    ...themeToggleStyle(_aimArmed), fontSize: '20px',
-                    onClick: () => {
-                        if (App.blockInput) return;
-                        if (_aimArmed) delete selectedState.aim; else selectedState.aim = _aimCard.id;
-                        renderUI();
-                    },
-                });
-                if (App.blockInput) { _aimBtn.setAlpha(0.45); _aimBtn.disableInteractive(); }
-            } else if (selectedState.aim != null && !_selHandCard) {
-                delete selectedState.aim;
-            }
+        // ── Údolí stínů – Dvojitá rána: zrušit vybranou / připojenou ─────────────
+        // Hraje se jako karta (bug U): vybírá se klikem na ni a na kartu BANG! v ruce
+        // (decideCardClick), tohle tlačítko jen říká, na co se čeká, a výběr ruší. Sedí NAD
+        // slotem schopností, protože ten si v tu chvíli může brát Zúčtování / Lemat – na
+        // mobilu ještě o řádek výš, nad „Ukončit tah" (abilExtraSlot v core/layout.js).
+        if (_aimPicking || _aimAttached) {
+            const _aimSlot = abilExtraSlot(L, _abilX);
+            const { bg: _aimBtn, txt: _aimTxt } = themeButton(gameScene, _aimSlot.x, _aimSlot.y, _aimSlot.w, _aimSlot.h,
+                _aimPicking ? '🎯 DVOJITÁ RÁNA: vyber BANG! ↩' : '🎯 DVOJITÁ RÁNA (−2 ❤): zrušit ↩', {
+                ...themeToggleStyle(true), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    selectedState = { cardIndex: null, action: null };
+                    renderUI();
+                },
+            });
+            // Delší popisek se do pevné šířky slotu nevejde – raději ho zmenšit než přetéct.
+            if (_aimTxt.width > _aimSlot.w - 20) _aimTxt.setScale((_aimSlot.w - 20) / _aimTxt.width);
+            if (App.blockInput) { _aimBtn.setAlpha(0.45); _aimBtn.disableInteractive(); }
         }
 
         // ── Údolí stínů – Evelyn Shebang: vystřelit místo jedné karty ────────────

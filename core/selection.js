@@ -27,6 +27,8 @@
 //   { type: 'VOS_ROUND_TOGGLE', index, cardId }       – Divoká banda/Tornádo/Poker (Údolí stínů): označit kartu
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
+//   { type: 'AIM_ARM', index, cardId }                – Dvojitá rána (Údolí stínů): vybrat ji, čeká na kartu BANG!
+//   { type: 'AIM_PICK', index, aimCardId }            – Dvojitá rána: připojit k ní kartu BANG! (`index`) → míří se
 //   { type: 'SELECT', index, action }                 – výběr karty k zahrání (action null =
 //                                                       jen vybraná, hraje se tlačítkem: Zúčtování,
 //                                                       Lemat, Pivo za valoun)
@@ -69,6 +71,12 @@ if (typeof require === 'function') {
     // Divoký západ – Lee Van Kliff: čím se smí zaplatit opakování efektu.
     if (typeof lvkPayOk === 'undefined') {
         globalThis.lvkPayOk = require('./playability.js').lvkPayOk;
+    }
+    // Údolí stínů – Dvojitá rána: se kterými kartami BANG! jde (bug U).
+    if (typeof aimPartnerOk === 'undefined') {
+        const __pl = require('./playability.js');
+        globalThis.aimPartnerOk = __pl.aimPartnerOk;
+        globalThis.aimPartners = __pl.aimPartners;
     }
     // Zlatá horečka – Pivo za valoun (vybírá se i s plnými životy, viz níž).
     if (typeof beerNuggetOk === 'undefined') {
@@ -171,6 +179,31 @@ function decideCardClick(ctx) {
         return { type: 'FLINT_EXCHANGE', index, cardId: card.id, targetIdx: selectedState.flint.targetIdx };
     }
 
+    // Údolí stínů – Dvojitá rána (bug U) se hraje JAKO KARTA: vybere se první a k ní se
+    // klikne karta BANG!, se kterou poletí. `selectedState.aim` = ID Dvojité rány, akce
+    // 'AIM' = ještě se vybírá karta BANG!, 'SHOOT' = je připojená a míří se na postavu.
+    // Musí to být před odznačováním: klik na připojenou kartu BANG! ji jen odpojí.
+    if (selectedState.aim != null && !isMySidActive &&
+        (selectedState.action === 'AIM' || selectedState.action === 'SHOOT') &&
+        state.phase === "PLAY" && canActOnHand(state, myIndex)) {
+        const aim = (me.hand || []).find(c => c && c.id === selectedState.aim);
+        if (aim) {
+            // Znovu na Dvojitou ránu = zrušit celé zahrání.
+            if (card.id === aim.id) return { type: 'DESELECT' };
+            // Na připojenou kartu BANG! = odpojit ji a vybírat znovu.
+            if (selectedState.action === 'SHOOT' && selectedState.cardIndex === index) {
+                return { type: 'AIM_ARM', index: me.hand.indexOf(aim), cardId: aim.id };
+            }
+            // Jiná karta BANG! se připojí (nebo vymění tu připojenou).
+            if (aimPartnerOk(state, me, myIndex, card, aim)) {
+                return { type: 'AIM_PICK', index, aimCardId: aim.id };
+            }
+            // Dokud se vybírá, jiná karta jen blikne (jako cena u Lee Van Kliffa). S už
+            // připojenou kartou BANG! se jde dál – klik vybere jinou kartu běžně.
+            if (selectedState.action === 'AIM') return { type: 'UNPLAYABLE_FLASH' };
+        }
+    }
+
     // Odznačení už vybrané karty (mimo Sid režim)
     if (selectedState.cardIndex === index && !isMySidActive) {
         return { type: 'DESELECT' };
@@ -207,6 +240,22 @@ function decideCardClick(ctx) {
     const isMyResponseTurn = isResponseTurn(state, myIndex);
     const isMyPlayTurn = canActOnHand(state, myIndex);
     if (!isMyResponseTurn && !isMyPlayTurn) return { type: 'NONE' };
+
+    // Údolí stínů – Dvojitá rána: klik na ni ji vybere a čeká se na kartu BANG! (svítí ty,
+    // se kterými jde – aimPartners). Je-li už vybraná karta BANG! k výstřelu, připojí se
+    // Dvojitá rána rovnou k ní, takže na pořadí kliknutí nezáleží. Musí to být před
+    // `playable === false`: sama o sobě hratelná není (server ji pouští jen s kartou BANG!).
+    // Bez karty BANG!, se kterou by šla, se pokračuje dál (blikne / pod Zúčtováním se vybere
+    // a čeká na „ZAHRÁT JAKO BANG!").
+    if (isMyPlayTurn && state.phase === "PLAY" && card.type === "Dvojitá rána" &&
+        aimPartners(state, me, myIndex, card).length > 0) {
+        const sel = selectedState.cardIndex != null ? me.hand[selectedState.cardIndex] : null;
+        if (sel && selectedState.action === 'SHOOT' && !selectedState.sniper &&
+            aimPartnerOk(state, me, myIndex, sel, card)) {
+            return { type: 'AIM_PICK', index: selectedState.cardIndex, aimCardId: card.id };
+        }
+        return { type: 'AIM_ARM', index, cardId: card.id };
+    }
 
     // Zlatá horečka – Pivo za valoun: zahrává se tlačítkem u vybrané karty („ZA VALOUN",
     // view/board.js), ne v obchodě. Pivo, které léčit nemůže (plné životy, dva hráči),

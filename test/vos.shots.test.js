@@ -17,8 +17,9 @@ const fs = require('fs');
 const path = require('path');
 const { mkGame, give, board, topDeck, CardType, Suits } = require('./_helpers.js');
 const { Card, distinctCardKinds, VOS_READY } = require('../logic/entities.js');
-const { cardPlayability, playsAsMissed, playsAsBang, aimOk, aimCardFor, fanningOk,
-        lematBangOk } = require('../core/playability.js');
+const { cardPlayability, playsAsMissed, playsAsBang, aimOk, aimCardFor, aimPartnerOk, aimPartners,
+        fanningOk, lematBangOk } = require('../core/playability.js');
+const { decideCardClick } = require('../core/selection.js');
 const { pendingActor } = require('../core/pending.js');
 const { decideBotAction } = require('../core/botPolicy.js');
 const { getActionForCard } = require('../core/cardRules.js');
@@ -324,6 +325,100 @@ test('Dvojitá rána: jde jen ke KARTĚ BANG!, ne k bang-efektu, sama se nehraje
     g.playBang(0, 1, t, me.hand[a].id);
     assert.equal(me.hand.length, 3);
     assert.equal(g.phase, 'PLAY');
+});
+
+test('Dvojitá rána: s kterými kartami jde (aimPartners) – limit, Kazatel i Želízka u karty BANG!', () => {
+    const g = mkV([{}, {}, {}]);
+    const a = giveV(g, 0, AIM, { suit: Suits.HEARTS });
+    const b = give(g, 0, CardType.BANG, { suit: Suits.SPADES });
+    giveV(g, 0, 'Tomahawk');
+    const me = g.players[0];
+    const aim = me.hand[a];
+    assert.deepEqual(V_ids(aimPartners(g, me, 0, aim)), [me.hand[b].id], 'jen karta BANG!');
+    assert.equal(aimPartnerOk(g, me, 0, aim, aim), false, 'sama se sebou ne');
+    // Vystřílený limit: aimOk kartu BANG! pořád pozná, ale vystřelit s ní už nejde.
+    me.bangsPlayedThisTurn = 1;
+    assert.equal(aimOk(g, me, 0, me.hand[b], aim), true);
+    assert.deepEqual(aimPartners(g, me, 0, aim), []);
+    me.bangsPlayedThisTurn = 0;
+    // Želízka (High Noon) na srdce: karta BANG! v pikách z ruky nesmí.
+    g.activeEvent = { key: 'ZELIZKA' };
+    me._handcuffsSuit = aim.suit;
+    assert.deepEqual(aimPartners(g, me, 0, aim), []);
+    // Kazatel (High Noon): kartu BANG! ve svém tahu zahrát nejde vůbec.
+    me._handcuffsSuit = null;
+    g.activeEvent = { key: 'KAZATEL' };
+    assert.deepEqual(aimPartners(g, me, 0, aim), []);
+    // Mimo vlastní tah ne.
+    g.activeEvent = null;
+    g.currentPlayerIndex = 1;
+    assert.deepEqual(aimPartners(g, me, 0, aim), []);
+});
+
+function V_ids(cards) { return cards.map(c => c.id); }
+
+// Klientský tok výběru (bug U): Dvojitá rána se vybere jako první, k ní karta BANG!.
+function clickCtx(g, idx, selectedState) {
+    const me = g.players[0];
+    return { state: g, me, myIndex: 0, selectedState, card: me.hand[idx], index: idx,
+             blockInput: false, isMySidActive: false, playable: cardPlayability(g, me, 0, me.hand[idx]) };
+}
+
+test('Dvojitá rána: klik na ni ji vybere, klik na kartu BANG! ji připojí (bug U)', () => {
+    const g = mkV([{}, {}, {}]);
+    const a = giveV(g, 0, AIM);
+    const b = give(g, 0, CardType.BANG);
+    const t = giveV(g, 0, 'Tomahawk');
+    const aimId = g.players[0].hand[a].id;
+    // 1. klik na Dvojitou ránu → vybraná, čeká na kartu BANG!
+    assert.deepEqual(decideCardClick(clickCtx(g, a, { cardIndex: null, action: null })),
+        { type: 'AIM_ARM', index: a, cardId: aimId });
+    const picking = { cardIndex: a, action: 'AIM', aim: aimId };
+    // 2. karta, se kterou nejde, jen blikne; znovu na Dvojitou ránu = zrušit
+    assert.deepEqual(decideCardClick(clickCtx(g, t, picking)), { type: 'UNPLAYABLE_FLASH' });
+    assert.deepEqual(decideCardClick(clickCtx(g, a, picking)), { type: 'DESELECT' });
+    // 3. karta BANG! se připojí
+    assert.deepEqual(decideCardClick(clickCtx(g, b, picking)), { type: 'AIM_PICK', index: b, aimCardId: aimId });
+    const attached = { cardIndex: b, action: 'SHOOT', aim: aimId };
+    // Připojená karta BANG! se klikem odpojí (zpátky k výběru), Dvojitá rána zruší vše,
+    // jiná karta se vybere běžně (a Dvojitou ránu tím pustí – SELECT ji maže).
+    assert.deepEqual(decideCardClick(clickCtx(g, b, attached)), { type: 'AIM_ARM', index: a, cardId: aimId });
+    assert.deepEqual(decideCardClick(clickCtx(g, a, attached)), { type: 'DESELECT' });
+    assert.equal(decideCardClick(clickCtx(g, t, attached)).type, 'SELECT');
+});
+
+test('Dvojitá rána: k už vybrané kartě BANG! se připojí rovnou; bez karty BANG! jen blikne', () => {
+    const g = mkV([{}, {}, {}]);
+    const b = give(g, 0, CardType.BANG);
+    const a = giveV(g, 0, AIM);
+    const aimId = g.players[0].hand[a].id;
+    // Opačné pořadí kliknutí: nejdřív BANG! (míří se), pak Dvojitá rána.
+    assert.deepEqual(decideCardClick(clickCtx(g, a, { cardIndex: b, action: 'SHOOT' })),
+        { type: 'AIM_PICK', index: b, aimCardId: aimId });
+    // S nabitým Odstřelovačem se nepřipojuje – vybírá se znovu od Dvojité rány.
+    assert.equal(decideCardClick(clickCtx(g, a, { cardIndex: b, action: 'SHOOT', sniper: true })).type, 'AIM_ARM');
+    // Bez karty BANG!, se kterou by šla, je to dál nehratelná karta.
+    g.players[0].bangsPlayedThisTurn = 1;
+    assert.deepEqual(decideCardClick(clickCtx(g, a, { cardIndex: null, action: null })), { type: 'UNPLAYABLE_FLASH' });
+});
+
+test('Dvojitá rána pod Zúčtováním: připojit jde libovolnou kartu, sama zůstává hratelná jako BANG!', () => {
+    const g = mkV([{}, {}, {}]);
+    g.activeWws = { key: 'ZUCTOVANI' };
+    const a = giveV(g, 0, AIM);
+    const p = give(g, 0, CardType.BEER);
+    const me = g.players[0];
+    const aimId = me.hand[a].id;
+    assert.deepEqual(V_ids(aimPartners(g, me, 0, me.hand[a])), [me.hand[p].id], 'Pivo letí jako BANG!');
+    assert.equal(cardPlayability(g, me, 0, me.hand[a]), true, 'samotná jako BANG! (přepínač)');
+    assert.deepEqual(decideCardClick(clickCtx(g, a, { cardIndex: null, action: null })),
+        { type: 'AIM_ARM', index: a, cardId: aimId });
+    assert.deepEqual(decideCardClick(clickCtx(g, p, { cardIndex: a, action: 'AIM', aim: aimId })),
+        { type: 'AIM_PICK', index: p, aimCardId: aimId });
+    // A server takové zahrání přijme: odejdou obě karty.
+    g.playBang(0, 1, p, aimId);
+    assert.equal(me.hand.length, 0);
+    assert.equal(g.pendingResponse.vos.aim, true);
 });
 
 test('Dvojitá rána: zásah = dva klikané zásahy s útočníkem, obě karty v odhozu', () => {

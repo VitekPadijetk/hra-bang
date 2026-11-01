@@ -249,6 +249,24 @@ function aimCardFor(state, me, myIndex, card) {
         aimOk(state, me, myIndex, card, c)) || null;
 }
 
+// Klient hraje Dvojitou ránu JAKO KARTU (bug U): vybere se první a k ní se klikne karta
+// BANG!, se kterou poletí. Smí TAHLE karta s TOUHLE Dvojitou ranou vystřelit hned teď na
+// postavu? Nad aimOk („je to karta BANG!") přidává to, co jinak hlídá až výběr karty
+// k výstřelu: Želízka u karty BANG!, Kazatel a volný limit karet BANG! – playBang totéž
+// odmítne. Výjimky na vyčerpaný limit (Odražená střela, Odstřelovač) tu nejsou: první
+// míří na kartu, ne na hráče, druhý se platí druhou kartou BANG! – s Dvojitou ranou nejde ani jedno.
+function aimPartnerOk(state, me, myIndex, card, aim) {
+    if (!aimOk(state, me, myIndex, card, aim)) return false;
+    if (suitBlockedFor(state, myIndex, card)) return false;
+    if (preacherBlocks(state, me, myIndex, card)) return false;
+    return bangLimitFree(state, me);
+}
+
+// Se kterými kartami z ruky jde Dvojitá rána `aim` zahrát? (prázdné = vybrat ji nejde)
+function aimPartners(state, me, myIndex, aim) {
+    return (me?.hand || []).filter(c => c && aimPartnerOk(state, me, myIndex, c, aim));
+}
+
 // Údolí stínů – Roztříštěná kulka: smí se teď zahrát? „Účinkuje jako BANG! na dostřel"
 // a podle Dynamite Boxu „nesmíte už ve stejném tahu zahrát svou standardní 1 kartu BANG!
 // (a naopak)" – čerpá tedy limit karet BANG!, i když kartou BANG! NENÍ (žádná Odměna,
@@ -318,7 +336,9 @@ function nativePlayInTurn(state, me, myIndex, card) {
         return true;
     }
     if (isMissedCard(card)) return false;   // Calamity Janet řeší větev výš, Zúčtování showdownBangOk
-    // Údolí stínů – Dvojitá rána se sama nehraje, jen K vybrané kartě BANG! (aimOk).
+    // Údolí stínů – Dvojitá rána se sama nehraje, jen SPOLU s kartou BANG! (aimOk). Klient
+    // ji vybírá jako první a k ní pak kartu BANG! (aimPartners) – to je ale tok výběru,
+    // zahrání pořád jde přes kartu BANG! (playBang s aimCardId).
     if (card.type === "Dvojitá rána") return false;
     // Údolí stínů – Roztříštěná kulka: vlastní akce se dvěma cíli (fanningOk).
     if (card.type === "Roztříštěná kulka") return fanningOk(state, me, myIndex, card);
@@ -1125,7 +1145,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        rouletteDiscardable, rouletteHasCard, rouletteBarrelChecks,
                        playsAsBang, playsAsMissed, showdownBangOk, preacherBlocks, bigSpencerBlocked,
                        lematBangOk, altBangOk, isBangCardPlay, isMissedCard,
-                       aimOk, aimCardFor, fanningOk,
+                       aimOk, aimCardFor, aimPartnerOk, aimPartners, fanningOk,
                        turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer,

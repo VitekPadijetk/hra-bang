@@ -108,9 +108,20 @@ Karty:
 - **Evelyn Shebang** (postava) – volba `'evelyn'` v `options` fáze lízání (`evelynOffer`/
   `evelynTargets`, `drawCard('evelyn', cíl)` → `evelynShoot`).
 
-UI: přepínač „+ DVOJITÁ RÁNA" nad slotem schopností (geometrie `abilExtraSlot`, viz F9),
-dvoukrokové míření kulky (`_vosFanningRole`), tlačítko Evelyn ve slotu schopností; výstřel
-z ruky posílá jen `emitPlayBang` (view/board.js).
+UI: **Dvojitá rána se vybírá jako karta** (bug 90): klik na ni → intent `AIM_ARM`
+(`selectedState = { action: 'AIM', aim: <id> }`), v ruce svítí žlutě karty BANG!, se
+kterými jde (`aimPartners`/`aimPartnerOk` v core/playability.js – nad `aimOk` ještě
+Želízka u karty BANG!, Kazatel a volný limit), zbytek zašedne; klik na kartu BANG! →
+`AIM_PICK` (`action: 'SHOOT'`, obě karty vysunuté) a míří se jako obvykle. Opačné pořadí
+(nejdřív BANG!, pak Dvojitá rána) připojí rovnou. Klik na připojenou kartu BANG! ji odpojí,
+klik na Dvojitou ránu zruší vše; rozhoduje `decideCardClick` (core/selection.js). Server
+ani bot se tím nemění – zahrání je pořád `play_bang` + `aimCardId` a `cardPlayability`
+Dvojité ráně dál vrací false (jen klient ji s kartou BANG! v ruce kreslí jako hratelnou).
+S připojenou Dvojitou ranou se nenabízí Odražená střela, Odstřelovač ani přepínač
+Zúčtování / Lemat; vybraná Dvojitá rána sama ho pod nimi má dál (letí pak sama jako BANG!).
+Nad slotem schopností je jen tlačítko „DVOJITÁ RÁNA: vyber BANG! / zrušit" (geometrie
+`abilExtraSlot`, viz F9). Dál dvoukrokové míření kulky (`_vosFanningRole`), tlačítko
+Evelyn ve slotu schopností; výstřel z ruky posílá jen `emitPlayBang` (view/board.js).
 
 ## Kolečko voleb (F4)
 
@@ -271,8 +282,9 @@ ostatní, takže by kolize nebyla vidět jako rozbitá deska, jen by něco tiše
   0,46 / 165 (pod druhou řadou stolu horního soupeře, mezi bočními soupeři při 8 hráčích),
   mobil 546 / 0,32 / 175 (pásmo mezi kompaktní řadou soupeřů a mým stolem – vyhoví jen
   y 544–548).
-- **Přepínač „+ DVOJITÁ RÁNA"** – `abilExtraSlot(L, abilX)`: o řádek nad slotem schopností,
-  na mobilu (kde je nad ním „Ukončit tah") ještě o řádek výš.
+- **Tlačítko „DVOJITÁ RÁNA: vyber BANG! / zrušit"** (a „ZA VALOUN" u Piva) –
+  `abilExtraSlot(L, abilX)`: o řádek nad slotem schopností, na mobilu (kde je nad ním
+  „Ukončit tah") ještě o řádek výš.
 
 Obojí hlídají invarianty v `test/positions.test.js` (desktop, široké, vysoké, mobil,
 mobil 16:9; 3–8 hráčů s plným stolem i rukou).
