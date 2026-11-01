@@ -9,7 +9,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
   a leží v soukromém repu VitekPadijetk/hra-bang-reports (naklonované do reports/,
   aktualizace `git -C reports pull`): reports/*.json = text + snímek stavu,
   logs/*.jsonl.gz = herní log k hlášení. Sem se zapisuje až HOTOVÝ bug – dostane
-  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 87
+  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 90
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -104,16 +104,11 @@ R — rychlé opravy              80, 81, 82, 83, 84   HOTOVO
 S — animace karet do cizí ruky a balíčky po Hokynářství   85, 86   HOTOVO
       server/handlers.game.js, net/handlers.js, game.js, server/anim.js, server/bots.js
       (+ state.js u 86 – App.storePileLiftTo)
-T — Zlatá horečka              view/screens.js, view/board.js, core/selection.js,
-                               net/handlers.js, server/anim.js, logic/combat.js
-      - 2026-10-18T07-07-59-834Z_game1 (Pivo za valoun tlačítkem u karty, ne v obchodě) –
-        Pivo s plnými životy dnes ani nejde vybrat (cardPlayability → UNPLAYABLE_FLASH);
-        vybrat bez akce, když platí beerNuggetOk, a tlačítko vedle „ZAHRÁT JAKO BANG!".
-      - 2026-10-25T05-50-40-089Z_game2 (vybavení při smrti → spodek balíčku ZH) – snímek
-        smrti v logic/combat.js nese jen blue/weapon/hand, gear chybí i v payloadu,
-        v časování (deathSequenceMs na obou stranách) i u odchodu ducha/stínu.
-      - 2026-10-25T05-51-37-094Z_game2 (animace nákupu: z balíčku s přetočením na místo) –
-        emit chybí (gear_buy i josh_mccloud); okno obchodu (hloubka 1000) by let zakrylo.
+T — Zlatá horečka              87, 88, 89   HOTOVO
+      view/screens.js, view/board.js, core/selection.js, net/handlers.js, server/anim.js,
+      logic/combat.js (+ logic/goldRush.js, logic/highNoon.js, logic/shadow.js,
+      logic/valley.js u 88 – odchod ducha/stínu/Ducha; positions.js – getGearCardPos;
+      core/goldRushAnim.js a server/handlers.game.js u 89)
 U — Dvojitá rána               2026-10-26T17-00-03-525Z_game1 (střílet kartou Dvojitá
       rána a k ní vybrat Bang!) – dnes přepínač u Bangu (view/board.js, abilExtraSlot)
       a samotná karta jen problikne (nativePlayInTurn = false). Server (playBang
@@ -127,6 +122,10 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 89 když si něco koupím z obchodu, dejme tam animaci, že ta vrchní karta z balíčku je ta co si kupuju a ta s přetočením přeletí na to moje/něčí jiné místo a až pak se tam objeví [hlášení 2026-10-25T05-51-37-094Z_game2] → oprava: 51ca871 (nákup ani Josh McCloud animaci neměly. Server teď podle výsledku pravidel pošle gear_acquire: karta vyletí z balíčku vybavení, překlopí se a dosedne na konec pásu vybavení – Wanted až s výběrem cíle před cíl, hnědá chvíli leží u kupujícího a zasune se pod balíček. Okno obchodu se po nákupu zavře, jinak by let zakrylo)
+- 88 když hráč zemře, měly by se odhodit i karty vybavení s ostatními kartami, s tím rozdílem, že nepoletí na odhoz, ale jakoby na spodek balíčku Zlatá horečka [hlášení 2026-10-25T05-50-40-089Z_game2] → oprava: 04fd5e9 (pravidla vybavení uklízela správně, ale snímek smrti ho nenesl, takže zmizelo až se stavem po odhalení role. Teď letí v cinematice jako první, lícem nahoru k balíčku vybavení a zasune se pod něj – i u Vulture Sama, při dělení mezi víc Samů a při odchodu ducha / stínu / Ducha)
+- 87 pokud chci zahrát pivo za valoun, tak ať se to nedělá v obchodě, ale normálně kliknu na pivo a bude tam tlačítko zahrát za valoun (pokud mám plné životy tak prostě jen nepůjde kliknout na balíček, jen na to tlačítko) [hlášení 2026-10-18T07-07-59-834Z_game1] → oprava: 1778dd5 (Pivo s plnými životy nešlo ani vybrat. Když léčit nejde, ale za valoun ano, vybere se bez akce a zbývá tlačítko „ZA VALOUN" nad slotem schopností; Pivo, které léčit jde, má tlačítko navíc. Z obchodu tlačítko zmizelo)
 
 - 86 když bot zahraje hokynářství, dej mu tam chvíli pauzu, aby mohl hrát další kartu až balíček z pozice nahoře se dostane zase dolů (takhle jeho zahraná karta letí nahoru a mezitím jí balíček ujede) [hlášení 2026-10-24T07-27-12-596Z_game1] → oprava: 0013e22 (cíl letu do odhozu se bral při startu, tedy nahoře – teď discardTopPos míří tam, kam balíčky jedou (App.storePileLiftTo), takže se to netýká ani lidí; karty startující z odhozu berou dál místo, kde hromádka je. Boty k tomu drží room._storeBlockUntil ze store_pick: dolet vybrané karty, případné míchání a spuštění balíčků)
 - 85 líznutí u dostavníku/wf je stále špatně, když si líže někdo jiný než já – poslední karta se mu v ruce objeví až po odhalení karty Divokého západu [hlášení 2026-10-25T05-38-40-408Z_game2] → oprava: 92a1829 (staging z bugů 67/70 dostával jen majitel. Ostatní teď k poslednímu líznutí dostanou stageHandLen – počet karet v ruce, ten je veřejný – a klient mu při dosednutí doplní placeholdery; do odkryté ruky (Sacagaway, debug, divák hry botů) skutečné stageCards)
