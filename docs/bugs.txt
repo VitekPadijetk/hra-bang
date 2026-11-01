@@ -9,7 +9,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
   a leží v soukromém repu VitekPadijetk/hra-bang-reports (naklonované do reports/,
   aktualizace `git -C reports pull`): reports/*.json = text + snímek stavu,
   logs/*.jsonl.gz = herní log k hlášení. Sem se zapisuje až HOTOVÝ bug – dostane
-  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 78
+  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 85
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -98,6 +98,37 @@ Q — boti a server              24, 46, 53   HOTOVO
     65 je stejný mechanismus jako 56, jen v intru navazující hry.
 
 
+TŘETÍ VLNA (hlášení z 18.–28. 10.) — čísla dostanou až hotové, tady jen plán a příčiny
+
+R — rychlé opravy              80, 81, 82, 83, 84   HOTOVO
+S — animace karet do cizí ruky a balíčky po Hokynářství
+      - 2026-10-25T05-38-40-408Z_game2 (Dostavník/WF u SOUPEŘE: poslední karta až po
+        kartě Divokého západu) – staging z bugů 67/70 dostává jen majitel
+        (server/handlers.game.js ~154: ostatním jde jen { type:'draw', playerIdx }),
+        klient staguje jen pro myIndex (net/handlers.js case 'draw'). Ostatním poslat
+        počet karet (stageHandLen, jen když se čeká na odkrytí) a při dosednutí doplnit
+        placeholdery; pod Sacagaway/debug skutečné stageCards.
+      - 2026-10-24T07-27-12-596Z_game1 (bot hraje po Hokynářství moc brzy) – bot po
+        zavření obchodu nečeká na animatePileLift(0) (320 ms, game.js); a cíl letu do
+        odhozu se bere při startu (discardTopPos → _pileTopY s App.storePileLiftY), takže
+        to potká i lidi. Cíl brát z lift, KAM balíčky míří, + držet boty
+        (room._storeBlockUntil v store_pick, server/bots.js).
+T — Zlatá horečka              view/screens.js, view/board.js, core/selection.js,
+                               net/handlers.js, server/anim.js, logic/combat.js
+      - 2026-10-18T07-07-59-834Z_game1 (Pivo za valoun tlačítkem u karty, ne v obchodě) –
+        Pivo s plnými životy dnes ani nejde vybrat (cardPlayability → UNPLAYABLE_FLASH);
+        vybrat bez akce, když platí beerNuggetOk, a tlačítko vedle „ZAHRÁT JAKO BANG!".
+      - 2026-10-25T05-50-40-089Z_game2 (vybavení při smrti → spodek balíčku ZH) – snímek
+        smrti v logic/combat.js nese jen blue/weapon/hand, gear chybí i v payloadu,
+        v časování (deathSequenceMs na obou stranách) i u odchodu ducha/stínu.
+      - 2026-10-25T05-51-37-094Z_game2 (animace nákupu: z balíčku s přetočením na místo) –
+        emit chybí (gear_buy i josh_mccloud); okno obchodu (hloubka 1000) by let zakrylo.
+U — Dvojitá rána               2026-10-26T17-00-03-525Z_game1 (střílet kartou Dvojitá
+      rána a k ní vybrat Bang!) – dnes přepínač u Bangu (view/board.js, abilExtraSlot)
+      a samotná karta jen problikne (nativePlayInTurn = false). Server (playBang
+      s aimCardId) i bot zůstávají; jde jen o klientský tok výběru.
+
+
 OTEVŘENÉ
 --------
 
@@ -105,6 +136,14 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 84 pokud na mě hráč dá jinou kartu než bang jako bang během zúčtování, ať to v tom štítku je jasné co se děje, text "Saloon od hráče XY" není úplně vypovídající, takže třeba Saloon jako Bang! od XY - jinak tam je ještě chyba, že saloon se píše jako "Saloon" ne jako "Salón" [hlášení 2026-10-25T05-55-22-026Z_game2] → oprava: 1c1c7e2 (playBang dává do sourceCardName „<karta> jako BANG!" u každé karty, která kartou Bang! není – Zúčtování, Calamity Janet, Lemat. „SALOON" v kódu ani datech není, je to nápis přímo na artu assets/card_art/saloon.webp → ZBÝVÁ nový obrázek)
+- 83 když má někdo vyloženého ducha, jeho postava se bude zobrazovat neprůhledně (absolutně nic tam není vidět) [hlášení 2026-10-28T06-21-24-778Z_game1] → oprava: 502a763 (portrét Ducha byl na 55 % průhlednosti a na nule životů leží přesně na kartě životů – prosvítaly náboje. Kreslí se teď jako hrající, Ducha ukazuje karta v pásu)
+- 82 u pokeru bych měl mít možnost vůbec si zakliknout jen jednu kartu (takhle mě hra dovolí si zakliknout i víc karet) [hlášení 2026-10-28T06-20-06-857Z_game1] → oprava: 684c144 (nový vosToggleCapped: druhý klik odznačí, karta nad strop vytlačí nejstarší – Poker 1, Tornádo a Divoká banda 2, výběr z vyložených karet Pokeru 2)
+- 81 když se karta ukazuje kvůli právu západu, tak se při dávání do ruky během cesty nepřetočí [hlášení 2026-10-25T06-00-46-678Z_game2] → oprava: 094e0c2 (stejná past jako bug 37: při dosednutí šla do cizí ruky SKUTEČNÁ karta a ukázala se lícem – teď placeholder a překlopení podle hideIntoHand. Týká se i Peyote, sdílí startDeckCardReveal)
+- 80 Suzy teď umřela, její karta se dala vulture samovi, animace byla vidět, počet karet v ruce mu ale poskočil až po té, co se odhalila role Suzy (+ totéž v hlášení 2026-10-25T05-38-40-408Z_game2: jen když neumřel můj hráč) [hlášení 2026-10-24T07-22-53-673Z_game1] → oprava: 59d3a19 (pád klienta: _deathFlyToVulture se ptal handFaceUp(pid), ale pid mu nikdo nepředal – karta z ruky mrtvého neodletěla a objevila se až se záložním úklidem po odhalení role. Pád byl ve 4 z 10 logů, zavlekl ho c2c55cb)
+- 79 pokud si lížu víc karet po více kartách (příjezd vlaku +/ krumpáč) po lízání na začátku, měl bych mít možnost na ten balíček klikat jakobych si lízal karty, takhle líznu 2 a pak je to vždy líznutí + čekání [hlášení 2026-10-19T15-10-03-536Z_game1] → oprava: c9723aa (líznutí navíc pro téhož hráče – Bart Cassidy, Boty, Madam Yto, Úhyb – se slévají do jedné fáze lízání na N karet)
+- 78 před tím než doopravdy začne hra tak se menu změní na ukončit hru [hlášení 2026-10-19T15-05-54-522Z_game1] → oprava: 1fbe9b3 (intro kreslilo lídrovi vlastní „✕ Ukončit hru" místo ☰ Menu – tlačítko teď kreslí jediná funkce drawGameMenuButton)
 
 - 77 při sledování (minimálně hry botů) se karty nepřetáčejí a někdy nezmenšují, největší problém je u hráče dole → oprava: ce36d6b (divák hry botů dostával rubovou variantu soukromých animací, i když ruce vidí lícem → teď variantu s ID a karta se za letu přetočí; spodní sledovaný hráč se animoval v měřítku scaleMe místo specScale a cíle mířily na přibližný střed – pozice ruky i stolu teď zrcadlí drawSpectatorPlayer, pod Sacagaway se přetáčí i jeho vějíř)
 - 75 u lady růže když se někdo mění, tak by ta animace mohla být trošku propracovanější (např. že ty karty zmizí když se začnou měnit a nebude to vypadat divně). Třeba když se já měním s někým nebo někdo se mnou tak by se (pro mě) mohli vyměnit jakoby ostatní, tím, že přesunu na jiné místo, tak se všichni jakoby o 1 posunou. Zkus to vymyslet → oprava: d98f95c (měním-li se já nebo se mnou, zůstávám dole a celý okruh soupeřů se posune o jedno místo, partner přejde obloukem za mými zády; mění-li se dva jiní, přeletí jen jejich portréty. Stěhujícím se hráčům karty zmizí hned na začátku a objeví se s novým stavem na novém sedadle – App.seatSwapHide, cíle z getSeatPortraitPos v positions.js)
