@@ -9,7 +9,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
   a leží v soukromém repu VitekPadijetk/hra-bang-reports (naklonované do reports/,
   aktualizace `git -C reports pull`): reports/*.json = text + snímek stavu,
   logs/*.jsonl.gz = herní log k hlášení. Sem se zapisuje až HOTOVÝ bug – dostane
-  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 90
+  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 91
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -109,10 +109,9 @@ T — Zlatá horečka              87, 88, 89   HOTOVO
       logic/combat.js (+ logic/goldRush.js, logic/highNoon.js, logic/shadow.js,
       logic/valley.js u 88 – odchod ducha/stínu/Ducha; positions.js – getGearCardPos;
       core/goldRushAnim.js a server/handlers.game.js u 89)
-U — Dvojitá rána               2026-10-26T17-00-03-525Z_game1 (střílet kartou Dvojitá
-      rána a k ní vybrat Bang!) – dnes přepínač u Bangu (view/board.js, abilExtraSlot)
-      a samotná karta jen problikne (nativePlayInTurn = false). Server (playBang
-      s aimCardId) i bot zůstávají; jde jen o klientský tok výběru.
+U — Dvojitá rána               90   HOTOVO
+      core/selection.js, core/playability.js (aimPartnerOk/aimPartners), view/board.js.
+      Server (playBang s aimCardId) ani bot nepotřebovaly nic – šlo jen o klientský tok výběru.
 
 
 OTEVŘENÉ
@@ -122,6 +121,8 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 90 Dvojitou ránu prosím uprav, aby se střílelo jakoby tou kartou dvojitá rána a k tomu se vybral libovolný bang ne naopak, že u bangu je možnost použít dvojitou ránu [hlášení 2026-10-26T17-00-03-525Z_game1] → oprava: c1a4b4a (klik na Dvojitou ránu ji vybere a v ruce rozsvítí karty BANG!, se kterými jde – nové aimPartners v core/playability.js hlídá i Želízka, Kazatele a limit; klik na kartu BANG! ji připojí a míří se jako obvykle, jde i opačné pořadí. Přepínač „+ DVOJITÁ RÁNA“ u Bangu zmizel, nad slotem schopností zůstalo jen tlačítko pro zrušení. Server ani bot se neměnily)
 
 - 89 když si něco koupím z obchodu, dejme tam animaci, že ta vrchní karta z balíčku je ta co si kupuju a ta s přetočením přeletí na to moje/něčí jiné místo a až pak se tam objeví [hlášení 2026-10-25T05-51-37-094Z_game2] → oprava: 51ca871 (nákup ani Josh McCloud animaci neměly. Server teď podle výsledku pravidel pošle gear_acquire: karta vyletí z balíčku vybavení, překlopí se a dosedne na konec pásu vybavení – Wanted až s výběrem cíle před cíl, hnědá chvíli leží u kupujícího a zasune se pod balíček. Okno obchodu se po nákupu zavře, jinak by let zakrylo)
 - 88 když hráč zemře, měly by se odhodit i karty vybavení s ostatními kartami, s tím rozdílem, že nepoletí na odhoz, ale jakoby na spodek balíčku Zlatá horečka [hlášení 2026-10-25T05-50-40-089Z_game2] → oprava: 04fd5e9 (pravidla vybavení uklízela správně, ale snímek smrti ho nenesl, takže zmizelo až se stavem po odhalení role. Teď letí v cinematice jako první, lícem nahoru k balíčku vybavení a zasune se pod něj – i u Vulture Sama, při dělení mezi víc Samů a při odchodu ducha / stínu / Ducha)
