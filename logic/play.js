@@ -36,12 +36,12 @@ const PlayMixin = {
 
         const cardEffects = {
             [CardType.BEER]: () => {
-                // High Noon – Reverend: po celé kolo nejde zahrát Pivo (Salón ano, FAQ H1).
+                // High Noon – Reverend: po celé kolo nejde zahrát Pivo (Saloon ano, FAQ H1).
                 if (this._beerBlocked()) return false;
                 // Jsou-li ve hře jen dva hráči, Pivo nemá žádný efekt. Doteď to server
                 // hlídal jen u záchrany posledního života (beerLastLifeSave), takže v
                 // koncovce 1v1 se z ruky pořád léčilo. Klient to nenabízel (cardPlayability),
-                // ale pravidlo patří sem – Salón i ostatní léčení platí dál.
+                // ale pravidlo patří sem – Saloon i ostatní léčení platí dál.
                 // Duch (Město duchů) se počítá za hráče ve hře – s ním jsou u stolu tři.
                 if (inPlayCount(this.players) <= 2) return false;
                 // Tequila Joe (Dodge City): karta Pivo mu dá +2 (jiné léčení jen +1).
@@ -233,7 +233,7 @@ const PlayMixin = {
         }
 
         // Karta, která sama kartou Bang! není a letí jako Bang! (Zúčtování, Calamity Janet,
-        // Lemat): cíl musí ze štítku poznat, proč se brání proti Salónu (bug 84). Jméno je
+        // Lemat): cíl musí ze štítku poznat, proč se brání proti Saloonu (bug 84). Jméno je
         // jen na zobrazení a do logu – žádné pravidlo se na sourceCardName neptá.
         const shownName = (!isEffect && card.type !== CardType.BANG) ? `${card.name} jako BANG!` : card.name;
 

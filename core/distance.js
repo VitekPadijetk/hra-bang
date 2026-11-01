@@ -99,7 +99,7 @@ function staysInPlay(player) {
     return !!player && (player.health > 0 || isVosGhost(player));
 }
 
-// Může si hráč právě teď doplnit život? JEDINÝ dotaz všech léčivých cest (Pivo, Salón,
+// Může si hráč právě teď doplnit život? JEDINÝ dotaz všech léčivých cest (Pivo, Saloon,
 // Whisky, Tequila, Sid Ketchum, Panák, Batoh, Rum, …) na serveru, u klienta i u bota.
 // Duch (Město duchů) se léčit smí; stín (Stínoví pistolníci) ani Duch (Údolí stínů) ne
 // – „nemůžeš získat ani ztratit život". Kdyby se jedna strana ptala jinak, bot by poslal

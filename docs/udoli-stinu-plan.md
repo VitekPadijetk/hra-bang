@@ -614,7 +614,7 @@ a Obětavý skok (BANG! neruší, jen zachraňují život). Dvojitá rána s ♠
 volaný ze všech tří cest: `playCard`, `beerLastLifeSave`, `beerForNugget`) se přejmenuje
 na `_onBeerCardPlayed` a k Yto přibude Jim: zahrál-li Pivo **jiný** hráč, Jim je ve hře,
 `canHeal(Jim)` a má kartu v ruce → fronta `LEMONADE_OFFER` → Jim odhodí libovolnou kartu
-za +1 život, nebo odmítne. Salón, Whisky, Poslední pivo ani Láhev kartou Pivo nejsou.
+za +1 život, nebo odmítne. Saloon, Whisky, Poslední pivo ani Láhev kartou Pivo nejsou.
 
 **Evelyn Shebang** (česká verze) — ve fázi 1 **před lízáním** (dV: rozhodnout předem)
 přibude možnost „o kartu méně → BANG! na hráče ve vzdálenosti ≤ 1" (`computeDistance`,

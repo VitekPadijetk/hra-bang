@@ -347,7 +347,7 @@ test('Madam Yto: Pivo jako záchrana posledního života ji spustí taky', () =>
     assert.equal(g.players[0].hand.length, 1);
 });
 
-test('Madam Yto: Salón, Whisky ani Láhev ji nespustí', () => {
+test('Madam Yto: Saloon, Whisky ani Láhev ji nespustí', () => {
     const g = mkZH([{ role: 'Sheriff', character: 'Madam Yto', health: 3 },
                     { role: 'Outlaw', health: 3 }, { role: 'Deputy' }], { current: 1 });
     const si = give(g, 1, CardType.SALOON);

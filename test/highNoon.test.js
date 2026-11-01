@@ -347,7 +347,7 @@ test('bez Přestřelky platí limit 1 Bang! za tah', () => {
 
 // ── Reverend ────────────────────────────────────────────────────────────────
 
-test('Reverend: Pivo se nedá zahrát, Salón ano (FAQ H1)', () => {
+test('Reverend: Pivo se nedá zahrát, Saloon ano (FAQ H1)', () => {
     const g = mkHnGame([{ role: 'Sheriff', health: 2 }, { health: 2 }], { event: 'REVEREND' });
     const beer = give(g, 0, CardType.BEER);
     g.playCard(beer);
@@ -356,7 +356,7 @@ test('Reverend: Pivo se nedá zahrát, Salón ano (FAQ H1)', () => {
 
     const saloon = give(g, 0, CardType.SALOON);
     g.playCard(saloon);
-    assert.deepEqual(g.players.map(p => p.health), [3, 3], 'Salón funguje dál');
+    assert.deepEqual(g.players.map(p => p.health), [3, 3], 'Saloon funguje dál');
 });
 
 test('Reverend: Pivo nezachrání ani při posledním životě', () => {
@@ -947,7 +947,7 @@ test('Město duchů: duch se vyléčí Pivem i Sidem Ketchumem', () => {
     assert.equal(g.players[1].hand.length, 0, 'Sid odhodil obě karty');
 });
 
-test('Město duchů: Salón vyléčí i ducha', () => {
+test('Město duchů: Saloon vyléčí i ducha', () => {
     const g = mkHnGame([{ role: 'Sheriff', health: 2 }, { health: 0 }, {}, {}], { event: 'MESTO_DUCHU' });
     g.players[1]._ghost = true;
     g.currentPlayerIndex = 1;

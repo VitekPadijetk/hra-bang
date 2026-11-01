@@ -180,7 +180,7 @@ const CharactersMixin = {
                 continue;
             }
             // Údolí stínů – Limonádový Jim: nabídka čeká na jeho rozhodnutí. Mezitím mohl
-            // odejít ze hry, doléčit se (Pivo zahrál on sám jako záchranu, Salón…) nebo
+            // odejít ze hry, doléčit se (Pivo zahrál on sám jako záchranu, Saloon…) nebo
             // přijít o karty – pak by nabídka neměla smysl a čekala by zbytečně.
             if (a.type === 'LEMONADE_OFFER') {
                 if (!lemonadeEligible(this.players[a.playerIdx])) this.specialActionQueue.splice(i, 1);
@@ -482,7 +482,7 @@ const CharactersMixin = {
     // ── Trychtýř na KARTU Pivo ───────────────────────────────────────────────
     // Volají ho všechny tři cesty, kudy se karta Pivo hraje: `playCard` (léčení),
     // `beerLastLifeSave` (záchrana posledního života – RESPOND, dynamit, Pravé poledne)
-    // a `beerForNugget` (Pivo za valoun, Zlatá horečka). Nikdo jiný – Salón, Whisky,
+    // a `beerForNugget` (Pivo za valoun, Zlatá horečka). Nikdo jiný – Saloon, Whisky,
     // Poslední pivo ani Láhev zahraná jako Pivo kartou Pivo nejsou. Volá se až ve
     // chvíli, kdy je jisté, že se Pivo doopravdy zahrálo, a reakce jdou frontou
     // odložených akcí („nejdřív doběhne efekt zahrané karty").

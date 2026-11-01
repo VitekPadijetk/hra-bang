@@ -305,12 +305,12 @@ test('Jim: s plnými životy nebo bez karet se nic nenabízí', () => {
     assert.equal(h.phase, 'PLAY', 'prázdná ruka');
 });
 
-test('Jim: Salón ani Poslední pivo kartou Pivo nejsou', () => {
+test('Jim: Saloon ani Poslední pivo kartou Pivo nejsou', () => {
     const g = mkV([{ health: 3 }, { character: JIM, health: 2 }, {}]);
     give(g, 1, CardType.BANG);
     g.playCard(give(g, 0, CardType.SALOON));
     assert.equal(g.phase, 'PLAY');
-    assert.equal(g.players[1].health, 3, 'Salón léčil i Jima');
+    assert.equal(g.players[1].health, 3, 'Saloon léčil i Jima');
 
     const h = mkV([{ health: 3 }, { character: JIM, health: 2 }, {}]);
     give(h, 1, CardType.BANG);

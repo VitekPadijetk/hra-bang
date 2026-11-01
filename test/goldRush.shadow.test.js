@@ -124,7 +124,7 @@ test('stín nemůže získat život – Pivo nejde zahrát, _heal i canHeal ho m
     assert.equal(g.players[1].health, 0);
 });
 
-test('Salón vyléčí ostatní, stín ne', () => {
+test('Saloon vyléčí ostatní, stín ne', () => {
     const g = mkShadowGame([{ role: 'Sheriff', health: 2 }, { health: 0 }, {}, {}]);
     g.players[1]._shadow = true;
     g.currentPlayerIndex = 1;

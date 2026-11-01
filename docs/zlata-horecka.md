@@ -63,7 +63,7 @@ valoun**. Vlastník se **nemůže bránit**. Karta jde na spodek balíčku vybav
 
 **3. Získání zlata za Pivo.** Zahráním karty Pivo z ruky si vezmeš **1 valoun** místo
 doplnění života. Takto lze zahrát libovolný počet Piv. **Karty s podobným efektem
-(Salón, Whisky, Láhev) takhle zahrát nejde.**
+(Saloon, Whisky, Láhev) takhle zahrát nejde.**
 
 Počet nákupů ani odhození **není nijak omezený**.
 
@@ -144,7 +144,7 @@ Noonu** (`ZLATA_HORECKA`, id 305, „hra probíhá proti směru hodinových ruč
 | **Dutch Will** | Lízne si 2 karty, 1 odhodí a vezme si 1 valoun. | Odhazuje **jednu ze dvou právě líznutých** (dle své volby) ve fázi 1. |
 | **Jacky Murieta** | Ve svém tahu smí zaplatit 2 valouny a vystřelit 1 BANG! navíc. | Smí to **vícekrát za tah**, když zaplatí. **Nehraje k tomu žádnou kartu.** |
 | **Josh McCloud** | Smí si za 2 valouny líznout **vrchní vybavení z balíčku**. | Jen ve **svém tahu**. Lízne-li černý rám, který už má, **musí ho odhodit**. |
-| **Madam Yto** | Pokaždé, když je zahráno Pivo, lízne si 1 kartu z balíčku. | Nezáleží, jestli šlo Pivo na život, nebo na valoun, ani **kdo** ho zahrál (i ona sama). **Neplatí pro Whisky, Salón ani Láhev.** |
+| **Madam Yto** | Pokaždé, když je zahráno Pivo, lízne si 1 kartu z balíčku. | Nezáleží, jestli šlo Pivo na život, nebo na valoun, ani **kdo** ho zahrál (i ona sama). **Neplatí pro Whisky, Saloon ani Láhev.** |
 | **Pretty Luzena** | Jednou za tah smí koupit vybavení za cenu **sníženou o 1**. | Koupit smí víc karet, ale **jen jedna** je levnější. Na kartě za 1 valoun ji tím dostane **zdarma**. |
 | **Raddie Snake** | Ve svém tahu smí odhodit 1 valoun a líznout si 1 kartu (až 2×). | — |
 | **Simeon Picos** | Pokaždé, když ztratí 1 život, vezme si 1 valoun. | Valoun **vždy ze společné zásoby**, ne od hráče, který mu ztrátu způsobil. |

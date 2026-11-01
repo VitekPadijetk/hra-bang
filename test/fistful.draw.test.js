@@ -77,7 +77,7 @@ test('Pálenka: doléčenému hráči už akce neprojde', () => {
     stackDeck(g, 4);
     g.startDrawPhase();
     assert.ok(g.drawPhaseState.options.includes('liquor'));
-    g.players[0].health = 4;               // mezitím se doléčil (Pivo v reakci, Salón…)
+    g.players[0].health = 4;               // mezitím se doléčil (Pivo v reakci, Saloon…)
     g.drawCard('liquor');
     assert.equal(g.phase, 'DRAW', 'fáze lízání běží dál');
     assert.equal(g.players[0].hand.length, 0);
@@ -508,7 +508,7 @@ test('Právo západu: bot nikdy neposílá end_turn, dokud karta drží', () => 
 
 // ── Právo západu: vynucená karta zamyká jen to, co by ji vypnulo ────────────
 // Povinnost jde obejít jen třemi cestami a právě ty jsou zamčené: doléčit se Pivem, aby
-// vynucený Salón přestal jít zahrát; vyčerpat limit jiným Bangem; nebo si vynucenou
+// vynucený Saloon přestal jít zahrát; vyčerpat limit jiným Bangem; nebo si vynucenou
 // kartu odhodit (schopností, jako cenu za „odhoď další kartu", Rančem). Zbytek tahu
 // zamčený NENÍ – nesouvisející karty i schopnosti jdou zahrát (bug 12).
 
@@ -521,34 +521,34 @@ function mkForced(g, forcedType, forcedOpts = {}) {
     return g._lawForced(0);
 }
 
-test('Právo západu: vynucený Salón nejde obejít Pivem (zbytek ruky je zamčený)', () => {
+test('Právo západu: vynucený Saloon nejde obejít Pivem (zbytek ruky je zamčený)', () => {
     const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'PRAVO_ZAPADU');
     const beer = give(g, 0, CardType.BEER);
     give(g, 0, CardType.BANG);
     const forced = mkForced(g, CardType.SALOON);
-    assert.ok(forced, 'Salón drží – jsem zraněný');
+    assert.ok(forced, 'Saloon drží – jsem zraněný');
     const bangCard = g.players[0].hand.find(c => c.type === CardType.BANG);
     assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[beer]), false,
-        'Pivo je do zahrání Salónu zamčené');
+        'Pivo je do zahrání Saloonu zamčené');
     assert.equal(cardPlayability(g, g.players[0], 0, bangCard), true,
-        'zbytek ruky ale zamčený není – Bang! Salónu nijak nevadí');
+        'zbytek ruky ale zamčený není – Bang! Saloonu nijak nevadí');
     g.playCard(beer);
     assert.equal(g.players[0].health, 3, 'Pivo se nezahrálo');
-    // Až po vynuceném Salónu je ruka zase volná.
+    // Až po vynuceném Saloonu je ruka zase volná.
     g.playCard(forced.idx);
-    assert.equal(g.players[0].health, 4, 'Salón vyléčil');
+    assert.equal(g.players[0].health, 4, 'Saloon vyléčil');
     assert.equal(g._lawForced(0), null);
     assert.equal(cardPlayability(g, g.players[0], 0, bangCard), true, 'ruka je zase odemčená');
 });
 
-test('Právo západu: nesouvisející karta se zahrát smí (Salón v ruce, hraju Vybavení)', () => {
+test('Právo západu: nesouvisející karta se zahrát smí (Saloon v ruce, hraju Vybavení)', () => {
     const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'PRAVO_ZAPADU');
     const barrel = give(g, 0, CardType.BARREL);
     assert.ok(mkForced(g, CardType.SALOON));
     assert.equal(cardPlayability(g, g.players[0], 0, g.players[0].hand[barrel]), true);
     g.playCard(barrel);
     assert.equal(g.players[0].board.length, 1, 'Barel leží na stole');
-    assert.ok(g._lawForced(0), 'a Salón drží dál');
+    assert.ok(g._lawForced(0), 'a Saloon drží dál');
 });
 
 test('Právo západu: jiný Bang! nesmí vyčerpat limit před vynuceným', () => {
@@ -575,20 +575,20 @@ test('Právo západu: schopnost postavy si vynucenou kartu odhodit nesmí', () =
     g.useSidKetchum(0, [0, forced.idx]);
     assert.equal(g.players[0].health, 2, 'Sid se s vynucenou kartou nespustil');
     assert.ok(g._lawForced(0), 'a karta pořád leží v ruce');
-    // Dvě jiné karty projdou – Salón se pak pořád dá zahrát (jsem zraněný dál).
+    // Dvě jiné karty projdou – Saloon se pak pořád dá zahrát (jsem zraněný dál).
     g.useSidKetchum(0, [0, 1]);
     assert.equal(g.players[0].health, 3, 'jinými kartami zaplatit smí');
     assert.ok(g._lawForced(0), 'povinnost trvá');
 });
 
 test('Právo západu: schopnost, po které by vynucená karta nešla zahrát, je zamčená', () => {
-    // Sid se doléčí do plných životů → vynucený Salón by přestal jít zahrát.
+    // Sid se doléčí do plných životů → vynucený Saloon by přestal jít zahrát.
     const g = mkEv([{ role: 'Sheriff', character: 'Sid Ketchum', health: 3 }, {}, {}], 'PRAVO_ZAPADU');
     give(g, 0, CardType.BANG);
     give(g, 0, CardType.BANG);
     assert.ok(mkForced(g, CardType.SALOON));
     g.useSidKetchum(0, [0, 1]);
-    assert.equal(g.players[0].health, 3, 'Sid se nespustil – doléčením by Salón vypnul');
+    assert.equal(g.players[0].health, 3, 'Sid se nespustil – doléčením by Saloon vypnul');
 });
 
 test('Právo západu: vynucenou kartou nejde zaplatit „odhoď další kartu"', () => {
@@ -649,7 +649,7 @@ test('Právo západu: zelený bang-efekt ze stolu jde aktivovat (limit Bang! ne�
 });
 
 test('Právo západu: zelená karta, která by vynucenou vypnula, se aktivovat nedá', () => {
-    // Čutora doléčí život → vynucený Salón by přestal jít zahrát.
+    // Čutora doléčí život → vynucený Saloon by přestal jít zahrát.
     const g = mkEv([{ role: 'Sheriff', health: 3 }, {}, {}], 'PRAVO_ZAPADU');
     const canteen = board(g, 0, CardType.CANTEEN, { props: { green: true, activate: 'heal_self' } });
     canteen._playedTurn = 0;

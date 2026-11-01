@@ -133,7 +133,7 @@ zbytek – dřív se jen o 5,7 s odložil celý broadcast a řada naskočila nar
 Klient to nenabízel už dřív (`cardPlayability`), ale server pravidlo hlídal jen u záchrany
 posledního života (`beerLastLifeSave`), takže v koncovce 1v1 se z ruky pořád léčilo. Gate je
 teď i v efektu `CardType.BEER` ([logic/play.js](logic/play.js)). **Zákaz platí jen na kartu
-Pivo** – Salón, Whisky, Čutora, Tequila i Sid Ketchum léčí dál.
+Pivo** – Saloon, Whisky, Čutora, Tequila i Sid Ketchum léčí dál.
 
 ## Pálenka se nenabízí s plnými životy
 

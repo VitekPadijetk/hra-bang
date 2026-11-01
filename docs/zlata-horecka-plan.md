@@ -439,7 +439,7 @@ už má, **musí ji odhodit** (dodatek) — a `gearBuy` tuhle větev nemá, prot
 hráč vybírá. Vlastní metoda.
 
 **Madam Yto** má hák na **obě** cesty Piva (léčení i valoun) a **na kohokoli** u stolu,
-včetně sebe. Nesmí se spustit na Whisky, Salón ani Láhev. Líznutí patří do fronty
+včetně sebe. Nesmí se spustit na Whisky, Saloon ani Láhev. Líznutí patří do fronty
 odložených akcí ze stejného důvodu jako Boty.
 
 **Pretty Luzena** je jediné místo, kde se cena liší podle hráče → `_gearCost(playerIdx, card)`
@@ -833,7 +833,7 @@ Commity česky, prefixy `refaktor:` / `testy:` / `úklid:` / `oprava:`, větev `
   odhoz, ani valoun. S Krumpáčem (líže 3) naopak odhazuje jednu ze tří.
 - **Madam Yto je trychtýř na KARTU Pivo, ne na léčení.** `_madamYtoOnBeer` volají všechny
   tři cesty, kudy se karta Pivo hraje (`playCard`, `beerLastLifeSave` ve všech třech
-  fázích, `beerForNugget`), a nikdo jiný: Salón, Whisky ani Láhev zahraná jako Pivo
+  fázích, `beerForNugget`), a nikdo jiný: Saloon, Whisky ani Láhev zahraná jako Pivo
   kartou Pivo nejsou (dodatek na Láhvi), takže ji nespustí. Líznutí jde frontou
   odložených akcí do vlastní fáze `YTO_DRAW` (vzor Boty) – platí pro ně pravidlo
   „nejdřív doběhne efekt zahrané karty" a fáze se musí čistit v `_pruneSuzyQueue`,

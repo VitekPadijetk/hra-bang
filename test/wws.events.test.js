@@ -113,15 +113,15 @@ test('Zúčtování: karta si svoji vlastní akci ponechává (Pivo se pořád s
     assert.equal(g.players[0].health, 3);
 });
 
-// Bug 84: štítek obrany musí říct, že cizí karta letí jako Bang! – „Salón od hráče XY"
+// Bug 84: štítek obrany musí říct, že cizí karta letí jako Bang! – „Saloon od hráče XY"
 // nedával smysl. Pravá karta Bang! zůstává beze změny.
-test('Zúčtování: štítek obrany ukáže „Salón jako BANG!"', () => {
+test('Zúčtování: štítek obrany ukáže „Saloon jako BANG!"', () => {
     const g = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
-    const i = give(g, 0, CardType.SALOON, { name: 'Salón' });
+    const i = give(g, 0, CardType.SALOON, { name: 'Saloon' });
     g.playBang(0, 1, i);
     assert.equal(g.phase, 'RESPOND');
-    assert.equal(g.pendingResponse.sourceCardName, 'Salón jako BANG!');
-    assert.equal(describePendingResponse(g, 1).sourceLabel, 'Salón jako BANG!');
+    assert.equal(g.pendingResponse.sourceCardName, 'Saloon jako BANG!');
+    assert.equal(describePendingResponse(g, 1).sourceLabel, 'Saloon jako BANG!');
 
     const h = mkEv([{ role: 'Sheriff' }, {}, {}], 'ZUCTOVANI');
     h.playBang(0, 1, bang(h, 0));

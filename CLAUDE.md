@@ -699,7 +699,7 @@ vybavení) uzavřela celé rozšíření.
     takže by z ID poznal kartu přesně — stejný důvod jako u `_lawCardId`).
   - **Madam Yto** (`_madamYtoOnBeer`) visí na trychtýři na **KARTU Pivo** (`_onBeerCardPlayed`,
     logic/characters.js), ne na léčení: volají ho všechny tři cesty, kudy se Pivo hraje (`playCard`, `beerLastLifeSave` ve všech třech
-    fázích, `beerForNugget`), a nikdo jiný — Salón, Whisky ani Láhev zahraná jako Pivo
+    fázích, `beerForNugget`), a nikdo jiný — Saloon, Whisky ani Láhev zahraná jako Pivo
     kartou Pivo nejsou. Líznutí jde frontou odložených akcí do fáze **`YTO_DRAW`** (vzor
     Boty), takže platí „nejdřív doběhne efekt zahrané karty" a `_pruneSuzyQueue` ho uklidí,
     kdyby majitelka mezitím odešla ze hry.

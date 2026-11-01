@@ -18,7 +18,7 @@ tiše odmítal ukončit a bot by posílal `end_turn` donekonečna.
   - **`lawLocksOther(state, me, i, card, opts)`** postaví mělkou kopii stavu PO té akci
     a zeptá se `lawForcedCard` znovu. Modeluje jen to, co si hráč způsobí SÁM: ruku
     (karty ven i líznuté), limit karet Bang! a vlastní životy. Tím spadnou do zámku
-    přesně tři obcházky – doléčit se **Pivem**, aby vynucený **Salón** přestal jít
+    přesně tři obcházky – doléčit se **Pivem**, aby vynucený **Saloon** přestal jít
     zahrát; vyčerpat limit **jiným Bangem** (s Volcanicem se druhý Bang! prostě zahraje
     až PO tom vynuceném); a zahrát „odhoď další kartu", po které by v ruce nezbylo čím
     zaplatit. `opts = { discards, draws, heal, noBangLimit }` popisuje, co akce udělá

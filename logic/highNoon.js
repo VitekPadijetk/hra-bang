@@ -580,7 +580,7 @@ const HighNoonMixin = {
         return this.hasEvent('KAZATEL') && playerIdx === this.currentPlayerIndex;
     },
 
-    // Reverend: po celé kolo nejde zahrát Pivo (Salón ano – není to karta Pivo, FAQ H1).
+    // Reverend: po celé kolo nejde zahrát Pivo (Saloon ano – není to karta Pivo, FAQ H1).
     _beerBlocked() {
         return this.hasEvent('REVEREND');
     },

@@ -1059,7 +1059,7 @@ function decidePlay(state, myIndex, beliefs) {
         if (cheap === -1) return;
         const tgt = shootTargets(state, myIndex, beliefs).find(e => computeCanHit(state, myIndex, e.idx));
         // Ploché nízké skóre = poslední možnost před „ukončit tah" (0). Cokoli, co bot
-        // s kartou umí udělat jinak, má víc – i vypití Salonu při zranění (8).
+        // s kartou umí udělat jinak, má víc – i vypití Saloonu při zranění (8).
         if (tgt) consider(6, { event: 'play_bang',
             payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: cheap } });
     };

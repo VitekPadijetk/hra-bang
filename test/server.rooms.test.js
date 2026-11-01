@@ -221,7 +221,7 @@ function mkPlaying(ctx, opts = {}) {
         { name: 'Bob',   role: 'Sheriff',  health: 5, hand: [{ id: 3, name: 'Vedle!' }] },
         { name: 'Cyril', role: 'Renegade', health: 4, hand: [{ id: 4, name: 'Barel' }, { id: 5, name: 'Duel' }] },
     ];
-    gs.deck = { cards: [{ id: 6, name: 'Dynamit' }, { id: 7, name: 'Mustang' }], discardPile: [{ id: 8, name: 'Salón' }] };
+    gs.deck = { cards: [{ id: 6, name: 'Dynamit' }, { id: 7, name: 'Mustang' }], discardPile: [{ id: 8, name: 'Saloon' }] };
     return room;
 }
 
@@ -329,7 +329,7 @@ test('redakce: z balíčku zbude jen počet, odhoz zůstává veřejný', () => 
     const gsA = payloadFor(emits, 's1');
     assert.equal(gsA.deck.cards.length, 2, 'výška hromádky sedí');
     assert.ok(gsA.deck.cards.every(c => c._placeholder), 'příští líznutí nejsou vidět');
-    assert.deepEqual(gsA.deck.discardPile.map(c => c.name), ['Salón'], 'odhoz je veřejný');
+    assert.deepEqual(gsA.deck.discardPile.map(c => c.name), ['Saloon'], 'odhoz je veřejný');
     assert.equal(room.gameState.deck.cards[0].name, 'Dynamit', 'skutečný stav se nezměnil');
 });
 
@@ -347,7 +347,7 @@ test('redakce: aktivní Opuštěný důl (_mineTurn) se ke klientovi dostane', (
     const gsA = payloadFor(emits, 's1');
     assert.equal(gsA._mineTurn, true);
     assert.ok(gsA.deck.cards.every(c => c._placeholder), 'dobírací balíček zůstává skrytý');
-    assert.deepEqual(gsA.deck.discardPile.map(c => c.name), ['Salón'], 'odkud se líže, je veřejné');
+    assert.deepEqual(gsA.deck.discardPile.map(c => c.name), ['Saloon'], 'odkud se líže, je veřejné');
 });
 
 // Claus "The Saint" (Fistful): odkrytou řadu uprostřed stolu vidí lícem jen on –

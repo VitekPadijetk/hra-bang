@@ -85,7 +85,7 @@ test('Tequila Joe: karta Pivo dá +2 (do maxima)', () => {
     assert.equal(g2.players[0].health, 5);       // +2 se zastaví na maxu
 });
 
-test('Tequila Joe: jiné léčení (Salón) mu dá jen +1', () => {
+test('Tequila Joe: jiné léčení (Saloon) mu dá jen +1', () => {
     const g = mkGame([{ role: 'Sheriff', character: 'Tequila Joe', health: 2, maxHealth: 5 }, { role: 'Outlaw', health: 1, maxHealth: 4 }]);
     const saloon = give(g, 0, CardType.SALOON);
     g.playCard(saloon);

@@ -637,7 +637,7 @@ const GoldRushMixin = {
     // ── Fáze 2, možnost 3: Pivo za valoun ───────────────────────────────────
     // „Zahráním karty Pivo z ruky si vezmeš 1 valoun místo doplnění života." Je to
     // VLASTNÍ akce, ne větev playCard – hráč musí umět říct, že tohle Pivo chce na zlato.
-    // Karty s podobným efektem (Salón, Whisky, Láhev) takhle zahrát nejde, proto se ptáme
+    // Karty s podobným efektem (Saloon, Whisky, Láhev) takhle zahrát nejde, proto se ptáme
     // přesně na typ Pivo.
     beerForNugget(playerIdx, cardIdx) {
         if (!this._goldRushOn() || this.phase !== "PLAY") return null;
@@ -904,7 +904,7 @@ const GoldRushMixin = {
     // trychtýř `_onBeerCardPlayed` (logic/characters.js) ze VŠECH TŘÍ cest karty Pivo:
     // `playCard` (léčení), `beerLastLifeSave` (záchrana posledního života)
     // a `beerForNugget` (Pivo za valoun, Zlatá horečka).
-    // Neplatí pro Whisky, Salón ani Láhev – ty kartou Pivo nejsou, takže sem nechodí.
+    // Neplatí pro Whisky, Saloon ani Láhev – ty kartou Pivo nejsou, takže sem nechodí.
     //
     // Líznutí jde do FRONTY odložených akcí (vlastní fáze `YTO_DRAW`, vzor Boty a Bart
     // Cassidy): platí pro ně pravidlo „nejdřív doběhne efekt zahrané karty". U stolu

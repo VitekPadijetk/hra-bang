@@ -121,7 +121,7 @@ test('na živého hráče server Ducha nepoloží (karta zůstane v ruce)', () =
 
 // ── „Nemůže získat ani ztratit žádný život" ──────────────────────────────────
 
-test('Duch se nemůže léčit (Pivo, Salón, _heal, Nová identita)', () => {
+test('Duch se nemůže léčit (Pivo, Saloon, _heal, Nová identita)', () => {
     const g = mkV([{ role: 'Sheriff' }, {}, {}, { dead: true }], { current: 3 });
     playDuch(g, 0, 3);
     const p = g.players[3];

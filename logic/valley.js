@@ -571,7 +571,7 @@ const ValleyMixin = {
     // „Vždy, když některý z hráčů zahraje kartu PIVO, může si Jim za odhození libovolné
     // karty doplnit 1 život." + upřesnění Albi: „Nemůže použít svou schopnost, když on
     // sám hraje PIVO." Volá ho trychtýř na KARTU Pivo `_onBeerCardPlayed`
-    // (logic/characters.js) ze všech tří cest, kudy se Pivo hraje – Salón, Whisky,
+    // (logic/characters.js) ze všech tří cest, kudy se Pivo hraje – Saloon, Whisky,
     // Poslední pivo ani Láhev kartou Pivo nejsou, takže sem nechodí.
     //
     // Nabídka jde do FRONTY odložených akcí (fáze LEMONADE_OFFER, vzor Madam Yto):

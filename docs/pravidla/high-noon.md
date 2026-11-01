@@ -8,13 +8,13 @@ Vyřazení hráči se na svůj tah vracejí jako duchové: líznou si **3 karty*
 tahu **nemohou umřít** a na konci tahu jsou zase vyřazeni.
 
 Model: hráč nastoupí s `health = 0` a `player._ghost = true`, **ale životy se mu během tahu
-hýbat můžou**: duch je ve hře, takže se **léčí jako kdokoli jiný** (Pivo, Salón, Whisky,
+hýbat můžou**: duch je ve hře, takže se **léčí jako kdokoli jiný** (Pivo, Saloon, Whisky,
 Čutora, Tequila, Sid Ketchum). Je to kvůli postavám, které za dobrovolnou ztrátu života
 profitují – naléčené životy pak smí utratit **Chuck Wengam**. Na kartě události žádný zákaz
 léčení není; „nemohou umřít" je proto jediné, co se musí hlídat zvlášť:
 
 - **`_heal` (logic.js) se ptá přes `isInPlay`**, ne `health > 0` – to je jediný trychtýř
-  léčení (Salón, Tequila i Sid jím prošly, aby se pravidlo nedublovalo).
+  léčení (Saloon, Tequila i Sid jím prošly, aby se pravidlo nedublovalo).
 - **`handleDamage` (logic/combat.js)**: zásah ducha srazí nejvýš na nulu a `handlePlayerDeath`
   se pro `_ghost` NEvolá; na nule ho další zásahy míjejí (early return `health <= 0`).
   Schopnosti za ztrátu života (Bart Cassidy, El Gringo) běží normálně.
@@ -54,7 +54,7 @@ Vulture Sam a **všechno léčení**. Prosté `health > 0` zůstává tam, kde j
    a zmizely až během odkrývání události.
 6. **Klient** – duch se kreslí jako hráč na tahu (`drawMyArea` mu vykreslí vlastní stůl
    přes `me._ghost`, `addCharInteraction` ho nepřeskočí jako mrtvého). Zrcadla „ve hře je,
-   takže se léčí" jsou v `core/playability.js` (Pivo, Salón, Whisky/Tequila), `view/board.js`
+   takže se léčí" jsou v `core/playability.js` (Pivo, Saloon, Whisky/Tequila), `view/board.js`
    (Čutora, Sid, cíl Tequily) a `core/botPolicy.js` – **bez nich by bot vybíral akci, kterou
    server odmítne, a hra by se zasekla** (stav se nezmění → stejná akce znovu; přesně to
    odhalí zátěžový test „hra jen botů s balíčkem samých Měst duchů").

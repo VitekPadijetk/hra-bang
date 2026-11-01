@@ -262,7 +262,7 @@ test('Tequila Joe dostane taky jen 1 valoun, ne 2 (FAQ Q15)', () => {
     assert.equal(g.players[0].nuggets, 1);
 });
 
-test('Salón ani jiná karta se za valoun vyměnit nedá – jen Pivo', () => {
+test('Saloon ani jiná karta se za valoun vyměnit nedá – jen Pivo', () => {
     const g = mkZH();
     const i = give(g, 0, CardType.SALOON);
     assert.equal(g.beerForNugget(0, i), null);
