@@ -3398,6 +3398,10 @@ function startDeckCardReveal(card, playerIdx, D, opts = {}) {
     const hand = state.players[playerIdx]?.hand ?? [];
     const target = getHandSlotPos(playerIdx, hand.length, hand.length + 1);
     const endScale = _renderHandScale(playerIdx);
+    // Míří karta do SKRYTÉ ruky? Ptá se teď, dokud v ruce není – vložená skutečná karta by
+    // handFaceUp přepnula. Pod Sacagaway, v debug hře i u diváka hry jen botů leží ruce
+    // odkryté, takže tam karta dosedá lícem (stejně jako 2. karta Black Jacka, bug 37).
+    const hide = !isOwner && hideIntoHand(playerIdx);
     if (isOwner) App.pendingDrawIds.add(card.id);   // skryj v ruce do doletu (staging)
     gameScene.tweens.add({ targets: sprite, x: target.x, y: target.y, scaleY: endScale,
         delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn',
@@ -3408,20 +3412,27 @@ function startDeckCardReveal(card, playerIdx, D, opts = {}) {
             if (isOwner) App.pendingDrawIds.delete(card.id);
             // Karta se objeví PŘESNĚ při dosednutí: pokud stav ještě nedorazil, vlož ji do
             // ruky optimisticky (další room_update ji stejně přepíše, žádný duplikát).
+            // Do skryté ruky ale patří placeholder BEZ ID (to pošle i redakce) – skutečnou
+            // kartu deska nakreslí lícem, takže by se po dosednutí hned odkryla a překlopení
+            // za letu vypadalo, že se nekonalo (bug 81).
             const h = state?.players?.[playerIdx]?.hand;
-            if (h && !h.some(c => c.id === card.id)) h.push(card);
+            if (h && !h.some(c => c.id === card.id)) h.push(hide ? { id: null, _placeholder: true } : card);
             renderUI(); } });
     if (isOwner) {
         gameScene.tweens.add({ targets: sprite, scaleX: endScale, delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn' });
     } else {
         // Ostatní: karta míří do vějíře ruky soupeře → za letu se dotočí do jeho orientace
-        // (bok = ±90°, protější = 180°) a překlopí zpět na rub (míří do skryté ruky).
+        // (bok = ±90°, protější = 180°) a překlopí zpět na rub – jen když míří do skryté ruky.
         const seatAngle = _kitSpecAngleFor(playerIdx);
         if (seatAngle) gameScene.tweens.add({ targets: sprite, angle: seatAngle, delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn' });
-        const halfLand = Math.round(D.landMs / 2);
-        gameScene.tweens.add({ targets: sprite, scaleX: 0, delay: flyDelay, duration: halfLand, ease: 'Sine.easeIn',
-            onComplete: () => { if (!sprite.active) return; sprite.setTexture('card_back');
-                gameScene.tweens.add({ targets: sprite, scaleX: endScale, duration: halfLand, ease: 'Sine.easeOut' }); } });
+        if (hide) {
+            const halfLand = Math.round(D.landMs / 2);
+            gameScene.tweens.add({ targets: sprite, scaleX: 0, delay: flyDelay, duration: halfLand, ease: 'Sine.easeIn',
+                onComplete: () => { if (!sprite.active) return; sprite.setTexture('card_back');
+                    gameScene.tweens.add({ targets: sprite, scaleX: endScale, duration: halfLand, ease: 'Sine.easeOut' }); } });
+        } else {
+            gameScene.tweens.add({ targets: sprite, scaleX: endScale, delay: flyDelay, duration: D.landMs, ease: 'Cubic.easeIn' });
+        }
     }
 }
 
