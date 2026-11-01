@@ -1376,6 +1376,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // poloze (proaktivní režim – hráči si brali rychleji, než stihlo doběhnout),
             // hra na jeho dokončení počká: klient si zamkne UI (endStoreCinematic),
             // boti čekají přes _reshuffleBlockUntil (stejně jako u klasického domíchání).
+            // Po něm ještě balíčky sjedou dolů – na to boti čekají přes _storeBlockUntil
+            // (počítá se z _storeShuffleUntil, proto PŘED jeho vynulováním).
+            if (gs.phase !== 'STORE' && ctx.storeCloseUntil) {
+                room._storeBlockUntil = ctx.storeCloseUntil(room);
+            }
             if (gs.phase !== 'STORE' && room._storeShuffleUntil) {
                 room._reshuffleBlockUntil = Math.max(room._reshuffleBlockUntil || 0, room._storeShuffleUntil);
                 room._storeShuffleUntil = 0;

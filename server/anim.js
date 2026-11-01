@@ -266,6 +266,17 @@ module.exports = function installAnimService(ctx) {
         return { pickReady, shuffleEnd };
     }
 
+    // Konec hokynářství: balíčky na klientu sjíždějí zpátky dolů (animatePileLift(0)
+    // v endStoreCinematic, game.js) – až po doletu poslední vybrané karty (store_pick)
+    // a po případném dojetí míchání ve zvednuté poloze (`room._storeShuffleUntil`).
+    // Vrací, DOKDY bot nehraje: karta, kterou by zahrál do odhozu, by jinak letěla
+    // k hromádce, která jí za letu ujede dolů (hlášení 2026-10-24T07-27-12-596Z_game1).
+    const STORE_PICK_MS = 420;   // = ANIM_MS.store_pick v net/handlers.js
+    function storeCloseUntil(room) {
+        const lowerAt = Math.max(Date.now() + STORE_PICK_MS, room?._storeShuffleUntil || 0);
+        return lowerAt + STORE_LIFT_MS + STORE_BUF_MS;
+    }
+
     // ── Odkrytá řada (Kit Carlson / Claus): časování klientské cinematiky ────────
     // Karty letí z balíčku do řady po jedné (stagger) a když balíček během odkrývání
     // dojde, přeruší je míchání – přesně jako v hokynářství (viz storeCinematicMs).
@@ -739,7 +750,7 @@ module.exports = function installAnimService(ctx) {
 
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal,
                          handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
-                         applyGagPenalty,
+                         storeCloseUntil, applyGagPenalty,
                          revealCinematicMs, confirmRolePeek,
                          beforeBroadcast });
     return ctx;

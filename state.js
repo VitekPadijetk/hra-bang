@@ -254,6 +254,7 @@ const App = {
     // Držíme proto vlastní počet, který ubývá s každou odlétající kartou (a na nule
     // hromádka zmizí – přesně s poslední rozdanou kartou). null = kresli podle stavu.
     storePileLiftY: 0,
+    storePileLiftTo: null,   // cíl rozjetého zvedání/spouštění (animatePileLift), jinak null
     dealDeckCount: null,
     storeDealIds: new Set(),
     storeLocked: false,

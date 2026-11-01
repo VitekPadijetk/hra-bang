@@ -2086,6 +2086,9 @@ function _playCardAnim(data) {
     if (!gameScene || !state) return;   // divák (myIndex === null) animace také vidí
     const deck    = deckTopPos();      // vrch balíčku (odkud karta vzlétá / kam dosedá)
     const discard = discardTopPos();   // vrch odhozu (ne základna) – ať karty dosednou na hromádku
+    // Karta, která z odhozu STARTUJE, vzlétá z místa, kde hromádka právě je – `discard` je
+    // cíl a během zvedání/spouštění balíčků (Hokynářství) míří tam, kam hromádka jede.
+    const discardSrc = _rightPilePos();
 
     // Server posílá vizuální slot v jednotné konvenci „slot 0 = zbraň": 0 = výzbroj,
     // 1+k = k-tá karta na stole. Přesně tak kreslím SVŮJ stůl (na slotu 0 je zbraň, a
@@ -2269,7 +2272,7 @@ function _playCardAnim(data) {
             }
             // Majitel: reveal flip do finálního slotu + staging (objeví se po dosednutí).
             // Pod dolem bez překlápění (faceUp) – karta z odhozu už lícem nahoru je.
-            const _src = _fromDiscard ? discard : deck;
+            const _src = _fromDiscard ? discardSrc : deck;
             if (!animateDrawToMyHand(data.playerIdx, data.cardId, _src.x, _src.y,
                                      _mineFace ? { faceUp: true, onComplete: mineDone } : {})) {
                 // Soupeřova karta zůstává skrytá (rub), míří do jeho vějíře ruky – a dotočí
@@ -2681,7 +2684,7 @@ function _playCardAnim(data) {
             renderUI();
             const pedroDone = () => { App.discardFlyHideIds.delete(data.cardId); renderUI(); };
             // Karta z odhozu (lícem nahoru) → bez otáčení, jen dolet + růst + staging.
-            if (!animateDrawToMyHand(data.playerIdx, data.cardId, discard.x, discard.y, { faceUp: true, duration: 380, onComplete: pedroDone })) {
+            if (!animateDrawToMyHand(data.playerIdx, data.cardId, discardSrc.x, discardSrc.y, { faceUp: true, duration: 380, onComplete: pedroDone })) {
                 // Soupeř bere veřejnou vrchní kartu odhozu (líc) do SKRYTÉ ruky → za letu
                 // se musí přetočit lícem→rub (reverse), stejně jako krádež ze stolu u Ragtime.
                 // Dřív doletěla pořád lícem nahoru a „přetočení" nebylo vidět vůbec. Zároveň
@@ -2689,7 +2692,7 @@ function _playCardAnim(data) {
                 // karet v jeho ruce; míří na KONCOVÝ slot vějíře, ne na obecnou kotvu.
                 const dLen = state?.players?.[data.playerIdx]?.hand?.length ?? 0;
                 const to = getHandSlotPos(data.playerIdx, dLen, dLen + 1);
-                animateCardFlip(discard.x, discard.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
+                animateCardFlip(discardSrc.x, discardSrc.y, to.x, to.y, 'card_back', getCardTex(data.cardId),
                     { flip: hideIntoHand(data.playerIdx), reverse: true, startAngle: 0, endAngle: sideAngle(data.playerIdx),
                       startScale: 0.3, endScale: sideScale(data.playerIdx, 'hand'), duration: 380, onComplete: pedroDone });
             }
@@ -2733,7 +2736,7 @@ function _playCardAnim(data) {
             // Opuštěného dolu se to netýká: zahrané ani odhozené karty ve fázi 2 na
             // dobírací balíček nechodí, takže se karta vrací z odhozu lícem nahoru.
             if (data.toPlayerIdx === myIndex &&
-                animateDrawToMyHand(data.toPlayerIdx, data.cardId, discard.x, discard.y, { faceUp: true, duration: 400 })) {
+                animateDrawToMyHand(data.toPlayerIdx, data.cardId, discardSrc.x, discardSrc.y, { faceUp: true, duration: 400 })) {
                 break;
             }
             // Cíl = KONCOVÝ slot jeho vějíře (ne střed ruky) a karta se cestou dotočí
@@ -2745,11 +2748,11 @@ function _playCardAnim(data) {
             const _jpAngle = sideAngle(data.toPlayerIdx);
             // Z odhozu je karta veřejná; do skryté ruky se za letu překlopí na rub.
             if (hideIntoHand(data.toPlayerIdx)) {
-                animateCardFlip(discard.x, discard.y, handPos.x, handPos.y, 'card_back', getCardTex(data.cardId),
+                animateCardFlip(discardSrc.x, discardSrc.y, handPos.x, handPos.y, 'card_back', getCardTex(data.cardId),
                     { flip: true, reverse: true, startAngle: 0, endAngle: _jpAngle,
                       startScale: pileScale(), endScale: sideScale(data.toPlayerIdx, 'hand'), duration: 400 });
             } else {
-                animateCard(discard.x, discard.y, handPos.x, handPos.y, getCardTex(data.cardId), 400, null,
+                animateCard(discardSrc.x, discardSrc.y, handPos.x, handPos.y, getCardTex(data.cardId), 400, null,
                     { startAngle: 0, endAngle: _jpAngle, exactAngle: true,
                       startScale: pileScale(), endScale: sideScale(data.toPlayerIdx, 'hand') });
             }

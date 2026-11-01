@@ -493,6 +493,39 @@ test('poslední líznutí Dostavníku nese ostatním počet karet v ruce (stageH
     assert.equal((own[1].stageCards || []).length, 2, 'a k tomu data obou karet');
 });
 
+// Dávka S (hlášení 2026-10-24T07-27-12-596Z_game1): po posledním výběru v hokynářství
+// sjíždějí balíčky na klientu zpátky dolů (až po doletu vybrané karty a po případném
+// míchání ve zvednuté poloze). Bot do té doby nehraje – jeho karta by letěla k odhozu,
+// který jí za letu ujede.
+test('poslední výběr v hokynářství podrží boty, než balíčky sjedou (_storeBlockUntil)', () => {
+    const { ctx, mkSocket } = mkEnv();
+    const s = mkSocket('s1');
+    s.fire('debug_start', { playerCount: 3 });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+    gs.phase = 'PLAY';
+    gs.currentPlayerIndex = 0;
+    gs.players[0].hand.push(new Card(9002, 'Hokynářství', CardType.STORE, 'Srdce', 'A'));
+    s.fire('play_card', gs.players[0].hand.length - 1);
+    assert.equal(gs.phase, 'STORE');
+
+    const picks = gs.storeCards.length;
+    const next = () => ({ cardIdx: gs.storeCards.findIndex(c => c) });   // vybraný slot zůstává null
+    for (let k = 0; k < picks - 1; k++) s.fire('store_pick', next());
+    assert.equal(gs.phase, 'STORE');
+    assert.ok(!room._storeBlockUntil, 'dokud se vybírá, nic se nedrží');
+
+    // Míchání ve zvednuté poloze ještě běží → spouštění začne až po něm.
+    const shuffleEnd = Date.now() + 2000;
+    room._storeShuffleUntil = shuffleEnd;
+    const t0 = Date.now();
+    s.fire('store_pick', next());
+    assert.notEqual(gs.phase, 'STORE', 'hokynářství skončilo');
+    assert.ok(room._storeBlockUntil >= shuffleEnd + 340, 'drží přes míchání a spuštění balíčků');
+    assert.equal(room._reshuffleBlockUntil, shuffleEnd, 'na míchání se čeká jako dřív');
+    assert.ok(ctx.storeCloseUntil({}) >= t0 + 420 + 340, 'bez míchání aspoň dolet karty + spuštění');
+});
+
 // ── Další hra: účast (S12 / S13, docs/menu-ui-plan.md D8) ──────────────────────
 // Místnost po konci hry: čtyři hráči přes skutečné handlery, stav hry s vítězem.
 // Emity socketů se zaznamenávají (`emits[id]`), ať jde poznat, kdo šel do menu.

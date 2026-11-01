@@ -136,9 +136,17 @@ const PILE_PX_PER_CARD = 0.25;
 // „dosedne" menší než hromádka a než ji překreslení srovná, je to vidět (o to víc,
 // když sprite na cíli chvíli počká na opožděný broadcast – holdThenFinish).
 const PILE_SCALE = _L0.scaleDeck;
-function _pileTopY(baseY, count) {
-    const lift = App.storePileLiftY || 0;
+// `lift` = o kolik jsou balíčky zvednuté (Hokynářství); default je, kde PRÁVĚ jsou.
+function _pileTopY(baseY, count, lift = App.storePileLiftY || 0) {
     return (baseY - lift) - Math.max(0, count - 1) * PILE_PX_PER_CARD / 2;
+}
+// Kam balíčky MÍŘÍ: během zvedání/spouštění (animatePileLift) cíl tweenu, jinak kde jsou.
+// Cíl letu se bere při startu, kdežto hromádka se za letu hýbe dál – karta zahraná hned
+// po hokynářství by jinak mířila nahoru, kde odhoz ještě byl, a ten by jí za letu ujel
+// dolů (hlášení 2026-10-24T07-27-12-596Z_game1). Spouštění (320 ms) je kratší než let
+// karty, takže v okamžiku dosednutí už hromádka na cíli leží.
+function _pileLiftDest() {
+    return App.storePileLiftTo ?? (App.storePileLiftY || 0);
 }
 // A Fistful of Cards – Opuštěný důl: „ve fázi lízání se líže z odhozu, odhazuje se
 // lícem dolů na dobírací balíček". NENÍ to prohození hromádek – týká se to jen FÁZE 1
@@ -156,8 +164,12 @@ function _rightPilePos() { return { x: DISCARD_X, y: _pileTopY(DISCARD_Y, state?
 function deckTopPos()    { return _leftPilePos(); }
 // Karta letící DO odhozu je v okamžiku animace už ve stavu na cílové hromádce (broadcast
 // dorazí okolo card_animation), takže count zahrnuje i ji → cíl = její budoucí klidová
-// poloha navrchu.
-function discardTopPos() { return _rightPilePos(); }
+// poloha navrchu. A to i co do výšky: když se balíčky zrovna zvedají/spouštějí, míří
+// se tam, kde skončí (_pileLiftDest). Karta, která z odhozu naopak STARTUJE (Opuštěný
+// důl, Pedro Ramirez), bere _rightPilePos – tedy místo, kde hromádka právě je.
+function discardTopPos() {
+    return { x: DISCARD_X, y: _pileTopY(DISCARD_Y, state?.deck?.discardPile?.length ?? 0, _pileLiftDest()) };
+}
 // Opuštěný důl – zdroj FÁZE 1 (líže se z odhozu). Volají jen cesty, které pod dolem
 // opravdu berou z odhozu: běžné líznutí, druhá karta Black Jacka a odkryté řady
 // Kita Carlsona a Clause.
@@ -1094,12 +1106,17 @@ const STORE_DEAL_MS = 440;
 // Plynulé zvednutí/spuštění obou balíčků. Tween na pomocném objektu + renderUI
 // (board.js kreslí balíčky podle App.storePileLiftY).
 function animatePileLift(target, onDone) {
-    if (!gameScene) { App.storePileLiftY = target; if (onDone) onDone(); return; }
+    if (!gameScene) { App.storePileLiftY = target; App.storePileLiftTo = null; if (onDone) onDone(); return; }
     const holder = { v: App.storePileLiftY || 0 };
+    App.storePileLiftTo = target;   // kam se míří – cíl letů do odhozu (_pileLiftDest)
     gameScene.tweens.add({
         targets: holder, v: target, duration: 320, ease: 'Cubic.easeInOut',
         onUpdate: () => { App.storePileLiftY = holder.v; renderUI(); },
-        onComplete: () => { App.storePileLiftY = target; renderUI(); if (onDone) onDone(); }
+        onComplete: () => {
+            App.storePileLiftY = target;
+            if (App.storePileLiftTo === target) App.storePileLiftTo = null;
+            renderUI(); if (onDone) onDone();
+        }
     });
 }
 

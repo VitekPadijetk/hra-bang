@@ -312,6 +312,10 @@ module.exports = function installBotService(ctx) {
         // Údolí stínů – kolečko voleb: předání karet Tornáda, odhalení a výběr u Pokeru
         // (core/vosAnim.js, nastaví flushVosAnim v server/anim.js).
         const vosWait = Math.max(0, (room._vosBlockUntil || 0) - Date.now());
+        // Konec hokynářství: balíčky sjíždějí ze zvednuté polohy zpátky dolů (nastaví
+        // store_pick v server/handlers.game.js) – zahraná karta by jinak letěla k odhozu,
+        // který jí za letu ujede.
+        const storeWait = Math.max(0, (room._storeBlockUntil || 0) - Date.now());
         // První herní akce po startu hry / po intru: chvíli počkej (viz startupSettleMs).
         if (room._botStartupSettle && realTurn && !introConfirmPending && room.players[pa.idx]?.isBot) {
             room._botStartupSettle = false;
@@ -357,7 +361,8 @@ module.exports = function installBotService(ctx) {
 
         // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
         // časováním – bot čeká, než doběhnou.
-        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait, wwsWait, vosWait);
+        delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait, wwsWait, vosWait,
+                         storeWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();
@@ -370,7 +375,11 @@ module.exports = function installBotService(ctx) {
             // Cinematika vyřazení mohla začít až PO naplánování tohoto ticku (debounce
             // room._botTick ho znovu nepřeplánoval) – pak by bot zahrál doprostřed
             // odhalení role. Přeplánuj se; nové zpoždění už ji zahrne (deathWait výše).
-            if ((room._deathBlockUntil || 0) > Date.now()) { scheduleBotTick(room); return; }
+            // Totéž konec hokynářství: poslední výběr mohl udělat člověk, zatímco tick
+            // naplánovaný dřív ještě čekal.
+            if ((room._deathBlockUntil || 0) > Date.now() || (room._storeBlockUntil || 0) > Date.now()) {
+                scheduleBotTick(room); return;
+            }
             try { runBotTickOnce(room); }
             catch (e) { ctx.glog.error('bot-tick', e, room); }
         }, delay);
