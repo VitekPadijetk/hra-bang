@@ -2399,7 +2399,13 @@ function drawMyArea(ctx) {
 
         // Čistá logika hratelnosti je v core/playability.js. `me` předáváme explicitně,
         // protože ve spectator módu to NENÍ state.players[myIndex] (viz výpočet `me` výše).
-        const getCardPlayability = (card) => cardPlayability(state, me, myIndex, card);
+        // Zlatá horečka – Pivo za valoun: Pivo, které nejde zahrát na život (plné životy),
+        // jde pořád vyměnit za valoun tlačítkem u karty – svítí tedy jako hratelné
+        // (a „Ukončit tah" kvůli němu nebliká). Výběr bez akce řeší decideCardClick.
+        const getCardPlayability = (card) => {
+            const p = cardPlayability(state, me, myIndex, card);
+            return (p === false && card && card.type === "Pivo" && beerNuggetOk(state, myIndex, card)) ? true : p;
+        };
         if (me.hand.length > 0) {
             // Ruka má vlastní řadu i měřítko (na mobilu je pod stolem a větší, na
             // desktopu je handY = myBaseY a scaleHand = scaleMe, tedy dnešní stav).
@@ -3349,6 +3355,31 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _sdBtn.setAlpha(0.45); _sdBtn.disableInteractive(); }
+        }
+
+        // ── Zlatá horečka – Pivo za valoun: tlačítko u vybrané karty Pivo ─────────
+        // „Zahráním karty Pivo z ruky si vezmeš 1 valoun místo doplnění života." Klik na
+        // odhoz Pivo zahraje na život (jen když léčit jde), tohle tlačítko na valoun.
+        // Sedí NAD slotem schopností (abilExtraSlot), tedy vedle „ZAHRÁT JAKO BANG!" pod
+        // Zúčtováním – a když je výstřel nabitý, nekreslí se (hráč se rozhodl střílet).
+        if (_selHandCard && _selHandCard.type === "Pivo" && !selectedState.showdown &&
+            beerNuggetOk(state, myIndex, _selHandCard)) {
+            const _bnSlot = abilExtraSlot(L, _abilX);
+            const _bnIdx = selectedState.cardIndex;
+            const { bg: _bnBtn } = themeButton(gameScene, _bnSlot.x, _bnSlot.y, _bnSlot.w, _bnSlot.h,
+                '🍺 ZA VALOUN → +1 💰', {
+                fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum, textColor: THEME.color.gold,
+                fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    socket.emit('beer_for_nugget', { cardIdx: _bnIdx });
+                    optimisticRemoveCard(_bnIdx);
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _bnBtn.setAlpha(0.45); _bnBtn.disableInteractive(); }
         }
 
         // ── Údolí stínů – Dvojitá rána: přidat k vybrané kartě BANG! ─────────────

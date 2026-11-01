@@ -562,8 +562,11 @@ vybavení) uzavřela celé rozšíření.
   (`gearSlot` v [core/layout.js](core/layout.js), x 1385 — napravo od High Noonu, nalevo od
   pravého soupeře; hlídají to invarianty v `test/positions.test.js`) a klik na něj otevře
   **překryvné okno** `renderGearShopOverlay` ([view/screens.js](view/screens.js)), ve kterém
-  jsou všechny TŘI možnosti fáze 2: nákup, „donutit odhodit vybavení" (nabije režim a zavře
-  okno — pak se kliká na kartu soupeře) a „Pivo za valoun". Okno drží `App.gearShop`
+  jsou dvě možnosti fáze 2: nákup a „donutit odhodit vybavení" (nabije režim a zavře
+  okno — pak se kliká na kartu soupeře). Třetí, **Pivo za valoun**, je tlačítko
+  „ZA VALOUN" u vybrané karty Pivo (view/board.js, slot `abilExtraSlot` vedle „ZAHRÁT
+  JAKO BANG!"); Pivo s plnými životy se proto vybírá bez akce (`decideCardClick`,
+  core/selection.js) a svítí jako hratelné. Okno drží `App.gearShop`
   a zavírá se samo, jakmile fáze opustí PLAY, aby nespolklo klik, na který se čeká.
 - **Vybavení se kreslí v pásu vyložených karet, ale AŽ ZA skutečnými kartami** (a za dvojicí
   Greygoryho Decka) — indexy karet na stole se tím nehnou, jen se pás roztáhne. Zrcadlí to

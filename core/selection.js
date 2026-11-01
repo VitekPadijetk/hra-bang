@@ -27,7 +27,9 @@
 //   { type: 'VOS_ROUND_TOGGLE', index, cardId }       – Divoká banda/Tornádo/Poker (Údolí stínů): označit kartu
 //   { type: 'FLINT_EXCHANGE', index, cardId, targetIdx } – Flint Westwood (Divoký západ): výměna karet
 //   { type: 'LVK_PAY', index, cardId }                – Lee Van Kliff (Divoký západ): karta BANG! za opakování
-//   { type: 'SELECT', index, action }                 – výběr karty k zahrání
+//   { type: 'SELECT', index, action }                 – výběr karty k zahrání (action null =
+//                                                       jen vybraná, hraje se tlačítkem: Zúčtování,
+//                                                       Lemat, Pivo za valoun)
 
 if (typeof require === 'function') {
     // Každý svůj guard: isResponseTurn si z phaseInfo.js bere i playability.js (a přes
@@ -67,6 +69,10 @@ if (typeof require === 'function') {
     // Divoký západ – Lee Van Kliff: čím se smí zaplatit opakování efektu.
     if (typeof lvkPayOk === 'undefined') {
         globalThis.lvkPayOk = require('./playability.js').lvkPayOk;
+    }
+    // Zlatá horečka – Pivo za valoun (vybírá se i s plnými životy, viz níž).
+    if (typeof beerNuggetOk === 'undefined') {
+        globalThis.beerNuggetOk = require('./goldRush.js').beerNuggetOk;
     }
     // Duch (Město duchů) se počítá za hráče ve hře – pravidlo „při dvou hráčích Pivo
     // nefunguje" se ho proto ptá přes inPlayCount, ne přes health > 0.
@@ -201,6 +207,15 @@ function decideCardClick(ctx) {
     const isMyResponseTurn = isResponseTurn(state, myIndex);
     const isMyPlayTurn = canActOnHand(state, myIndex);
     if (!isMyResponseTurn && !isMyPlayTurn) return { type: 'NONE' };
+
+    // Zlatá horečka – Pivo za valoun: zahrává se tlačítkem u vybrané karty („ZA VALOUN",
+    // view/board.js), ne v obchodě. Pivo, které léčit nemůže (plné životy, dva hráči),
+    // se proto vybere BEZ akce – odhoz nesvítí, zbývá jen tlačítko. Musí to být před
+    // `playable === false`, protože cardPlayability se ptá jen na léčení.
+    if (isMyPlayTurn && state.phase === "PLAY" && card.type === "Pivo" &&
+        !nativePlayInTurn(state, me, myIndex, card) && beerNuggetOk(state, myIndex, card)) {
+        return { type: 'SELECT', index, action: null };
+    }
 
     if (playable === false) return { type: 'UNPLAYABLE_FLASH' };
 

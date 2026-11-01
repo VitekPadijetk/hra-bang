@@ -551,10 +551,11 @@ function renderDorothyOverlay() {
 // Na desku se obchod nevešel: po zapnutí tří balíčků událostí zabírá vodorovné pásmo
 // balíčků x 420–1330 a nad ním leží druhá řada karet horních soupeřů. Nabídku proto
 // otevírá klik na rub balíčku vybavení (drawGearPile ve view/board.js) a tady se vysází
-// celá – včetně obou zbylých možností fáze 2, které do obchodu patří:
+// celá – včetně druhé možnosti fáze 2, která do obchodu patří:
 //   1. nákup jedné nebo více karet vybavení,
-//   2. donucení jiného hráče odhodit vybavení (cena + 1),
-//   3. Pivo z ruky za 1 valoun.
+//   2. donucení jiného hráče odhodit vybavení (cena + 1).
+// Třetí možnost, Pivo z ruky za 1 valoun, je tlačítko u vybrané karty Pivo
+// (view/board.js) – hraje se jako každá jiná karta z ruky, ne z obchodu.
 // Co je legální, rozhoduje VÝHRADNĚ core/goldRush.js – týmiž predikáty se ptá server
 // i bot, takže okno nikdy nenabídne akci, kterou by pravidla mlčky odmítla.
 //
@@ -660,26 +661,9 @@ function renderGearShopOverlay() {
         gameScene.cardsSprites.add(label);
     });
 
-    // ── Pivo za valoun (FAQ Q11: platí i ve dvou hráčích) ───────────────────
-    const beerIdx = me ? (me.hand || []).findIndex(c => c && !c._placeholder && beerNuggetOk(state, myIndex, c)) : -1;
-    if (beerIdx !== -1) {
-        const { bg: beerBtn } = themeButton(gameScene, 660, 830, 460, 60, '🍺 PIVO Z RUKY → 1 💰', {
-            fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum, textColor: THEME.color.gold,
-            fontSize: '22px',
-            onClick: () => {
-                if (App.blockInput) return;
-                socket.emit('beer_for_nugget', { cardIdx: beerIdx });
-                App.blockInput = true;
-                renderUI();
-            },
-        });
-        beerBtn.setDepth(GEAR_DEPTH + 4);
-        if (App.blockInput) { beerBtn.setAlpha(0.45); beerBtn.disableInteractive(); }
-    }
-
     // ── Donutit odhodit vybavení: okno se zavře a kliká se na kartu soupeře ──
     if (me && gearForceAvailable(state, myIndex)) {
-        const { bg: forceBtn } = themeButton(gameScene, 1260, 830, 460, 60, '🗑 DONUTIT ODHODIT (cena +1)', {
+        const { bg: forceBtn } = themeButton(gameScene, 960, 830, 460, 60, '🗑 DONUTIT ODHODIT (cena +1)', {
             fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
             fontSize: '21px',
             onClick: () => {

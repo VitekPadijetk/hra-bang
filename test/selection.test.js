@@ -168,3 +168,40 @@ test('NOON_DAMAGE na posledním životě: Pivo zachrání, s Reverendem ne', () 
     assert.deepEqual(decideCardClick(lastLifeBeer('NOON_DAMAGE', pending, 'REVEREND')),
         { type: 'NONE' });
 });
+
+// ── Zlatá horečka – Pivo za valoun (hlášení 2026-10-18T07-07-59-834Z_game1) ──
+// Pivo za valoun se hraje tlačítkem u vybrané karty, ne v obchodě. Pivo, které léčit
+// nemůže (plné životy), se proto musí dát VYBRAT – bez akce, aby nesvítil odhoz.
+const nuggetBeer = (over = {}) => {
+    const me = { health: 4, maxHealth: 4, character: null, hand: [{ id: 9, type: 'Pivo' }], ...over.me };
+    return ctx({
+        state: {
+            phase: 'PLAY', currentPlayerIndex: 0, _goldRush: true,
+            players: [me, { health: 4, maxHealth: 4 }, { health: 4, maxHealth: 4 }],
+            ...over.state,
+        },
+        me,
+        card: { id: 9, type: 'Pivo' },
+        index: 0,
+        playable: false,   // cardPlayability se ptá jen na léčení
+    });
+};
+
+test('Pivo s plnými životy ve Zlaté horečce → SELECT bez akce (hraje se tlačítkem)', () => {
+    assert.deepEqual(decideCardClick(nuggetBeer()), { type: 'SELECT', index: 0, action: null });
+});
+
+test('Pivo s plnými životy bez Zlaté horečky → dál jen bliká', () => {
+    assert.deepEqual(decideCardClick(nuggetBeer({ state: { _goldRush: false } })), { type: 'UNPLAYABLE_FLASH' });
+});
+
+test('Pivo s plnými životy pod Kazatelem → bliká (ani valoun nejde)', () => {
+    assert.deepEqual(decideCardClick(nuggetBeer({ state: { activeEvent: { key: 'REVEREND' } } })),
+        { type: 'UNPLAYABLE_FLASH' });
+});
+
+test('Pivo, které léčit jde, se vybírá dál s akcí (odhoz = život, tlačítko = valoun)', () => {
+    const c = nuggetBeer({ me: { health: 3 } });
+    c.playable = true;
+    assert.deepEqual(decideCardClick(c), { type: 'SELECT', index: 0, action: 'PLAY_CARD' });
+});
