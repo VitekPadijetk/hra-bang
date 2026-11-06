@@ -748,3 +748,12 @@ Pojistky, na které se narazí i bez hledání:
   strukturální test.
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
+
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — plán, v kódu zatím nic
+
+Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
+(texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
+[docs/ozbrojeni-a-nebezpecni-plan.md](docs/ozbrojeni-a-nebezpecni-plan.md) (žetony nabití,
+Nebezpečné karty, fáze A0–A7, rozhodnutí R-U1–R-U4 a R1–R23). **Přečti si plán, než na
+rozšíření sáhneš** – žetony se podle rozhodnutí uživatele rozmisťují i platí vždy ručně
+a zásoba se počítá, neukládá.
