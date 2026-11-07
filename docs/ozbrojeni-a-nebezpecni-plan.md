@@ -59,6 +59,46 @@ Co se v A1 udělalo jinak / navíc proti textu níž:
   platba je `selectedState.adUp`/`adPay` (zrušení výběru ji zahodí). Kostičky naklikané do
   platby na zdroji vizuálně ubudou (`adPayReserved`).
 
+**Stav (2026-11-07, ještě později): hotová fáze A2 (zbraně a výstřely).** Do balíčku jde
+21 karet (+ Big Fifty, Buntline Special, Dvouhlavňovka, Thunderer, Bedna, Skrč se!,
+Křesadlovka, Rychlopalba), do výběru postav Bloody Mary a Mexicali Kid (`AD_READY`). Testy:
+`test/ad.weapons.test.js` (18) a zátěž `test/ad.load.test.js` rozšířená o A2 (oba boti
+s novými postavami natvrdo); `npm test` = 2074.
+
+Co se v A2 udělalo jinak / navíc proti textu níž:
+- **Buntline Special nemá vlastní fázi `AD_DISCARD`** – jde frontou jako
+  `SHOTGUN_DISCARD` s `label: 'Buntline Special'` (vynucený odhoz dle výběru, stejně jako
+  Brokovnice: Molly nelíže, Henry nestřílí). Klient, bot i guard tak fungují beze změny,
+  banner a štítek čekání čtou `pendingShotgun.label`. Akce `ad_discard` proto není.
+- Kontext `vos` se zakládá vždy, když je co do něj dát (`_adShotStart`, logic/armed.js) –
+  i bez Údolí stínů. Colorado Bill se proto ptá výslovně na `vos.bangCard`.
+- Thunderer neukládá klíč do `vos`: karta se vrací hned v `playBang` (`_adThunderReturn`),
+  handler pak pošle `hand_to_discard` + `discard_to_hand` (`gs._adThunderDone`).
+- Karty zpátky do ruky po zrušení (Křesadlovka, Skrč se!) animuje hák `flushAdAnim`
+  (server/anim.js, `gs._adAnim`), protože zrušení nastává v různých akcích.
+- Konec `handleResponse` je vytažený byte-přesně do `_respondAdvance` (sdílí ho Bedna);
+  na jeho začátku je `_adShotEnd()` – jediný úklid `_adMuted` na konci obrany (plus
+  úspěšný Barel, Bedna před Barelem, záchrana posledního života, Dvojitá rána, Apache Kid
+  a pojistka v `nextTurn`). `_vosQuiet` pojistku nemá – nebyla potřeba.
+- Big Fifty **nemění dostřel** (`ignoreTargetMods` není): Mustang cíle se při výběru cíle
+  počítá dál. S dostřelem 6 to rozhoduje jen výjimečně; karty cíle (Barel, zelené Vedle!,
+  Bedna, Odměna, vybavení) i schopnost se ruší v obraně, jak plán chce.
+- Křesadlovka a Rychlopalba mají v datech `bangEffect: true, range: "weapon"` – míří se
+  obecnou cestou bang-efektů (klient i bot je umí bez větve). Vylepšení jde s `play_bang`
+  (`up`, `pay`, u Rychlopalby `extra` = další cíle). Rychlopalba se do limitu nepočítá.
+- Bedna ve fázi `BARREL_DRAW` jen tehdy, když jedno Vedle! výstřel zruší (proti Slabovi
+  se nejdřív snímá); `adCrateOk` platí i proti Kulometu a Odražené střele (účinkuje jako
+  Vedle!). Akce `ad_crate` bez payloadu.
+- Mexicali Kid je akce `ad_mexicali { targetIdx, pay }` (ne obecné `ad_ability`);
+  `_adMexTurn` = 1× za tah. Cíle = `adQuickTargets` (jiní hráči v dostřelu zbraně).
+- Skrč se! je ve svém tahu nehratelná (`nativePlayInTurn`, jako Úhyb) – zátěž našla bota,
+  který ji zkoušel hrát dokola. Bot Bednu vykládá (26) a Nebezpečné zbraně mají
+  ve `weaponValue` příplatek (jinak by Dvouhlavňovku s dostřelem 1 nikdy nevyložil).
+- Klient: přepínač efektu zbraně a tlačítko Bedny ve slotu `abilExtraSlot`, Skrč se!
+  s vylepšením o řádek výš (zapne platbu 2 ⛁, pak klik na kartu), Mexicali Kid ve slotu
+  schopnosti (platba → klik na cíl), Rychlopalba sbírá cíle do `selectedState.adTargets`.
+  Platební model klienta (`adPayNeed`) zná kromě vylepšení i `adDuck` a `adMex`.
+
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho
 >    bere. Automaticky běží jen to, kde pravidla volbu nedávají (cena Nebezpečné karty se

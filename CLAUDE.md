@@ -318,7 +318,7 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A1 hotové)
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A2 hotové)
 
 Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
 (texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
@@ -340,3 +340,11 @@ Nabíjení), platba za vylepšení posílaná s akcí (`adPayOk`/`adUpgradeOk`),
 Nebezpečných karet `ad_use` (`adUseOk`), Bandalír (`adBandolierExtra` v `bangLimitFree`),
 Kolona, Malý doušek. **Zvonice žije v core/distance.js** (`adBellActive`) – distance.js
 nesmí require-ovat armed.js. Co se odchýlilo od plánu, je v jeho záhlaví.
+
+Hotová je i fáze **A2 (zbraně a výstřely)** – 21 karet, postavy Bloody Mary a Mexicali Kid.
+**Výstřel nese kontext `vos` i bez Údolí stínů** (`_adShotStart`: `unavoidable`, `adBuntline`,
+`adReturn`, `adMary`); Colorado Bill se proto ptá na `vos.bangCard`. **Zrušení výstřelu jde
+trychtýřem `_adShotCanceled`** (Barel, Vedle!, Útěk, Bedna) a **Big Fifty drží `_adMuted`
+na cíli** – `hasAbility` pak nic nepovolí; každý nový konec obrany musí volat `_adShotEnd()`
+(konec `handleResponse` je vytažený do `_respondAdvance`). Buntline odhazuje fází Brokovnice
+(`SHOTGUN_DISCARD` s `label`).

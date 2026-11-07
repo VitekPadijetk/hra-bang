@@ -641,22 +641,31 @@ function adPlaceTargetOk(cardId) {
 // (`selectedState.adUp` = počet vylepšení, `selectedState.adPay` = naklikané adresy
 // žetonů) – server dostane hotový seznam s akcí a ověří ho adUpgradeOk. Zrušení výběru
 // karty (nový selectedState) platbu zahodí, takže nic nezůstane viset.
+// Fáze A2: vylepšit jde i kartu, kterou se míří (Křesadlovka, Rychlopalba – akce SHOOT).
 function adPaySelCard() {
     if (!state || myIndex == null || selectedState.cardIndex == null) return null;
-    if (selectedState.action !== 'PLAY_CARD') return null;
+    if (selectedState.action !== 'PLAY_CARD' && selectedState.action !== 'SHOOT') return null;
     const c = state.players[myIndex]?.hand?.[selectedState.cardIndex];
     return (c && c.upgrade) ? c : null;
 }
+// Kolik se má zaplatit. Kromě vylepšení vybrané karty (fáze A2) ještě Skrč se! v obraně
+// (`selectedState.adDuck`, vylepšení 2 ⛁) a výstřel Mexicali Kida (`selectedState.adMex`).
 function adPayNeed() {
+    if (selectedState.adMex) return AD_MEXICALI_COST;
+    if (selectedState.adDuck) return 2;
     const c = adPaySelCard();
     return c ? (selectedState.adUp || 0) * adUpgradeCost(c) : 0;
 }
 function adPayPaid() {
     return (selectedState.adPay || []).length;
 }
+// Je rozpracovaná platba hotová (nebo žádná)? Do té doby se nemíří ani nezahrává.
+function adPayDone() {
+    return adPayPaid() >= adPayNeed();
+}
 // Kolik žetonů z tohohle zdroje (cardId; null = moje postava) je už naklikaných.
 function adPayReserved(cardId) {
-    if (!adPaySelCard()) return 0;
+    if (!adPayNeed()) return 0;
     const cid = cardId == null ? null : cardId;
     return (selectedState.adPay || []).filter(x => x.cardId === cid).length;
 }
@@ -725,11 +734,40 @@ function emitPlayBang(targetIdx, cardIdx) {
     const me = state.players[myIndex];
     const card = me?.hand[cardIdx];
     const aim = _vosAimFor(me, card);
-    socket.emit('play_bang', { attackerIdx: myIndex, targetIdx, cardIdx, ...(aim ? { aimCardId: aim.id } : {}) });
+    // Ozbrojení a nebezpeční: zaplacený efekt zbraně, vylepšení a cíle Rychlopalby
+    // (první cíl + další naklikané – `selectedState.adTargets`, viz adQuickClick).
+    const ad = {};
+    if (selectedState.adWeapon && adWeaponSpecialOk(state, myIndex, card)) ad.adWeapon = true;
+    if (selectedState.adUp && adPaySelCard() === card) {
+        ad.up = selectedState.adUp;
+        ad.pay = selectedState.adPay || [];
+        if (card.type === 'Rychlopalba') {
+            const ts = selectedState.adTargets || [];
+            targetIdx = ts[0];
+            ad.extra = ts.slice(1);
+        }
+    }
+    socket.emit('play_bang', { attackerIdx: myIndex, targetIdx, cardIdx, ...(aim ? { aimCardId: aim.id } : {}), ...ad });
     const aimIdx = aim ? me.hand.findIndex(c => c && c.id === aim.id) : -1;
     // Vyšší index napřed, ať se nižší neposune.
     if (aimIdx > cardIdx) { optimisticRemoveCard(aimIdx); optimisticRemoveCard(cardIdx); }
     else { optimisticRemoveCard(cardIdx); if (aimIdx !== -1) optimisticRemoveCard(aimIdx); }
+}
+
+// Ozbrojení a nebezpeční – Rychlopalba s vylepšením míří na 1 + N různých cílů: každý
+// klik přidá cíl do `selectedState.adTargets`. Vrací true, když se má ještě čekat na
+// další cíl (výstřel se pak NEodesílá); false = cílů je dost, emitPlayBang je přečte.
+function adQuickClick(idx) {
+    const c = adPaySelCard();
+    if (!c || c.type !== 'Rychlopalba' || !selectedState.adUp) return false;
+    const ts = selectedState.adTargets || [];
+    if (ts.includes(idx)) return true;   // stejný cíl dvakrát nejde
+    selectedState.adTargets = ts.concat([idx]);
+    return selectedState.adTargets.length < 1 + selectedState.adUp;
+}
+// Je hráč už zvolený jako cíl Rychlopalby? (zvýraznění jinou barvou)
+function adQuickPicked(idx) {
+    return (selectedState.adTargets || []).includes(idx);
 }
 
 // Roztříštěná kulka se míří na dvakrát: klik na první cíl (`selectedState.fanning.
@@ -799,7 +837,11 @@ function drawOpponents(ctx) {
     // (S připojenou Dvojitou ranou se na vyloženou kartu nestřílí – ta „zasáhnout" nejde.)
     const _ricoArmed = !App.blockInput && !_sniperArmed && selectedState.action === 'SHOOT' &&
         selectedState.aim == null && !!_selCard && ricochetOffer(state, _selMe, myIndex, _selCard);
-    const _shootAtPlayer = !_selCard || bangAtPlayerOk(state, _selMe, myIndex, _selCard);
+    // Ozbrojení a nebezpeční: s rozpracovanou platbou (vylepšení Křesadlovky/Rychlopalby)
+    // se míří až po zaplacení celé ceny (banner „Zaplať N ⛁").
+    const _shootAtPlayer = (!_selCard || bangAtPlayerOk(state, _selMe, myIndex, _selCard)) && adPayDone();
+    // Mexicali Kid: zaplaceno → svítí hráči v dostřelu zbraně, klik vystřelí.
+    const _adMexPick = !!selectedState.adMex && !App.blockInput && adPayDone() && adMexicaliOk(state, myIndex);
     let oppIdx = 0;
     for (let i = 1; i < state.players.length; i++) {
         let actualIdx = (renderMyIndex + i) % state.players.length;
@@ -998,7 +1040,10 @@ function drawOpponents(ctx) {
             const deValid = !deMode ? false : (deMode === 'bang'
                 ? player.health > 0
                 : (canHeal(player)));   // duch (Město duchů) se léčit smí
+            // Ozbrojení a nebezpeční – Mexicali Kid (zaplaceno, cíl v dostřelu zbraně).
+            const adMexTarget = _adMexPick && adQuickTargets(state, myIndex).includes(actualIdx);
             const canActuallyTarget = (
+                adMexTarget ||
                 (isShoot && _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ||
                 isDuel ||
                 (isJail && player.role !== "Sheriff" && !(player.board||[]).some(c => c.type === "Vězení")) ||
@@ -1009,9 +1054,12 @@ function drawOpponents(ctx) {
             sprite.setInteractive({ useHandCursor: canActuallyTarget });
             sprite._zoomKey = 'char:' + actualIdx;   // stabilní klíč zoomu (přežije překreslení)
 
-            if (isShoot) {
+            if (adMexTarget) {
+                    sprite.setTint(0x88ff88);
+                } else if (isShoot) {
                     const canShoot = _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach);
-                    sprite.setTint(canShoot ? 0x88ff88 : 0xff6666);
+                    // Rychlopalba: už zvolený cíl svítí zlatě.
+                    sprite.setTint(adQuickPicked(actualIdx) ? 0xffd27a : (canShoot ? 0x88ff88 : 0xff6666));
                 } else if (isDuel) {
                     sprite.setTint(0x88ff88);
                 } else if (isJail) {
@@ -1027,6 +1075,15 @@ function drawOpponents(ctx) {
                 }
 
             sprite.on('pointerdown', () => {
+                // Ozbrojení a nebezpeční – Mexicali Kid: výstřel za zaplacené 2 ⛁.
+                if (adMexTarget) {
+                    if (App.blockInput) return;
+                    socket.emit('ad_mexicali', { targetIdx: actualIdx, pay: selectedState.adPay || [] });
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                    return;
+                }
                 if (selectedState.action === 'SHOOT' && (selectedState.cardIndex !== null || selectedState.greenCardId != null || selectedState.doc)) {
                     if (_shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) {
                         if (_sniperArmed) {
@@ -1039,6 +1096,10 @@ function drawOpponents(ctx) {
                         } else if (selectedState.greenCardId != null) {
                             // Aktivace zelené bang-efekt karty ze stolu (Pepperbox/Nůž/…).
                             socket.emit('activate_green_card', { playerIdx: myIndex, cardId: selectedState.greenCardId, target: { targetIdx: actualIdx } });
+                        } else if (adQuickClick(actualIdx)) {
+                            // Rychlopalba: čeká se na další cíl – výstřel ještě neodchází.
+                            renderUI();
+                            return;
                         } else {
                             emitPlayBang(actualIdx, selectedState.cardIndex);
                         }
@@ -2130,6 +2191,10 @@ function drawMyArea(ctx) {
                 });
             } else if (selectedState.cardIndex !== null) {
                 charImg.on('pointerdown', () => {
+                    // Ozbrojení a nebezpeční: nejdřív zaplatit; Rychlopalba s vylepšením na sebe ne.
+                    // (Klik na postavu jako zdroj platby nesmí zároveň vystřelit do sebe.)
+                    if (App.blockInput || adCharPay || !adPayDone()) return;
+                    if (selectedState.adUp && adPaySelCard()?.type === 'Rychlopalba') return;
                     emitPlayBang(myIndex, selectedState.cardIndex);
                     state.phase = "RESPOND";
                     selectedState = { cardIndex: null, action: null };
@@ -3134,14 +3199,20 @@ function drawMyArea(ctx) {
                             App.blockInput = true;
                             renderUI();
                             return;
-                        case 'RESPOND':
+                        case 'RESPOND': {
+                            // Ozbrojení a nebezpeční – Skrč se! s vylepšením: až po zaplacení
+                            // (banner „Zaplať 2 ⛁"), a jen klikem právě na Skrč se!.
+                            const _duckUp = !!selectedState.adDuck && me.hand[intent.index]?.type === 'Skrč se!';
+                            if (_duckUp && !adPayDone()) return;
                             if (state.pendingResponse) state.pendingResponse.active = false;
-                            socket.emit('respond_to_card', { playerIdx: myIndex, cardIndex: intent.index });
+                            socket.emit('respond_to_card', { playerIdx: myIndex, cardIndex: intent.index,
+                                ...(_duckUp ? { up: 1, pay: selectedState.adPay || [] } : {}) });
                             optimisticRemoveCard(intent.index);
                             selectedState = { cardIndex: null, action: null };
                             App.blockInput = true;
                             renderUI();
                             return;
+                        }
                         case 'DISCARD': {
                             socket.emit('discard_card', intent.index);
                             optimisticRemoveCard(intent.index);
@@ -3228,6 +3299,8 @@ function drawMyArea(ctx) {
                 // schopnost nevyužil, má co hrát a „Ukončit tah" blikat nesmí (bug 31).
                 // Co všechno ji musí pustit (Želízka, Právo západu), ví willOffer.
                 willOffer(state, me, myIndex) ||
+                // Ozbrojení a nebezpeční – Mexicali Kid: výstřel za 2 ⛁ (tlačítko schopnosti).
+                adMexicaliOk(state, myIndex) ||
                 // Divoký západ – Flint Westwood (výměna karty za dvě) a Lee Van Kliff
                 // (zopakování efektu hnědé karty); obojí je tlačítko ve slotu schopnosti.
                 (hasAbility(me, "Flint Westwood") && me._flintUsedTurn !== state.turnId && me.hand.length > 0 &&
@@ -3678,11 +3751,104 @@ function drawMyArea(ctx) {
                     if (App.blockInput) return;
                     if (_up < _adUpMax) selectedState.adUp = _up + 1;
                     else { selectedState.adUp = 0; selectedState.adPay = []; }
+                    selectedState.adTargets = [];   // Rychlopalba: cíle se naklikají znovu
                     renderUI();
                 },
             });
             if (_upTxt.width > _upSlot.w - 20) _upTxt.setScale((_upSlot.w - 20) / _upTxt.width);
             if (App.blockInput) { _upBtn.setAlpha(0.45); _upBtn.disableInteractive(); }
+        }
+
+        // ── Ozbrojení a nebezpeční – zvláštní efekt Nebezpečné zbraně (fáze A2) ─────
+        // U vybrané karty BANG! přepínač „+ THUNDERER (1 ⛁)"; cena jde z té zbraně, takže
+        // se nic neklikání (volba není). Ptá se adWeaponSpecialOk – tentýž dotaz má server
+        // i bot (Dvouhlavňovka jen u kárového BANG!). S připojenou Dvojitou ranou sedí o řádek
+        // výš, ať se tlačítka nepřekryjí.
+        const _adW = adWeaponOf(me);
+        if (_adW && _selHandCard && selectedState.action === 'SHOOT' && !_selHandCard.upgrade &&
+            adWeaponSpecialOk(state, myIndex, _selHandCard)) {
+            const _wSlot = abilExtraSlot(L, _abilX);
+            const _wY = (_aimPicking || _aimAttached) ? _wSlot.y - (L.btnH + 12) : _wSlot.y;
+            const _wOn = !!selectedState.adWeapon;
+            const _wLabel = _wOn
+                ? `✓ ${_adW.name.toUpperCase()}: ${AD_WEAPON_EFFECTS[_adW.effect]} ↩`
+                : `⛁ + ${_adW.name.toUpperCase()} (${adCardCost(_adW)} ⛁)`;
+            const { bg: _wBtn, txt: _wTxt } = themeButton(gameScene, _wSlot.x, _wY, _wSlot.w, _wSlot.h, _wLabel, {
+                ...themeToggleStyle(_wOn), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    selectedState.adWeapon = !_wOn;
+                    renderUI();
+                },
+            });
+            if (_wTxt.width > _wSlot.w - 20) _wTxt.setScale((_wSlot.w - 20) / _wTxt.width);
+            if (App.blockInput) { _wBtn.setAlpha(0.45); _wBtn.disableInteractive(); }
+        }
+
+        // ── Ozbrojení a nebezpeční – Bedna: v obraně „jako Vedle!" za 2 ⛁ z Bedny ───
+        // V RESPOND i ještě ve fázi BARREL_DRAW (místo snímání). Kdy smí, říká adCrateOk.
+        if (!App.blockInput && adCrateOk(state, myIndex)) {
+            const _crSlot = abilExtraSlot(L, _abilX);
+            const { bg: _crBtn, txt: _crTxt } = themeButton(gameScene, _crSlot.x, _crSlot.y, _crSlot.w, _crSlot.h,
+                `📦 BEDNA – jako Vedle! (${adCardCost(adCrateCard(me))} ⛁)`, {
+                fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum, textColor: THEME.color.gold,
+                fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    socket.emit('ad_crate');
+                    selectedState = { cardIndex: null, action: null };
+                    App.blockInput = true;
+                    renderUI();
+                },
+            });
+            if (_crTxt.width > _crSlot.w - 20) _crTxt.setScale((_crSlot.w - 20) / _crTxt.width);
+        }
+
+        // ── Ozbrojení a nebezpeční – Skrč se! s vylepšením (karta zpátky do ruky) ────
+        // Přepínač zapne platbu 2 ⛁ (banner); po zaplacení se Skrč se! zahraje klikem
+        // na ni v ruce. Sedí o řádek nad slotem Bedny.
+        const _adDuckCard = (state.phase === 'RESPOND' && state.pendingResponse?.active &&
+            state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
+            !vosUnavoidable(state))
+            ? (me.hand || []).find(c => c && c.type === 'Skrč se!' && playsAsMissed(state, me, c)) : null;
+        if (_adDuckCard && adUpgradeMax(state, myIndex, _adDuckCard) >= 1) {
+            const _dkSlot = abilExtraSlot(L, _abilX);
+            const _dkOn = !!selectedState.adDuck;
+            const { bg: _dkBtn, txt: _dkTxt } = themeButton(gameScene, _dkSlot.x, _dkSlot.y - (L.btnH + 12), _dkSlot.w, _dkSlot.h,
+                _dkOn ? 'SKRČ SE! + ZPĚT DO RUKY: zrušit ↩' : '⛁ SKRČ SE! + ZPĚT DO RUKY (2 ⛁)', {
+                ...themeToggleStyle(_dkOn), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    selectedState = _dkOn ? { cardIndex: null, action: null }
+                                          : { cardIndex: null, action: null, adDuck: true, adPay: [] };
+                    renderUI();
+                },
+            });
+            if (_dkTxt.width > _dkSlot.w - 20) _dkTxt.setScale((_dkSlot.w - 20) / _dkTxt.width);
+            if (App.blockInput) { _dkBtn.setAlpha(0.45); _dkBtn.disableInteractive(); }
+        } else if (selectedState.adDuck) {
+            delete selectedState.adDuck;   // obrana skončila – rozpracovaná platba propadá
+            selectedState.adPay = [];
+        }
+
+        // ── Ozbrojení a nebezpeční – Mexicali Kid: výstřel za 2 ⛁ (jednou za tah) ────
+        // Přepínač zapne platbu (banner), po zaplacení svítí cíle v dostřelu (drawOpponents).
+        if (adMexicaliOk(state, myIndex) && selectedState.cardIndex == null) {
+            const _mxOn = !!selectedState.adMex;
+            const { bg: _mxBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH,
+                _mxOn ? 'MEXICALI KID: zrušit ↩' : `💥 MEXICALI KID: BANG! (${AD_MEXICALI_COST} ⛁)`, {
+                ...themeToggleStyle(_mxOn), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    selectedState = _mxOn ? { cardIndex: null, action: null }
+                                          : { cardIndex: null, action: null, adMex: true, adPay: [] };
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _mxBtn.setAlpha(0.45); _mxBtn.disableInteractive(); }
+        } else if (selectedState.adMex && !adMexicaliOk(state, myIndex)) {
+            delete selectedState.adMex;
+            selectedState.adPay = [];
         }
 
         // ── Údolí stínů – Dvojitá rána: zrušit vybranou / připojenou ─────────────
@@ -4272,19 +4438,21 @@ function drawPhaseOverlays(ctx) {
         const _sMine = state.pendingShotgun.playerIdx === myIndex;
         const _sName = state.players[state.pendingShotgun.playerIdx]?.name || '?';
         const _sBy = state.players[state.pendingShotgun.attackerIdx]?.name || '?';
+        // Ozbrojení a nebezpeční – Buntline Special odhazuje stejnou fází (`label`).
+        const _sSrc = state.pendingShotgun.label || 'Brokovnice';
         let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
         bg.setStrokeStyle(3, _sMine ? 0xff5555 : 0xffaa33);
         mAdd(bg, 205);
         if (_sMine) {
-            let l1 = gameScene.add.text(960, 66, '🔫 Brokovnice – odhoď kartu z ruky',
+            let l1 = gameScene.add.text(960, 66, `🔫 ${_sSrc} – odhoď kartu z ruky`,
                 { fontSize: '32px', color: '#ff8888', fontStyle: 'bold' }).setOrigin(0.5);
             mAdd(l1, 206);
-            let l2 = gameScene.add.text(960, 112, `Zasáhl tě ${_sBy} – kterou kartu odhodíš, vybíráš sám`,
+            let l2 = gameScene.add.text(960, 112, `${state.pendingShotgun.label ? 'Výstřel hráče ' + _sBy + ' jsi zrušil' : 'Zasáhl tě ' + _sBy} – kterou kartu odhodíš, vybíráš sám`,
                 { fontSize: '22px', color: '#ffdddd' }).setOrigin(0.5);
             mAdd(l2, 206);
         } else {
             let l1 = gameScene.add.text(960, 92,
-                `⏳ Čeká se na hráče ${_sName} – Brokovnice (odhazuje kartu)`,
+                `⏳ Čeká se na hráče ${_sName} – ${_sSrc} (odhazuje kartu)`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }
@@ -4347,8 +4515,15 @@ function drawPhaseOverlays(ctx) {
         let l1 = gameScene.add.text(960, 66, `⛁ Zaplať ${_need} · ${_paid}/${_need}`,
             { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
         mAdd(l1, 206);
+        // Co se po zaplacení dělá (fáze A2: mířit, Skrč se!, Mexicali Kid).
+        const _quick = selectedState.adUp && adPaySelCard()?.type === 'Rychlopalba';
+        const _done = selectedState.adMex ? 'Zaplaceno – klikni na cíl v dostřelu (Mexicali Kid)'
+            : selectedState.adDuck ? 'Zaplaceno – klikni na Skrč se! v ruce'
+            : _quick ? `Zaplaceno – vyber ${1 + selectedState.adUp} různé cíle (${(selectedState.adTargets || []).length} vybráno)`
+            : selectedState.action === 'SHOOT' ? 'Zaplaceno – klikni na cíl'
+            : 'Zaplaceno – zahraj kartu klikem na odhazovací balíček';
         let l2 = gameScene.add.text(960, 112, _paid >= _need
-            ? 'Zaplaceno – zahraj kartu klikem na odhazovací balíček'
+            ? _done
             : 'Klikni na svou postavu nebo Nebezpečnou kartu, odkud žeton vezmeš',
             { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
         mAdd(l2, 206);
