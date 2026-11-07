@@ -207,9 +207,8 @@ Jedna fáze pro všech pět situací, kdy hráč žetony **dává**:
 - **3. fáze:** `discardCard` (logic.js) si odhozené karty počítá (`p._adDiscarded`); když ruka
   klesne na limit, místo `nextTurn()` založí `AD_PLACE` s `reason: 'DISCARD'` a `nextTurn()`
   zavolá až její konec. Gary Looter na tom nic nemění (karta byla odhozena).
-- **Zobrazení:** nad mou zónou lišta „Rozmísti 2 ⛁ (Nabíjení)" s kostičkami, které „visí ve
-  vzduchu"; platné cíle (moje oranžové karty pod 4, portrét postavy) pulzují oranžovým
-  obrysem; klik = kostička přiletí ze zásoby (animace `ad_load`). Tlačítko **HOTOVO** (resp.
+- **Zobrazení:** nad mou zónou lišta „Rozmísti 2 ⛁ (Nabíjení)"; platné cíle (moje oranžové karty pod 4, portrét postavy) se zvýrazní
+  stejně jako dnešní klikací cíle; klik = kostička přiletí ze zásoby (animace `ad_load`). Tlačítko **HOTOVO** (resp.
   „NECHAT V ZÁSOBĚ"). Na kompaktním profilu jsou cílem i štítky „⛁3" u karet.
 
 ### 2.8 Platba — platební lišta (R-U1)
@@ -224,8 +223,7 @@ Cena Nebezpečné karty a zvláštního efektu zbraně se platí **z té karty**
   zdroje, ne Bomba, dost žetonů, přesně cena) a provede ji **před efektem**. Žádný
   rozpracovaný mezistav na serveru – odmítnutá akce nic nezaplatí.
 - **Lišta:** jakmile volba něco stojí, objeví se „Zaplať 3 ⛁ · 0/3"; moje zdroje se
-  žetony pulzují, klik na zdroj odebere jeden žeton (kostička odskočí do misky u lišty, na
-  zdroji ubyde jen vizuálně). Zdroj, který by platbou klesl na 0, dostane varovné zabarvení
+  žetony se zvýrazní jako klikací, klik na zdroj odebere jeden žeton (na zdroji ubyde jen vizuálně, nic nelétá – odletí až po potvrzení). Zdroj, který by platbou klesl na 0, dostane štítek
   „karta odejde". Po zaplnění **POTVRDIT** / **ZPĚT** (vrátí kostičky). Stav jen
   v klientu (`App.adPay`), kořen se při překreslení obnovuje (vzor `App.bugDraft`).
 - **Vyčerpání platbou:** když platba vyprázdní kartu, karta odejde PŘED efektem. U zbraně
@@ -379,33 +377,44 @@ z ruky náhodně – animace nese `stolenIndex` (konvence krádeží). Kontrola 
 
 ### 2.16 Animace — `core/armedAnim.js`
 
+**Žádné efekty navíc.** Animace jsou na úrovni dnešní hry: karty a žetony se jen
+**posouvají, otáčejí a překlápějí** – žádné částice, záblesky, razítka, tinty ani kreslené
+sprity (zvon, šíp, chomáč, doutnák). Co jde existující animací, jde jí; nové jsou jen lety
+kostičky žetonu, protože ta je ve hře nová.
+
 Časování na jednom místě (vzor `core/vosAnim.js`), klient je přehrává
 (`net/handlers.js`), fronta animací podle nich drží stav (`ANIM_MS`/`_animDurationMs`),
-server o stejnou dobu drží boty (`room._adBlockUntil`). Navržené cinematiky:
+server o stejnou dobu drží boty (`room._adBlockUntil`).
+
+**Nové (jen žetony):**
 
 | Animace | Co je vidět | ~ms |
 |---|---|---|
-| `ad_load` | kostička vyskočí ze zásoby, letí obloukem na kartu/portrét, dopadne s malým odskokem; víc kusů s odstupem 90 ms | 320 + 90/ks |
-| `ad_pay` | kostička nadskočí z karty/portrétu a odletí do zásoby, cestou bledne; karta krátce oranžově zabliká | 260 |
-| `ad_move` | Frankie, Red Ringo: kostička přeletí ze zdroje na cíl | 420 |
-| `ad_rust` | Rez: ze všech cizích karet a postav naráz vyletí po kostičce, za sebou rezavou stopu, slétnou se nad portrétem hráče; co se nevejde nad 4, pokračuje do zásoby; zasažené karty krátce zrezivějí (oranžovohnědý tint) | 900 |
-| `ad_deplete` | vybitá karta se otřese, zešedne a odletí do odhozu (`exactAngle`); u zbraně se na jejím místě rozsvítí Colt .45 | 650 |
-| `ad_bell` | Zvonice: nad portrétem se rozhoupe zvon a ke každému soupeři se rozběhne kruhová vlna; u soupeřů na chvíli svítí „1" | 600 |
-| `ad_thunder` | Thunderer: karta BANG! doletí k cíli a jako bumerang se vrátí do ruky (druhý let končí ve vějíři) | 700 |
-| `ad_bigfifty` | portrét a karty cíle zešednou, přes štítek schopnosti se přeškrtne ✕; drží se do konce výstřelu, pak se barvy vrátí | 400 + výdrž |
-| `ad_unavoidable` | razítko „NELZE ZRUŠIT" přes kartu BANG! (Dvouhlavňovka; stejné razítko může dostat Colorado Bill) | 500 |
-| `ad_arrow` | Šíp: od útočníka k cíli přeletí šíp (sprite kreslený jako u Indiánů); s vylepšením postupně ke každému cíli | 500/cíl |
-| `ad_redraw` | Stepní běžec: přes otočenou kartu se zleva přivalí stepní běžec (kulatý chomáč kreslený čarami), smete ji do odhozu, nová karta se otočí existující animací sejmutí | 900 |
-| `ad_bomb_pass` | Bomba se přesune k dalšímu hráči, za ní jiskřící doutnák (částice); portrét příjemce blikne | 700 |
-| `ad_bomb_fuse` | ♣♠: z Bomby odskočí 2 kostičky (`ad_pay`), doutnák se zkrátí | 500 |
-| `ad_bomb_explode` | výbuch jako Dynamit (kratší varianta stávající cinematiky), pak 2 klikané zásahy | jako dynamit |
-| `ad_ignore` | Ms. Abigail: karta se od jejího portrétu odrazí a sjede do odhozu, štítek „IGNORUJE" | 500 |
+| `ad_load` | kostička přeletí ze zásoby na kartu/portrét; víc kusů za sebou s odstupem | 320 + 90/ks |
+| `ad_pay` | kostička přeletí z karty/portrétu do zásoby | 260 |
+| `ad_move` | kostička přeletí ze zdroje na cíl (Frankie Canton, Red Ringo, Rez – u Rezu všechny kusy naráz; co se nad 4 nevejde, letí dál do zásoby) | 420 |
 
-Krádeže a odhozy jdou existujícími animacemi: Paklíč = `panic_sequence` se `stolenIndex`,
-Bič = `catbalou_sequence`/`board_to_discard` (`exactAngle`), Squaw s vylepšením = krádež ze
-stolu. **Líznutí (Kolona, Eso v rukávu, Al Preacher, Bloody Mary) nemají vlastní animaci** –
-líznutí jsou jednotná, jdou jednou cestou. Letící karty startují ve velikosti zdroje
-a dosedají ve velikosti cíle (`startScale`/`endScale`).
+**Existující animace (beze změny, jen nový spouštěč):**
+
+| Situace | Animace |
+|---|---|
+| vyložení Nebezpečné karty, Bomba na hráče | stejný let jako modrá karta / Vězení; 3 kostičky pak `ad_load` |
+| vyčerpaná karta (0 žetonů) | `board_to_discard` (`exactAngle`) |
+| Thunderer | karta BANG! letí do odhozu jako vždy, pak z odhozu zpátky do ruky (obyčejný let) |
+| Šíp, Rychlopalba, Křesadlovka | let zahrané karty jako u Indiánů / Bang! |
+| Paklíč | `panic_sequence` se `stolenIndex` |
+| Bič, Squaw | `catbalou_sequence` / `board_to_discard`; Squaw s vylepšením = krádež ze stolu |
+| Stepní běžec | otočená karta letí do odhozu, nové sejmutí jde existující animací sejmutí (umí míchání uprostřed, vzor `_revealAnim`) |
+| předání Bomby | posun karty k dalšímu hráči jako předání Dynamitu (i se žetony) |
+| výbuch Bomby | stávající cinematika výbuchu Dynamitu, pak 2 klikané zásahy |
+| Ms. Abigail ignoruje | karta jde do odhozu běžným letem |
+| líznutí (Kolona, Eso v rukávu, Al Preacher, Bloody Mary) | jednotné líznutí, žádná vlastní animace |
+
+**Stav bez animace:** Big Fifty (vypnutá schopnost cíle), Dvouhlavňovka (nelze zrušit)
+a Zvonice (vzdálenost 1) se jen vypíšou do štítku čekání / logu – nic se nepřebarvuje.
+
+Letící karty i kostičky startují ve velikosti zdroje a dosedají ve velikosti cíle
+(`startScale`/`endScale`).
 
 ### 2.17 Server — akce, guard, ledger, log
 
@@ -493,7 +502,7 @@ Použití → `p._adBell = turnId`: „všechny vidíš ve vzdálenosti 1" pro *
 kartu** (jakoukoli – i kartu bez vzdálenosti, R20). `computeDistance` vrací 1 pro útočníka
 s živým příznakem (proti Mustangu, Úkrytu, Paulu Regretovi). Příznak shazuje `_trackCard`
 (další zahraná karta), konec tahu a vyčerpání nic neruší. Lze použít víckrát za tah.
-Animace `ad_bell`. Test: Mustang + Zvonice, příznak po Panice zmizí, nepřežije tah.
+Test: Mustang + Zvonice, příznak po Panice zmizí, nepřežije tah.
 
 ### Bandalír (A1) — oranžová, 2♥, cena 1
 „Jednou ve svém tahu smíš zahrát jednu kartu BANG! navíc." Žádné tlačítko: když hráč zahraje
@@ -532,13 +541,13 @@ Slab the Killer: platí až po zrušení celého výstřelu (obě Vedle!).
 ### Dvouhlavňovka (A2) — oranžová zbraň, 6♣, dostřel 1, cena 1
 Jen u kárového BANG! (`_effSuit` – pod Požehnáním nikdy, pod Prokletím nikdy): 1 žeton →
 `vos.unavoidable = true` (existující cesta Colorado Billa – Barel, Vedle!, Jourdonnais,
-Bedna se nenabídnou). Animace `ad_unavoidable`.
+Bedna se nenabídnou).
 
 ### Thunderer (A2) — oranžová zbraň, 3♣, dostřel 3, cena 1
 Zaplaceno → karta BANG! se hned po odhozu vrátí do ruky (`deck.takeFromDiscard`), ještě
 než cíl zareaguje. Do limitu se počítá; s Bandalírem nebo jako Willy the Kid ji lze zahrát
 znovu (R19). Volcanic se s ním nepotká – je to taky zbraň a Thunderer ho nahradil.
-Animace `ad_thunder`.
+Animace: karta letí do odhozu a zpátky do ruky (obyčejné lety).
 
 ### Bedna (A2) — oranžová, 3♥, cena 2
 V obraně proti efektu BANG! (karta i bang-efekt): zaplať 2 → efekt Vedle!. Tlačítko
@@ -568,7 +577,7 @@ Na **kohokoli bez ohledu na vzdálenost** (R23). Každý cíl odhodí kartu BANG
 proti Indiánům – `playsAsBang`, tedy i Calamity Janet s Vedle! a pod Zúčtováním cokoli),
 nebo ztratí 1 život (brána Obětavého skoku). Křesadlovkou ani Kulometem se odpovědět nedá.
 Barel/Vedle! nepomáhají (není to BANG!). Útěk/Mick Defender jen u jediného cíle; Apache Kid
-je imunní (♦). Implementace jako Indiáni s vlastním seznamem cílů. Animace `ad_arrow`.
+je imunní (♦). Implementace jako Indiáni s vlastním seznamem cílů.
 
 ### Paklíč (A3) — oranžová, 2♣, cena 3
 Použití: vyber hráče (kohokoli, ne sebe) → náhodná karta z jeho ruky (cesta Paniky jen pro
@@ -589,7 +598,7 @@ odhozená karta do ruky hráče (krádež ze stolu); Nebezpečná karta takhle z
 Každý jiný hráč ve hře odebere 1 žeton z každé své Nebezpečné karty (i zbraně a Bomby
 před sebou) a ze své postavy; všechny se přesunou na postavu hráče (strop 4, zbytek do
 zásoby). Vyčerpané karty se odhodí, **Bomba vybuchne** tomu, před kým leží (pořadí výbuchů
-po směru od hráče). Henry Block ne (R22). Animace `ad_rust`. Nehratelná, když nikdo jiný nic
+po směru od hráče). Henry Block ne (R22). Animace `ad_move`. Nehratelná, když nikdo jiný nic
 nemá.
 
 ### Bomba (A4) — oranžová, 7♦
@@ -708,10 +717,10 @@ Render změny ověřuje uživatel v prohlížeči.
 |---|---|---|
 | **A0 Kostra** | data (id 200–227, postavy 55–62, `CardType`, `Card` props), menu, loader se štítky (oranžový rám, kostička `ad_cube`), mixin + `core/armed.js`, zásoba a tři cesty, vyložení Nebezpečných karet se 3 žetony (debug), vyčerpání, kostičky na kartách/postavách, pyramida zásoby, `isDangerousCard`/`isBrownCard`. Do balíčku jen 6 karet ze základní hry. | rozšíření v menu; v debug hře vyložená oranžová karta se 3 kostičkami, zásoba „×29" |
 | **A1 Dobíjení a placení** | `AD_PLACE` (modrá karta, odhoz nad limit), platební lišta, Nabíjení, Eso v rukávu, Bečka piva, Zvonice, Bandalír, Kolona, Malý doušek + bot | rozmisťování kliknutím, platba za vylepšení |
-| **A2 Zbraně a výstřely** | kontext výstřelu, `_adShotCanceled`, `_adMuted`, 4 zbraně, Bedna, Skrč se!, Křesadlovka, Rychlopalba, Bloody Mary, Mexicali Kid + bot | přepínač efektu zbraně, razítko, bumerang Thundereru |
-| **A3 Ruce a stoly** | Šíp, Paklíč, Bič, Squaw, Rez, Bass Greeves, Frankie Canton, Red Ringo + bot | šípy, rezavá vlna žetonů |
-| **A4 Bomba** | sejmutí, předání, výbuch (i mimo tah), interakce + bot | doutnák, předávání, výbuch |
-| **A5 Sejmutí znovu** | brána Stepního běžce v `resolveCheck`/`luckyDukePick`, okno, Julie Cutter + bot | okno „ZOPAKOVAT", valící se chomáč |
+| **A2 Zbraně a výstřely** | kontext výstřelu, `_adShotCanceled`, `_adMuted`, 4 zbraně, Bedna, Skrč se!, Křesadlovka, Rychlopalba, Bloody Mary, Mexicali Kid + bot | přepínač efektu zbraně |
+| **A3 Ruce a stoly** | Šíp, Paklíč, Bič, Squaw, Rez, Bass Greeves, Frankie Canton, Red Ringo + bot | výběr cílů, přelety žetonů |
+| **A4 Bomba** | sejmutí, předání, výbuch (i mimo tah), interakce + bot | předávání, výbuch |
+| **A5 Sejmutí znovu** | brána Stepního běžce v `resolveCheck`/`luckyDukePick`, okno, Julie Cutter + bot | okno „ZOPAKOVAT" |
 | **A6 Okna mimo tah** | Al Preacher, Ms. Abigail (okno úniku + RESPOND) + bot | IGNOROVAT, LÍZNOUT mimo tah |
 | **A7 Dokončení** | zátěž (matice + `ad.load`), ladění bota, mobilní profil (štítky ⛁, lišty), `docs/pravidla/ozbrojeni.md`, řádek v CLAUDE.md, `AD_CARDS_READY`/`AD_READY` celé | celé rozšíření ve hře s boty |
 
@@ -800,4 +809,4 @@ Bloody Mary, Frankie Canton, Julie Cutter, Mexicali Kid, Ms. Abigail, Red Ringo)
 
 **Volitelně:** značka rozšíření `assets/card_marks/ozbrojeni.webp` (pistole s dynamitem
 v pravém horním rohu karet), kostička žetonu `assets/other_cards/ozbrojeni/nabiti.webp`
-(jinak se kreslí), sprite stepního běžce (jinak se kreslí čarami).
+(jinak se kreslí).
