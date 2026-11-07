@@ -158,7 +158,9 @@ function bigSpencerBlocked(me, card) {
 function playsAsMissed(state, me, card) {
     if (!card || card._placeholder) return false;
     if (bigSpencerBlocked(me, card)) return false;
-    if (isMissedCard(card) || card.type === "Úhyb") return true;
+    // Ozbrojení a nebezpeční – Skrč se!: účinkuje jako Vedle!, kartou Vedle! ale není
+    // (R12) – Big Spencer ji smí, Calamity Janet ji jako BANG! nezahraje.
+    if (isMissedCard(card) || card.type === "Úhyb" || card.type === "Skrč se!") return true;
     if (hasAbility(me, "Elena Fuente")) return true;
     if (card.type === "Bang!") {
         return hasAbility(me, "Calamity Janet") || eventActive(state, 'ZUCTOVANI');
@@ -321,6 +323,7 @@ function nativePlayInTurn(state, me, myIndex, card) {
         return ricochetAvailable(state, me, myIndex) || sniperOffer(state, me, myIndex, card);
     }
     if (card.type === "Úhyb") return false; // Úhyb jen jako reakce (mimo tah), ne ve svém tahu
+    if (card.type === "Skrč se!") return false; // Ozbrojení – Skrč se! taky jen jako reakce
     // Údolí stínů – Útěk se hraje jen jako reakce (okno úniku, obrana proti bang-efektu).
     if (card.type === "Útěk") return false;
     // …a Obětavý skok taky – „lze zahrát pouze mimo tvůj tah" (okno záchrany, F8).

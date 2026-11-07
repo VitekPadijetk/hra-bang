@@ -155,8 +155,10 @@ const ARMED_CHARACTERS = [
 ];
 
 // …a podmnožina, která už MÁ schopnost (vzor VOS_READY). Roste po fázích A2–A6;
-// do té doby se dají vybrat jen v debug hře.
-const AD_READY = [];
+// zbytek se do té doby dá vybrat jen v debug hře.
+const AD_READY = [
+    "Bloody Mary", "Mexicali Kid",       // A2
+];
 
 class Card {
     constructor(id, name, type, suit, value, props = {}) {

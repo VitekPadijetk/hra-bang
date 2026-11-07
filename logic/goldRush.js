@@ -207,6 +207,8 @@ const GoldRushMixin = {
     _gearOn(player, effect) {
         if (!this._gearHas(player, effect)) return false;
         if (this._boardDead()) return false;
+        // Ozbrojení a nebezpeční – Big Fifty: cíli výstřelu neplatí ani vybavení (R9).
+        if (player._adMuted) return false;
         const idx = this.players.indexOf(player);
         return !(idx !== this.currentPlayerIndex && this._belleIgnoresBoard(this.currentPlayerIndex));
     },

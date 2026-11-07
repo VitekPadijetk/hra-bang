@@ -66,7 +66,8 @@ const ValleyMixin = {
         // i tehdy, když zásah cíl vyřadil – proto se čte TEĎ, než smrt stůl uklidí.
         // Laso (karty na stole nemají efekt) a Belle Star (v jejím tahu cizí karty na
         // stole neplatí) ji vypínají.
-        const bounty = !this._boardDead() && !this._belleIgnoresBoard(originatorIdx) &&
+        // Ozbrojení a nebezpeční – Big Fifty vypíná i Odměnu (R9).
+        const bounty = !this._boardDead() && !this._belleIgnoresBoard(originatorIdx) && !adMuted(target) &&
                        (target.board || []).some(c => c && c.type === CardType.BOUNTY);
         if (bounty) {
             this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: originatorIdx, cardsNeeded: 1, label: 'Odměna' });
@@ -94,7 +95,7 @@ const ValleyMixin = {
             const card = p.hand.splice(i, 1)[0];
             this.deck.discard(card);
             this.pendingShotgun = null;
-            this.logEvent('special', { who: p.name, card: 'Brokovnice', taken: card.name, msg: 'odhazuje' });
+            this.logEvent('special', { who: p.name, card: ps.label || 'Brokovnice', taken: card.name, msg: 'odhazuje' });
             // Poslední kartou se vyprázdnila ruka → Suzy Lafayette si líže. Líznutí jde
             // frontou, takže se odbaví v pořadí za tím, co už čeká (Odměna, El Gringo).
             this.checkSuzyLafayette(p);
@@ -492,6 +493,7 @@ const ValleyMixin = {
     // obyčejném zásahu (fáze PLAY, fronta odložených akcí, případně další výstřel).
     _vosAimTail() {
         this.pendingDynamiteDamage = null;
+        this._adShotEnd();   // Ozbrojení – Big Fifty: výstřel doběhl
         if (this.pendingResponse) this.pendingResponse.active = false;
         this.phase = "PLAY";
         if (this._turnOwnerGone()) return;

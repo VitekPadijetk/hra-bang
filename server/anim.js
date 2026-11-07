@@ -705,6 +705,19 @@ module.exports = function installAnimService(ctx) {
         if (hold) room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + hold);
     }
 
+    // ── Ozbrojení a nebezpeční – karta z odhozu zpátky do ruky ─────────────────
+    // Zrušení výstřelu (Křesadlovka, Skrč se! s vylepšením) nastává v různých akcích
+    // (obrana, Barel, Bedna) – pravidla si let jen zapíšou (`_adAnim`) a tady se pošle
+    // těsně před stavem. Boti počkají, než karta doletí.
+    function flushAdAnim(room) {
+        const gs = room.gameState;
+        const list = gs && gs._adAnim;
+        if (!list || !list.length) return;
+        gs._adAnim = null;
+        list.forEach(a => emitAnim(room, a));
+        room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + 400 * list.length);
+    }
+
     // ── Údolí stínů – Henry Block: karta se pohne až po jeho výstřelu ──────────
     // Krádež / odhoz Henryho karty se pozastaví (logic/valley.js, _henrySuspend) a dokončí
     // se uvnitř CIZÍ socket akce – té, která výstřel ukončila (obrana, barel, záchrana
@@ -788,6 +801,7 @@ module.exports = function installAnimService(ctx) {
         flushJohnPain(room);
         flushLuckyDeal(room);
         flushVosAnim(room);
+        flushAdAnim(room);
     }
 
     Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, emitGearAcquire,

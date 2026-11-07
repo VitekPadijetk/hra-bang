@@ -282,13 +282,26 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // Údolí stínů – Dvojitá rána jde do odhozu hned za kartou BANG! (aimCardId).
             const aimCard = d.aimCardId != null ? attacker?.hand.find(c => c && c.id === d.aimCardId) : null;
             const _adBefore = adSnapshot(gs);
-            gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx, d.aimCardId ?? null);
-            // Bandalír zaplacený posledním žetonem odejde do odhozu.
+            // Ozbrojení a nebezpeční: efekt zbraně, vylepšení a další cíle Rychlopalby.
+            const adOpts = { adWeapon: !!d.adWeapon, up: d.up || 0,
+                             pay: Array.isArray(d.pay) ? d.pay : [], extra: Array.isArray(d.extra) ? d.extra : [] };
+            gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx, d.aimCardId ?? null, adOpts);
+            // Bandalír / zbraň / zdroj vylepšení zaplacený posledním žetonem odejde do odhozu.
             adDepleted(gs, _adBefore).forEach(x => emitAnim(room, { type: 'board_to_discard',
                 fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
             if (cardLeftHand(attacker, card)) {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
             }
+            // Thunderer: karta BANG! odletí do odhozu a hned se vrátí do ruky.
+            const _th = gs._adThunderDone;
+            gs._adThunderDone = null;
+            if (_th) {
+                emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: _th.playerIdx, cardId: _th.cardId });
+                emitAnim(room, { type: 'discard_to_hand', toPlayerIdx: _th.playerIdx, cardId: _th.cardId });
+            }
+            adOpts.extra.forEach(t => {
+                if (t !== d.attackerIdx) ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: t, kind: 'hostile' });
+            });
             if (aimCard && cardLeftHand(attacker, aimCard)) {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: aimCard.id });
             }
@@ -576,7 +589,13 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                         ctx.recordBehavior?.(room, { actorIdx: d.playerIdx, targetIdx: orig, kind: 'hostile' });
                     }
                 }
-                gs.handleResponse(d.playerIdx, d.cardIndex, d.boardCardId ?? null);
+                // Ozbrojení a nebezpeční – vylepšení Skrč se! (karta zpátky do ruky).
+                const _adR = (d.up || (Array.isArray(d.pay) && d.pay.length))
+                    ? { up: d.up || 0, pay: Array.isArray(d.pay) ? d.pay : [] } : null;
+                const _adBeforeR = adSnapshot(gs);
+                gs.handleResponse(d.playerIdx, d.cardIndex, d.boardCardId ?? null, _adR);
+                adDepleted(gs, _adBeforeR).forEach(x => emitAnim(room, { type: 'board_to_discard',
+                    fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
                 // Fistful – Odražená střela: obrana kartou střelu odrazí, takže tudy
                 // nikdy nic nepřijde. Emit je tu jen proto, aby event nezůstal viset
                 // (druhá větev níž ho potřebuje).
@@ -1568,6 +1587,34 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             gone.forEach(x => emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: x.playerIdx,
                                                cardId: x.cardId, boardIdx: x.boardIdx }));
             if (gone.length) broadcastRoomDelayed(room, 420); else broadcastRoom(room);
+        });
+    });
+
+    // Bedna: obránce zaplatí 2 žetony z Bedny a výstřel ruší jako Vedle! (v RESPOND
+    // i ještě před snímáním na Barel). Vyčerpaná Bedna odletí do odhozu.
+    on('ad_crate', () => {
+        withRoom((room, p, gs) => {
+            const idx = gs.phase === 'BARREL_DRAW' ? gs.pendingBarrelCheck?.targetIdx : gs.pendingResponse?.targetIdx;
+            if (idx === undefined || idx === null) return;
+            const before = adSnapshot(gs);
+            if (!gs.adCrate(idx)) { broadcastRoom(room); return; }
+            const gone = adDepleted(gs, before);
+            gone.forEach(x => emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: x.playerIdx,
+                                               cardId: x.cardId, boardIdx: x.boardIdx }));
+            handleAutoEndTurn(room, gs);
+            if (gone.length) broadcastRoomDelayed(room, 420); else handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+    // Mexicali Kid: zaplatí 2 žetony (`pay` – adresy zdrojů) a vystřelí na cíl v dostřelu.
+    on('ad_mexicali', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const before = adSnapshot(gs);
+            if (!gs.adMexicali(idx, d && d.targetIdx, d && Array.isArray(d.pay) ? d.pay : [])) { broadcastRoom(room); return; }
+            adDepleted(gs, before).forEach(x => emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: x.playerIdx,
+                                                                 cardId: x.cardId, boardIdx: x.boardIdx }));
+            if (d.targetIdx !== idx) ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: d.targetIdx, kind: 'hostile' });
+            broadcastRoomDelayed(room);
         });
     });
 

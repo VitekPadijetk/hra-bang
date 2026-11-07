@@ -210,6 +210,17 @@ if (typeof require === 'function') {
         globalThis.adCardsInPlay = __ad.adCardsInPlay;
         globalThis.adArmOk = __ad.adArmOk;
     }
+    if (typeof adCrateOk === 'undefined') {
+        const __ad = require('./armed.js');
+        globalThis.adCrateOk = __ad.adCrateOk;
+        globalThis.adMuted = __ad.adMuted;
+        globalThis.adWeaponOf = __ad.adWeaponOf;
+        globalThis.adWeaponSpecialOk = __ad.adWeaponSpecialOk;
+        globalThis.adQuickTargets = __ad.adQuickTargets;
+        globalThis.adMexicaliOk = __ad.adMexicaliOk;
+        globalThis.adSources = __ad.adSources;
+        globalThis.AD_MEXICALI_COST = __ad.AD_MEXICALI_COST;
+    }
     // Zlatá horečka – obchod: „smí se koupit / donutit odhodit / vyměnit Pivo za valoun".
     // Stejné predikáty, jaké vynucuje server i klient (core/goldRush.js).
     if (typeof gearBuyOk === 'undefined') {
@@ -347,6 +358,35 @@ function adBotUpgrade(state, myIndex, card, cardIdx, cap) {
     const pay = [];
     for (let k = 0; k < up * cost; k++) pay.push({ seat: myIndex, cardId: null });
     return { event: 'play_card', payload: { index: cardIdx, up, pay } };
+}
+
+// ── Fáze A2: zbraně a výstřely (plán §6) ──────────────────────────────────────
+// Zaplatí bot k výstřelu na `tgtIdx` efekt své Nebezpečné zbraně? Dvouhlavňovka
+// a Thunderer vždy, Buntline jen na cíl s kartami v ruce, Big Fifty jen na cíl,
+// kterému by jeho karty nebo schopnost pomohly (Barel, Bedna, zelené Vedle!, …).
+function adBotWeapon(state, myIndex, card, tgtIdx) {
+    if (!adWeaponSpecialOk(state, myIndex, card)) return false;
+    const w = adWeaponOf(state.players[myIndex]);
+    const t = state.players[tgtIdx];
+    if (!w || !t || tgtIdx === myIndex) return false;
+    if (w.effect === 'AD_BUNTLINE') return (t.hand || []).length > 0;
+    if (w.effect === 'AD_BIG_FIFTY') {
+        return (t.board || []).some(c => c && (c.type === T.BARREL || c.type === 'Bedna' || (c.green && c.activate === 'miss'))) ||
+            ['Jourdonnais', 'Apache Kid', 'Elena Fuente', 'Calamity Janet', 'Bart Cassidy', 'El Gringo']
+                .some(n => hasAbility(t, n));
+    }
+    return true;
+}
+
+// Odkud bot platí `n` žetonů: nejdřív postava, pak karty s nejvíc žetony. null = nemá.
+function adBotPay(state, myIndex, n) {
+    const src = adSources(state, myIndex)
+        .sort((a, b) => (a.cardId == null ? -1 : 0) - (b.cardId == null ? -1 : 0) || b.loads - a.loads);
+    const pay = [];
+    for (const s of src) {
+        for (let k = 0; k < s.loads && pay.length < n; k++) pay.push({ seat: myIndex, cardId: s.cardId });
+    }
+    return pay.length === n ? pay : null;
 }
 
 // Kolik má vybavení cenu pro KONKRÉTNÍHO hráče (fáze 8). Tabulka výš je cena „pro
@@ -564,6 +604,10 @@ function weaponValue(w) {
     // nikdy nevyložil (nebyly by „lepší" než Colt).
     if (w.effect === 'VOS_LEMAT') return 1.8;
     if (w.effect === 'VOS_SHOTGUN') return 1.6;
+    // Ozbrojení a nebezpeční: Nebezpečné zbraně umí za žeton víc – stejný příplatek,
+    // jinak by bot Dvouhlavňovku (dostřel 1) nikdy nevyložil.
+    if (w.effect === 'AD_DOUBLE_BARREL') return 1.5;
+    if (w.effect && String(w.effect).startsWith('AD_')) return weaponRange(w) + 0.4;
     return weaponRange(w);
 }
 
@@ -769,6 +813,9 @@ function keepScore(card) {
         case 'Zvonice': return 3;
         case 'Nabíjení': return 3;
         case 'Malý doušek': return 6;             // léčí jako Poslední pivo
+        // Ozbrojení a nebezpeční (A2)
+        case 'Bedna': return 5;                   // dvakrát Vedle! za žetony
+        case 'Skrč se!': return 6;                // účinkuje jako Vedle!
         default: return 1;
     }
 }
@@ -1163,9 +1210,22 @@ function decidePlay(state, myIndex, beliefs) {
             // Údolí stínů – Dvojitá rána: k výstřelu na nepřítele ji bot přidá vždycky
             // (zásah za 2 životy), bez ní by ležela v ruce – sama se zahrát nedá.
             const aim = tgt ? aimCardFor(state, me, myIndex, card) : null;
-            if (tgt) consider(50 + (5 - Math.min(tgt.health, 5)) + (aim ? 2 : 0),
+            // Ozbrojení a nebezpeční: efekt zbraně a další cíle Rychlopalby (platí z postavy).
+            const adW = tgt ? adBotWeapon(state, myIndex, card, tgt.idx) : false;
+            let adQ = null;
+            if (tgt && card.type === 'Rychlopalba') {
+                const can = Math.min(adUpgradeMax(state, myIndex, card), me.adLoads || 0);
+                const extra = shootTargets(state, myIndex, beliefs)
+                    .filter(e => e.idx !== tgt.idx && adQuickTargets(state, myIndex).includes(e.idx))
+                    .slice(0, can).map(e => e.idx);
+                if (extra.length) adQ = { up: extra.length, extra,
+                    pay: extra.map(() => ({ seat: myIndex, cardId: null })) };
+            }
+            if (tgt) consider(50 + (5 - Math.min(tgt.health, 5)) + (aim ? 2 : 0) + (adW ? 1 : 0) + (adQ ? adQ.up : 0),
                 { event: 'play_bang', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i,
-                                                 ...(aim ? { aimCardId: aim.id } : {}) } });
+                                                 ...(aim ? { aimCardId: aim.id } : {}),
+                                                 ...(adW ? { adWeapon: true } : {}),
+                                                 ...(adQ || {}) } });
             return;
         }
 
@@ -1374,7 +1434,8 @@ function decidePlay(state, myIndex, beliefs) {
         // použití ještě není hotové (jen v debug hře), bot nevykládá – nic by nedělaly.
         if (card.dangerous && card.type !== T.WEAPON) {
             const hasBang = me.hand.some(c => c && c.id !== card.id && bangCardFromHand(state, me, myIndex, c));
-            const v = { 'Eso v rukávu': 24, 'Bečka piva': 18, 'Zvonice': 12, 'Bandalír': hasBang ? 22 : 14 }[card.type];
+            const v = { 'Eso v rukávu': 24, 'Bečka piva': 18, 'Zvonice': 12, 'Bandalír': hasBang ? 22 : 14,
+                        'Bedna': 26 }[card.type];
             if (v) consider(v, intent);
             return;
         }
@@ -1391,6 +1452,14 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
     });
+
+    // ── Ozbrojení a nebezpeční – Mexicali Kid: výstřel za 2 žetony ──────────
+    if (adMexicaliOk(state, myIndex)) {
+        const tg = shootTargets(state, myIndex, beliefs).find(e => adQuickTargets(state, myIndex).includes(e.idx));
+        const pay = tg ? adBotPay(state, myIndex, AD_MEXICALI_COST) : null;
+        if (tg && pay) consider(45 + (5 - Math.min(tg.health, 5)),
+            { event: 'ad_mexicali', payload: { targetIdx: tg.idx, pay } });
+    }
 
     // ── Ozbrojení a nebezpeční: použití vlastních Nebezpečných karet ─────────
     // Ptá se adUseOk – tentýž dotaz jako server a klient, jinak by se hra botů zasekla.
@@ -1797,6 +1866,8 @@ function decideBotAction(state, myIndex, beliefs) {
             const isDodge = (c) => !suitBlockedFor(state, myIndex, c) && (req === T.MISSED
                 ? (playsAsMissed(state, me, c) && !_unavoidable)
                 : (!preacherBlocks(state, me, myIndex, c) && playsAsBang(state, me, c)));
+            // Ozbrojení a nebezpeční – Bedna: zaplať z ní a karty v ruce si nech.
+            if (adCrateOk(state, myIndex)) return { event: 'ad_crate', payload: {} };
             let dodgeIdx = me.hand.findIndex(isDodge);
             // Údolí stínů – Opětovná palba: uhne A vystřelí zpět. Proti nepříteli ji bot
             // hraje přednostně, proti spojenci (nebo útoku bez střelce) až jako poslední.
@@ -1817,7 +1888,7 @@ function decideBotAction(state, myIndex, beliefs) {
             const belleIgnores = state.pendingResponse.originatorIdx === state.currentPlayerIndex
                 && hasAbility(attacker, 'Belle Star');
             // Laso (Fistful) ruší karty na stole úplně stejně – a ze stejného důvodu.
-            if (req === T.MISSED && !belleIgnores && !boardDeadFor(state) && !_unavoidable) {
+            if (req === T.MISSED && !belleIgnores && !boardDeadFor(state) && !_unavoidable && !adMuted(me)) {
                 const greenMiss = (me.board || []).find(c => c.green && c.activate === 'miss'
                     && c._playedTurn !== state.turnId);
                 if (greenMiss) return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null, boardCardId: greenMiss.id } };

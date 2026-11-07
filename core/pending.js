@@ -209,6 +209,13 @@ function waitingStatus(state) {
         if (state.pendingResponse.vos?.aim) text += ' + Dvojitá rána';
         // Údolí stínů – Henry Block: střílí na toho, kdo mu bere kartu (karta počká).
         if (state.pendingResponse.vos?.shot === 'HENRY') text = 'brání se výstřelu Henryho Blocka';
+        // Ozbrojení a nebezpeční – zaplacené efekty zbraní (stav bez animace, §2.16).
+        if (state.pendingResponse.vos?.adBigFifty) text += ' (Big Fifty – bez schopnosti a karet)';
+        if (state.pendingResponse.vos?.adBuntline) text += ' (Buntline – po zrušení odhodí kartu)';
+    }
+    // Buntline Special odhazuje stejnou fází jako Brokovnice.
+    if (pa.kind === 'SHOTGUN_DISCARD' && state.pendingShotgun?.label) {
+        text = state.pendingShotgun.label + ' – odhazuje kartu';
     }
     if (pa.kind === 'EVADE_OFFER' && state.pendingEvade?.cardName) {
         text = 'rozmýšlí, jestli se vyhne kartě ' + state.pendingEvade.cardName;

@@ -304,7 +304,8 @@ const CharactersMixin = {
             this.phase = "CHECK_DRAW";
         } else if (action.type === 'SHOTGUN_DISCARD') {
             // Údolí stínů – Brokovnice: zasažený odhodí kartu dle své volby (logic/valley.js).
-            this.pendingShotgun = { playerIdx: action.playerIdx, attackerIdx: action.attackerIdx };
+            this.pendingShotgun = { playerIdx: action.playerIdx, attackerIdx: action.attackerIdx,
+                                   ...(action.label ? { label: action.label } : {}) };
             this.phase = "SHOTGUN_DISCARD";
         } else if (action.type === 'LEMONADE_OFFER') {
             // Údolí stínů – Limonádový Jim: odhodí kartu za +1 život, nebo odmítne

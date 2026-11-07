@@ -264,6 +264,169 @@ const ArmedMixin = {
         }
         return false;
     },
+
+    // ── Fáze A2: zbraně a výstřely (§2.10) ──────────────────────────────────────
+    // Výstřel si od zahrání nese kontext `vos` (Údolí stínů ho zavedlo pro Odměnu
+    // a Brokovnici). Ozbrojení do něj přidává klíče, ne nový parametr:
+    //   unavoidable   – Dvouhlavňovka (existující cesta Colorado Billa),
+    //   adBuntline    – Buntline Special: zrušený výstřel → cíl odhodí kartu,
+    //   adReturn: id  – vylepšená Křesadlovka: zrušený výstřel → karta zpátky do ruky,
+    //   adMary        – karta BANG! Bloody Mary: zrušený výstřel → líznutí,
+    //   adBigFifty    – Big Fifty (jen pro štítek; vypnutí drží `target._adMuted`).
+
+    // Volá playBang, až je zahrání ověřené (adWeaponSpecialOk, adUpgradeOk, cíle
+    // Rychlopalby) – teprve tady se platí, PŘED efektem. Vrací klíče kontextu nebo null.
+    // `o` = { weapon, up, pay, bangCard, targetIdx }.
+    _adShotStart(attackerIdx, card, o) {
+        if (!this._adOn()) return null;
+        const a = this.players[attackerIdx];
+        const ctx = {};
+        if (o.up) this._adPay(attackerIdx, o.pay);
+        if (card.type === CardType.AD_FLINTLOCK && o.up) ctx.adReturn = card.id;
+        // Bloody Mary: „Kdykoli je zrušena její karta BANG!, lízne si 1 kartu." Jen skutečná
+        // karta BANG! (Křesadlovka, Rychlopalba ani Kulomet ne).
+        if (o.bangCard && hasAbility(a, "Bloody Mary")) ctx.adMary = true;
+        if (o.weapon) {
+            const w = adWeaponOf(a);
+            const eff = w.effect;
+            // Cena se platí z té zbraně; vyčerpaná odejde PŘED efektem (dostřel už se
+            // posoudil, R18). Efekt výstřelu ale platí – je zaplacený.
+            this._adTake(w, adCardCost(w));
+            this.logEvent('ad_use', { who: a.name, card: w.name, msg: AD_WEAPON_EFFECTS[eff] });
+            if (eff === 'AD_BUNTLINE') ctx.adBuntline = true;
+            else if (eff === 'AD_DOUBLE_BARREL') ctx.unavoidable = true;
+            else if (eff === 'AD_THUNDERER') this._adThunder = { playerIdx: attackerIdx, cardId: card.id };
+            else if (eff === 'AD_BIG_FIFTY') {
+                ctx.adBigFifty = true;
+                const t = this.players[o.targetIdx];
+                if (t) t._adMuted = true;
+            }
+        }
+        return Object.keys(ctx).length ? ctx : null;
+    },
+
+    // Thunderer: „vezmi si tu kartu BANG! zpátky do ruky" – hned po odhozu, ještě než cíl
+    // zareaguje (R19). Animaci (do odhozu a zpátky) pošle handler play_bang.
+    _adThunderReturn() {
+        const t = this._adThunder;
+        if (!t) return null;
+        this._adThunder = null;
+        const p = this.players[t.playerIdx];
+        const c = p ? this.deck.takeFromDiscard(t.cardId) : null;
+        if (!c) return null;
+        p.hand.push(c);
+        this.logEvent('special', { who: p.name, card: 'Thunderer', taken: c.name, msg: 'bere BANG! zpátky' });
+        // Pro handler play_bang: karta letí do odhozu a zpátky (server/handlers.game.js).
+        this._adThunderDone = { playerIdx: t.playerIdx, cardId: c.id };
+        return this._adThunderDone;
+    },
+
+    // Karta z odhozu zpátky do ruky (Křesadlovka, Skrč se!). Animaci pošle hák před
+    // broadcastem (`_adAnim` → flushAdAnim, server/anim.js) – zrušení výstřelu nastává
+    // v různých akcích (obrana, Barel, Bedna).
+    _adBackToHand(playerIdx, cardId, why) {
+        const p = this.players[playerIdx];
+        if (!p || !isInPlay(p)) return false;
+        const c = this.deck.takeFromDiscard(cardId);
+        if (!c) return false;
+        p.hand.push(c);
+        if (!this._adAnim) this._adAnim = [];
+        this._adAnim.push({ type: 'discard_to_hand', toPlayerIdx: playerIdx, cardId });
+        this.logEvent('special', { who: p.name, card: why, msg: 'karta zpátky do ruky' });
+        return true;
+    },
+
+    // ── Trychtýř „výstřel byl zrušen" (§2.10, R17) ──────────────────────────────
+    // Volá se ze všech míst, kde zrušení nastane: Barel/Jourdonnais ♥ (_applyCheckResult),
+    // dokončená obrana Vedle!/Skrč se! (handleResponse), Útěk proti bang-efektu, Bedna.
+    // NEvolá se u Apache Kida (výstřel se neodehrál) ani u Ms. Abigail (ignoruje efekt).
+    // `pr` = { targetIdx, originatorIdx, vos, adDuck }.
+    _adShotCanceled(pr) {
+        if (!pr || !this._adOn()) return;
+        const v = pr.vos || {};
+        const tgt = pr.targetIdx, orig = pr.originatorIdx;
+        // Skrč se! s vylepšením: karta se vrací do ruky obránci.
+        (pr.adDuck || []).forEach(d => this._adBackToHand(d.playerIdx, d.cardId, 'Skrč se!'));
+        if (v.adReturn != null && orig != null) this._adBackToHand(orig, v.adReturn, 'Křesadlovka');
+        // Buntline Special: cíl odhodí kartu z ruky dle svého výběru – stejná fáze jako
+        // Brokovnice (SHOTGUN_DISCARD, vynucený odhoz: Molly nelíže, Henry nestřílí).
+        const t = this.players[tgt];
+        if (v.adBuntline && t && isInPlay(t) && t.hand.length > 0) {
+            this.specialActionQueue.push({ type: 'SHOTGUN_DISCARD', playerIdx: tgt, attackerIdx: orig, label: 'Buntline Special' });
+            this.logEvent('special', { who: this.players[orig]?.name, card: 'Buntline Special', target: t.name, msg: 'odhodí kartu' });
+        }
+        // Bloody Mary: zrušená karta BANG! → líznutí.
+        if (v.adMary && orig != null && isInPlay(this.players[orig])) {
+            this.specialActionQueue.push({ type: 'KILL_REWARD', playerIdx: orig, cardsNeeded: 1, label: 'Bloody Mary' });
+            this.logEvent('special', { who: this.players[orig].name, card: 'Bloody Mary', msg: 'lízne si kartu' });
+        }
+    },
+
+    // Big Fifty: konec výstřelu – cílům se vrací schopnost i karty. Volá se na koncích
+    // obrany (handleResponse, úspěšný Barel, Bedna, záchrana, Dvojitá rána, Apache Kid)
+    // a pojistkou v nextTurn. Dokud příznak drží, hasAbility cíli nic nepovolí.
+    _adShotEnd() {
+        (this.players || []).forEach(p => { if (p && p._adMuted) delete p._adMuted; });
+    },
+
+    // ── Bedna (§4) ──────────────────────────────────────────────────────────────
+    // „Zaplať 2 ⛁ z této karty: účinkuje jako Vedle!." V RESPOND je to jedno Vedle!
+    // (proti Slabovi zbývá ještě jedno), ve fázi BARREL_DRAW zruší výstřel rovnou (adCrateOk
+    // ji tam pustí jen tehdy, když jedno Vedle! stačí). Vrací true, když se použila.
+    adCrate(playerIdx) {
+        if (!adCrateOk(this, playerIdx)) return false;
+        const p = this.players[playerIdx];
+        const crate = adCrateCard(p);
+        this._adTake(crate, adCardCost(crate));
+        this.logEvent('ad_use', { who: p.name, card: 'Bedna', msg: 'účinkuje jako Vedle!' });
+        if (this.phase === "BARREL_DRAW") {
+            const pb = this.pendingBarrelCheck;
+            this.pendingBarrelCheck = null;
+            this.missesPlayed = 0;
+            this._adShotCanceled({ targetIdx: pb.targetIdx, originatorIdx: pb.attackerIdx, vos: pb.vos });
+            this._adShotEnd();
+            if (pb.sourceCard === CardType.GATLING || pb.sourceCard === CardType.INDIANS) {
+                this._advanceMassAttack(pb.targetIdx, pb.attackerIdx, pb.sourceCard);
+                this._processSpecialQueue();
+            } else {
+                this.phase = "PLAY";
+                if (!this._afterFistfulHit()) this._processSpecialQueue();
+                this.targetPlayer = null;
+                this.currentAttacker = null;
+            }
+            return true;
+        }
+        // RESPOND: jako zahrané Vedle! (bez karty – nic se neodhazuje, Molly nelíže).
+        const pr = this.pendingResponse;
+        this.missesPlayed = (this.missesPlayed || 0) + 1;
+        if (this.missesPlayed < (this.missesRequired || 1)) return true;
+        this._vosBackfireCheck(pr, playerIdx);
+        this._adShotCanceled(pr);
+        pr.partialMisses = [];
+        this.missesPlayed = 0;
+        this.missesRequired = 1;
+        pr.responded.push(playerIdx);
+        this._respondAdvance(playerIdx, true);
+        return true;
+    },
+
+    // ── Mexicali Kid (§5) ───────────────────────────────────────────────────────
+    // „Jednou ve svém tahu smí zaplatit 2 ⛁ a vystřelit BANG!" na cíl v dostřelu zbraně.
+    // Bang-efekt (bez limitu, bez efektu zbraně, bez Slaba); Barel, Jourdonnais i Bedna
+    // fungují. Cíl se posuzuje před platbou (R18). Vrací true, když se vystřelilo.
+    adMexicali(playerIdx, targetIdx, pay) {
+        if (!adMexicaliOk(this, playerIdx)) return false;
+        if (!adQuickTargets(this, playerIdx).includes(targetIdx)) return false;
+        if (!adPayOk(this, playerIdx, pay, AD_MEXICALI_COST)) return false;
+        const p = this.players[playerIdx];
+        p._adMexTurn = this.turnId;
+        this._adPay(playerIdx, pay);
+        this.logEvent('bang', { who: p.name, target: this.players[targetIdx].name, card: 'Mexicali Kid' });
+        this.currentAttacker = playerIdx;
+        this._beginBangResolution(playerIdx, targetIdx, true, 'Mexicali Kid', null, null, { shot: 'MEXICALI' });
+        this._processSpecialQueue();
+        return true;
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = ArmedMixin;

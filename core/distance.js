@@ -41,8 +41,10 @@ function effectiveCharacter(player) {
 //   • Vera Custer se ptá skrz kopii (`_copiedCharacter`),
 //   • a kopíruje-li Vera Greygoryho, platí JEJÍ vlastní líznutá dvojice (R10) –
 //     `_greygoryChars` proto nese ten, kdo schopnost právě má, ne sám Greygory.
+//   • Ozbrojení a nebezpeční – Big Fifty (`_adMuted`): cíli zaplaceného výstřelu
+//     neplatí po dobu toho výstřelu žádná schopnost (R9), stejně jako pod Kocovinou.
 function abilitiesOf(player) {
-    if (!player || player._noAbility) return [];
+    if (!player || player._noAbility || player._adMuted) return [];
     const base = player._copiedCharacter || player.character;
     if (base === "Greygory Deck") return [...(player._greygoryChars || [])];
     return base ? [base] : [];
@@ -51,7 +53,7 @@ function abilitiesOf(player) {
 // Zkratka nad abilitiesOf bez alokace pole – volá se v computeDistance, tedy v horké
 // cestě bota. Chová se přesně jako `abilitiesOf(p).includes(name)`.
 function hasAbility(player, name) {
-    if (!player || player._noAbility) return false;
+    if (!player || player._noAbility || player._adMuted) return false;
     const base = player._copiedCharacter || player.character;
     if (base === "Greygory Deck") return !!player._greygoryChars && player._greygoryChars.includes(name);
     return base === name;

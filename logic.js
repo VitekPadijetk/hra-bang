@@ -102,6 +102,16 @@ if (typeof adOn === 'undefined' && typeof require === 'function') {
     globalThis.adReloadOk = __ad.adReloadOk;
     globalThis.adBandolierExtra = __ad.adBandolierExtra;
     globalThis.adRepeatOk = __ad.adRepeatOk;
+    globalThis.AD_WEAPON_EFFECTS = __ad.AD_WEAPON_EFFECTS;
+    globalThis.adWeaponOf = __ad.adWeaponOf;
+    globalThis.adWeaponSpecialOk = __ad.adWeaponSpecialOk;
+    globalThis.adMuted = __ad.adMuted;
+    globalThis.adCrateCard = __ad.adCrateCard;
+    globalThis.adCrateOk = __ad.adCrateOk;
+    globalThis.adQuickTargets = __ad.adQuickTargets;
+    globalThis.adQuickExtraOk = __ad.adQuickExtraOk;
+    globalThis.AD_MEXICALI_COST = __ad.AD_MEXICALI_COST;
+    globalThis.adMexicaliOk = __ad.adMexicaliOk;
 }
 // Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
 // globálů, takže by blok výš tyhle přeskočil.
@@ -577,6 +587,8 @@ class GameState {
         // Divoký západ – John Pain: pojistka pro větve, které frontu odložených akcí
         // neberou (Vězení sebralo tah, Vendeta neuspěla) – nejpozději na konci tahu.
         this._drainJohnPain();
+        // Ozbrojení a nebezpeční – Big Fifty: pojistka, ať vypnutá schopnost nepřežije tah.
+        this._adShotEnd();
         // Údolí stínů: výstřel, který se do konce tahu nestihl odpálit (střelec nebo cíl
         // mezitím odešel, tah skončil smrtí), propadá – patřil efektu tohohle tahu.
         if (this._vosShots && this._vosShots.length) this._vosShots = [];

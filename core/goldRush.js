@@ -77,6 +77,8 @@ function hasGearFor(state, playerIdx, effect) {
 function gearOnFor(state, playerIdx, effect) {
     if (!hasGearFor(state, playerIdx, effect)) return false;
     if (boardDeadFor(state)) return false;
+    // Ozbrojení a nebezpeční – Big Fifty: cíli výstřelu neplatí ani vybavení (R9).
+    if (state.players?.[playerIdx]?._adMuted) return false;
     const cur = state.currentPlayerIndex;
     return !(playerIdx !== cur && hasAbility(state.players?.[cur], "Belle Star"));
 }

@@ -83,7 +83,7 @@ const MENU_EXPANSIONS = [
     // Rozpracované (docs/ozbrojeni-a-nebezpecni-plan.md §8): od fáze A1 jde zapnout i v běžné
     // hře, do balíčku jdou jen hotové druhy (AD_CARDS_READY) a postavy až s AD_READY.
     // Nápověda říká, kolik toho je – s každou fází se upraví (na konci „28 karet a 8 postav").
-    { key: 'ozbrojeni', label: 'Ozbrojení a nebezpeční', hint: 'Žetony nabití a Nebezpečné karty; rozpracované – zatím 13 z 28 karet, bez postav' },
+    { key: 'ozbrojeni', label: 'Ozbrojení a nebezpeční', hint: 'Žetony nabití a Nebezpečné karty; rozpracované – zatím 21 z 28 karet a 2 z 8 postav' },
 ];
 
 // Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".

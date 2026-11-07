@@ -195,6 +195,7 @@ const ResponseMixin = {
         if (!pr) return;
         pr.active = false;
         pr.responded.push(playerIdx);
+        this._adShotEnd();   // Ozbrojení – Big Fifty: výstřel doběhl
 
         if (pr.sourceCard === CardType.DUEL) {
             // Pivo/Sid zachránilo život – duel končí (target přežil)
@@ -247,7 +248,9 @@ const ResponseMixin = {
         this._mollyDeferredIdx = null;
     },
 
-    handleResponse(playerIdx, cardIdx, boardCardId = null) {
+    // `adOpts` = Ozbrojení a nebezpeční – vylepšení Skrč se! ({ up, pay }): karta se po
+    // zrušení výstřelu vrátí do ruky. Platí se mimo tah (pravidla to nebrání).
+    handleResponse(playerIdx, cardIdx, boardCardId = null, adOpts = null) {
         if (this.phase !== "RESPOND") return;
         if (!this.pendingResponse || !this.pendingResponse.active || this.pendingResponse.targetIdx !== playerIdx) return;
 
@@ -357,6 +360,8 @@ const ResponseMixin = {
                 this.checkSuzyLafayette(player);
                 this.pendingResponse.responded.push(playerIdx);
                 respondedWithCard = true;
+                // Ozbrojení a nebezpeční: Útěk zrušil výstřel (R17) – Křesadlovka zpátky.
+                this._adShotCanceled(this.pendingResponse);
             } else {
 
                 let isValid = false;
@@ -366,6 +371,7 @@ const ResponseMixin = {
                     isValid = card.green && card.activate === 'miss' &&
                             this.pendingResponse.requiredCard === CardType.MISSED &&
                             !this._boardDead() &&   // Fistful – Laso: karty na stole nemají efekt
+                            !adMuted(player) &&     // Ozbrojení – Big Fifty vypnul karty cíle
                             !this._belleIgnoresBoard(this.pendingResponse.originatorIdx);
                 } else if (this.pendingResponse.requiredCard === CardType.MISSED) {
                     // Co se počítá za Vedle! (Úhyb, Elena Fuente, Calamity Janet i Zúčtování
@@ -393,8 +399,23 @@ const ResponseMixin = {
 
                 if (!isValid) return;
 
+                // Ozbrojení a nebezpeční – vylepšení Skrč se! (jediné: karta zpátky do ruky).
+                // Ověří se dřív, než karta opustí ruku; odmítnutá platba nic nezaplatí.
+                const _adUp = (!fromBoard && adOpts && adOpts.up) || 0;
+                if (_adUp || (adOpts && adOpts.pay && adOpts.pay.length)) {
+                    if (fromBoard || card.type !== CardType.AD_DUCK ||
+                        !adUpgradeOk(this, playerIdx, card, _adUp, adOpts.pay)) return;
+                    this._adPay(playerIdx, adOpts.pay);
+                    if (!this.pendingResponse.adDuck) this.pendingResponse.adDuck = [];
+                    this.pendingResponse.adDuck.push({ playerIdx, cardId: card.id });
+                }
+
                 const playedCard = sourceArr.splice(sourceIdx, 1)[0];
                 respondedWithCard = true;
+                if (playedCard.type === CardType.AD_DUCK) {
+                    this.logEvent('special', { who: player.name, card: playedCard.name,
+                                               msg: _adUp ? 'účinkuje jako Vedle! (s vylepšením)' : 'účinkuje jako Vedle!' });
+                }
 
                 // Úhyb (a zelené karty s draw): kromě uhnutí si majitel lízne kartu/y.
                 // Konzistentně s Bartem/Suzy to NEděláme automaticky – zařadíme líznutí do
@@ -425,6 +446,9 @@ const ResponseMixin = {
                     // palba → střelec je terčem efektu BANG!. Proti Slabovi je potřeba ještě
                     // jedno Vedle!, proto se to posuzuje až TEĎ (samotná nestačí, dV).
                     this._vosBackfireCheck(this.pendingResponse, playerIdx);
+                    // Ozbrojení a nebezpeční: výstřel je zrušený (Buntline, Bloody Mary,
+                    // Křesadlovka, Skrč se! zpátky do ruky) – plán §2.10.
+                    this._adShotCanceled(this.pendingResponse);
                     this.pendingResponse.partialMisses = [];
                     this.missesPlayed = 0;
                     this.missesRequired = 1;
@@ -442,6 +466,14 @@ const ResponseMixin = {
             }   // konec větve „obyčejná karta obrany" (Útěk má vlastní, viz výš)
         }
 
+        this._respondAdvance(playerIdx, respondedWithCard);
+    },
+
+    // Konec obrany – kam hra pokračuje (Duel, další cíl Kulometu/Indiánů, jinak PLAY).
+    // Vytaženo z handleResponse byte-přesně, ať ho sdílí i Bedna (logic/armed.js).
+    _respondAdvance(playerIdx, respondedWithCard) {
+        // Ozbrojení a nebezpeční – Big Fifty: výstřel doběhl, cíli se vrací schopnost.
+        this._adShotEnd();
         if (this.pendingResponse.sourceCard === CardType.DUEL) {
             if (respondedWithCard) {
                 if (playerIdx === this.pendingResponse.originatorIdx) {

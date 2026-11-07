@@ -322,6 +322,9 @@ const ChecksMixin = {
                         this._advanceMassAttack(check.playerIdx, check.attackerIdx, check.sourceCard);
                         this._processSpecialQueue();
                     } else {
+                        // Ozbrojení a nebezpeční: Barel/Jourdonnais výstřel zrušil (plán §2.10).
+                        this._adShotCanceled({ targetIdx: check.playerIdx, originatorIdx: check.attackerIdx, vos: check.vos });
+                        this._adShotEnd();
                         this.phase = "PLAY";
                         // Fistful of Cards: barel uhnul jednomu ze série zásahů → další.
                         if (!this._afterFistfulHit()) this._processSpecialQueue();

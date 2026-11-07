@@ -14,6 +14,9 @@ if (typeof require === 'function') {
     if (typeof isDangerousCard === 'undefined') globalThis.isDangerousCard = require('./cardRules.js').isDangerousCard;
     if (typeof canHeal === 'undefined') globalThis.canHeal = require('./distance.js').canHeal;
     if (typeof boardDeadFor === 'undefined') globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
+    if (typeof effSuit === 'undefined') globalThis.effSuit = require('./highNoon.js').effSuit;
+    if (typeof hasAbility === 'undefined') globalThis.hasAbility = require('./distance.js').hasAbility;
+    if (typeof computeCanHit === 'undefined') globalThis.computeCanHit = require('./distance.js').computeCanHit;
 }
 
 // Zapnuté rozšíření? (Klíč drží menu i server: options.expansions.ozbrojeni.)
@@ -31,6 +34,9 @@ const AD_CARDS_READY = [
     // A1 – dobíjení a placení: Nebezpečné objekty bez cíle a hnědé karty bez cíle
     'Eso v rukávu', 'Bečka piva', 'Zvonice', 'Bandalír',
     'Nabíjení', 'Kolona', 'Malý doušek',
+    // A2 – zbraně a výstřely
+    'Big Fifty', 'Buntline Special', 'Dvouhlavňovka', 'Thunderer',
+    'Bedna', 'Skrč se!', 'Křesadlovka', 'Rychlopalba',
 ];
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
@@ -191,6 +197,10 @@ function adUpgradeMax(state, idx, card) {
     if (!p) return 0;
     let max = Math.floor(adPayable(state, idx) / cost);
     if (card.type === 'Malý doušek') max = Math.min(max, Math.max(0, (p.maxHealth || 0) - (p.health || 0) - 1));
+    // Skrč se! a Křesadlovka: jediné vylepšení = karta zpátky do ruky.
+    else if (card.type === 'Skrč se!' || card.type === 'Křesadlovka') max = Math.min(max, 1);
+    // Rychlopalba: každé vylepšení = další, jiný cíl v dostřelu.
+    else if (card.type === 'Rychlopalba') max = Math.min(max, Math.max(0, adQuickTargets(state, idx).length - 1));
     else if (card.type !== 'Kolona') max = 0;
     return Math.max(0, max);
 }
@@ -265,6 +275,124 @@ function adReloadOk(state, idx) {
     return adPlaceTargets(state, idx).length > 0;
 }
 
+// ── Fáze A2: zbraně a výstřely (§2.10, §4) ───────────────────────────────────
+// playability.js armed.js require-uje, takže isBangCardPlay se čte až při volání.
+let _adBangCardFn = null;
+function _adIsBangCard(state, p, idx, card) {
+    if (!_adBangCardFn) {
+        _adBangCardFn = (typeof isBangCardPlay !== 'undefined') ? isBangCardPlay
+                      : (typeof require === 'function' ? require('./playability.js').isBangCardPlay : null);
+        if (!_adBangCardFn) return false;
+    }
+    return !!_adBangCardFn(state, p, idx, card);
+}
+
+// Zvláštní efekty Nebezpečných zbraní (identita = `effect` karty) a jejich popisky.
+const AD_WEAPON_EFFECTS = {
+    AD_BIG_FIFTY:     'zruší schopnost a karty cíle',
+    AD_BUNTLINE:      'po zrušení cíl odhodí kartu',
+    AD_DOUBLE_BARREL: 'nelze zrušit',
+    AD_THUNDERER:     'BANG! zpátky do ruky',
+};
+
+// Hráčova Nebezpečná zbraň se zvláštním efektem (nebo null).
+function adWeaponOf(p) {
+    const w = p && p.weapon;
+    return (w && w.id !== -1 && isDangerousCard(w) && AD_WEAPON_EFFECTS[w.effect]) ? w : null;
+}
+
+// Smí hráč k téhle kartě zaplatit zvláštní efekt své zbraně? Jen se skutečnou KARTOU
+// BANG! (R12 – Zúčtování, Calamity, Lemat ano; bang-efekty, Kulomet ne), ve svém tahu,
+// se žetonem na zbrani a bez Lasa. Dvouhlavňovka jen u kárového BANG! (barva přes
+// effSuit – pod Požehnáním ani Prokletím kára není). Ptá se server (playBang
+// s `adWeapon`), klient (přepínač u vybrané karty) i bot. Zuřivá Doroty hraje bez
+// efektu (R13) – poručené zahrání žádné `adWeapon` nenese.
+function adWeaponSpecialOk(state, idx, card) {
+    if (!adOn(state) || !card || card._placeholder) return false;
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p) || state.phase !== 'PLAY' || state.currentPlayerIndex !== idx) return false;
+    const w = adWeaponOf(p);
+    if (!w || boardDeadFor(state)) return false;
+    if (adLoadsOf(w) < adCardCost(w)) return false;
+    if (!_adIsBangCard(state, p, idx, card)) return false;
+    if (w.effect === 'AD_DOUBLE_BARREL') return effSuit(state, card) === '♦️';
+    return true;
+}
+
+// Big Fifty (R9): po dobu výstřelu má cíl vypnutou schopnost (hasAbility to čte sám,
+// core/distance.js) i karty ve hře – Barel, zelené Vedle!, Bedna, Odměna, vybavení.
+function adMuted(p) {
+    return !!(p && p._adMuted);
+}
+
+// Bedna: „Zaplať 2 ⛁ z této karty: účinkuje jako Vedle!." V obraně (RESPOND) proti
+// čemukoli, na co platí Vedle! (BANG!, bang-efekty, Kulomet), a už ve fázi BARREL_DRAW
+// – kdo chce Bednu dřív než Barel, nemusí nejdřív snímat. Tam jen tehdy, když jedno
+// Vedle! výstřel celý zruší (proti Slabovi se nejdřív snímá). Nezrušitelný výstřel
+// (Dvouhlavňovka, Colorado), Big Fifty, Laso a Belle Star ji vypínají.
+function adCrateCard(p) {
+    return adCardsInPlay(p).find(c => c.type === 'Bedna') || null;
+}
+function adCrateOk(state, idx) {
+    if (!adOn(state)) return false;
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p) || adMuted(p) || boardDeadFor(state)) return false;
+    const crate = adCrateCard(p);
+    if (!crate || adLoadsOf(crate) < adCardCost(crate)) return false;
+    let origIdx;
+    if (state.phase === 'RESPOND') {
+        const pr = state.pendingResponse;
+        if (!pr || !pr.active || pr.targetIdx !== idx) return false;
+        if (pr.requiredCard !== 'Vedle!' || pr.sourceCard === 'Duel') return false;
+        if (pr.vos && pr.vos.unavoidable) return false;
+        origIdx = pr.originatorIdx;
+    } else if (state.phase === 'BARREL_DRAW') {
+        const pb = state.pendingBarrelCheck;
+        if (!pb || !pb.active || pb.targetIdx !== idx || pb.roulette) return false;
+        if ((pb.missesNeeded || 1) - (state.missesPlayed || 0) > 1) return false;
+        origIdx = pb.attackerIdx;
+    } else return false;
+    // Belle Star: v jejím tahu cizí karty na stole neplatí.
+    const cur = state.currentPlayerIndex;
+    if (origIdx === cur && cur !== idx && hasAbility(state.players[cur], 'Belle Star')) return false;
+    return true;
+}
+
+// Rychlopalba a Mexicali Kid: kdo smí být cílem (jiní hráči v dostřelu zbraně). Na sebe
+// se jako u každého bang-efektu vystřelit smí, ale jen jedním výstřelem bez vylepšení.
+function adQuickTargets(state, idx) {
+    const out = [];
+    ((state && state.players) || []).forEach((p, i) => {
+        if (i !== idx && isInPlay(p) && computeCanHit(state, idx, i)) out.push(i);
+    });
+    return out;
+}
+
+// Jsou další cíle Rychlopalby v pořádku? Všechny různé, jiné než první cíl i střelec
+// a v dostřelu – posuzuje se při zahrání, před platbou (R18).
+function adQuickExtraOk(state, idx, firstIdx, extra) {
+    if (!Array.isArray(extra)) return false;
+    const ok = adQuickTargets(state, idx);
+    const seen = new Set([firstIdx]);
+    for (const t of extra) {
+        if (!Number.isInteger(t) || seen.has(t) || !ok.includes(t)) return false;
+        seen.add(t);
+    }
+    return true;
+}
+
+// Mexicali Kid: „Jednou ve svém tahu smí zaplatit 2 ⛁ a vystřelit BANG!" (dostřel
+// zbraně, do limitu se nepočítá, efekt zbraně nespouští). Platí se ze všech vlastních
+// zdrojů (platební lišta).
+const AD_MEXICALI_COST = 2;
+function adMexicaliOk(state, idx) {
+    if (!adOn(state) || state.phase !== 'PLAY' || state.currentPlayerIndex !== idx) return false;
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p) || !hasAbility(p, 'Mexicali Kid')) return false;
+    if (p._adMexTurn === state.turnId) return false;
+    return adPayable(state, idx) >= AD_MEXICALI_COST && adQuickTargets(state, idx).length > 0;
+}
+
 // ── Zuřivá Doroty a Lee Van Kliff (R13, vzor VOS_KINDS) ─────────────────────
 // Co smí Doroty poručit a co si Lee Van Kliff zapamatuje. Oranžová karta není hnědá
 // (paměť LVK drží jen hnědé), poručená karta jde bez vylepšení. Druhy, jejichž efekt
@@ -276,20 +404,20 @@ const AD_KINDS = {
     'Bečka piva':       { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Zvonice':          { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Bomba':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A4' },
-    'Bedna':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Bedna':            { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Paklíč':           { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
     'Stepní běžec':     { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A5' },
     'Bič':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
-    'Big Fifty':        { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
-    'Buntline Special': { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
-    'Dvouhlavňovka':    { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
-    'Thunderer':        { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Big Fifty':        { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
+    'Buntline Special': { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
+    'Dvouhlavňovka':    { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
+    'Thunderer':        { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Malý doušek':      { dorothy: true,  lvk: true,  why: 'efekt = +1 život, bez vylepšení' },
     'Šíp':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
     'Kolona':           { dorothy: true,  lvk: true,  why: 'lízni 2, bez vylepšení' },
-    'Skrč se!':         { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
-    'Křesadlovka':      { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
-    'Rychlopalba':      { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Skrč se!':         { dorothy: false, lvk: false, why: 'hraje se jen jako reakce' },
+    'Křesadlovka':      { dorothy: true,  lvk: true,  why: 'bang-efekt na dostřel, bez vylepšení' },
+    'Rychlopalba':      { dorothy: true,  lvk: true,  why: 'bang-efekt na dostřel, jeden cíl (bez vylepšení)' },
     'Nabíjení':         { dorothy: true,  lvk: true,  why: 'rozmísti 3 žetony' },
     'Rez':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
     'Squaw':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
@@ -320,5 +448,8 @@ if (typeof module !== 'undefined' && module.exports) {
                        adCardCost, adFindCard, adPlaceTargets, adPlaceOk, AD_PLACE_REASON,
                        adSources, adPayable, adPayOk, adUpgradeCost, adUpgradeMax, adUpgradeOk,
                        AD_USE_KINDS, adUseOk, adBellLive, adBandolierExtra, adReloadOk,
+                       AD_WEAPON_EFFECTS, adWeaponOf, adWeaponSpecialOk, adMuted,
+                       adCrateCard, adCrateOk, adQuickTargets, adQuickExtraOk,
+                       AD_MEXICALI_COST, adMexicaliOk,
                        AD_KINDS, adDorothyOk, adRepeatOk };
 }

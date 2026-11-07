@@ -61,6 +61,8 @@ module.exports = function installActionGuard(ctx) {
         // Ozbrojení a nebezpeční – rozmístění žetonů (fáze AD_PLACE, hráč z pendingAdPlace)
         // a použití Nebezpečné karty (hráč na tahu, fáze PLAY).
         'ad_place', 'ad_place_done', 'ad_use',
+        // Fáze A2: Bedna (obránce v RESPOND / BARREL_DRAW) a Mexicali Kid (hráč na tahu).
+        'ad_crate', 'ad_mexicali',
     ]);
 
     // Akce mimo pořadí (Sid Ketchum léčí kdykoli, i v cizím tahu) – tady nelze

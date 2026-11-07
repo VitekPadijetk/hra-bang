@@ -180,7 +180,11 @@ const PlayMixin = {
     // `aimCardId` = Údolí stínů – Dvojitá rána zahraná SPOLU s touhle kartou BANG!
     // (zásah pak stojí 2 životy). Neplatná Dvojitá rána odmítne celé zahrání – klient ani
     // bot ji bez aimOk neposílají, takže by šlo jen o opožděný klik.
-    playBang(attackerIdx, targetIdx, cardIdx, aimCardId = null) {
+    // `adOpts` = Ozbrojení a nebezpeční: `{ adWeapon, up, pay, extra }` – zaplacený
+    // zvláštní efekt Nebezpečné zbraně (jen ke kartě BANG!, adWeaponSpecialOk), vylepšení
+    // Křesadlovky/Rychlopalby a další cíle Rychlopalby (`extra`, jeden za vylepšení).
+    // Všechno se ověří dřív, než se cokoli změní; platí se až těsně před efektem.
+    playBang(attackerIdx, targetIdx, cardIdx, aimCardId = null, adOpts = null) {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
         const card = attacker?.hand[cardIdx];
@@ -217,6 +221,20 @@ const PlayMixin = {
             if (!aimOk(this, attacker, attackerIdx, card, aimCard)) return;
         }
 
+        // Ozbrojení a nebezpeční – ověření placených voleb (tytéž predikáty má klient i bot).
+        // TEĎ, dokud limit karet BANG! ještě nezapočítal tuhle kartu (isBangCardPlay se na
+        // něj u Lematu ptá) a dokud Bandalír nic nezaplatil.
+        const ao = adOpts || {};
+        const adWeapon = !!ao.adWeapon;
+        if (adWeapon && !adWeaponSpecialOk(this, attackerIdx, card)) return;
+        const adUp = ao.up || 0;
+        if ((adUp || (ao.pay && ao.pay.length)) && !adUpgradeOk(this, attackerIdx, card, adUp, ao.pay)) return;
+        const adExtra = Array.isArray(ao.extra) ? ao.extra : [];
+        if (card.type === CardType.AD_QUICK_SHOT) {
+            if (adExtra.length !== adUp || !adQuickExtraOk(this, attackerIdx, targetIdx, adExtra)) return;
+            if (adExtra.length && targetIdx === attackerIdx) return;   // na sebe jen jeden výstřel
+        } else if (adExtra.length) return;
+
         // Karta s bang-efektem (Úder, …): NEpočítá se do limitu 1 Bang!/tah a Slabův
         // bonus (2× Vedle!) na ni neplatí. Jinak je to běžný útok (Barel, Vedle! funguje).
         const isEffect = !!card.bangEffect;
@@ -246,8 +264,15 @@ const PlayMixin = {
         // Údolí stínů (R5): je to KARTA BANG!? Ptá se na to Odměna a Brokovnice až při
         // zásahu, kdy karta leží v odhozu – proto se to zjistí TEĎ (před započtením do
         // limitu, na který se lematBangOk ptá) a útok si to nese v `vos` až do zásahu.
-        const vos = (this._vosOn() && isBangCardPlay(this, attacker, attackerIdx, card))
+        const _bangCardPlay = isBangCardPlay(this, attacker, attackerIdx, card);
+        let vos = (this._vosOn() && _bangCardPlay)
             ? { bangCard: true, shotgun: shotgunActive(this, attacker), ...(aimCard ? { aim: true } : {}) } : null;
+        // Ozbrojení a nebezpeční: zaplať zvolené (efekt zbraně, vylepšení) a přidej klíče
+        // kontextu výstřelu (logic/armed.js, _adShotStart). Big Fifty vypne cíli schopnost
+        // i karty už TEĎ – Apache Kid tak kárový BANG! schytá.
+        const _adCtx = this._adShotStart(attackerIdx, card,
+            { weapon: adWeapon, up: adUp, pay: ao.pay, bangCard: _bangCardPlay, targetIdx });
+        if (_adCtx) vos = { ...(vos || {}), ..._adCtx };
 
         if (!isEffect) attacker.bangsPlayedThisTurn++;
         attacker.stats.bangsFired++;
@@ -265,11 +290,21 @@ const PlayMixin = {
             if (ai !== -1) this.deck.discard(attacker.hand.splice(ai, 1)[0]);
             this._trackCard(attackerIdx, CardType.AIM);
         }
+        // Ozbrojení a nebezpeční – Thunderer: karta BANG! se hned vrací do ruky (R19).
+        this._adThunderReturn();
+        // Rychlopalba: každý další cíl je samostatný výstřel z fronty výstřelů (vzor
+        // druhého cíle Roztříštěné kulky) – odpálí se, až první doběhne. Víc cílů = výstřel
+        // nemíří na jediného, takže se mu Útěkem vyhnout nejde.
+        if (adExtra.length) {
+            adExtra.forEach(t => this._vosQueueShot(attackerIdx, t, 'AD_QUICK', card.name, true));
+            vos = { ...(vos || {}), noEscape: true };
+        }
         this.currentAttacker = attackerIdx;
         this.checkSuzyLafayette(attacker);
 
         // Apache Kid: kárový Bang!/bang-efekt na něj nemá efekt (Bang! se „zahrál" naprázdno).
         if (this._apacheImmune(targetIdx, this._effSuit(card), attackerIdx)) {
+            this._adShotEnd();   // Ozbrojení – Big Fifty: výstřel se neodehrál
             this.phase = "PLAY";
             this._processSpecialQueue();
             return;
@@ -283,7 +318,8 @@ const PlayMixin = {
         // Údolí stínů – Colorado Bill: „Když zahraješ kartu BANG!, sejmi." Sejmutí jde
         // PŘED obranou (i před Barelem) – rozhoduje, jestli se dá vůbec bránit. Karta
         // BANG! je to podle R5 (`vos.bangCard`), takže bang-efekty ani Kulomet sem nejdou.
-        if (vos && hasAbility(attacker, "Colorado Bill")) {
+        // (`vos` dnes nesou i výstřely Ozbrojení – Křesadlovka – proto výslovně bangCard.)
+        if (vos && vos.bangCard && hasAbility(attacker, "Colorado Bill")) {
             this._startColorado(attackerIdx, targetIdx, isEffect, shownName, vos);
             this._processSpecialQueue();
             return;
@@ -317,7 +353,8 @@ const PlayMixin = {
 
         // Belle Star útočí (nebo je ve hře Laso) → Barel jako karta na stole neplatí;
         // Jourdonnaisova vrozená schopnost (ne karta) zůstává.
-        const hasBarrelCard = !this._boardDead() && !this._belleIgnoresBoard(attackerIdx) &&
+        // Ozbrojení a nebezpeční – Big Fifty: karty cíle (i Barel) po dobu výstřelu neplatí.
+        const hasBarrelCard = !this._boardDead() && !this._belleIgnoresBoard(attackerIdx) && !adMuted(target) &&
                               target.board.some(c => c.type === CardType.BARREL);
 
         if (hasAbility(target, "Jourdonnais") && hasBarrelCard) {
