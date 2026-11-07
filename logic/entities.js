@@ -55,7 +55,30 @@ const CardType = {
     BANDIDOS: 'Divoká banda',
     BOUNTY: 'Odměna',
     RATTLESNAKE: 'Chřestýš',
-    DUCH: 'Duch'
+    DUCH: 'Duch',
+    // ── Rozšíření Ozbrojení a nebezpeční (docs/ozbrojeni-a-nebezpecni-plan.md §2.1) ──
+    // Prefix AD_ (Armed & Dangerous). Čtyři Nebezpečné zbraně jsou WEAPON a poznávají se
+    // podle `effect` (AD_BIG_FIFTY, AD_BUNTLINE, AD_DOUBLE_BARREL, AD_THUNDERER).
+    // Nebezpečné objekty (oranžový okraj, `card.dangerous`):
+    AD_ACE: 'Eso v rukávu',
+    AD_BANDOLIER: 'Bandalír',
+    AD_BEER_KEG: 'Bečka piva',
+    AD_BELL_TOWER: 'Zvonice',
+    AD_BOMB: 'Bomba',
+    AD_CRATE: 'Bedna',
+    AD_LOCK_PICK: 'Paklíč',
+    AD_TUMBLEWEED: 'Stepní běžec',
+    AD_WHIP: 'Bič',
+    // Hnědé karty (vylepšitelné mají `card.upgrade`):
+    AD_NIP: 'Malý doušek',
+    AD_ARROW: 'Šíp',
+    AD_CARAVAN: 'Kolona',
+    AD_DUCK: 'Skrč se!',
+    AD_FLINTLOCK: 'Křesadlovka',
+    AD_QUICK_SHOT: 'Rychlopalba',
+    AD_RELOAD: 'Nabíjení',
+    AD_RUST: 'Rez',
+    AD_SQUAW: 'Squaw'
 };
 
 const Suits = { HEARTS: '♥️', DIAMONDS: '♦️', SPADES: '♠️', CLUBS: '♣️' };
@@ -124,6 +147,17 @@ const VOS_READY = [
     "Henry Block",                       // F7
 ];
 
+// Postavy rozšíření Ozbrojení a nebezpeční – portréty 055–062 (abecedně, jako
+// v characters.json). Všichni 4 životy, Red Ringo 5 (HIGH_HEALTH_CHARS, core/roles.js).
+const ARMED_CHARACTERS = [
+    "Al Preacher", "Bass Greeves", "Bloody Mary", "Frankie Canton",
+    "Julie Cutter", "Mexicali Kid", "Ms. Abigail", "Red Ringo"
+];
+
+// …a podmnožina, která už MÁ schopnost (vzor VOS_READY). Roste po fázích A2–A6;
+// do té doby se dají vybrat jen v debug hře.
+const AD_READY = [];
+
 class Card {
     constructor(id, name, type, suit, value, props = {}) {
         this.id = id;
@@ -142,6 +176,11 @@ class Card {
         // Efekt zelené karty po aktivaci ze stolu: 'miss' | 'heal_self' | 'steal_any' |
         // 'discard_any' | 'draw_3' (bang-efekt zelené řeší bangEffect+range, ne activate).
         if (props.activate) this.activate = props.activate;
+        // Ozbrojení a nebezpeční: Nebezpečná karta (oranžový okraj) – `cost` = kolik žetonů
+        // nabití stojí její použití (Bomba null) – a vylepšitelná hnědá karta (`cost` =
+        // cena jednoho vylepšení). Kopie, ať si karty téhož druhu nesdílí objekt z dat.
+        if (props.dangerous) this.dangerous = { ...props.dangerous };
+        if (props.upgrade) this.upgrade = { ...props.upgrade };
     }
 }
 
@@ -341,5 +380,5 @@ function distinctCardKinds(rawCardData) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, GOLD_RUSH_CHARACTERS, GOLD_RUSH_READY, VALLEY_CHARACTERS, VOS_READY, Card, Player, Deck, distinctCardKinds };
+    module.exports = { CardType, Suits, ALL_CHARACTERS, DODGE_CITY_CHARACTERS, FISTFUL_CHARACTERS, WILD_WEST_CHARACTERS, WILD_WEST_READY, GOLD_RUSH_CHARACTERS, GOLD_RUSH_READY, VALLEY_CHARACTERS, VOS_READY, ARMED_CHARACTERS, AD_READY, Card, Player, Deck, distinctCardKinds };
 }

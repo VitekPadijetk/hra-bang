@@ -749,7 +749,7 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — plán, v kódu zatím nic
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0 hotová)
 
 Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
 (texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
@@ -757,3 +757,10 @@ Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpe
 Nebezpečné karty, fáze A0–A7, rozhodnutí R-U1–R-U4 a R1–R23). **Přečti si plán, než na
 rozšíření sáhneš** – žetony se podle rozhodnutí uživatele rozmisťují i platí vždy ručně
 a zásoba se počítá, neukládá.
+
+Hotová je fáze **A0 (kostra)**: data `cards.ozbrojeni.json` (id 200–227), postavy 55–62,
+mixin `logic/armed.js` (zásoba a tři jediné cesty změny žetonů `_adAdd`/`_adTake`/`_adMove`,
+vyložení Nebezpečné karty se 3 žetony, vyčerpání), zrcadlo `core/armed.js` (`adOn`,
+`adSupply`, `adArmOk`, `AD_CARDS_READY`), predikáty `isDangerousCard`/`isBrownCard`
+(core/cardRules.js – **Nebezpečná zbraň má typ „Zbraň", ale `isBlueCard` ji nebere**),
+kostičky na kartách a pyramida zásoby (view/board.js). Zapnout jde zatím jen v debug hře.

@@ -78,6 +78,8 @@ test('MENU_EXPANSIONS_SOON: chystané rozšíření se nedá zapnout ani poslat 
     const keys = M.MENU_EXPANSIONS_SOON.map(x => x.key);
     // Údolí stínů jde od fáze F1 zapnout normálně (plán §8).
     assert.ok(!keys.includes('udoli_stinu'));
+    // Ozbrojení a nebezpeční je od fáze A0 „již brzy" (jen debug hra).
+    assert.ok(keys.includes('ozbrojeni'));
     for (const k of keys) {
         assert.ok(!M.MENU_EXPANSIONS.some(x => x.key === k), `${k} je zároveň zapínatelné`);
         assert.ok(!(k in M.emptyExpansions()), `${k} by šlo do options.expansions`);
@@ -552,10 +554,11 @@ test('debugStartPayload: klíče rozšíření se překládají na camelCase ser
     assert.deepEqual(M.debugStartPayload({ count: 5, roles: ['Sheriff'], exps, hnExtra: true }), {
         playerCount: 5, roles: ['Sheriff'],
         dodgeCity: true, highNoon: true, highNoonExtra: true,
-        fistful: false, divokyZapad: true, zlataHorecka: false, udoliStinu: false, shadowGunslingers: false,
+        fistful: false, divokyZapad: true, zlataHorecka: false, udoliStinu: false, ozbrojeni: false, shadowGunslingers: false,
     });
     // Údolí stínů jde zatím zapnout jen v debug hře – klíč se přeloží stejně jako ostatní.
     assert.equal(M.debugStartPayload({ count: 4, exps: { udoli_stinu: true } }).udoliStinu, true);
+    assert.equal(M.debugStartPayload({ count: 4, exps: { ozbrojeni: true } }).ozbrojeni, true);
     assert.equal(M.debugStartPayload({ count: 4, exps: {}, shadows: true }).shadowGunslingers, true);
     // Přibalené karty bez High Noonu nedávají smysl a server by je stejně zahodil.
     assert.equal(M.debugStartPayload({ count: 3, exps: {}, hnExtra: true }).highNoonExtra, false);

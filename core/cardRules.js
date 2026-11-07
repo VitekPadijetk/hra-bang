@@ -27,6 +27,9 @@ function getActionForCard(card, character) {
     }
     // Zelené karty se z ruky jen vyloží na stůl (jako modré); aktivují se pak ze stolu.
     if (card.green) return "PLAY_BLUE";
+    // Ozbrojení a nebezpeční: Nebezpečná karta se vykládá před sebe jako modrá (zbraň
+    // i objekt). Výjimkou je Bomba – ta jde na libovolného hráče (fáze A4, zatím nic).
+    if (card.dangerous) return card.type === "Bomba" ? "PLAY_CARD" : "PLAY_BLUE";
     // Karty s bang-efektem (Úder, …) se míří jako Bang!. (Zelené sem nedojdou – výše.)
     if (card.bangEffect && !card.green) return "SHOOT";
     // Údolí stínů – Opětovná palba se počítá jako karta Vedle!, takže ji Calamity Janet
@@ -57,10 +60,25 @@ function getActionForCard(card, character) {
 const BLUE_CARD_TYPES = ["Zbraň", "Barel", "Vybavení", "Dynamit", "Vězení",
                          "Odměna", "Chřestýš", "Duch"];
 
+// Ozbrojení a nebezpeční: Nebezpečné ZBRANĚ mají typ „Zbraň", ale modré NEJSOU – mají
+// oranžový okraj. Věta, která jmenuje modrou kartu (dobití žetonem za zahrání, José
+// Delgado), oranžovou nezahrnuje (rozhodnutí R-U2 a R2 plánu).
 function isBlueCard(card) {
-    return !!card && !card.green && BLUE_CARD_TYPES.includes(card.type);
+    return !!card && !card.green && !card.dangerous && BLUE_CARD_TYPES.includes(card.type);
+}
+
+// Ozbrojení a nebezpeční: Nebezpečná karta (oranžový okraj) – vykládá se jako modrá,
+// nese žetony nabití a za ně dělá svůj efekt. Jediný dotaz „je to oranžová?".
+function isDangerousCard(card) {
+    return !!card && !!card.dangerous;
+}
+
+// Hnědá karta = zahraj a odhoď: ne modrá, ne zelená, ne oranžová. Ptá se jím paměť Lee
+// Van Kliffa (`_markBrownPlayed`), aby oranžovou kartu nebral za hnědou.
+function isBrownCard(card) {
+    return !!card && !card.green && !isDangerousCard(card) && !isBlueCard(card);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { getActionForCard, isBlueCard, BLUE_CARD_TYPES };
+    module.exports = { getActionForCard, isBlueCard, isDangerousCard, isBrownCard, BLUE_CARD_TYPES };
 }

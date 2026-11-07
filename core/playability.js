@@ -72,6 +72,11 @@ if (typeof require === 'function') {
     if (typeof getActionForCard === 'undefined') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
+    // Ozbrojení a nebezpeční – smí se Nebezpečná karta vyložit (3 žetony v zásobě)?
+    // armed.js na playability.js nesahá, cyklus nevzniká.
+    if (typeof adArmOk === 'undefined') {
+        globalThis.adArmOk = require('./armed.js').adArmOk;
+    }
     // Údolí stínů – které druhy karet smí Zuřivá Doroty poručit (plán §2.17).
     if (typeof vosDorothyOk === 'undefined') {
         globalThis.vosDorothyOk = require('./valley.js').vosDorothyOk;
@@ -373,6 +378,9 @@ function nativePlayInTurn(state, me, myIndex, card) {
     if (VOS_PLACE_TYPES.includes(card.type)) {
         return state.players.some((p, i) => vosPlaceTargetOk(state, i, card));
     }
+    // Ozbrojení a nebezpeční: Nebezpečná karta se vykládá jako modrá, jen potřebuje 3 žetony
+    // v zásobě (adArmOk, core/armed.js – tentýž dotaz jako server).
+    if (card.dangerous) return adArmOk(state, me, card);
     if (["Zbraň","Barel","Vybavení","Dynamit"].includes(card.type)) {
         if (card.type === "Zbraň") { if (me.weapon?.id !== -1 && me.weapon?.name === card.name) return false; }
         else { if ((me.board||[]).some(c => c.name === card.name)) return false; }

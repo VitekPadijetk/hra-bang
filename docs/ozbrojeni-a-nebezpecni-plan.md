@@ -4,8 +4,26 @@ Podklad: [`docs/ozbrojeni-a-nebezpecni.md`](ozbrojeni-a-nebezpecni.md) (texty v�
 a 8 postav, česká upřesnění, rozdíly vydání, nejasnosti) + PDF `on_rules_cz.pdf`,
 `on_rules_eng.pdf` a přehled karet `on_karty_dvgiochi.webp`.
 
-**Stav: návrh ke schválení (2026-11-06). Nic z toho ještě není v kódu.**
-Výchozí stav: `npm test` = 1982 testů (po Údolí stínů F9).
+**Stav (2026-11-07): hotová fáze A0 (kostra).** Rozšíření jde zapnout jen v debug hře
+(S16 – v menu je karta „již brzy", `MENU_EXPANSIONS_SOON`); do balíčku jde 6 karet ze
+základní hry, katalog debug hry nese navíc Nebezpečné karty kromě Bomby, aby šly vyložit
+se 3 žetony. Testy: `test/ad.setup.test.js`; `npm test` = 2031.
+
+Co se v A0 udělalo jinak / navíc proti textu níž:
+- `isBlueCard` dostal `!card.dangerous` – Nebezpečné zbraně mají typ „Zbraň", bez toho
+  by se tvářily jako modré (dobití za modrou, José Delgado).
+- `_adAdd(dst, n, { fresh: true })` = vyložení (staré číslo na kartě se zahodí); obal
+  `_adArm(card)` jen volá `_adAdd`. Strukturální test pouští zápis `.adLoads` jen
+  v `_adAdd`/`_adTake`/`_adMove`.
+- Soudce (`_judgeBlocks` i `judgeBlocksFor`) bere Nebezpečné karty přes `card.dangerous`,
+  ne přes `JUDGE_BLOCKED_TYPES`.
+- Žetony na postavě se kreslí ve štítku valounů (`drawNuggets` → „💰3 ⛁2"), ne ve
+  vlastní funkci – je to pořád jediné místo pro všech šest míst volání.
+- Pyramida zásoby leží v mezeře mezi dobíracím balíčkem a odhozem (`adSupplySlot`).
+- `AD_KINDS` (Doroty/LVK) zatím není – žádná nová karta se do balíčku ani katalogu
+  Doroty ještě nedostane; přijde s A1 spolu s první hotovou kartou.
+
+Výchozí stav před A0: `npm test` = 1982 testů (po Údolí stínů F9).
 
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho

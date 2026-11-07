@@ -4,7 +4,7 @@ const {
     getPlayerPosition, getPlayerHandPos, getHandSlotPos, getBoardCardPos, getGreygoryCardPos, getSeatPortraitPos, getDeadRoleCardPos, getOpponentAnchors,
 } = require('../positions.js');
 const {
-    computeStage, resolveLayout, LAYOUT_PROFILES, oppScale, eventPileSlots, eventPileLift, gearSlot,
+    computeStage, resolveLayout, LAYOUT_PROFILES, oppScale, eventPileSlots, eventPileLift, gearSlot, adSupplySlot,
     compactMetrics, compactAnchors, compactBoardPos, compactHandPos,
 } = require('../core/layout.js');
 
@@ -599,6 +599,31 @@ test('balíček vybavení nedosáhne na vyložené karty soupeřů ani na moje',
             global.state = null; global.myIndex = null;
         }
     }
+});
+
+// ── Ozbrojení a nebezpeční: zásoba žetonů nabití ────────────────────────────
+// Pyramida kostiček leží v mezeře mezi dobíracím balíčkem a odhozem. Nesmí sáhnout na
+// žádný z nich (ani na plný balíček, který roste vzhůru), na sloupce událostí ani na
+// balíček vybavení – v obou profilech a ve všech kombinacích rozšíření. (Řada Pokeru
+// leží schválně PŘES balíčky jako překryv, ta se neměří.)
+test('zásoba žetonů leží mezi balíčky a nesahá na ně ani na události a obchod', () => {
+    ['desktop', 'mobile'].forEach(name => {
+        const L = LAYOUT_PROFILES[name];
+        const sup = adSupplySlot(L).rect;
+        const w = 325 * L.scaleDeck, h = 500 * L.scaleDeck, stack = 79 * 0.125;
+        const pile = (x) => ({ x0: x - w / 2, x1: x + w / 2, y0: L.pileY - h / 2 - stack, y1: L.pileY + h / 2 });
+        assert.ok(!overlaps(sup, pile(L.centerX - L.deckOffX)), `${name}: zásoba leze na dobírací balíček`);
+        assert.ok(!overlaps(sup, pile(L.centerX + L.deckOffX)), `${name}: zásoba leze na odhoz`);
+        assert.ok(sup.y0 >= L.pileY - h / 2 - stack && sup.y1 <= L.pileY + h / 2,
+            `${name}: zásoba vyčuhuje z pásma balíčků`);
+        assert.ok(!overlaps(sup, gearRect(L)), `${name}: zásoba leze na balíček vybavení`);
+        for (let mask = 0; mask < 8; mask++) {
+            const slots = eventPileSlots(L, !!(mask & 1), !!(mask & 2), !!(mask & 4));
+            ['hn', 'ff', 'wws'].filter(k => slots[k]).forEach(k => {
+                assert.ok(!overlaps(sup, slotRect(L, slots[k])), `${name}, kombinace ${mask}: zásoba × ${k}`);
+            });
+        }
+    });
 });
 
 // Fáze 8: totéž mimo základní jeviště 16:9 – široké okno (soupeři se lepí na okraj,

@@ -568,15 +568,86 @@ function drawLivesCounter(track, player, x, y) {
 // Nula se nekreslí vůbec – bez zapnutého rozšíření (a na začátku hry s ním) by jinak
 // u každého hráče visela nula. Výjimkou je MŮJ štítek (`showZero`): kolik valounů mám,
 // potřebuju vědět i při nule, jinak nepoznám, jestli na nákup nemám, nebo se nic nekreslí.
-function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false) {
+//
+// Ozbrojení a nebezpeční: ve stejném štítku leží i žetony nabití NA POSTAVĚ („💰3 ⛁2"),
+// takže je to pořád jediné místo pro všech šest míst volání. `showZeroLoads` = můj štítek
+// se zapnutým rozšířením (kolik žetonů mám, potřebuju vědět i při nule).
+function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false, showZeroLoads = false) {
     const n = (player && player.nuggets) || 0;
-    if (!n && !showZero) return null;
-    const txt = gameScene.add.text(x, y, '💰' + n,
+    const loads = (player && player.adLoads) || 0;
+    const parts = [];
+    if (n || showZero) parts.push('💰' + n);
+    if (loads || showZeroLoads) parts.push('⛁' + loads);
+    if (!parts.length) return null;
+    const txt = gameScene.add.text(x, y, parts.join(' '),
         { fontFamily: THEME.fontUI, fontSize: '17px', color: '#ffd24d', fontStyle: 'bold',
           backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 5, y: 3 } })
         .setOrigin(originX, originY).setDepth(STAR_DEPTH);
     gameScene.cardsSprites.add(txt);
     return txt;
+}
+
+// ── Ozbrojení a nebezpeční: žetony nabití na kartách ve hře ──────────────────
+// Až 4 kostičky v mřížce 2×2 přes pravý dolní roh karty – v souřadnicích KARTY, takže
+// sedí správně i u otočených karet soupeřů po stranách stolu. Kreslí se podle karty
+// (`card.adLoads`), ne podle slotu, takže pás vyložených karet ani positions.js nemění
+// počet slotů. Na kompaktním profilu (mobil) je karta na kostičky moc malá – tam stojí
+// štítek „⛁3". Nula se nekreslí (karta s nulou žetonů ve hře neleží, hned se odhodí).
+function drawAdCubes(sprite, card) {
+    const n = Math.min(4, (card && !card._pseudo && card.adLoads) || 0);
+    if (!n || !sprite) return;
+    const w = sprite.displayWidth, h = sprite.displayHeight;
+    const rot = sprite.rotation || 0, cos = Math.cos(rot), sin = Math.sin(rot);
+    const at = (lx, ly) => ({ x: sprite.x + lx * cos - ly * sin, y: sprite.y + lx * sin + ly * cos });
+    const depth = (sprite.depth || 0) + 1;
+    if (currentLayout().oppMode === 'compact') {
+        const p = at(w * 0.28, h * 0.36);
+        const txt = gameScene.add.text(p.x, p.y, '⛁' + n,
+            { fontFamily: THEME.fontUI, fontSize: '15px', color: '#ffd9a0', fontStyle: 'bold',
+              backgroundColor: 'rgba(60,30,5,0.85)', padding: { x: 3, y: 1 } })
+            .setOrigin(0.5, 0.5).setAngle(sprite.angle || 0).setDepth(depth);
+        gameScene.cardsSprites.add(txt);
+        return;
+    }
+    if (!gameScene.textures.exists('ad_cube')) return;
+    const s = w * 0.24;                       // šířka kostičky
+    const scale = s / AD_CUBE_W;
+    const cx = w / 2 - s * 1.0, cy = h / 2 - s * 1.15;   // střed mřížky 2×2
+    for (let k = 0; k < n; k++) {
+        const col = k % 2, row = Math.floor(k / 2);
+        const p = at(cx + (col - 0.5) * s * 0.95, cy + (row - 0.5) * s * 1.0);
+        const cube = gameScene.add.image(p.x, p.y, 'ad_cube').setScale(scale)
+            .setAngle(sprite.angle || 0).setDepth(depth);
+        gameScene.cardsSprites.add(cube);
+    }
+}
+
+// Pyramida zásoby mezi dobíracím balíčkem a odhozem: až 6 kostiček (3-2-1) a pod nimi
+// počet „×29". Geometrie je v core/layout.js (adSupplySlot), invarianty hlídá
+// test/positions.test.js. `lift` = zvednutí balíčků při hokynářství.
+function drawAdSupply(L, lift = 0) {
+    if (!adOn(state) || !gameScene.textures.exists('ad_cube')) return;
+    const slot = adSupplySlot(L);
+    const supply = Math.max(0, adSupply(state));
+    const s = slot.cube, scale = s / AD_CUBE_W;
+    const rows = [3, 2, 1];
+    let left = Math.min(6, supply);
+    const baseY = slot.y - lift + slot.pyramidBottom;
+    for (let r = 0; r < rows.length && left > 0; r++) {
+        const cnt = Math.min(rows[r], left);
+        for (let k = 0; k < cnt; k++) {
+            const x = slot.x + (k - (rows[r] - 1) / 2) * s * 0.92;
+            const y = baseY - r * s * 0.62;
+            const cube = gameScene.add.image(x, y, 'ad_cube').setScale(scale).setDepth(2 + r);
+            gameScene.cardsSprites.add(cube);
+        }
+        left -= cnt;
+    }
+    const txt = gameScene.add.text(slot.x, slot.y - lift + slot.labelY, '×' + supply,
+        { fontFamily: THEME.fontUI, fontSize: '18px', color: '#ffd9a0', fontStyle: 'bold',
+          backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 5, y: 2 } })
+        .setOrigin(0.5, 0.5).setDepth(5);
+    gameScene.cardsSprites.add(txt);
 }
 
 // ── Údolí stínů – Dvojitá rána a Roztříštěná kulka (F3) ─────────────────────
@@ -1229,6 +1300,7 @@ function drawOpponents(ctx) {
                 });
             }
             gameScene.cardsSprites.add(bCard);
+            drawAdCubes(bCard, card);   // Ozbrojení a nebezpeční: žetony nabití na kartě
             // Reflow slide: modré/výzbroj soupeře se přeskládají plynule (klíč = id karty).
             reflowCard('ob' + actualIdx + '_' + (card._pseudo ? card._zoomKey : card.id), bCard, x, y, tex, scaleOpp, angle);
         };
@@ -1734,11 +1806,12 @@ function drawMyArea(ctx) {
         // na desktopu POD kartou role, tedy za spodním okrajem jeviště 16:9, takže počet
         // valounů nebyl vidět nikde kromě obchodu. Leží proto v levém horním rohu karty
         // role (ta je vidět vždycky) a kreslí se i nula, dokud je rozšíření zapnuté.
-        if (goldRushOn(state)) {
+        // Ozbrojení a nebezpeční: ve stejném štítku i žetony nabití na mé postavě.
+        if (goldRushOn(state) || adOn(state)) {
             const _roleSrc = gameScene.textures.exists(roleTex)
                 ? gameScene.textures.get(roleTex).getSourceImage() : null;
             const _rw = (_roleSrc?.width || 250) * scaleMe, _rh = (_roleSrc?.height || 389) * scaleMe;
-            drawNuggets(me, roleX - _rw / 2 + 4, myBaseY - _rh / 2 + 4, 0, 0, true);
+            drawNuggets(me, roleX - _rw / 2 + 4, myBaseY - _rh / 2 + 4, 0, 0, goldRushOn(state), adOn(state));
         }
 
         {
@@ -2127,6 +2200,7 @@ function drawMyArea(ctx) {
             let bSprite = gameScene.add.image(bx, by, tex).setScale(scaleMe);
             gameScene.cardsSprites.add(bSprite);
             myBoardSprites.push({ sprite: bSprite, card, i });
+            drawAdCubes(bSprite, card);   // Ozbrojení a nebezpeční: žetony nabití na kartě
 
             // Dodge City: zelená karta položená TENTO tah se zatím nedá aktivovat →
             // vykresli ji černobíle (grayscale), ať je to jasné. Šedá drží po CELÝ můj
@@ -3789,6 +3863,7 @@ function drawSpectatorPlayer(ctx) {
             const bImg = gameScene.add.image(bX, livesCY, texOf(allBoard[i])).setScale(sOpp);
             specZoom(bImg, allBoard[i]);
             gameScene.cardsSprites.add(bImg);
+            drawAdCubes(bImg, allBoard[i]);
             reflowCard(specBoardKey(allBoard[i]), bImg, bX, livesCY, texOf(allBoard[i]), sOpp, 0);
         }
         for (let i = firstRowN; i < allBoard.length; i++) {
@@ -3799,6 +3874,7 @@ function drawSpectatorPlayer(ctx) {
             const bImg = gameScene.add.image(bX, bY, texOf(allBoard[i])).setScale(sOpp);
             specZoom(bImg, allBoard[i]);
             gameScene.cardsSprites.add(bImg);
+            drawAdCubes(bImg, allBoard[i]);
             reflowCard(specBoardKey(allBoard[i]), bImg, bX, bY, texOf(allBoard[i]), sOpp, 0);
         }
 
@@ -4665,6 +4741,9 @@ function drawDrawPiles(ctx) {
     const _lift = App.storePileLiftY || 0;
     const deckX = DECK_X, deckY = DECK_Y - _lift;
     const discardX = DISCARD_X, discardY = DISCARD_Y - _lift;
+
+    // Ozbrojení a nebezpeční: zásoba žetonů nabití leží mezi oběma balíčky a zvedá se s nimi.
+    drawAdSupply(ctx.L || currentLayout(), _lift);
 
     const pxPerCard = 0.25;   // tenčí hromádky (dříve 0.5)
     const stackTop = (count) => deckY - (count - 1) * pxPerCard / 2;

@@ -53,5 +53,13 @@
   {"id": 51, "name": "Evelyn Shebang"},
   {"id": 52, "name": "Henry Block"},
   {"id": 53, "name": "Limonádový Jim"},
-  {"id": 54, "name": "Mick Defender"}
+  {"id": 54, "name": "Mick Defender"},
+  {"id": 55, "name": "Al Preacher", "portrait": false},
+  {"id": 56, "name": "Bass Greeves", "portrait": false},
+  {"id": 57, "name": "Bloody Mary", "portrait": false},
+  {"id": 58, "name": "Frankie Canton", "portrait": false},
+  {"id": 59, "name": "Julie Cutter", "portrait": false},
+  {"id": 60, "name": "Mexicali Kid", "portrait": false},
+  {"id": 61, "name": "Ms. Abigail", "portrait": false},
+  {"id": 62, "name": "Red Ringo", "portrait": false}
 ]

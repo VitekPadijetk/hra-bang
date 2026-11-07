@@ -5,7 +5,7 @@ const { baseHealthForCharacter, startCardsForCharacter } = require('../core/role
 module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
     const { rooms, makeRoom, broadcastRoom, broadcastLobbyList,
             findRoomBySocket, leaveRoom, cardData, dodgeCityCardData, highNoonCardData,
-            fistfulCardData, wwsCardData, gearCardData, vosCardData } = ctx;
+            fistfulCardData, wwsCardData, gearCardData, vosCardData, adCardData } = ctx;
 
     // ── DEBUG ────────────────────────────────────────────────────────────────
     socket.on('debug_start', (data) => {
@@ -21,10 +21,13 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         const zlataHorecka = typeof data === 'object' ? !!data.zlataHorecka : false;
         // Údolí stínů – zatím jen v debug hře (karta v menu je „již brzy").
         const udoliStinu = typeof data === 'object' ? !!data.udoliStinu : false;
+        // Ozbrojení a nebezpeční – zatím jen v debug hře (karta v menu je „již brzy", fáze A0).
+        const ozbrojeni = typeof data === 'object' ? !!data.ozbrojeni : false;
         const options = { expansions: { dodge_city: dodgeCity, high_noon: highNoon, fistful,
                                         divoky_zapad: divokyZapad,
                                         zlata_horecka: zlataHorecka,
-                                        udoli_stinu: udoliStinu },
+                                        udoli_stinu: udoliStinu,
+                                        ozbrojeni },
                           highNoonExtra: highNoon && hnExtra,
                           // Zlatá horečka – varianta Stínoví pistolníci (nezávislá na rozšíření).
                           shadowGunslingers: typeof data === 'object' ? !!data.shadowGunslingers : false };
@@ -40,6 +43,7 @@ module.exports = function registerDebugHandlers(socket, ctx, withRoom) {
         room.gameState.wwsCardData = wwsCardData;
         room.gameState.gearCardData = gearCardData;
         room.gameState.vosCardData = vosCardData;
+        room.gameState.adCardData = adCardData;
         ctx.glog.openGame(room);
         room.gameState._onEvent = (evt) => ctx.glog.rule(room, evt);
         room.gameState.setupDebugGame(playerCount, names, debugRoles, options);

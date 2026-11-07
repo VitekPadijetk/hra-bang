@@ -35,6 +35,11 @@ const SetupMixin = {
             const pool = options.debugPool ? VALLEY_CHARACTERS : VOS_READY;
             if (typeof pool !== 'undefined') base.push(...pool);
         }
+        // Ozbrojení a nebezpeční: totéž (AD_READY roste s fázemi, debug hra bere všech osm).
+        if (exps.ozbrojeni) {
+            const pool = options.debugPool ? ARMED_CHARACTERS : AD_READY;
+            if (typeof pool !== 'undefined') base.push(...pool);
+        }
         return base;
     },
 
@@ -62,6 +67,10 @@ const SetupMixin = {
         }
         if (exps.udoli_stinu && Array.isArray(this.vosCardData)) {
             data = data.concat(vosReadyCards(this.vosCardData));
+        }
+        // Ozbrojení a nebezpeční (gs.adCardData): taky jen hotové druhy (AD_CARDS_READY).
+        if (exps.ozbrojeni && Array.isArray(this.adCardData)) {
+            data = data.concat(adReadyCards(this.adCardData));
         }
         return data;
     },

@@ -7,6 +7,7 @@ const { eventActive } = require('../core/highNoon.js');
 module.exports = function installRoomService(ctx) {
     const { io, cardData, dodgeCityCardData, vosCardData, GameState } = ctx;
     const { vosReadyCards } = require('../core/valley.js');
+    const { adDebugCards } = require('../core/armed.js');
 
     // Rooms se instaluje jako první v každém ctx. V produkci gamelog (server/gamelog.js)
     // hned potom přepíše ctx.glog reálným loggerem; v testech (fake io bez gamelogu) tu
@@ -153,7 +154,10 @@ module.exports = function installRoomService(ctx) {
         const base = gs.isDebug
             ? Object.assign(Object.create(Object.getPrototypeOf(gs)), gs,
                 // Údolí stínů jen hotové druhy – karta bez efektu by v ruce jen překážela.
-                { _cardData: cardData.concat(dodgeCityCardData || [], vosReadyCards(vosCardData)) })
+                // Ozbrojení a nebezpeční: hotové druhy + Nebezpečné karty, které už jde
+                // vyložit (žetony na stole), i když jejich efekt ještě nefunguje (fáze A0).
+                { _cardData: cardData.concat(dodgeCityCardData || [], vosReadyCards(vosCardData),
+                                             adDebugCards(ctx.adCardData)) })
             : redactState(gs, viewerIdx, revealAll);
         return {
             roomId: room.id, roomName: room.name, roomPhase: room.phase,

@@ -166,8 +166,9 @@ const FistfulMixin = {
     // Blokuje jen cestu karty Z RUKY na stůl (výzbroj, modré, zelené a Vězení). Co už
     // leží, funguje dál – aktivace zelené karty i Hokynářství Uncle Willa jsou povolené.
     _judgeBlocks(card) {
+        // Ozbrojení a nebezpeční: Nebezpečné karty se vykládají jako modré (i Bomba na hráče).
         return this.hasEvent('SOUDCE') && !!card &&
-               (!!card.green || JUDGE_BLOCKED_TYPES.includes(card.type));
+               (!!card.green || !!card.dangerous || JUDGE_BLOCKED_TYPES.includes(card.type));
     },
 
     // ── Právo západu: „Druhá lízaná karta se odkryje a musí se v tomhle tahu zahrát." ─

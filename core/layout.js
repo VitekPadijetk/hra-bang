@@ -606,6 +606,19 @@ function gearSlot(L) {
     return { x: P.gearPileX, y: P.pileY };
 }
 
+// Ozbrojení a nebezpeční: zásoba žetonů nabití – pyramida až 6 kostiček (3-2-1) a pod ní
+// počet. Leží v mezeře MEZI dobíracím balíčkem a odhozem (x 919–1001 na obou profilech),
+// takže nezabírá místo, o které se přetahují balíčky událostí, obchod Zlaté horečky ani
+// řada Pokeru. `cube` = šířka kostičky, `pyramidBottom` / `labelY` = posun spodní řady
+// a popisku od středu, `rect` = obálka pro invarianty (test/positions.test.js).
+const AD_SUPPLY_CUBE = 20;
+function adSupplySlot(L) {
+    const P = L || LAYOUT_DESKTOP;
+    const x = P.centerX, y = P.pileY;
+    return { x, y, cube: AD_SUPPLY_CUBE, pyramidBottom: 5, labelY: 38,
+             rect: { x0: x - 30, x1: x + 30, y0: y - 34, y1: y + 52 } };
+}
+
 // Údolí stínů – Poker: řada vyložených karet, ze které si hráč bere (fáze POKER_TAKE),
 // i místo, kam ji přiveze cinematika poker_reveal a odkud ji odveze poker_take. `y` je
 // střed karty, `labelY` střed jmenovky „kdo kartu vyložil" pod ní a `lift` o kolik se
@@ -705,7 +718,7 @@ if (typeof module !== 'undefined' && module.exports) {
         LAYOUT_PROFILES, getLayout, currentLayout, pickLayoutProfile, shouldAskLayout,
         resolveLayout, stretchAnchors, boardRowLimit, myHandRow, myHandSlotX,
         boardBand, boardSlot,
-        gearSlot, pokerRow, pokerSlotX, abilExtraSlot, ABIL_EXTRA_W,
+        gearSlot, adSupplySlot, pokerRow, pokerSlotX, abilExtraSlot, ABIL_EXTRA_W,
         GREY_SCALE, GREY_GAP, greyDetached, greyScale, greyStep, greyAbilShift,
         greyMySlot, greyOppSlot,
         LIVES_PER_CARD, livesTrack, livesSlot, livesCardsShown, livesFitScale, myLivesGeom,

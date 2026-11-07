@@ -74,8 +74,8 @@ const LOW_HEALTH_CHARS = ["Paul Regret", "El Gringo",
 
 // Divoký západ přinesl PRVNÍ postavy nad 4 životy. Big Spencer je důvod, proč má karta
 // životů dvojče: dráha nad 5 životů se skládá ze dvou karet (core/layout.js livesTrack).
-// Jako šerif má Big Spencer 10 a Gary Looter 6.
-const HIGH_HEALTH_CHARS = { "Big Spencer": 9, "Gary Looter": 5 };
+// Jako šerif má Big Spencer 10 a Gary Looter 6. Ozbrojení a nebezpeční: Red Ringo 5.
+const HIGH_HEALTH_CHARS = { "Big Spencer": 9, "Gary Looter": 5, "Red Ringo": 5 };
 
 // Základní počet životů postavy (bez šerifova bonusu).
 function baseHealthForCharacter(charName) {

@@ -5,6 +5,7 @@ const { niResultMs } = require('../core/highNoonAnim.js');
 const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { rumRevealMs } = require('../core/goldRushAnim.js');
 const { pendingActor } = require('../core/pending.js');
+const { adArmOk } = require('../core/armed.js');
 
 // Odešla karta z ruky, tedy PROŠLA pravidly? Pravidla (logic/*) odmítnutou akci mlčky
 // ignorují – karta prostě zůstane v ruce. Animace se proto emitují AŽ podle výsledku:
@@ -193,8 +194,13 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const player = gs.getCurrentPlayer();
             const card = player?.hand[i];
             const blueTypes = ['Zbraň','Barel','Vybavení','Dynamit'];
-            // Zelené karty (Dodge City) se vykládají na stůl stejně jako modré.
-            if (blueTypes.includes(card?.type) || card?.green) {
+            // Ozbrojení a nebezpeční: Nebezpečná karta, kterou vyložit nejde (málo žetonů
+            // v zásobě, Bomba před fází A4), se neanimuje vůbec – playCard ji odmítne.
+            const adRefused = !!card?.dangerous && !adArmOk(gs, player, card);
+            // Zelené karty (Dodge City) i Nebezpečné karty se vykládají na stůl jako modré.
+            if (adRefused) {
+                // nic – karta zůstává v ruce
+            } else if (blueTypes.includes(card?.type) || card?.green || card?.dangerous) {
                 const boardIdx = card.type === 'Zbraň' ? 0 : 1 + player.board.length;
                 emitAnim(room, { type: 'hand_to_board', playerIdx: gs.currentPlayerIndex, cardId: card?.id, boardIdx });
                 const isWeaponSwap = card.type === 'Zbraň' && player.weapon && player.weapon.id !== -1;

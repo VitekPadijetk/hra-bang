@@ -77,6 +77,21 @@ if (typeof vosOn === 'undefined' && typeof require === 'function') {
     globalThis.vosDorothyOk = __vos.vosDorothyOk;
     globalThis.vosRepeatOk = __vos.vosRepeatOk;
 }
+// Ozbrojení a nebezpeční: postavy rozšíření a zrcadlo core/armed.js (žetony nabití).
+if (typeof ARMED_CHARACTERS === 'undefined' && typeof require === 'function') {
+    const __ent = require('./logic/entities.js');
+    globalThis.ARMED_CHARACTERS = __ent.ARMED_CHARACTERS;
+    globalThis.AD_READY = __ent.AD_READY;
+}
+if (typeof adOn === 'undefined' && typeof require === 'function') {
+    const __ad = require('./core/armed.js');
+    globalThis.adOn = __ad.adOn;
+    globalThis.adReadyCards = __ad.adReadyCards;
+    globalThis.adSupply = __ad.adSupply;
+    globalThis.adArmOk = __ad.adArmOk;
+    globalThis.AD_LOAD_CAP = __ad.AD_LOAD_CAP;
+    globalThis.AD_ARM_LOADS = __ad.AD_ARM_LOADS;
+}
 // Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
 // globálů, takže by blok výš tyhle přeskočil.
 if (typeof shotgunActive === 'undefined' && typeof require === 'function') {
@@ -122,6 +137,13 @@ if (typeof pendingActor === 'undefined' && typeof require === 'function') {
 // „Je to modrá karta?" (José Delgado) – jediný zdroj pravdy pro server, klient i bota.
 if (typeof isBlueCard === 'undefined' && typeof require === 'function') {
     globalThis.isBlueCard = require('./core/cardRules.js').isBlueCard;
+}
+// …a „je to oranžová / hnědá?" (Ozbrojení a nebezpeční – Nebezpečné karty, paměť LVK).
+if (typeof isDangerousCard === 'undefined' && typeof require === 'function') {
+    globalThis.isDangerousCard = require('./core/cardRules.js').isDangerousCard;
+}
+if (typeof isBrownCard === 'undefined' && typeof require === 'function') {
+    globalThis.isBrownCard = require('./core/cardRules.js').isBrownCard;
 }
 // A Fistful of Cards – Právo západu: „drží hráče v tahu vynucená karta?" Stejným helperem
 // se ptá klient (rámeček, zašedlé tlačítko) i bot, jinak by se hra zasekla na tiše
@@ -845,7 +867,8 @@ if (typeof module !== 'undefined' && typeof require === 'function') {
         require('./logic/wildWest.js'),
         require('./logic/goldRush.js'),
         require('./logic/shadow.js'),
-        require('./logic/valley.js')
+        require('./logic/valley.js'),
+        require('./logic/armed.js')
     );
 }
 

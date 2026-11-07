@@ -69,7 +69,7 @@ function boardDeadFor(state) {
 const JUDGE_BLOCKED_TYPES = ['Zbraň', 'Vybavení', 'Barel', 'Dynamit', 'Vězení', 'Chřestýš', 'Odměna', 'Duch'];
 function judgeBlocksFor(state, card) {
     if (!card || !eventActive(state, 'SOUDCE')) return false;
-    return !!card.green || JUDGE_BLOCKED_TYPES.includes(card.type);
+    return !!card.green || !!card.dangerous || JUDGE_BLOCKED_TYPES.includes(card.type);   // + Nebezpečné karty
 }
 
 if (typeof module !== 'undefined' && module.exports) {

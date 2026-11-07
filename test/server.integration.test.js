@@ -639,3 +639,29 @@ test('debug_start s Údolím stínů: options i výběr postav (všech pět v de
     env2.mkSocket('s2').fire('debug_start', { playerCount: 3, roles: [] });
     assert.equal([...env2.ctx.rooms.values()][0].gameState.options.expansions.udoli_stinu, false);
 });
+
+// Ozbrojení a nebezpeční (fáze A0): zatím jen v debug hře. Klíč `ozbrojeni` musí dojít do
+// options a do výběru postav a katalog karet debug hry nese Nebezpečné karty, které už jde
+// vyložit (Bomba ne – fáze A4).
+test('debug_start s Ozbrojením a nebezpečnými: options, postavy a katalog karet', () => {
+    const { ctx, mkSocket } = mkEnv();
+    ctx.adCardData = JSON.parse(fs.readFileSync(__dirname + '/../cards.ozbrojeni.json', 'utf8'));
+    mkSocket('s1').fire('debug_start', { playerCount: 4, roles: [], ozbrojeni: true });
+    const room = [...ctx.rooms.values()][0];
+    const gs = room.gameState;
+    assert.equal(gs.options.expansions.ozbrojeni, true);
+    assert.equal(gs._adOn(), true);
+    assert.ok(Array.isArray(gs.adCardData));
+    const offered = new Set(gs.players.flatMap(p => p.charChoices || []));
+    for (const name of ['Al Preacher', 'Bass Greeves', 'Bloody Mary', 'Frankie Canton',
+                        'Julie Cutter', 'Mexicali Kid', 'Ms. Abigail', 'Red Ringo']) {
+        assert.ok(offered.has(name), `${name} chybí v debug výběru`);
+    }
+    const names = new Set(ctx.roomPayload(room, 0).gameState._cardData.map(c => c.name));
+    assert.ok(names.has('Big Fifty') && names.has('Bedna') && names.has('Stepní běžec'));
+    assert.ok(!names.has('Bomba'), 'Bomba přijde až s fází A4');
+    assert.ok(!names.has('Šíp'), 'hnědé karty bez efektu do katalogu nejdou');
+    const env2 = mkEnv();
+    env2.mkSocket('s2').fire('debug_start', { playerCount: 3, roles: [] });
+    assert.equal([...env2.ctx.rooms.values()][0].gameState.options.expansions.ozbrojeni, false);
+});

@@ -3,7 +3,7 @@
 // Factory installLifecycle(ctx): bere { cardData, GameState, broadcastRoom,
 // broadcastLobbyList, emitIntro, runIntroSequence } z ctx. Bez listenu.
 module.exports = function installLifecycle(ctx) {
-    const { cardData, dodgeCityCardData, highNoonCardData, fistfulCardData, wwsCardData, gearCardData, vosCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
+    const { cardData, dodgeCityCardData, highNoonCardData, fistfulCardData, wwsCardData, gearCardData, vosCardData, adCardData, GameState, broadcastRoom, broadcastLobbyList, emitIntro, runIntroSequence } = ctx;
 
     // ── Čekání na assety rozšíření ──────────────────────────────────────────
     // Art rozšíření se stahuje líně (game.js loadExpansionAssets), takže hráč, který
@@ -69,6 +69,7 @@ module.exports = function installLifecycle(ctx) {
         gs.fistfulCardData = fistfulCardData;
         gs.wwsCardData = wwsCardData;
         gs.vosCardData = vosCardData;
+        gs.adCardData = adCardData;
         gs.gearCardData = gearCardData;
         // Log hry otevři a napoj sink JEŠTĚ PŘED setupem, ať se zachytí i výběr rolí/postav.
         ctx.glog.openGame(room);
@@ -165,6 +166,7 @@ module.exports = function installLifecycle(ctx) {
         room.gameState.fistfulCardData = fistfulCardData;
         room.gameState.wwsCardData = wwsCardData;
         room.gameState.vosCardData = vosCardData;
+        room.gameState.adCardData = adCardData;
         room.gameState.gearCardData = gearCardData;
         // Nová hra ve stejné místnosti → nový log (openGame zavře předchozí) + sink před setupem.
         ctx.glog.openGame(room);

@@ -74,11 +74,13 @@ const wwsCardData = JSON.parse(fs.readFileSync('cards.divoky_zapad.json', 'utf8'
 const gearCardData = JSON.parse(fs.readFileSync('cards.zlata_horecka.json', 'utf8'));
 // Hrací karty rozšíření Údolí stínů (do hlavního balíčku, jen hotové druhy – VOS_CARDS_READY).
 const vosCardData = JSON.parse(fs.readFileSync('cards.udoli_stinu.json', 'utf8'));
+// Hrací karty rozšíření Ozbrojení a nebezpeční (do hlavního balíčku, jen hotové druhy – AD_CARDS_READY).
+const adCardData = JSON.parse(fs.readFileSync('cards.ozbrojeni.json', 'utf8'));
 
 // ── Multi-game state & room service ─────────────────────────────────────────
 // Sdílený kontext serveru. Room service (server/rooms.js) vlastní rooms Map
 // a vystaví room helpery zpět na ctx; ostatní moduly/handlery je berou z ctx.
-const ctx = { io, cardData, dodgeCityCardData, highNoonCardData, fistfulCardData, wwsCardData, gearCardData, vosCardData, GameState };
+const ctx = { io, cardData, dodgeCityCardData, highNoonCardData, fistfulCardData, wwsCardData, gearCardData, vosCardData, adCardData, GameState };
 require('./server/version.js')(ctx);  // otisk nasazeného kódu (ctx.buildId) – klient podle něj pozná aktualizaci
 require('./server/rooms.js')(ctx);
 require('./server/gamelog.js')(ctx);  // strukturovaný herní log (JSONL na hru + konzole) – před vším ostatním

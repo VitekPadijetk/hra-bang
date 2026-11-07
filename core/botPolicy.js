@@ -742,6 +742,11 @@ const CHAR_RANK = {
     // Údolí stínů. Schopnosti přibývají po fázích (VOS_READY), rank musí být od začátku.
     'Colorado Bill': 8, 'Evelyn Shebang': 6, 'Henry Block': 6, 'Limonádový Jim': 6,
     'Mick Defender': 7,
+    // Ozbrojení a nebezpeční (plán §5): Ms. Abigail a Mexicali Kid vysoko, Julie Cutter
+    // a Bloody Mary střed, Al Preacher, Bass Greeves, Red Ringo nízko, Frankie nejníž.
+    // Schopnosti přibývají po fázích (AD_READY), rank musí být od začátku.
+    'Ms. Abigail': 8, 'Mexicali Kid': 8, 'Julie Cutter': 7, 'Bloody Mary': 7,
+    'Al Preacher': 6, 'Bass Greeves': 6, 'Red Ringo': 6, 'Frankie Canton': 5,
 };
 // Průměrný rank postavy základní hry (těch 16, ze kterých líže Greygory Deck).
 // Je to očekávaná hodnota náhodného líznutí, takže i práh, pod kterým se vyplatí měnit.

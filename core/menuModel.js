@@ -85,8 +85,11 @@ const MENU_EXPANSIONS = [
 // Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".
 // Schválně MIMO MENU_EXPANSIONS: do emptyExpansions() ani do options.expansions, které čte
 // server, se tak nedostanou. Až rozšíření půjde zapnout, přestěhuje se o řádek výš.
-// (Teď žádné – Údolí stínů se v F1 přestěhovalo výš.)
-const MENU_EXPANSIONS_SOON = [];
+// Ozbrojení a nebezpeční: od fáze A0 jde zapnout v debug hře (S16); v menu se přestěhuje
+// výš, až budou hotové karty, které hint slibuje (docs/ozbrojeni-a-nebezpecni-plan.md §8).
+const MENU_EXPANSIONS_SOON = [
+    { key: 'ozbrojeni', label: 'Ozbrojení a nebezpeční', hint: '28 karet a 8 postav; žetony nabití a Nebezpečné karty' },
+];
 
 // Výchozí (všechna vypnutá) sada příznaků rozšíření – pro všechny obrazovky i reset po založení.
 function emptyExpansions() {
@@ -691,6 +694,8 @@ function debugStartPayload({ count, roles, exps, hnExtra, shadows }) {
         zlataHorecka: !!e.zlata_horecka,
         // Údolí stínů (debug server zná pod vlastním klíčem, viz server/handlers.debug.js).
         udoliStinu: !!e.udoli_stinu,
+        // Ozbrojení a nebezpeční – zatím jen v debug hře (MENU_EXPANSIONS_SOON).
+        ozbrojeni: !!e.ozbrojeni,
         shadowGunslingers: !!shadows,
     };
 }

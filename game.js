@@ -1981,15 +1981,18 @@ function playLuckyDukeResult(chosenId) {
 function clientCardKinds() {
     const dodge = !!state?.options?.expansions?.dodge_city;
     const vos = !!state?.options?.expansions?.udoli_stinu;
-    const sig = (dodge ? 'd' : '') + (vos ? 'v' : '');
+    const ad = !!state?.options?.expansions?.ozbrojeni;
+    const sig = (dodge ? 'd' : '') + (vos ? 'v' : '') + (ad ? 'a' : '');
     if (App._cardKinds && App._cardKindsSig === sig) return App._cardKinds;
     const base = gameScene?.cache?.json?.get('cards_data') || [];
     const dc = dodge ? (gameScene?.cache?.json?.get('cards_dodge_city_data') || []) : [];
     // Údolí stínů: jen hotové druhy, stejně jako server (`_deckDataFor` → vosReadyCards).
     const vs = vos ? vosReadyCards(gameScene?.cache?.json?.get('cards_udoli_stinu_data') || []) : [];
+    // Ozbrojení a nebezpeční: taky jen hotové druhy (`_deckDataFor` → adReadyCards).
+    const as = ad ? adReadyCards(gameScene?.cache?.json?.get('cards_ozbrojeni_data') || []) : [];
     if (!base.length) return [];
     App._cardKindsSig = sig;
-    App._cardKinds = distinctCardKinds(base.concat(dc, vs));
+    App._cardKinds = distinctCardKinds(base.concat(dc, vs, as));
     return App._cardKinds;
 }
 
@@ -2007,7 +2010,9 @@ function showCardGallery() {
     const _dodge = gameScene.cache.json.get('cards_dodge_city_data') || [];
     // Údolí stínů: VŠECHNY karty (i bez hotového efektu) – galerie je na kontrolu štítků/artu.
     const _vos = gameScene.cache.json.get('cards_udoli_stinu_data') || [];
-    const data = (_base.length || _dodge.length) ? _base.concat(_dodge, _vos) : (App.allCardsData || []);
+    // Ozbrojení a nebezpeční: taky VŠECHNY (oranžové štítky, kostičky se tu nekreslí).
+    const _ad = gameScene.cache.json.get('cards_ozbrojeni_data') || [];
+    const data = (_base.length || _dodge.length) ? _base.concat(_dodge, _vos, _ad) : (App.allCardsData || []);
 
     const bg = gameScene.add.rectangle(960, 540, stageW(), stageH(), 0x000000, 0.92)
         .setDepth(3000).setInteractive();
@@ -2177,6 +2182,7 @@ function preload() {
     loadAsset(this, 'json', 'cards_divoky_zapad_data', 'cards.divoky_zapad.json');
     loadAsset(this, 'json', 'cards_zlata_horecka_data', 'cards.zlata_horecka.json');
     loadAsset(this, 'json', 'cards_udoli_stinu_data', 'cards.udoli_stinu.json');
+    loadAsset(this, 'json', 'cards_ozbrojeni_data', 'cards.ozbrojeni.json');
 
     loadAsset(this, 'json', 'characters_data', 'characters.json');
     for (let i = 0; i <= 15; i++) {   // 0–15 základ; 16–30 (Dodge City) až s rozšířením
@@ -2384,6 +2390,32 @@ const EXPANSION_LOADERS = {
             },
         };
     },
+
+    // Ozbrojení a nebezpeční: hrací karty do HLAVNÍHO balíčku (vzor Údolí stínů) a 8 postav
+    // (portréty 055–062). Art dodá uživatel (plán §11): karta s `art: null` se peče jako
+    // ŠTÍTEK s oranžovým/hnědým rámem, postava s `portrait: false` jako jmenovka a značka
+    // rozšíření až s AD_MARK_READY (core/armed.js). Šest karet ze základní hry nese art
+    // základní hry (bang, cat_balou, vedle) – ten je v cache od preloadu, takže se
+    // nestahuje znovu. Žádné 404, nic kritického – hra na nic z toho nečeká.
+    ozbrojeni(scene) {
+        const data = scene.cache.json.get('cards_ozbrojeni_data') || [];
+        distinctArtKeys(data).forEach(a => {
+            if (!scene.textures.exists('art_' + a)) loadAsset(scene, 'image', 'art_' + a, `assets/card_art/ozbrojeni/${a}.webp`);
+        });
+        if (AD_MARK_READY) loadAsset(scene, 'image', 'mark_ozbrojeni', 'assets/card_marks/ozbrojeni.webp');
+        const chars = (scene.cache.json.get('characters_data') || []).filter(c => c.id >= 55 && c.id <= 62);
+        chars.forEach(c => {
+            if (c.portrait !== false) loadAsset(scene, 'image', 'char_' + c.id, `assets/characters/${String(c.id).padStart(3, '0')}.webp`);
+        });
+        return {
+            critical: [],
+            done: () => {
+                normalizeCharTextures(scene, 55, 62);
+                buildPortraitLabels(scene, chars);
+                buildCardTextures(scene, data);
+            },
+        };
+    },
 };
 
 // Dotáhne assety jednoho rozšíření (idempotentní). Rozšíření se řadí do fronty a načítají
@@ -2533,9 +2565,10 @@ function paintCardTexture(scene, rt, card, sKey) {
     }
 }
 
-// Štítek hrací karty bez artu: papír, rám v barvě karty (hnědá / modrá / zelená), jméno
-// nahoře a text karty uprostřed. Marky hodnoty a barvy dokreslí volající.
-const CARD_LABEL_BORDER = { brown: 0x8a5a2b, blue: 0x2b4f8a, green: 0x2f7a3a };
+// Štítek hrací karty bez artu: papír, rám v barvě karty (hnědá / modrá / zelená / oranžová
+// – Nebezpečné karty Ozbrojení a nebezpečných), jméno nahoře a text karty uprostřed.
+// Marky hodnoty a barvy dokreslí volající.
+const CARD_LABEL_BORDER = { brown: 0x8a5a2b, blue: 0x2b4f8a, green: 0x2f7a3a, orange: 0xd9771f };
 function paintCardLabel(scene, rt, card) {
     const W = CARD_TEX_W, H = CARD_TEX_H;
     const paper = scene.make.graphics({ add: false });
@@ -2573,6 +2606,28 @@ function buildPortraitLabels(scene, chars) {
         rt.draw(name, W / 2, H * 0.45); name.destroy();
         rt.saveTexture(key);   // RT drží texturu → nedestruovat
     });
+}
+
+// ── Ozbrojení a nebezpeční: kostička žetonu nabití ──────────────────────────
+// Dřevěná izometrická kostka (tři kosočtverce ve třech odstínech hnědé) pod klíčem
+// `ad_cube`, AD_CUBE_W×AD_CUBE_H px. Kreslí se jí žetony na kartách (drawAdCubes)
+// i pyramida zásoby (drawAdSupply, view/board.js). Až uživatel dodá art
+// (assets/other_cards/ozbrojeni/nabiti.webp, plán §11), nahradí tuhle kresbu.
+const AD_CUBE_W = 48, AD_CUBE_H = 52;
+function buildAdCubeTexture(scene) {
+    if (scene.textures.exists('ad_cube')) return;
+    const W = AD_CUBE_W, H = AD_CUBE_H, c = W / 2;
+    const top = 14, mid = 26, bot = H - 2;
+    const g = scene.make.graphics({ add: false });
+    const face = (color, pts) => {
+        g.fillStyle(color, 1).fillPoints(pts.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
+        g.lineStyle(2, 0x3d2611, 1).strokePoints(pts.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
+    };
+    face(0xdcae70, [[c, 2], [W - 2, top], [c, mid], [2, top]]);            // vršek
+    face(0xa8743f, [[2, top], [c, mid], [c, bot], [2, bot - (mid - top)]]);  // levý bok
+    face(0x7d5229, [[c, mid], [W - 2, top], [W - 2, bot - (mid - top)], [c, bot]]);  // pravý bok
+    g.generateTexture('ad_cube', W, H);
+    g.destroy();
 }
 
 // ── Zlatá horečka: textury karet vybavení ───────────────────────────────────
@@ -2795,6 +2850,7 @@ function createScene() {
     normalizeRoleTextures(this);
     buildCardTextures(this);
     buildGearTextures(this);   // Zlatá horečka: štítky, art je přemaluje po dotažení (loader rozšíření)
+    buildAdCubeTexture(this);  // Ozbrojení a nebezpeční: kostička žetonu nabití
 
     // Pozadí i závoj se roztahují přes CELÉ jeviště (tedy i přes pruhy po stranách,
     // které při širším poměru stran přibyly) – jinak by z nich prosvítala holá výplň

@@ -1084,7 +1084,7 @@ const WildWestMixin = {
     // `opts.deEffect` = efekt „odhoď další kartu" (Springfield/Tequila/Whisky/Ragtime/
     // Rvačka a Odstřelovač z Fistfulu), `opts.extraSuit` = barva druhé karty Odstřelovače.
     _markBrownPlayed(playerIdx, card, opts = {}) {
-        if (!card || card.green || isBlueCard(card)) return;
+        if (!isBrownCard(card)) return;   // modrá, zelená ani oranžová paměť nemaže
         const spec = this._brownRepeatSpec(card, opts);
         if (!spec) return;
         this._lastBrown = Object.assign({

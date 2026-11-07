@@ -34,6 +34,21 @@ const PlayMixin = {
             return;
         }
 
+        // Ozbrojení a nebezpeční: Nebezpečná karta se vykládá jako modrá a dostane 3 žetony
+        // nabití ze zásoby. Bez 3 žetonů v zásobě (nebo podruhé téhož jména) zahrát nejde
+        // – stejný predikát (adArmOk) má klient i bot. Zbraně jdou běžnou větví WEAPON níž.
+        if (isDangerousCard(card)) {
+            if (!adArmOk(this, player, card)) return;
+            if (card.type !== CardType.WEAPON) {
+                this.playBoardCard(player, cardIndex);
+                this._adArm(card);
+                this._trackCard(this.currentPlayerIndex, card.type);
+                this.checkSuzyLafayette(player);
+                this._processSpecialQueue();
+                return;
+            }
+        }
+
         const cardEffects = {
             [CardType.BEER]: () => {
                 // High Noon – Reverend: po celé kolo nejde zahrát Pivo (Saloon ano, FAQ H1).
@@ -94,6 +109,9 @@ const PlayMixin = {
                     player.stats.weaponsCycled++;
                 }
                 player.weapon = player.hand.splice(cardIndex, 1)[0];
+                // Ozbrojení a nebezpeční: Nebezpečná zbraň dostane 3 žetony (stará zbraň už
+                // odešla, takže se její žetony do zásoby počítají zpátky dřív).
+                if (isDangerousCard(player.weapon)) this._adArm(player.weapon);
                 // Johnny Kisch (Fistful): stejnojmenné zbraně u ostatních jdou do odhozu.
                 this._johnnyKischPurge(this.currentPlayerIndex, player.weapon.name, player.weapon);
                 // Orazítkuj tah položení (stejně jako u zelených karet). Pravidla to
