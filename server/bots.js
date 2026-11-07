@@ -188,6 +188,11 @@ module.exports = function installBotService(ctx) {
             // Údolí stínů – okno záchrany: odmítnutí posune nabídku dalšímu zachránci
             // (namnožená data), fáze ani karty se přitom nehnou.
             gs.pendingSave ? `${gs.pendingSave.saverIdx}:${(gs.pendingSave.declined || []).length}` : '-',
+            // Ozbrojení a nebezpeční: rozmístění žetonu nebo jejich přesun se v rukou, na
+            // stole ani v životech neprojeví – pokrok je vidět jen na součtu žetonů ve hře.
+            gs.pendingAdPlace ? `${gs.pendingAdPlace.playerIdx}:${gs.pendingAdPlace.left}` : '-',
+            (gs.players || []).reduce((s, p) => s + (p?.adLoads || 0) + (p?.weapon?.adLoads || 0) +
+                (p?.board || []).reduce((t, c) => t + (c?.adLoads || 0), 0), 0),
         ].join('|');
     }
 
@@ -236,6 +241,8 @@ module.exports = function installBotService(ctx) {
             case 'POKER_TAKE': return { event: 'vos_poker_take', payload: { cardIds: [], playerIdx: idx } };
             // Údolí stínů – Limonádový Jim: nabídku jde vždycky odmítnout.
             case 'LEMONADE_OFFER': return { event: 'vos_lemonade', payload: { cardId: null, playerIdx: idx } };
+            // Ozbrojení a nebezpeční – rozmístění žetonů: zbytek jde vždycky nechat v zásobě.
+            case 'AD_PLACE': return { event: 'ad_place_done' };
             // Údolí stínů – okno úniku: nevyhnout se jde vždycky.
             case 'EVADE_OFFER': return { event: 'vos_evade', payload: { cardId: null, playerIdx: idx } };
             // Údolí stínů – okno záchrany: nezachraňovat jde vždycky; odměna z balíčku taky.

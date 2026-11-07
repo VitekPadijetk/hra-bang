@@ -12,6 +12,8 @@
 if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') globalThis.isInPlay = require('./distance.js').isInPlay;
     if (typeof isDangerousCard === 'undefined') globalThis.isDangerousCard = require('./cardRules.js').isDangerousCard;
+    if (typeof canHeal === 'undefined') globalThis.canHeal = require('./distance.js').canHeal;
+    if (typeof boardDeadFor === 'undefined') globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
 }
 
 // Zapnuté rozšíření? (Klíč drží menu i server: options.expansions.ozbrojeni.)
@@ -26,6 +28,9 @@ function adOn(state) {
 const AD_CARDS_READY = [
     // A0 – šest karet ze základní hry (4× BANG!, Cat Balou, Vedle!): jen do balíčku
     'Bang!', 'Cat Balou', 'Vedle!',
+    // A1 – dobíjení a placení: Nebezpečné objekty bez cíle a hnědé karty bez cíle
+    'Eso v rukávu', 'Bečka piva', 'Zvonice', 'Bandalír',
+    'Nabíjení', 'Kolona', 'Malý doušek',
 ];
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
@@ -93,8 +98,227 @@ function adArmOk(state, me, card) {
     return !(me.board || []).some(c => c.name === card.name);
 }
 
+// Kolik stojí použití Nebezpečné karty (u zbraní zvláštní efekt). Bomba nic.
+function adCardCost(card) {
+    return (card && card.dangerous && card.dangerous.cost) || 0;
+}
+
+// Nebezpečná karta hráče ve hře podle id (adresa žetonu je { seat, cardId }, karta se
+// adresuje id, ne indexem – indexy na stole se odhozem posouvají).
+function adFindCard(p, cardId) {
+    if (cardId == null) return null;
+    return adCardsInPlay(p).find(c => c.id === cardId) || null;
+}
+
+// ── Rozmístění žetonů – fáze AD_PLACE (§2.7) ─────────────────────────────────
+// Kam smí hráč dát žeton ze zásoby: na své Nebezpečné karty pod stropem a na svou
+// postavu pod stropem. Prázdná zásoba = nikam. Vrací seznam adres { seat, cardId }
+// (`cardId: null` = postava). Prázdný seznam = do fáze se vůbec nevstupuje.
+function adPlaceTargets(state, idx) {
+    if (!adOn(state)) return [];
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p) || adSupply(state) <= 0) return [];
+    const out = [];
+    adCardsInPlay(p).forEach(c => {
+        if (adLoadsOf(c) < AD_LOAD_CAP) out.push({ seat: idx, cardId: c.id });
+    });
+    if (adLoadsOf(p) < AD_LOAD_CAP) out.push({ seat: idx, cardId: null });
+    return out;
+}
+
+function adPlaceOk(state, idx, seat, cardId) {
+    const cid = cardId == null ? null : cardId;
+    return adPlaceTargets(state, idx).some(t => t.seat === seat && t.cardId === cid);
+}
+
+// Proč se žetony rozmisťují – popisek lišty a štítku čekání.
+const AD_PLACE_REASON = {
+    BLUE: 'za modrou kartu',
+    DISCARD: 'za odhozené karty',
+    RELOAD: 'Nabíjení',
+};
+
+// ── Platba (§2.8) ────────────────────────────────────────────────────────────
+// Z čeho smí hráč platit vylepšení: jeho postava a jeho Nebezpečné karty se žetony –
+// Bomba ne (R5). Laso platbu nebere: žetony nejsou efekt karty.
+function adSources(state, idx) {
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p)) return [];
+    const out = [];
+    if (adLoadsOf(p) > 0) out.push({ seat: idx, cardId: null, loads: adLoadsOf(p) });
+    adCardsInPlay(p).forEach(c => {
+        if (c.type !== 'Bomba' && adLoadsOf(c) > 0) out.push({ seat: idx, cardId: c.id, loads: adLoadsOf(c) });
+    });
+    return out;
+}
+
+function adPayable(state, idx) {
+    return adSources(state, idx).reduce((s, x) => s + x.loads, 0);
+}
+
+// Je platba v pořádku? `pay` = pole adres, jedna položka = jeden žeton. Jen vlastní
+// zdroje, z žádného víc, než na něm leží, a přesně `cost` kusů. Ptá se server před
+// efektem i klient (tlačítko POTVRDIT) – odmítnutá akce nic nezaplatí.
+function adPayOk(state, idx, pay, cost) {
+    if (!Array.isArray(pay) || pay.length !== cost) return false;
+    const src = adSources(state, idx);
+    const used = new Map();
+    for (const it of pay) {
+        if (!it || it.seat !== idx) return false;
+        const cid = it.cardId == null ? null : it.cardId;
+        const s = src.find(x => x.cardId === cid);
+        if (!s) return false;
+        const n = (used.get(cid) || 0) + 1;
+        if (n > s.loads) return false;
+        used.set(cid, n);
+    }
+    return true;
+}
+
+// ── Vylepšení hnědé karty (§2.8, §4) ─────────────────────────────────────────
+function adUpgradeCost(card) {
+    return (card && card.upgrade && card.upgrade.cost) || 0;
+}
+
+// Kolik vylepšení si hráč k té kartě může zaplatit. Malý doušek nad strop životů
+// vylepšit nejde (+1 život dá karta sama). Vylepšitelné karty dalších fází (Šíp,
+// Skrč se!…) zatím 0 – jejich efekt vylepšení ještě nezná.
+function adUpgradeMax(state, idx, card) {
+    if (!adOn(state) || !card || !card.upgrade) return 0;
+    const cost = adUpgradeCost(card);
+    if (!cost) return 0;
+    const p = state.players[idx];
+    if (!p) return 0;
+    let max = Math.floor(adPayable(state, idx) / cost);
+    if (card.type === 'Malý doušek') max = Math.min(max, Math.max(0, (p.maxHealth || 0) - (p.health || 0) - 1));
+    else if (card.type !== 'Kolona') max = 0;
+    return Math.max(0, max);
+}
+
+// Jsou vylepšení a platba k zahrání karty v pořádku?
+function adUpgradeOk(state, idx, card, up, pay) {
+    const n = up || 0;
+    if (!Number.isInteger(n) || n < 0) return false;
+    if (n === 0) return !pay || pay.length === 0;
+    if (n > adUpgradeMax(state, idx, card)) return false;
+    return adPayOk(state, idx, pay, n * adUpgradeCost(card));
+}
+
+// ── Použití Nebezpečné karty (§2.9) ──────────────────────────────────────────
+// Fistful – Právo západu: použití může vynucenou kartu „vypnout" (líznutí, léčení).
+// playability.js armed.js require-uje, takže se čte až při volání (žádný kruh).
+let _adLawFn = null;
+function _adLawLocks(state, p, idx, opts) {
+    if (!_adLawFn) {
+        _adLawFn = (typeof lawLocksOther !== 'undefined') ? lawLocksOther
+                 : (typeof require === 'function' ? require('./playability.js').lawLocksOther : null);
+        if (!_adLawFn) _adLawFn = () => false;
+    }
+    return !!_adLawFn(state, p, idx, null, opts);
+}
+
+// Které Nebezpečné karty se používají klikem (ve svém tahu, ve fázi PLAY).
+const AD_USE_KINDS = ['Eso v rukávu', 'Bečka piva', 'Zvonice'];
+
+// Smí hráč tu svou Nebezpečnou kartu teď použít? Ptá se server (adUse), klient
+// (klikatelná karta) i bot – kdyby se rozešli, hra botů by se zasekla.
+function adUseOk(state, idx, card) {
+    if (!adOn(state) || !card || state.phase !== 'PLAY' || state.currentPlayerIndex !== idx) return false;
+    const p = state.players[idx];
+    if (!p || !isInPlay(p)) return false;
+    if (!adFindCard(p, card.id)) return false;
+    if (!AD_USE_KINDS.includes(card.type)) return false;
+    if (boardDeadFor(state)) return false;   // Fistful – Laso: karty na stole nemají efekt
+    if (adLoadsOf(card) < adCardCost(card)) return false;
+    if (card.type === 'Eso v rukávu') return !_adLawLocks(state, p, idx, { draws: 1 });
+    if (card.type === 'Bečka piva') {
+        return canHeal(p) && (p.health || 0) < (p.maxHealth || 0) && !_adLawLocks(state, p, idx, { heal: 1 });
+    }
+    // Zvonice: znovu ji použít, dokud platí, nemá smysl (žeton by propadl).
+    if (card.type === 'Zvonice') return !adBellLive(state, p);
+    return false;
+}
+
+// Zvonice: „pro příští kartu, kterou zahraješ, vidíš všechny ve vzdálenosti 1".
+// Dotaz žije v core/distance.js (computeDistance se na něj ptá a distance.js nesmí
+// require-ovat armed.js); tady je jen pro pohodlí volajících.
+function adBellLive(state, p) {
+    if (typeof adBellActive === 'undefined' && typeof require === 'function') {
+        globalThis.adBellActive = require('./distance.js').adBellActive;
+    }
+    return adBellActive(state, p);
+}
+
+// Bandalír: „Jednou ve svém tahu smíš zahrát jednu kartu BANG! navíc." O kolik zvedá
+// limit karet BANG! (0/1). Použitý Bandalír drží limit +1 do konce tahu, i když se tím
+// vyčerpal a odešel. Žádné tlačítko – cena se zaplatí sama při BANG! nad limit (R21).
+function adBandolierExtra(state, p) {
+    if (!adOn(state) || !p) return 0;
+    if (p._adBandTurn === state.turnId) return 1;
+    if (boardDeadFor(state)) return 0;
+    const b = adCardsInPlay(p).find(c => c.type === 'Bandalír');
+    return b && adLoadsOf(b) >= adCardCost(b) ? 1 : 0;
+}
+
+// Nabíjení: hratelné, jen když je kam žetony dát (jako Pivo na plném životě).
+function adReloadOk(state, idx) {
+    return adPlaceTargets(state, idx).length > 0;
+}
+
+// ── Zuřivá Doroty a Lee Van Kliff (R13, vzor VOS_KINDS) ─────────────────────
+// Co smí Doroty poručit a co si Lee Van Kliff zapamatuje. Oranžová karta není hnědá
+// (paměť LVK drží jen hnědé), poručená karta jde bez vylepšení. Druhy, jejichž efekt
+// přijde až v dalších fázích, zatím ne – poručit kartu bez efektu by nic neudělalo.
+// Tři karty ze základní hry (BANG!, Cat Balou, Vedle!) se chovají jako základní.
+const AD_KINDS = {
+    'Eso v rukávu':     { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
+    'Bandalír':         { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
+    'Bečka piva':       { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
+    'Zvonice':          { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
+    'Bomba':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A4' },
+    'Bedna':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Paklíč':           { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Stepní běžec':     { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A5' },
+    'Bič':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Big Fifty':        { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Buntline Special': { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Dvouhlavňovka':    { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Thunderer':        { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Malý doušek':      { dorothy: true,  lvk: true,  why: 'efekt = +1 život, bez vylepšení' },
+    'Šíp':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Kolona':           { dorothy: true,  lvk: true,  why: 'lízni 2, bez vylepšení' },
+    'Skrč se!':         { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Křesadlovka':      { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Rychlopalba':      { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A2' },
+    'Nabíjení':         { dorothy: true,  lvk: true,  why: 'rozmísti 3 žetony' },
+    'Rez':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Squaw':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+};
+const AD_BASE_NAMES = ['Bang!', 'Cat Balou', 'Vedle!'];
+
+function _adKind(card) {
+    if (!card || card.exp !== 'ozbrojeni' || AD_BASE_NAMES.includes(card.name)) return null;
+    return AD_KINDS[card.name] || { dorothy: false, lvk: false };   // neznámý druh: radši ne
+}
+
+// Smí Zuřivá Doroty tenhle druh poručit? Karty mimo rozšíření se to netýká (true).
+function adDorothyOk(card) {
+    const k = _adKind(card);
+    return k ? k.dorothy : true;
+}
+
+// Smí Lee Van Kliff zopakovat vlastní efekt téhle karty?
+function adRepeatOk(card) {
+    const k = _adKind(card);
+    return k ? k.lvk : true;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { adOn, AD_CARDS_READY, adReadyCards, adDebugCards, AD_MARK_READY,
                        AD_LOAD_TOTAL, AD_LOAD_CAP, AD_ARM_LOADS,
-                       adLoadsOf, adCardsInPlay, adSupply, adArmOk };
+                       adLoadsOf, adCardsInPlay, adSupply, adArmOk,
+                       adCardCost, adFindCard, adPlaceTargets, adPlaceOk, AD_PLACE_REASON,
+                       adSources, adPayable, adPayOk, adUpgradeCost, adUpgradeMax, adUpgradeOk,
+                       AD_USE_KINDS, adUseOk, adBellLive, adBandolierExtra, adReloadOk,
+                       AD_KINDS, adDorothyOk, adRepeatOk };
 }

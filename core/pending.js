@@ -95,6 +95,9 @@ function pendingActor(state) {
             const idx = state.phase === 'POKER_TAKE' ? r.playerIdx : (r.waiting || [])[0];
             return idx != null ? { idx, kind: state.phase } : null;
         }
+        // Ozbrojení a nebezpeční – rozmístění žetonů nabití ze zásoby (klik na kartu/postavu).
+        case 'AD_PLACE':         return state.pendingAdPlace
+            ? { idx: state.pendingAdPlace.playerIdx, kind: 'AD_PLACE' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -167,6 +170,7 @@ const _WAIT_LABELS = {
     TORNADO_PICK:          'Tornádo – vybírá karty pro souseda po levici',
     POKER_PICK:            'Poker – vykládá kartu lícem dolů',
     POKER_TAKE:            'Poker – bere si z vyložených karet',
+    AD_PLACE:              'rozmisťuje žetony nabití',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',
@@ -236,6 +240,12 @@ function waitingStatus(state) {
     // High Noon – Daltonové: hráč vybírá kartu na VLASTNÍM stole, ne soupeřovu.
     if (pa.kind === 'SELECTING_TARGET_CARD' && state.pendingSelection?.isDaltons) {
         text = 'Daltonové – odhazuje modrou kartu';
+    }
+    // Ozbrojení a nebezpeční: kolik žetonů ještě rozmisťuje a proč (kopie AD_PLACE_REASON
+    // z core/armed.js – pending.js nic nerequiruje).
+    if (pa.kind === 'AD_PLACE' && state.pendingAdPlace) {
+        const why = { BLUE: 'za modrou kartu', DISCARD: 'za odhozené karty', RELOAD: 'Nabíjení' }[state.pendingAdPlace.reason];
+        text = `rozmisťuje žetony nabití (${state.pendingAdPlace.left})${why ? ' – ' + why : ''}`;
     }
     // Zlatá horečka – Podkova: „odkryj o kartu navíc a vyber výsledek." Jede po TÉŽE
     // fázi jako Lucky Duke (viz startLuckyDukeCheck), takže se popisek řídí tím, čím

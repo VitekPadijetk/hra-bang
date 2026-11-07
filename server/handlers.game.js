@@ -5,7 +5,7 @@ const { niResultMs } = require('../core/highNoonAnim.js');
 const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { rumRevealMs } = require('../core/goldRushAnim.js');
 const { pendingActor } = require('../core/pending.js');
-const { adArmOk } = require('../core/armed.js');
+const { adArmOk, adUpgradeOk } = require('../core/armed.js');
 
 // Odešla karta z ruky, tedy PROŠLA pravidly? Pravidla (logic/*) odmítnutou akci mlčky
 // ignorují – karta prostě zůstane v ruce. Animace se proto emitují AŽ podle výsledku:
@@ -16,6 +16,22 @@ const { adArmOk } = require('../core/armed.js');
 function cardLeftHand(player, card) {
     if (!card) return false;
     return !(player?.hand || []).some(c => c && c.id === card.id);
+}
+// Ozbrojení a nebezpeční: snímek Nebezpečných karet ve hře (kde leží), ať jde po akci
+// poznat, která se platbou vyčerpala a odešla do odhozu (`_adDeplete`). Animace je
+// obyčejný let ze stolu do odhozu (board_to_discard; `boardIdx` 0 = zbraň).
+function adSnapshot(gs) {
+    const out = [];
+    (gs?.players || []).forEach((p, playerIdx) => {
+        if (!p) return;
+        if (p.weapon && p.weapon.id !== -1 && p.weapon.dangerous) out.push({ playerIdx, cardId: p.weapon.id, boardIdx: 0 });
+        (p.board || []).forEach((c, k) => { if (c && c.dangerous) out.push({ playerIdx, cardId: c.id, boardIdx: 1 + k }); });
+    });
+    return out;
+}
+function adDepleted(gs, before) {
+    const now = new Set(adSnapshot(gs).map(x => x.cardId));
+    return before.filter(x => !now.has(x.cardId));
 }
 
 module.exports = function registerGameHandlers(socket, ctx, withRoom) {
@@ -189,10 +205,20 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         });
     });
 
-    on('play_card', (i) => {
+    // Payload je index karty, nebo { index, up, pay } – Ozbrojení a nebezpeční: vylepšení
+    // hnědé karty (Kolona, Malý doušek) a odkud se platí (adresy žetonů).
+    on('play_card', (d) => {
         withRoom((room, p, gs) => {
+            const i = (d && typeof d === 'object') ? d.index : d;
+            const adOpts = (d && typeof d === 'object') ? { up: d.up || 0, pay: Array.isArray(d.pay) ? d.pay : [] } : {};
             const player = gs.getCurrentPlayer();
             const card = player?.hand[i];
+            // Neplatné vylepšení / platba: pravidla kartu odmítnou, takže nic neanimuj.
+            if (card && (adOpts.up || (adOpts.pay && adOpts.pay.length)) &&
+                !adUpgradeOk(gs, gs.currentPlayerIndex, card, adOpts.up, adOpts.pay)) {
+                broadcastRoom(room);
+                return;
+            }
             const blueTypes = ['Zbraň','Barel','Vybavení','Dynamit'];
             // Ozbrojení a nebezpeční: Nebezpečná karta, kterou vyložit nejde (málo žetonů
             // v zásobě, Bomba před fází A4), se neanimuje vůbec – playCard ji odmítne.
@@ -228,7 +254,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 // kartu (fáze DISCARD_ANOTHER) – teď ji tedy do odhozu neodanimujeme.
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: gs.currentPlayerIndex, cardId: card?.id });
             }
-            gs.playCard(i);
+            const _adBefore = adSnapshot(gs);
+            gs.playCard(i, adOpts);
+            // Platba za vylepšení mohla vyčerpat Nebezpečnou kartu (odejde do odhozu).
+            adDepleted(gs, _adBefore).forEach(x => emitAnim(room, { type: 'board_to_discard',
+                fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
             // Hokynářství: míchání si přebírá klientská cinematika (openStore potlačil
             // legacy reshuffle_anim), takže tady jen zapamatuj, KDY dojede. U proaktivního
             // režimu se během něj smí brát, ale po posledním výběru na něj hra počká.
@@ -251,7 +281,11 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // broadcastem, takže animace dorazí dřív než stav.
             // Údolí stínů – Dvojitá rána jde do odhozu hned za kartou BANG! (aimCardId).
             const aimCard = d.aimCardId != null ? attacker?.hand.find(c => c && c.id === d.aimCardId) : null;
+            const _adBefore = adSnapshot(gs);
             gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx, d.aimCardId ?? null);
+            // Bandalír zaplacený posledním žetonem odejde do odhozu.
+            adDepleted(gs, _adBefore).forEach(x => emitAnim(room, { type: 'board_to_discard',
+                fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
             if (cardLeftHand(attacker, card)) {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
             }
@@ -1499,6 +1533,41 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             // (stejně jako respond_with_beer / sid_ketchum_discard_both).
             if (saving) handleAutoEndTurn(room, gs);
             broadcastRoom(room);
+        });
+    });
+
+    // ── Ozbrojení a nebezpeční: žetony nabití ────────────────────────────────
+    // Rozmístění (fáze AD_PLACE): klik na vlastní Nebezpečnou kartu nebo postavu položí
+    // 1 žeton ze zásoby (`cardId: null` = postava). Aktér se čte ze stavu.
+    on('ad_place', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingAdPlace?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            gs.adPlace(idx, d && d.seat, d ? (d.cardId ?? null) : null);
+            broadcastRoom(room);
+        });
+    });
+    // …„nechat v zásobě": zbytek žetonů hráč nerozmístí. Může tím skončit tah (odhoz
+    // nad limit byl poslední krok).
+    on('ad_place_done', () => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingAdPlace?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            gs.adPlaceDone(idx);
+            broadcastRoom(room);
+        });
+    });
+    // Použití vlastní Nebezpečné karty ve fázi PLAY (Eso v rukávu, Bečka piva, Zvonice).
+    // Cena jde z té karty; vyčerpaná karta odletí do odhozu.
+    on('ad_use', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const before = adSnapshot(gs);
+            if (!gs.adUse(idx, d && d.cardId)) { broadcastRoom(room); return; }
+            const gone = adDepleted(gs, before);
+            gone.forEach(x => emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: x.playerIdx,
+                                               cardId: x.cardId, boardIdx: x.boardIdx }));
+            if (gone.length) broadcastRoomDelayed(room, 420); else broadcastRoom(room);
         });
     });
 

@@ -594,7 +594,9 @@ function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false, s
 // počet slotů. Na kompaktním profilu (mobil) je karta na kostičky moc malá – tam stojí
 // štítek „⛁3". Nula se nekreslí (karta s nulou žetonů ve hře neleží, hned se odhodí).
 function drawAdCubes(sprite, card) {
-    const n = Math.min(4, (card && !card._pseudo && card.adLoads) || 0);
+    // Žetony, které hráč právě naklikal do platby, na kartě vizuálně ubudou (odletí až
+    // po potvrzení) – adPayReserved je čte z rozpracované platby (jen moje karty).
+    const n = Math.min(4, Math.max(0, ((card && !card._pseudo && card.adLoads) || 0) - adPayReserved(card && card.id)));
     if (!n || !sprite) return;
     const w = sprite.displayWidth, h = sprite.displayHeight;
     const rot = sprite.rotation || 0, cos = Math.cos(rot), sin = Math.sin(rot);
@@ -620,6 +622,60 @@ function drawAdCubes(sprite, card) {
             .setAngle(sprite.angle || 0).setDepth(depth);
         gameScene.cardsSprites.add(cube);
     }
+}
+
+// ── Ozbrojení a nebezpeční: ovládání žetonů (fáze A1) ───────────────────────
+// Všechno „smí se to?" jde přes core/armed.js – tytéž predikáty má server i bot.
+//
+// Rozmístění (fáze AD_PLACE): jsem na řadě a smím klikat?
+function adPlacePicking() {
+    return !App.blockInput && state?.phase === 'AD_PLACE' &&
+        state.pendingAdPlace?.playerIdx === myIndex;
+}
+// …a je tahle moje karta (cardId) / postava (null) platný cíl?
+function adPlaceTargetOk(cardId) {
+    return adPlacePicking() && adPlaceOk(state, myIndex, myIndex, cardId);
+}
+
+// Platba za vylepšení vybrané karty z ruky. Rozpracovaná platba žije jen v klientu
+// (`selectedState.adUp` = počet vylepšení, `selectedState.adPay` = naklikané adresy
+// žetonů) – server dostane hotový seznam s akcí a ověří ho adUpgradeOk. Zrušení výběru
+// karty (nový selectedState) platbu zahodí, takže nic nezůstane viset.
+function adPaySelCard() {
+    if (!state || myIndex == null || selectedState.cardIndex == null) return null;
+    if (selectedState.action !== 'PLAY_CARD') return null;
+    const c = state.players[myIndex]?.hand?.[selectedState.cardIndex];
+    return (c && c.upgrade) ? c : null;
+}
+function adPayNeed() {
+    const c = adPaySelCard();
+    return c ? (selectedState.adUp || 0) * adUpgradeCost(c) : 0;
+}
+function adPayPaid() {
+    return (selectedState.adPay || []).length;
+}
+// Kolik žetonů z tohohle zdroje (cardId; null = moje postava) je už naklikaných.
+function adPayReserved(cardId) {
+    if (!adPaySelCard()) return 0;
+    const cid = cardId == null ? null : cardId;
+    return (selectedState.adPay || []).filter(x => x.cardId === cid).length;
+}
+// Smí se teď kliknout na zdroj a vzít z něj další žeton do platby?
+function adPaySourceOk(cardId) {
+    if (App.blockInput || adPayPaid() >= adPayNeed()) return false;
+    const cid = cardId == null ? null : cardId;
+    const src = adSources(state, myIndex).find(s => s.cardId === cid);
+    return !!src && src.loads - adPayReserved(cid) > 0;
+}
+function adPayTake(cardId) {
+    if (!adPaySourceOk(cardId)) return;
+    selectedState.adPay = (selectedState.adPay || []).concat([{ seat: myIndex, cardId: cardId == null ? null : cardId }]);
+    renderUI();
+}
+// Moje postava, jak má vypadat ve štítku – bez žetonů naklikaných do platby.
+function adPayView(me) {
+    const r = adPayReserved(null);
+    return r ? Object.assign({}, me, { adLoads: Math.max(0, (me.adLoads || 0) - r) }) : me;
 }
 
 // Pyramida zásoby mezi dobíracím balíčkem a odhozem: až 6 kostiček (3-2-1) a pod nimi
@@ -1811,7 +1867,7 @@ function drawMyArea(ctx) {
             const _roleSrc = gameScene.textures.exists(roleTex)
                 ? gameScene.textures.get(roleTex).getSourceImage() : null;
             const _rw = (_roleSrc?.width || 250) * scaleMe, _rh = (_roleSrc?.height || 389) * scaleMe;
-            drawNuggets(me, roleX - _rw / 2 + 4, myBaseY - _rh / 2 + 4, 0, 0, goldRushOn(state), adOn(state));
+            drawNuggets(adPayView(me), roleX - _rw / 2 + 4, myBaseY - _rh / 2 + 4, 0, 0, goldRushOn(state), adOn(state));
         }
 
         {
@@ -1981,14 +2037,31 @@ function drawMyArea(ctx) {
         const gearSelfPick = state.phase === 'GEAR_TARGET' && !App.blockInput &&
             state.pendingGearTarget?.playerIdx === myIndex;
         const gearSelfValid = gearSelfPick && (state.pendingGearTarget.targets || []).includes(myIndex);
+        // Ozbrojení a nebezpeční: postava je cíl rozmístění žetonu (AD_PLACE) i zdroj
+        // platby za vylepšení (žeton z postavy).
+        const adCharPlace = adPlaceTargetOk(null);
+        const adCharPay = !adCharPlace && adPaySourceOk(null);
         const charNeedsCursor = (selectedState.action === "PLAY_BLUE" && selectedState.cardIndex !== null)
             || selectedState.action === 'SHOOT'
-            || healSelfMode || lvkSelfMode || gearSelfValid || placeSelfMode
+            || healSelfMode || lvkSelfMode || gearSelfValid || placeSelfMode || adCharPlace || adCharPay
             || (['Panika!', 'Cat Balou'].includes(selectedState.action) && me.board.length > 0);
         charImg.setInteractive({ useHandCursor: charNeedsCursor });
         charImg._zoomKey = 'char:' + myIndex;
         charImg.on('pointerover', () => startCardZoom(getCharTex(me.character), 'char:' + myIndex));
         charImg.on('pointerout', scheduleZoomFade);
+
+        if (adCharPlace) {
+            charImg.setTint(0x88ff88);
+            charImg.on('pointerdown', () => {
+                if (App.blockInput) return;
+                socket.emit('ad_place', { seat: myIndex, cardId: null });
+                App.blockInput = true;
+                renderUI();
+            });
+        } else if (adCharPay) {
+            charImg.setTint(0xffd27a);
+            charImg.on('pointerdown', () => adPayTake(null));
+        }
 
         if (healSelfMode) {
             charImg.setTint(0x88ff88);
@@ -2321,6 +2394,44 @@ function drawMyArea(ctx) {
                 if (card._isColt || card.id !== _ricoDefend.cardId) return;
                 sprite.setTint(RICOCHET_TINT);
                 App.attackPulse.push(sprite);
+            });
+        }
+
+        // Ozbrojení a nebezpeční: moje Nebezpečné karty. Ve fázi AD_PLACE jsou cílem žetonu,
+        // při placení vylepšení zdrojem a jinak (nic nevybráno, fáze PLAY) se klikem
+        // POUŽÍVAJÍ (Eso v rukávu, Bečka piva, Zvonice) – jako placené vybavení Zlaté
+        // horečky. Co je klikací, říkají predikáty z core/armed.js.
+        if (adOn(state)) {
+            const _adUseFree = !App.blockInput && selectedState.cardIndex === null &&
+                selectedState.sidKetchum === undefined && !selectedState.gearForce;
+            myBoardSprites.forEach(({ sprite, card }) => {
+                if (card._isColt || !card.dangerous) return;
+                let tint = null, hover = null, onClick = null;
+                if (adPlaceTargetOk(card.id)) {
+                    tint = 0x88ff88; hover = 0x00ff00;
+                    onClick = () => {
+                        socket.emit('ad_place', { seat: myIndex, cardId: card.id });
+                        App.blockInput = true;
+                        renderUI();
+                    };
+                } else if (adPaySourceOk(card.id)) {
+                    tint = 0xffd27a; hover = 0xffe9b0;
+                    onClick = () => adPayTake(card.id);
+                } else if (_adUseFree && adUseOk(state, myIndex, card)) {
+                    hover = 0xddffdd;
+                    onClick = () => {
+                        selectedState = { cardIndex: null, action: null };
+                        socket.emit('ad_use', { cardId: card.id });
+                        App.blockInput = true;
+                        renderUI();
+                    };
+                }
+                if (!onClick) return;
+                if (tint != null) sprite.setTint(tint);
+                if (sprite.input) sprite.input.cursor = 'pointer';   // setInteractive kurzor nepřepíše
+                sprite.on('pointerover', (pointer) => { if (!pointer?.wasTouch) sprite.setTint(hover); });
+                sprite.on('pointerout', () => { if (tint != null) sprite.setTint(tint); else sprite.clearTint(); });
+                sprite.on('pointerdown', () => { if (!App.blockInput) onClick(); });
             });
         }
 
@@ -3382,6 +3493,23 @@ function drawMyArea(ctx) {
             if (App.blockInput) { _lmSkip.setAlpha(0.45); _lmSkip.disableInteractive(); }
         }
 
+        // ── Ozbrojení a nebezpeční – rozmístění žetonů: zbytek nechat v zásobě ──────
+        // Žetony se dávají klikem na moji Nebezpečnou kartu / postavu; tohle je „stačí".
+        // Sedí v místě „Ukončit tah" – mimo fázi PLAY se nekreslí, takže je slot volný.
+        if (state.phase === "AD_PLACE" && state.pendingAdPlace?.playerIdx === myIndex) {
+            const { bg: _adSkip } = themeButton(gameScene, L.btnEndX, L.btnEndY, 320, L.btnH, 'NECHAT V ZÁSOBĚ ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('ad_place_done');
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _adSkip.setAlpha(0.45); _adSkip.disableInteractive(); }
+        }
+
         // ── Údolí stínů – okno úniku: nevyhýbat se ───────────────────────────────
         // Únik je klik na Útěk / kartu Vedle! v ruce (VOS_EVADE), tady je „nechat proběhnout".
         if (state.phase === "EVADE_OFFER" && state.pendingEvade?.targetIdx === myIndex) {
@@ -3529,6 +3657,32 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _bnBtn.setAlpha(0.45); _bnBtn.disableInteractive(); }
+        }
+
+        // ── Ozbrojení a nebezpeční – vylepšení vybrané hnědé karty (Kolona, Malý doušek) ─
+        // Každý klik přidá jedno vylepšení (do toho, co jde zaplatit – adUpgradeMax); na
+        // maximu tlačítko vylepšení zruší. Odkud se platí, hráč naklikne na své postavě
+        // a Nebezpečných kartách (banner „Zaplať N ⛁"), kartu pak zahraje klikem na odhoz.
+        const _adUpCard = adPaySelCard();
+        const _adUpMax = _adUpCard ? adUpgradeMax(state, myIndex, _adUpCard) : 0;
+        if (_adUpCard && _adUpMax > 0 && !selectedState.showdown) {
+            const _upSlot = abilExtraSlot(L, _abilX);
+            const _up = selectedState.adUp || 0;
+            const _upCost = adUpgradeCost(_adUpCard);
+            const _upLabel = _up < _adUpMax
+                ? `⛁ VYLEPŠIT +1 (${_upCost} ⛁)${_up ? ' · ' + _up + '×' : ''}`
+                : `VYLEPŠENÍ ${_up}×: zrušit ↩`;
+            const { bg: _upBtn, txt: _upTxt } = themeButton(gameScene, _upSlot.x, _upSlot.y, _upSlot.w, _upSlot.h, _upLabel, {
+                ...themeToggleStyle(_up > 0), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    if (_up < _adUpMax) selectedState.adUp = _up + 1;
+                    else { selectedState.adUp = 0; selectedState.adPay = []; }
+                    renderUI();
+                },
+            });
+            if (_upTxt.width > _upSlot.w - 20) _upTxt.setScale((_upSlot.w - 20) / _upTxt.width);
+            if (App.blockInput) { _upBtn.setAlpha(0.45); _upBtn.disableInteractive(); }
         }
 
         // ── Údolí stínů – Dvojitá rána: zrušit vybranou / připojenou ─────────────
@@ -4157,6 +4311,47 @@ function drawPhaseOverlays(ctx) {
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }
+    }
+
+    // ── Ozbrojení a nebezpeční – rozmístění žetonů: banner „rozmísti N ⛁" ────────
+    if (state.phase === "AD_PLACE" && state.pendingAdPlace) {
+        const _ap = state.pendingAdPlace;
+        const _apMine = _ap.playerIdx === myIndex;
+        const _apName = state.players[_ap.playerIdx]?.name || '?';
+        const _apWhy = AD_PLACE_REASON[_ap.reason] || '';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _apMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_apMine) {
+            let l1 = gameScene.add.text(960, 66,
+                `⛁ Rozmísti ${_ap.left} ${_ap.left === 1 ? 'žeton' : (_ap.left < 5 ? 'žetony' : 'žetonů')} nabití${_apWhy ? ' (' + _apWhy + ')' : ''}`,
+                { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, 'Klikni na svou Nebezpečnou kartu nebo postavu – zbytek můžeš nechat v zásobě',
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_apName} – rozmisťuje žetony nabití${_apWhy ? ' (' + _apWhy + ')' : ''}`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Ozbrojení a nebezpeční – platba za vylepšení: „zaplať N ⛁ · 1/N" ─────────
+    if (adPayNeed() > 0) {
+        const _need = adPayNeed(), _paid = adPayPaid();
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _paid >= _need ? 0x88ff88 : 0xffcc44);
+        mAdd(bg, 205);
+        let l1 = gameScene.add.text(960, 66, `⛁ Zaplať ${_need} · ${_paid}/${_need}`,
+            { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+        mAdd(l1, 206);
+        let l2 = gameScene.add.text(960, 112, _paid >= _need
+            ? 'Zaplaceno – zahraj kartu klikem na odhazovací balíček'
+            : 'Klikni na svou postavu nebo Nebezpečnou kartu, odkud žeton vezmeš',
+            { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+        mAdd(l2, 206);
     }
 
     // ── Údolí stínů – okno úniku: „vyhneš se kartě X?" ───────────────────────────
@@ -4809,7 +5004,7 @@ function drawDrawPiles(ctx) {
     // `useHandCursor` nepřepíše. Všechny důvody, proč má pravá hromádka ručičku, proto
     // musí být tady (níž se sprite jen tintuje a věší se na něj klik). DE_DECK = „odhoď
     // další kartu" bez cíle (Whisky/Rvačka) – potvrzuje se klikem na odhazovací balíček.
-    const _wantsDiscardClick = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) ||
+    const _wantsDiscardClick = (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null && adPayPaid() >= adPayNeed()) ||
         (selectedState.action === "DE_DECK" && selectedState.cardIndex !== null) ||
         ((selectedState.action === "GREEN_MASS" || selectedState.action === "GREEN_SELF") && selectedState.greenCardId != null) || isPedroDraw;
     // Pod dolem se na pravou hromádku naopak kliká kvůli LÍZÁNÍ – všechny fáze, které
@@ -4994,7 +5189,10 @@ function drawDrawPiles(ctx) {
         drawPileSprite.on('pointerdown', () => socket.emit('trigger_barrel_draw'));
     }
 
-    if (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null) {
+    // Ozbrojení a nebezpeční: s rozpracovanou platbou za vylepšení se karta zahraje až
+    // po zaplacení celé ceny (banner „Zaplať N ⛁").
+    if (selectedState.action === "PLAY_CARD" && selectedState.cardIndex !== null &&
+        adPayPaid() >= adPayNeed()) {
         discPileSprite.setInteractive({ useHandCursor: true });
         tintPile(discPileSprite, 0xffff44);
         discPileSprite.on('pointerover', () => tintPile(discPileSprite, 0xffff88));
@@ -5005,6 +5203,8 @@ function drawDrawPiles(ctx) {
             if (card?.type === "Kulomet" || card?.type === "Indiáni!") {
                 socket.emit('play_special', { attackerIdx: myIndex, targetIdx: null, cardIdx: capturedIdx });
                 state.phase = "RESPOND";
+            } else if (adPayNeed() > 0) {
+                socket.emit('play_card', { index: capturedIdx, up: selectedState.adUp, pay: selectedState.adPay || [] });
             } else {
                 socket.emit('play_card', capturedIdx);
             }

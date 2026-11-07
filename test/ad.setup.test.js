@@ -180,14 +180,14 @@ function mkSetup() {
     return g;
 }
 
-test('balíček: jdou do něj jen hotové druhy (AD_CARDS_READY) – v A0 šest karet základní hry', () => {
+test('balíček: jdou do něj jen hotové druhy (AD_CARDS_READY) – po A1 třináct karet', () => {
     const g = mkSetup();
     const data = g._deckDataFor(AD_ON);
     const ad = data.filter(c => c.exp === 'ozbrojeni');
     assert.deepEqual(ad.map(c => c.name).sort(),
         adData.filter(c => A.AD_CARDS_READY.includes(c.name)).map(c => c.name).sort());
-    assert.equal(ad.length, 6);
-    assert.equal(data.length, baseData.length + 6);
+    assert.equal(ad.length, 13);
+    assert.equal(data.length, baseData.length + 13);
     assert.equal(g._deckDataFor({ expansions: {} }), baseData, 'vypnuté rozšíření = beze změny');
 });
 
@@ -195,7 +195,8 @@ test('katalog debug hry: hotové druhy + vykládatelné Nebezpečné karty, Bomb
     const names = A.adDebugCards(adData).map(c => c.name);
     assert.ok(names.includes('Bang!') && names.includes('Big Fifty') && names.includes('Bič'));
     assert.ok(!names.includes('Bomba'));
-    assert.ok(!names.includes('Kolona'), 'hnědá bez efektu do katalogu nejde');
+    assert.ok(names.includes('Kolona'), 'hotová hnědá do katalogu jde');
+    assert.ok(!names.includes('Šíp'), 'hnědá bez efektu do katalogu nejde');
 });
 
 test('výběr postav: ostrá hra jen AD_READY, debug hra všech osm', () => {
@@ -214,7 +215,7 @@ test('setupGame s rozšířením projde a nic bez efektu nerozdá; zásoba je pl
     g.setupGame(5, ['A', 'B', 'C', 'D', 'E'], AD_ON);
     const all = g.deck.cards.concat(...g.players.map(p => p.hand));
     assert.deepEqual(all.filter(c => c.exp === 'ozbrojeni' && !A.AD_CARDS_READY.includes(c.name)), []);
-    assert.equal(all.filter(c => c.exp === 'ozbrojeni').length, 6);
+    assert.equal(all.filter(c => c.exp === 'ozbrojeni').length, 13);
     assert.equal(g._adOn(), true);
     assert.equal(A.adOn(g), true);
     assert.equal(g._adSupply(), 32);

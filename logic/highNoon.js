@@ -332,6 +332,8 @@ const HighNoonMixin = {
         // před limitem karet), tady je to pojistka pro každou jinou cestu ke konci tahu –
         // vyřazený hráč musí mít nulu, jinak by ho `health > 0` počítalo za živého.
         g.health = 0;
+        // Ozbrojení a nebezpeční: žetony z postavy do zásoby (R14).
+        this._adLeavePlay(idx);
 
         const weapon = (g.weapon && g.weapon.id !== -1) ? [g.weapon] : [];
         const leftCount = g.hand.length + g.board.length + weapon.length;

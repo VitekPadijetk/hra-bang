@@ -100,6 +100,7 @@ const ShadowMixin = {
         const p = this.players[this.currentPlayerIndex];
         if (!p || !p._shadow) return;
         this._shadowStrip(this.currentPlayerIndex);
+        this._adLeavePlay(this.currentPlayerIndex);   // Ozbrojení a nebezpeční (R14)
         p._shadow = false;
         this.logEvent('event', { card: 'Stínoví pistolníci', who: p.name, msg: 'stín odchází ze hry' });
     },

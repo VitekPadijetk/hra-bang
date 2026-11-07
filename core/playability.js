@@ -73,9 +73,18 @@ if (typeof require === 'function') {
         globalThis.getActionForCard = require('./cardRules.js').getActionForCard;
     }
     // Ozbrojení a nebezpeční – smí se Nebezpečná karta vyložit (3 žetony v zásobě)?
-    // armed.js na playability.js nesahá, cyklus nevzniká.
+    // armed.js si playability.js (Právo západu) bere až při volání, cyklus při načtení nevzniká.
     if (typeof adArmOk === 'undefined') {
         globalThis.adArmOk = require('./armed.js').adArmOk;
+    }
+    if (typeof adReloadOk === 'undefined') {
+        globalThis.adReloadOk = require('./armed.js').adReloadOk;
+    }
+    if (typeof adBandolierExtra === 'undefined') {
+        globalThis.adBandolierExtra = require('./armed.js').adBandolierExtra;
+    }
+    if (typeof adDorothyOk === 'undefined') {
+        globalThis.adDorothyOk = require('./armed.js').adDorothyOk;
     }
     // Údolí stínů – které druhy karet smí Zuřivá Doroty poručit (plán §2.17).
     if (typeof vosDorothyOk === 'undefined') {
@@ -378,6 +387,10 @@ function nativePlayInTurn(state, me, myIndex, card) {
     if (VOS_PLACE_TYPES.includes(card.type)) {
         return state.players.some((p, i) => vosPlaceTargetOk(state, i, card));
     }
+    // Ozbrojení a nebezpeční – Nabíjení jen když je kam žetony dát (jako Pivo na plném
+    // životě), Malý doušek jen se ztraceným životem. Kolona jde vždycky (jako Dostavník).
+    if (card.type === "Nabíjení") return adReloadOk(state, myIndex);
+    if (card.type === "Malý doušek") return canHeal(me);
     // Ozbrojení a nebezpeční: Nebezpečná karta se vykládá jako modrá, jen potřebuje 3 žetony
     // v zásobě (adArmOk, core/armed.js – tentýž dotaz jako server).
     if (card.dangerous) return adArmOk(state, me, card);
@@ -788,7 +801,7 @@ function _jackyExtra(state, me) {
 function bangLimitFree(state, me) {
     if (hasAbility(me, "Willy the Kid")) return true;
     if (!boardDeadFor(state) && me.weapon?.name?.includes("Volcanic")) return true;
-    return me.bangsPlayedThisTurn < bangLimitFor(state) + _jackyExtra(state, me);
+    return me.bangsPlayedThisTurn < bangLimitFor(state) + _jackyExtra(state, me) + adBandolierExtra(state, me);
 }
 
 // Smí vybraná karta letět na POSTAVU (klasický výstřel)? Odražená střela se do limitu
@@ -1003,7 +1016,7 @@ function roseSwapOffer(state, myIndex) {
 // Údolí stínů má vlastní tabulku (VOS_KINDS v core/valley.js): Roztříštěná kulka (dva cíle),
 // Dvojitá rána (jen s kartou BANG!) a reakce (Útěk, Obětavý skok, Opětovná palba) ne.
 function dorothyCommandable(card) {
-    return !!card && !card._placeholder && !card.discardExtra && vosDorothyOk(card);
+    return !!card && !card._placeholder && !card.discardExtra && vosDorothyOk(card) && adDorothyOk(card);
 }
 
 // Kolik poručení ještě zbývá. Strop je JEDNO ZA TAH – stejně jako u Lady Růže z Texasu.

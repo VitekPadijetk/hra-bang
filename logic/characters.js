@@ -186,6 +186,13 @@ const CharactersMixin = {
                 if (!lemonadeEligible(this.players[a.playerIdx])) this.specialActionQueue.splice(i, 1);
                 continue;
             }
+            // Ozbrojení a nebezpeční – rozmístění žetonů: fáze AD_PLACE čeká na klik hráče,
+            // takže se zakládá, jen když je kam žeton dát (hráč je ve hře, má kartu nebo
+            // postavu pod stropem a v zásobě něco je). Jinak by nebylo na co kliknout.
+            if (a.type === 'AD_PLACE') {
+                if (adPlaceTargets(this, a.playerIdx).length === 0) this.specialActionQueue.splice(i, 1);
+                continue;
+            }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
             if (!p || !isInPlay(p) || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
@@ -234,7 +241,7 @@ const CharactersMixin = {
 
         // (Fáze, které samy patří frontě, se jako „přerušená" nepamatují – po jejich konci
         // by se hra vrátila do fáze, na kterou už nic nečeká.)
-        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW" && this.phase !== "SHOTGUN_DISCARD" && this.phase !== "LEMONADE_OFFER") {
+        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW" && this.phase !== "SHOTGUN_DISCARD" && this.phase !== "LEMONADE_OFFER" && this.phase !== "AD_PLACE") {
             this.interruptedPhase = this.phase;
         }
 
@@ -304,6 +311,10 @@ const CharactersMixin = {
             // (lemonadeChoice, logic/valley.js).
             this.pendingLemonade = { playerIdx: action.playerIdx, beerByIdx: action.beerByIdx };
             this.phase = "LEMONADE_OFFER";
+        } else if (action.type === 'AD_PLACE') {
+            // Ozbrojení a nebezpeční: rozmístění žetonů (modrá karta, Nabíjení). Že je kam,
+            // zaručilo pročištění fronty výš (_pruneSuzyQueue).
+            this._adStartPlace(action.playerIdx, action.n, action.reason);
         } else if (action.type === 'VULTURE_SPLIT') {
             this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {

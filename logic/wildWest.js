@@ -1119,7 +1119,12 @@ const WildWestMixin = {
         }
         // Údolí stínů: co se smí zopakovat, říká tabulka VOS_KINDS (core/valley.js, plán §2.17).
         if (!vosRepeatOk(card)) return null;
+        // Ozbrojení a nebezpeční: totéž říká tabulka AD_KINDS (core/armed.js, R13).
+        if (!adRepeatOk(card)) return null;
         switch (card.type) {
+            case CardType.AD_CARAVAN:  return { effect: 'AD_CARAVAN',  aim: null };
+            case CardType.AD_RELOAD:   return { effect: 'AD_RELOAD',   aim: null };
+            case CardType.AD_NIP:      return { effect: 'AD_NIP',      aim: null };
             case CardType.BEER:        return { effect: 'BEER',        aim: null };
             // Údolí stínů – Poslední pivo: efekt = +1 život (není to karta Pivo).
             case CardType.LAST_CALL:   return { effect: 'LAST_CALL',   aim: null };
@@ -1165,7 +1170,7 @@ const WildWestMixin = {
         // a odbaví se, až doběhne efekt (viz „nejdřív doběhne efekt" v CLAUDE.md).
         // Výjimka je stejná jako v playCard: fáze STORE/DRAW si karty rozdají samy
         // a Suzy by rozdělanou nabídku hokynářství přebila.
-        if (lb.effect !== 'STORE' && lb.effect !== 'STAGECOACH' && lb.effect !== 'WELLS_FARGO') {
+        if (lb.effect !== 'STORE' && lb.effect !== 'STAGECOACH' && lb.effect !== 'WELLS_FARGO' && lb.effect !== 'AD_CARAVAN') {
             this.checkSuzyLafayette(p);
         }
         this._repeatBrownEffect(playerIdx, lb, targetIdx);
@@ -1275,6 +1280,18 @@ const WildWestMixin = {
             case 'STORE': {
                 this.openStore();
                 this._processSpecialQueue();
+                return;
+            }
+            // Ozbrojení a nebezpeční – jen základní efekt, bez vylepšení (R13). Kolona líže
+            // jako Dostavník, Nabíjení jde do fronty (rozmístění 3 žetonů), Doušek +1 život.
+            case 'AD_CARAVAN':
+            case 'AD_RELOAD':
+            case 'AD_NIP': {
+                const type = { AD_CARAVAN: CardType.AD_CARAVAN, AD_RELOAD: CardType.AD_RELOAD,
+                               AD_NIP: CardType.AD_NIP }[lb.effect];
+                const ok = this._adBrownEffect(playerIdx, type, 0);
+                if (ok && lb.effect === 'AD_CARAVAN') { this._processSpecialQueue(); return; }
+                done();
                 return;
             }
             case 'STAGECOACH':

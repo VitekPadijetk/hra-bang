@@ -197,6 +197,19 @@ if (typeof require === 'function') {
     if (typeof boardDeadFor === 'undefined') {
         globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
     }
+    // Ozbrojení a nebezpeční – žetony nabití: kam dát, čím platit, co použít. Tytéž
+    // predikáty jako server a klient (core/armed.js). Vlastní guard – logic.js i
+    // playability.js si z armed.js berou jen část.
+    if (typeof adUseOk === 'undefined' || typeof adSources === 'undefined') {
+        const __ad = require('./armed.js');
+        globalThis.adPlaceTargets = __ad.adPlaceTargets;
+        globalThis.adSources = __ad.adSources;
+        globalThis.adUpgradeMax = __ad.adUpgradeMax;
+        globalThis.adUpgradeCost = __ad.adUpgradeCost;
+        globalThis.adUseOk = __ad.adUseOk;
+        globalThis.adCardsInPlay = __ad.adCardsInPlay;
+        globalThis.adArmOk = __ad.adArmOk;
+    }
     // Zlatá horečka – obchod: „smí se koupit / donutit odhodit / vyměnit Pivo za valoun".
     // Stejné predikáty, jaké vynucuje server i klient (core/goldRush.js).
     if (typeof gearBuyOk === 'undefined') {
@@ -299,6 +312,42 @@ const GEAR_VALUE = {
     // se počítá až podle toho, jestli je na koho ho pověsit (gearWantedPick).
     ZH_WANTED: 0,
 };
+
+// ── Ozbrojení a nebezpeční: žetony nabití (plán §6) ──────────────────────────
+// Kam dá bot žeton ze zásoby (fáze AD_PLACE). Nejdřív karta, které chybí do ceny
+// použití (ať jde vůbec použít), pak Bandalír, Eso, Bečka (při zranění), postava
+// (univerzální – platí vylepšení) a nakonec ostatní. null = nikam (nechat v zásobě).
+function adBotPlaceTarget(state, myIndex) {
+    const me = state.players[myIndex];
+    const targets = adPlaceTargets(state, myIndex);
+    if (!me || !targets.length) return null;
+    const cards = adCardsInPlay(me);
+    let best = null, bestScore = -Infinity;
+    targets.forEach(t => {
+        let s;
+        if (t.cardId == null) s = 3;
+        else {
+            const c = cards.find(x => x.id === t.cardId);
+            const cost = (c && c.dangerous && c.dangerous.cost) || 0;
+            s = { 'Bandalír': 6, 'Eso v rukávu': 5, 'Bečka piva': canHeal(me) ? 5 : 2, 'Zvonice': 2 }[c && c.type] || 1;
+            if (c && (c.adLoads || 0) < cost) s += 2;
+        }
+        if (s > bestScore) { bestScore = s; best = t; }
+    });
+    return best;
+}
+
+// Zahrání vylepšitelné karty: vylepšení platí bot jen z přebytku – ze žetonů na
+// postavě (Nebezpečné karty si šetří na jejich vlastní použití) a nejvýš `cap` kusů.
+function adBotUpgrade(state, myIndex, card, cardIdx, cap) {
+    const me = state.players[myIndex];
+    const cost = adUpgradeCost(card);
+    const up = cost ? Math.min(cap, adUpgradeMax(state, myIndex, card), Math.floor((me.adLoads || 0) / cost)) : 0;
+    if (up <= 0) return { event: 'play_card', payload: cardIdx };
+    const pay = [];
+    for (let k = 0; k < up * cost; k++) pay.push({ seat: myIndex, cardId: null });
+    return { event: 'play_card', payload: { index: cardIdx, up, pay } };
+}
 
 // Kolik má vybavení cenu pro KONKRÉTNÍHO hráče (fáze 8). Tabulka výš je cena „pro
 // kohokoli"; tady se od ní odečte to, co by majiteli nepřineslo nic – stejná past jako
@@ -678,6 +727,7 @@ function cardDrawGain(card) {
     if (!card) return 0;
     if (card.type === T.WELLS_FARGO) return 3;
     if (card.type === T.STAGECOACH) return 2;
+    if (card.type === 'Kolona') return 2;      // Ozbrojení a nebezpeční – lízni 2 (+ vylepšení)
     if (card.activate === 'draw_3') return 3;   // Pony express – líže se ze stolu, ne z ruky
     return 0;
 }
@@ -712,6 +762,13 @@ function keepScore(card) {
         case T.ESCAPE: return 5;                  // uhne i Vězení a Panice, ne však BANG!u
         case T.SAVED: return 5;                   // život spojenci + 2 karty mně
         case T.DUCH: return 3;                    // vrátí vyřazeného spojence – jen až nějaký bude
+        // Ozbrojení a nebezpeční (A1)
+        case 'Eso v rukávu': return 5;            // karta za 2 žetony
+        case 'Bandalír': return 4;
+        case 'Bečka piva': return 4;
+        case 'Zvonice': return 3;
+        case 'Nabíjení': return 3;
+        case 'Malý doušek': return 6;             // léčí jako Poslední pivo
         default: return 1;
     }
 }
@@ -1311,6 +1368,46 @@ function decidePlay(state, myIndex, beliefs) {
         // Údolí stínů – Tornádo: výměna 2 karet za 2 karty – zhruba nula. Hraje se až
         // nakonec (nejhorší karty pak putují k sousedovi), ale zahraje se.
         if (card.type === T.TORNADO) { consider(8, intent); return; }
+
+        // ── Ozbrojení a nebezpeční (fáze A1) ─────────────────────────────────
+        // Nebezpečné objekty se vykládají jako modré (3 žetony ze zásoby). Druhy, jejichž
+        // použití ještě není hotové (jen v debug hře), bot nevykládá – nic by nedělaly.
+        if (card.dangerous && card.type !== T.WEAPON) {
+            const hasBang = me.hand.some(c => c && c.id !== card.id && bangCardFromHand(state, me, myIndex, c));
+            const v = { 'Eso v rukávu': 24, 'Bečka piva': 18, 'Zvonice': 12, 'Bandalír': hasBang ? 22 : 14 }[card.type];
+            if (v) consider(v, intent);
+            return;
+        }
+        // Nabíjení: 3 žetony – na postavu nebo karty, ať je čím platit.
+        if (card.type === 'Nabíjení') { consider(15, intent); return; }
+        // Kolona: jako Dostavník, vylepšení z přebytečných žetonů (adBotUpgrade).
+        if (card.type === 'Kolona') {
+            if (drawCardWorth(state, me, 2)) consider(66, adBotUpgrade(state, myIndex, card, i, 2));
+            return;
+        }
+        // Malý doušek: jako Poslední pivo (léčí jen ve svém tahu), s vylepšením.
+        if (card.type === 'Malý doušek') {
+            if (canHeal(me)) consider(me.health <= 2 ? 32 : 9, adBotUpgrade(state, myIndex, card, i, 2));
+            return;
+        }
+    });
+
+    // ── Ozbrojení a nebezpeční: použití vlastních Nebezpečných karet ─────────
+    // Ptá se adUseOk – tentýž dotaz jako server a klient, jinak by se hra botů zasekla.
+    adCardsInPlay(me).forEach(card => {
+        if (!adUseOk(state, myIndex, card)) return;
+        const use = { event: 'ad_use', payload: { cardId: card.id } };
+        if (card.type === 'Eso v rukávu') { if (drawCardWorth(state, me, 1)) consider(62, use); return; }
+        if (card.type === 'Bečka piva') { consider(me.health <= 2 ? 30 : 8, use); return; }
+        // Zvonice: jen když odemkne cíl – mám kartu BANG!, volný limit a nepřítele,
+        // na kterého teď nedostřelím.
+        if (card.type === 'Zvonice') {
+            const hasBang = bangLimitFree(state, me) && me.hand.some(c => c && !c._placeholder &&
+                bangCardFromHand(state, me, myIndex, c) && !preacherBlocks(state, me, myIndex, c));
+            if (!hasBang) return;
+            const tg = shootTargets(state, myIndex, beliefs);
+            if (tg.length && !tg.some(e => computeCanHit(state, myIndex, e.idx))) consider(48, use);
+        }
     });
 
     _showdownShot();   // Divoký západ – Zúčtování (viz výš)
@@ -2022,6 +2119,14 @@ function decideBotAction(state, myIndex, beliefs) {
                 .filter(c => c && keepScore(c) > 0)
                 .sort((a, b) => keepScore(b) - keepScore(a));
             return { event: 'vos_poker_take', payload: { cardIds: pool.slice(0, 2).map(c => c.id), playerIdx: myIndex } };
+        }
+
+        // Ozbrojení a nebezpeční – rozmístění žetonů ze zásoby: žeton je vždycky k užitku,
+        // takže bot rozmístí všechny (adBotPlaceTarget); když není kam, nechá je v zásobě.
+        case 'AD_PLACE': {
+            const t = adBotPlaceTarget(state, myIndex);
+            return t ? { event: 'ad_place', payload: { seat: t.seat, cardId: t.cardId } }
+                     : { event: 'ad_place_done' };
         }
 
         // Údolí stínů – Limonádový Jim: za cizí Pivo „odhoď kartu, doplň 1 život". Karta za

@@ -80,16 +80,17 @@ const MENU_EXPANSIONS = [
     // i postavy. Kdyby nějaký druh z VOS_CARDS_READY / VOS_READY vypadl, nápověda by
     // lhala – hlídá to test (test/vos.cards.test.js).
     { key: 'udoli_stinu', label: 'Údolí stínů', hint: '16 karet a 5 postav; karty hrané mimo tah a Duch' },
+    // Rozpracované (docs/ozbrojeni-a-nebezpecni-plan.md §8): od fáze A1 jde zapnout i v běžné
+    // hře, do balíčku jdou jen hotové druhy (AD_CARDS_READY) a postavy až s AD_READY.
+    // Nápověda říká, kolik toho je – s každou fází se upraví (na konci „28 karet a 8 postav").
+    { key: 'ozbrojeni', label: 'Ozbrojení a nebezpeční', hint: 'Žetony nabití a Nebezpečné karty; rozpracované – zatím 13 z 28 karet, bez postav' },
 ];
 
 // Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".
 // Schválně MIMO MENU_EXPANSIONS: do emptyExpansions() ani do options.expansions, které čte
 // server, se tak nedostanou. Až rozšíření půjde zapnout, přestěhuje se o řádek výš.
-// Ozbrojení a nebezpeční: od fáze A0 jde zapnout v debug hře (S16); v menu se přestěhuje
-// výš, až budou hotové karty, které hint slibuje (docs/ozbrojeni-a-nebezpecni-plan.md §8).
-const MENU_EXPANSIONS_SOON = [
-    { key: 'ozbrojeni', label: 'Ozbrojení a nebezpeční', hint: '28 karet a 8 postav; žetony nabití a Nebezpečné karty' },
-];
+// (Teď žádné – Ozbrojení a nebezpeční se v A1 přestěhovalo výš.)
+const MENU_EXPANSIONS_SOON = [];
 
 // Výchozí (všechna vypnutá) sada příznaků rozšíření – pro všechny obrazovky i reset po založení.
 function emptyExpansions() {
@@ -694,7 +695,7 @@ function debugStartPayload({ count, roles, exps, hnExtra, shadows }) {
         zlataHorecka: !!e.zlata_horecka,
         // Údolí stínů (debug server zná pod vlastním klíčem, viz server/handlers.debug.js).
         udoliStinu: !!e.udoli_stinu,
-        // Ozbrojení a nebezpeční – zatím jen v debug hře (MENU_EXPANSIONS_SOON).
+        // Ozbrojení a nebezpeční (debug server zná pod vlastním klíčem, viz server/handlers.debug.js).
         ozbrojeni: !!e.ozbrojeni,
         shadowGunslingers: !!shadows,
     };

@@ -669,6 +669,10 @@ const ValleyMixin = {
     _placeOnTarget(card, attIdx, tarIdx) {
         const target = this.players[tarIdx];
         target.board.push(card);
+        // Ozbrojení a nebezpeční: zahraná modrá karta (Vězení, Chřestýš, Odměna, Duch – i na
+        // jiného hráče) = 1 žeton tomu, kdo ji zahrál. Do fronty, a to PŘED oknem úniku:
+        // zahraná byla, i kdyby se jí cíl vyhnul (fronta se odbaví po rozhodnutí).
+        this._adQueueBlue(attIdx, card);
         if (card.type !== CardType.DUCH &&
             this._vosEvadeGate(attIdx, tarIdx, card.name, { kind: 'PLACE', cardId: card.id })) return true;
         this._placeSettle(card, attIdx, tarIdx);
@@ -833,6 +837,7 @@ const ValleyMixin = {
     _vosGhostLeave(idx, laso) {
         const p = this.players[idx];
         p._vosWasGhost = false;
+        this._adLeavePlay(idx);   // Ozbrojení a nebezpeční: žetony z postavy do zásoby (R14)
         const weapon = (p.weapon && p.weapon.id !== -1) ? [p.weapon] : [];
         if (p.hand.length + p.board.length + weapon.length > 0) {
             // Stejná animace jako odchod ducha Města duchů (flushGhostLeave, server/anim.js).

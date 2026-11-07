@@ -318,7 +318,7 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0 hotová)
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A1 hotové)
 
 Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
 (texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
@@ -332,4 +332,11 @@ mixin `logic/armed.js` (zásoba a tři jediné cesty změny žetonů `_adAdd`/`_
 vyložení Nebezpečné karty se 3 žetony, vyčerpání), zrcadlo `core/armed.js` (`adOn`,
 `adSupply`, `adArmOk`, `AD_CARDS_READY`), predikáty `isDangerousCard`/`isBrownCard`
 (core/cardRules.js – **Nebezpečná zbraň má typ „Zbraň", ale `isBlueCard` ji nebere**),
-kostičky na kartách a pyramida zásoby (view/board.js). Zapnout jde zatím jen v debug hře.
+kostičky na kartách a pyramida zásoby (view/board.js).
+
+Hotová je i fáze **A1 (dobíjení a placení)** a rozšíření jde zapnout v běžné hře (zatím
+13 karet, bez postav): fáze `AD_PLACE` (žeton za modrou kartu frontou, za odhoz nad limit,
+Nabíjení), platba za vylepšení posílaná s akcí (`adPayOk`/`adUpgradeOk`), použití
+Nebezpečných karet `ad_use` (`adUseOk`), Bandalír (`adBandolierExtra` v `bangLimitFree`),
+Kolona, Malý doušek. **Zvonice žije v core/distance.js** (`adBellActive`) – distance.js
+nesmí require-ovat armed.js. Co se odchýlilo od plánu, je v jeho záhlaví.

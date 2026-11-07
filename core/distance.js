@@ -115,6 +115,19 @@ function inPlayCount(players) {
     return (players || []).filter(isInPlay).length;
 }
 
+// Ozbrojení a nebezpeční – Zvonice: „pro příští kartu, kterou zahraješ, vidíš všechny
+// hráče ve vzdálenosti 1". Použití uloží `_adBell = { turn, at }` (at = kolik karet hráč
+// v tom tahu zahrál, `_playedThisTurn`). Platí, dokud další karta nevyjde (počet se
+// rovná `at`), a ještě během vyhodnocení té karty (počet o 1 výš, fáze ještě není PLAY
+// – Panika si vzdálenost ověřuje až při výběru karty). Návratem do PLAY je spotřebovaná.
+// Ptá se computeDistance (server, klient, bot) i core/armed.js (adBellLive).
+function adBellActive(state, p) {
+    const b = p && p._adBell;
+    if (!b || !state || b.turn !== state.turnId) return false;
+    const n = p._playedThisTurn || 0;
+    return n === b.at || (n === b.at + 1 && state.phase !== 'PLAY');
+}
+
 function computeDistance(state, fromIdx, toIdx) {
     const alivePlayers = state.players
         .map((p, index) => ({ p, index }))
@@ -122,6 +135,9 @@ function computeDistance(state, fromIdx, toIdx) {
     const i1 = alivePlayers.findIndex(item => item.index === fromIdx);
     const i2 = alivePlayers.findIndex(item => item.index === toIdx);
     if (i1 === -1 || i2 === -1) return 999;
+    // Ozbrojení a nebezpeční – Zvonice: všichni ve vzdálenosti 1 (i přes Mustang, Úkryt,
+    // Paula Regreta) – „vidíš všechny hráče ve vzdálenosti 1".
+    if (fromIdx !== toIdx && adBellActive(state, state.players[fromIdx])) return 1;
     const diff = Math.abs(i1 - i2);
     // A Fistful of Cards – Léčka: vzdálenost mezi kterýmikoli dvěma hráči je 1. Základ ze
     // sedadel se zahodí, modifikátory (Paul Regret, Rose Doolan, Mustang/Skrýš, Dalekohled/
@@ -181,5 +197,5 @@ function bangEffectReach(card) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { computeDistance, computeCanHit, bangEffectReach, effectiveCharacter, abilitiesOf, hasAbility, isInPlay, canHeal, inPlayCount,
-                       hasDuchCard, isVosGhost, staysInPlay };
+                       hasDuchCard, isVosGhost, staysInPlay, adBellActive };
 }

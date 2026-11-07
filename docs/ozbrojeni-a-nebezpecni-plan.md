@@ -25,6 +25,40 @@ Co se v A0 udělalo jinak / navíc proti textu níž:
 
 Výchozí stav před A0: `npm test` = 1982 testů (po Údolí stínů F9).
 
+**Stav (2026-11-07, později): hotová fáze A1 (dobíjení a placení)** a rozšíření jde zapnout
+i v běžné hře (řádek v `MENU_EXPANSIONS`, nápověda říká „rozpracované – zatím 13 z 28 karet,
+bez postav"; `MENU_EXPANSIONS_SOON` je zase prázdné). Do balíčku jde 13 karet: 6 ze základní
+hry + Eso v rukávu, Bečka piva, Zvonice, Bandalír, Nabíjení, Kolona, Malý doušek. Testy:
+`test/ad.loads.test.js` (pravidla, platba, bot) a `test/ad.load.test.js` (zátěž 3–8 hráčů,
+samo i se vším, invariant žetonů po každé akci); `npm test` = 2056.
+
+Co se v A1 udělalo jinak / navíc proti textu níž:
+- `AD_PLACE` má jen `{ playerIdx, left, reason }` – `from: 'CHAR'` a `oneTarget` (Red Ringo,
+  Bass Greeves) přibudou s A3. Neplatné položky fronty hází `_pruneSuzyQueue` (hráč mimo
+  hru / není kam dát), takže `_processSpecialQueue` fázi zakládá vždy s platným cílem.
+  Odhoz nad limit zakládá fázi napřímo (`_adDiscardPlace`) a po jejím konci volá `nextTurn`.
+- Akce: `ad_place { seat, cardId }`, `ad_place_done`, `ad_use { cardId }`; `play_card` bere
+  i `{ index, up, pay }`. Handler ověří `adUpgradeOk` dřív, než cokoli animuje.
+- Vyčerpaná karta (platba, Bandalír, použití) letí obyčejným `board_to_discard`
+  (`adSnapshot`/`adDepleted` v server/handlers.game.js). Lety kostiček (`ad_load`, `ad_pay`)
+  ani `core/armedAnim.js` zatím nejsou – kostičky se jen objeví/zmizí se stavem.
+- Zvonice: `_adBell = { turn, at }` a dotaz `adBellActive` žije v **core/distance.js**
+  (computeDistance ho potřebuje a distance.js nesmí require-ovat armed.js). Platí, dokud se
+  `_playedThisTurn` nezvedne, a během vyhodnocení té karty (fáze ≠ PLAY) – Panika si
+  vzdálenost ověřuje až ve výběru karty, takže shazování v `_trackCard` by ji rozbilo.
+- Bandalír: `adBandolierExtra` (0/1) se přičítá v `bangLimitFor`-cestě `bangLimitFree`
+  i v `playBang`; použitý drží +1 do konce tahu (`_adBandTurn`), i když se vyčerpal.
+- `AD_KINDS` (Doroty/LVK) je v core/armed.js: hotové druhy Doroty poručit smí, LVK opakuje
+  Kolonu, Malý doušek a Nabíjení (bez vylepšení); nehotové druhy obojí `false`.
+- R14 (žetony postavy při odchodu ze hry) je hotové už v A1: `_adLeavePlay` volá
+  `handlePlayerDeath`, `_teardownGhost`, `_teardownShadow` a `_vosGhostLeave`. Zátěž to
+  našla – vyřazený hráč, který se vrátil (Hřbitov, duch, stín) se starým číslem na postavě,
+  poslal zásobu do minusu.
+- Klient: rozmisťování a platba přes zvýrazněné karty/portrét, banner nahoře, „NECHAT
+  V ZÁSOBĚ" ve slotu „Ukončit tah", „VYLEPŠIT +1" ve slotu `abilExtraSlot`; rozpracovaná
+  platba je `selectedState.adUp`/`adPay` (zrušení výběru ji zahodí). Kostičky naklikané do
+  platby na zdroji vizuálně ubudou (`adPayReserved`).
+
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho
 >    bere. Automaticky běží jen to, kde pravidla volbu nedávají (cena Nebezpečné karty se

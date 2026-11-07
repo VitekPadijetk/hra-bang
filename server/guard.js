@@ -58,6 +58,9 @@ module.exports = function installActionGuard(ctx) {
         'bart_cassidy_draw', 'boots_draw', 'uhyb_draw', 'el_gringo_steal', 'suzy_draw',
         'trigger_check_draw', 'resolve_check', 'resolve_black_jack',
         'chuck_wengam', 'jose_delgado', 'doc_holyday', 'vera_copy',
+        // Ozbrojení a nebezpeční – rozmístění žetonů (fáze AD_PLACE, hráč z pendingAdPlace)
+        // a použití Nebezpečné karty (hráč na tahu, fáze PLAY).
+        'ad_place', 'ad_place_done', 'ad_use',
     ]);
 
     // Akce mimo pořadí (Sid Ketchum léčí kdykoli, i v cizím tahu) – tady nelze

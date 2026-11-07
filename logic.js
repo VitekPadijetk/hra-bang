@@ -91,6 +91,17 @@ if (typeof adOn === 'undefined' && typeof require === 'function') {
     globalThis.adArmOk = __ad.adArmOk;
     globalThis.AD_LOAD_CAP = __ad.AD_LOAD_CAP;
     globalThis.AD_ARM_LOADS = __ad.AD_ARM_LOADS;
+    globalThis.adCardsInPlay = __ad.adCardsInPlay;
+    globalThis.adCardCost = __ad.adCardCost;
+    globalThis.adFindCard = __ad.adFindCard;
+    globalThis.adPlaceTargets = __ad.adPlaceTargets;
+    globalThis.adPlaceOk = __ad.adPlaceOk;
+    globalThis.adPayOk = __ad.adPayOk;
+    globalThis.adUpgradeOk = __ad.adUpgradeOk;
+    globalThis.adUseOk = __ad.adUseOk;
+    globalThis.adReloadOk = __ad.adReloadOk;
+    globalThis.adBandolierExtra = __ad.adBandolierExtra;
+    globalThis.adRepeatOk = __ad.adRepeatOk;
 }
 // Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
 // globálů, takže by blok výš tyhle přeskočil.
@@ -425,6 +436,9 @@ class GameState {
         // Údolí stínů – Limonádový Jim: „odhoď kartu za +1 život" za cizí Pivo – fáze
         // LEMONADE_OFFER (fronta odložených akcí, viz logic/valley.js).
         this.pendingLemonade = null;
+        // Ozbrojení a nebezpeční – rozmístění žetonů nabití ze zásoby: kdo, kolik ještě
+        // a proč (BLUE / DISCARD / RELOAD) – fáze AD_PLACE (logic/armed.js). Veřejné.
+        this.pendingAdPlace = null;
         // Údolí stínů – okno úniku (Útěk, Mick Defender): cíl karty na jediného hráče se
         // smí efektu vyhnout – fáze EVADE_OFFER. Pokračování po odmítnutí je DATA
         // (`resume`), ne funkce. Viz _vosEvadeGate v logic/valley.js.
@@ -542,7 +556,12 @@ class GameState {
         // dolem jde lícem dolů navrch dobíracího balíčku (viz _mineDiscardEndTurn).
         else if (card) this._mineDiscardEndTurn(card);
         p.stats.cardsDiscarded++;
+        // Ozbrojení a nebezpeční: za každou kartu odhozenou ve 3. fázi 1 žeton ze zásoby
+        // (i když si ji vzal Gary Looter – odhozená byla).
+        if (card && this._adOn()) p._adDiscarded = (p._adDiscarded || 0) + 1;
         if (p.hand.length <= this._handLimit(p)) {
+            // …rozmisťují se, až ruka klesne na limit; tah posune až konec fáze AD_PLACE.
+            if (this._adDiscardPlace(this.currentPlayerIndex)) return;
             this.nextTurn();
         }
     }

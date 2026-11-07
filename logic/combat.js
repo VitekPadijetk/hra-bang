@@ -80,6 +80,8 @@ const CombatMixin = {
         const killer = killerIdx !== null ? this.players[killerIdx] : null;
 
         this._deathAnimPlayerIdx = deadIdx;
+        // Ozbrojení a nebezpeční: žetony z postavy do zásoby (R14).
+        this._adLeavePlay(deadIdx);
 
         // A Fistful of Cards – Mrtvý muž: kdo padl jako PRVNÍ (ten se ve svém tahu vrací).
         // Zapisuje se nezávisle na zapnutém rozšíření – je to laciné a `_roleRevealed`

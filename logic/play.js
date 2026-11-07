@@ -3,7 +3,7 @@
 // Připojuje se na GameState.prototype. Viz „Mixin pattern" v CLAUDE.md.
 (function () {
 const PlayMixin = {
-    playCard(cardIndex) {
+    playCard(cardIndex, opts = {}) {
         if (this.phase !== "PLAY") return;
         const player = this.getCurrentPlayer();
         const card = player.hand[cardIndex];
@@ -20,8 +20,15 @@ const PlayMixin = {
         if (this._lawLocked(this.currentPlayerIndex, card)) return;
         // Fistful – Soudce: nic se nesmí vyložit před hráče (výzbroj, modré, zelené).
         if (this._judgeBlocks(card)) return;
+        // Ozbrojení a nebezpeční – vylepšení hnědé karty (Kolona, Malý doušek): počet
+        // vylepšení i platba (`opts.up`, `opts.pay`) jdou s akcí a ověří se PŘED efektem
+        // (adUpgradeOk – tentýž dotaz má klient i bot). Odmítnutá akce nic nezaplatí.
+        // Zuřivá Doroty a Lee Van Kliff hrají bez opts, tedy bez vylepšení (R13).
+        const adUp = opts.up || 0;
+        if ((adUp || (opts.pay && opts.pay.length)) &&
+            !adUpgradeOk(this, this.currentPlayerIndex, card, adUp, opts.pay)) return;
 
-        this.logEvent('play', { who: player.name, card: card.name });
+        this.logEvent('play', { who: player.name, card: card.name, ...(adUp ? { up: adUp } : {}) });
 
         // Zelené karty (Dodge City) se vykládají na stůl jako modré – aktivují se až
         // příští tah ze stolu (viz activateGreenCard). Nelze mít 2 stejného jména (D7).
@@ -112,6 +119,8 @@ const PlayMixin = {
                 // Ozbrojení a nebezpeční: Nebezpečná zbraň dostane 3 žetony (stará zbraň už
                 // odešla, takže se její žetony do zásoby počítají zpátky dřív).
                 if (isDangerousCard(player.weapon)) this._adArm(player.weapon);
+                // …modrá zbraň naopak dobije 1 žeton (fronta – až doběhne efekt karty).
+                this._adQueueBlue(this.currentPlayerIndex, player.weapon);
                 // Johnny Kisch (Fistful): stejnojmenné zbraně u ostatních jdou do odhozu.
                 this._johnnyKischPurge(this.currentPlayerIndex, player.weapon.name, player.weapon);
                 // Orazítkuj tah položení (stejně jako u zelených karet). Pravidla to
@@ -125,7 +134,19 @@ const PlayMixin = {
             [CardType.DYNAMITE]: () => this.playBoardCard(player, cardIndex),
             [CardType.INDIANS]: () => { this._massAttackSuit = this._effSuit(card); this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.INDIANS); return true; },
             [CardType.GATLING]: () => { this._massAttackSuit = this._effSuit(card); this._massAttackName = card.name; this._advanceMassAttack(this.currentPlayerIndex, this.currentPlayerIndex, CardType.GATLING); return true; },
-            [CardType.STORE]: () => { this.openStore(); return true; }
+            [CardType.STORE]: () => { this.openStore(); return true; },
+            // Ozbrojení a nebezpeční – hnědé karty bez cíle (logic/armed.js). Vylepšení se
+            // platí až tady, kdy je jisté, že karta projde (Doušek na plném životě ne).
+            [CardType.AD_RELOAD]: () => this._adBrownEffect(this.currentPlayerIndex, card.type),
+            [CardType.AD_CARAVAN]: () => {
+                if (adUp) this._adPay(this.currentPlayerIndex, opts.pay);
+                return this._adBrownEffect(this.currentPlayerIndex, card.type, adUp);
+            },
+            [CardType.AD_NIP]: () => {
+                if (!canHeal(player)) return false;
+                if (adUp) this._adPay(this.currentPlayerIndex, opts.pay);
+                return this._adBrownEffect(this.currentPlayerIndex, card.type, adUp);
+            },
         };
 
         const effect = cardEffects[card.type];
@@ -213,10 +234,14 @@ const PlayMixin = {
         // Zlatá horečka – Jacky Murieta: „smí zaplatit 2 valouny a vystřelit 1 BANG!
         // navíc." Zaplacené výstřely zvedají LIMIT; vzorec je jediný (`jackyExtraBangs`,
         // core/goldRush.js) a ptá se jím i klient s botem (bangLimitFree).
+        // Ozbrojení a nebezpeční – Bandalír zvedá limit o 1 (adBandolierExtra, tentýž
+        // vzorec jako bangLimitFree) a za BANG! nad limit se z něj zaplatí 1 žeton.
+        const _bangBase = this._bangLimit() + this._jackyExtraBangs(attacker);
         if (!isEffect && !isWilly && !hasVolcanic &&
-            attacker.bangsPlayedThisTurn >= this._bangLimit() + this._jackyExtraBangs(attacker)) {
+            attacker.bangsPlayedThisTurn >= _bangBase + adBandolierExtra(this, attacker)) {
             return;
         }
+        if (!isEffect && !isWilly && !hasVolcanic) this._adBandolierPay(attacker, _bangBase);
 
         // Údolí stínů (R5): je to KARTA BANG!? Ptá se na to Odměna a Brokovnice až při
         // zásahu, kdy karta leží v odhozu – proto se to zjistí TEĎ (před započtením do
@@ -490,6 +515,8 @@ const PlayMixin = {
         player.board.push(placed);
         // Johnny Kisch (Fistful): stejnojmenné karty vyložené kdekoli u stolu se odhodí.
         this._johnnyKischPurge(this.players.indexOf(player), placed.name, placed);
+        // Ozbrojení a nebezpeční: zahraná modrá karta = 1 žeton (zelená ani oranžová ne).
+        this._adQueueBlue(this.players.indexOf(player), placed);
         return false;
     },
 
