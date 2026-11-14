@@ -235,6 +235,8 @@ function renderGameBoard() {
         // pendingSelection už na serveru existuje – jen pošli, kterou kartu vzít.
         if (state.phase === 'SELECTING_TARGET_CARD' && state.pendingSelection?.attackerIdx === myIndex &&
             state.pendingSelection?.targetIdx === targetIdx) {
+            // Ozbrojení a nebezpeční – Bič a Squaw: „má vliv pouze na karty ve hře".
+            if (area === 'hand' && state.pendingSelection.adNoHand) return false;
             // targetIdx = pro KOHO kartu vybírám. Server podle něj pozná opožděný klik do
             // už vyřízeného výběru (Rvačka/Vulture split posune výběr na dalšího hráče,
             // aktér zůstává stejný) a zahodí ho – viz server/guard.js.
@@ -644,7 +646,8 @@ function adPlaceTargetOk(cardId) {
 // Fáze A2: vylepšit jde i kartu, kterou se míří (Křesadlovka, Rychlopalba – akce SHOOT).
 function adPaySelCard() {
     if (!state || myIndex == null || selectedState.cardIndex == null) return null;
-    if (selectedState.action !== 'PLAY_CARD' && selectedState.action !== 'SHOOT') return null;
+    // Fáze A3: Šíp a Squaw se míří na hráče (vlastní akce), vylepšují se stejně.
+    if (!['PLAY_CARD', 'SHOOT', 'Šíp', 'Squaw'].includes(selectedState.action)) return null;
     const c = state.players[myIndex]?.hand?.[selectedState.cardIndex];
     return (c && c.upgrade) ? c : null;
 }
@@ -768,6 +771,70 @@ function adQuickClick(idx) {
 // Je hráč už zvolený jako cíl Rychlopalby? (zvýraznění jinou barvou)
 function adQuickPicked(idx) {
     return (selectedState.adTargets || []).includes(idx);
+}
+
+// ── Ozbrojení a nebezpeční – fáze A3: míření bez ohledu na vzdálenost ────────
+// Klik na POSTAVU hráče `idx` v jednom z pěti režimů: Šíp a Squaw z ruky (vybraná karta,
+// zaplacené vylepšení), nabitý Paklíč / Bič ze stolu (`selectedState.adUse`) a Frankie
+// Canton bere žeton z cizí postavy (`selectedState.adFrankie`). Co je platný cíl, říkají
+// predikáty z core/armed.js – tytéž, kterými se ptá server i bot.
+function adAimRole(idx) {
+    if (App.blockInput || !state || myIndex == null) return false;
+    if (state.phase !== 'PLAY' || state.currentPlayerIndex !== myIndex) return false;
+    const me = state.players[myIndex];
+    if (selectedState.adUse) {
+        const c = adFindCard(me, selectedState.adUse.cardId);
+        return !!c && adUseOk(state, myIndex, c) && adUseTargetOk(state, myIndex, c, idx);
+    }
+    if (selectedState.adFrankie) return adFrankieOk(state, myIndex) && adFrankieSourceOk(state, myIndex, idx, null);
+    const c = selectedState.cardIndex != null ? me?.hand?.[selectedState.cardIndex] : null;
+    if (!c || !adPayDone()) return false;
+    if (selectedState.action === 'Šíp') return adArrowTargets(state, myIndex).includes(idx) && !adQuickPicked(idx);
+    if (selectedState.action === 'Squaw') return adBoardTargets(state, myIndex).includes(idx);
+    return false;
+}
+// …a co klik udělá. Šíp s vylepšením sbírá 1 + N různých cílů (`selectedState.adTargets`)
+// a odejde až s posledním; Squaw pak pokračuje výběrem karty na stole cíle (řídí server).
+function adAimClick(idx) {
+    if (!adAimRole(idx)) return;
+    if (selectedState.adUse) {
+        socket.emit('ad_use', { cardId: selectedState.adUse.cardId, targetIdx: idx });
+    } else if (selectedState.adFrankie) {
+        socket.emit('ad_frankie', { seat: idx, cardId: null });
+    } else {
+        const ci = selectedState.cardIndex;
+        const up = selectedState.adUp || 0;
+        const pay = selectedState.adPay || [];
+        if (selectedState.action === 'Šíp') {
+            const ts = (selectedState.adTargets || []).concat([idx]);
+            if (ts.length < 1 + up) { selectedState.adTargets = ts; renderUI(); return; }
+            socket.emit('play_special', { attackerIdx: myIndex, targetIdx: ts[0], cardIdx: ci,
+                                          ...(up ? { up, pay, extra: ts.slice(1) } : {}) });
+        } else {
+            socket.emit('play_special', { attackerIdx: myIndex, targetIdx: idx, cardIdx: ci,
+                                          ...(up ? { up, pay } : {}) });
+        }
+        optimisticRemoveCard(ci);
+    }
+    selectedState = { cardIndex: null, action: null };
+    App.blockInput = true;
+    renderUI();
+}
+// Frankie Canton: klik na Nebezpečnou kartu ve hře (kohokoli, i vlastní) = vezmi z ní žeton.
+function adFrankieCardOk(seat, cardId) {
+    return !App.blockInput && !!selectedState.adFrankie && adFrankieOk(state, myIndex) &&
+        adFrankieSourceOk(state, myIndex, seat, cardId);
+}
+function adFrankieTake(seat, cardId) {
+    if (!adFrankieCardOk(seat, cardId)) return;
+    socket.emit('ad_frankie', { seat, cardId });
+    selectedState = { cardIndex: null, action: null };
+    App.blockInput = true;
+    renderUI();
+}
+// Bič / Squaw: výběr karty cíle řídí server a ruka se ho netýká (`adNoHand`).
+function adNoHandSel() {
+    return state?.phase === 'SELECTING_TARGET_CARD' && !!state.pendingSelection?.adNoHand;
 }
 
 // Roztříštěná kulka se míří na dvakrát: klik na první cíl (`selectedState.fanning.
@@ -1042,8 +1109,10 @@ function drawOpponents(ctx) {
                 : (canHeal(player)));   // duch (Město duchů) se léčit smí
             // Ozbrojení a nebezpeční – Mexicali Kid (zaplaceno, cíl v dostřelu zbraně).
             const adMexTarget = _adMexPick && adQuickTargets(state, myIndex).includes(actualIdx);
+            // Fáze A3: Šíp, Squaw, Paklíč, Bič a Frankie Canton (cíl bez vzdálenosti).
+            const adAimHere = adAimRole(actualIdx);
             const canActuallyTarget = (
-                adMexTarget ||
+                adMexTarget || adAimHere ||
                 (isShoot && _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach)) ||
                 isDuel ||
                 (isJail && player.role !== "Sheriff" && !(player.board||[]).some(c => c.type === "Vězení")) ||
@@ -1054,8 +1123,10 @@ function drawOpponents(ctx) {
             sprite.setInteractive({ useHandCursor: canActuallyTarget });
             sprite._zoomKey = 'char:' + actualIdx;   // stabilní klíč zoomu (přežije překreslení)
 
-            if (adMexTarget) {
+            if (adMexTarget || adAimHere) {
                     sprite.setTint(0x88ff88);
+                } else if (adQuickPicked(actualIdx) && selectedState.action === 'Šíp') {
+                    sprite.setTint(0xffd27a);   // Šíp: už zvolený cíl
                 } else if (isShoot) {
                     const canShoot = _shootAtPlayer && computeCanHit(state, myIndex, actualIdx, selectedState.reach);
                     // Rychlopalba: už zvolený cíl svítí zlatě.
@@ -1075,6 +1146,8 @@ function drawOpponents(ctx) {
                 }
 
             sprite.on('pointerdown', () => {
+                // Ozbrojení a nebezpeční – fáze A3 (Šíp, Squaw, Paklíč, Bič, Frankie).
+                if (adAimHere) { adAimClick(actualIdx); return; }
                 // Ozbrojení a nebezpeční – Mexicali Kid: výstřel za zaplacené 2 ⛁.
                 if (adMexTarget) {
                     if (App.blockInput) return;
@@ -1381,7 +1454,13 @@ function drawOpponents(ctx) {
                 });
             }
 
-            if (canTargetThisPlayer && !card._pseudo) {
+            // Ozbrojení a nebezpeční – Frankie Canton: klik na Nebezpečnou kartu soupeře
+            // = vezmi z ní 1 žeton (karta na posledním žetonu odejde).
+            if (!card._pseudo && card.dangerous && adFrankieCardOk(actualIdx, card.id)) {
+                bCard.setTint(0x88ff88);
+                if (bCard.input) bCard.input.cursor = 'pointer';
+                bCard.on('pointerdown', () => adFrankieTake(actualIdx, card.id));
+            } else if (canTargetThisPlayer && !card._pseudo) {
                 bCard.setTint(0xffff44);
                 bCard.on('pointerdown', () => {
                     const realBIdx = bIdx - (_roleSlot ? 1 : 0);
@@ -1475,7 +1554,8 @@ function drawOpponents(ctx) {
                     App.blockInput = true;
                     renderUI();
                 });
-            } else if (canTargetThisPlayer) {
+            } else if (canTargetThisPlayer && !adNoHandSel()) {
+                // (Bič a Squaw z ruky nevybírají – adNoHandSel.)
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });
                 hCard.on('pointerdown', () => handlePanicCBClick(actualIdx, 'hand', null));
@@ -2102,9 +2182,11 @@ function drawMyArea(ctx) {
         // platby za vylepšení (žeton z postavy).
         const adCharPlace = adPlaceTargetOk(null);
         const adCharPay = !adCharPlace && adPaySourceOk(null);
+        // Fáze A3: Squaw / Bič na sebe (vlastní Vězení, Dynamit) – klik na vlastní postavu.
+        const adSelfAim = !adCharPlace && !adCharPay && adAimRole(myIndex);
         const charNeedsCursor = (selectedState.action === "PLAY_BLUE" && selectedState.cardIndex !== null)
             || selectedState.action === 'SHOOT'
-            || healSelfMode || lvkSelfMode || gearSelfValid || placeSelfMode || adCharPlace || adCharPay
+            || healSelfMode || lvkSelfMode || gearSelfValid || placeSelfMode || adCharPlace || adCharPay || adSelfAim
             || (['Panika!', 'Cat Balou'].includes(selectedState.action) && me.board.length > 0);
         charImg.setInteractive({ useHandCursor: charNeedsCursor });
         charImg._zoomKey = 'char:' + myIndex;
@@ -2122,6 +2204,9 @@ function drawMyArea(ctx) {
         } else if (adCharPay) {
             charImg.setTint(0xffd27a);
             charImg.on('pointerdown', () => adPayTake(null));
+        } else if (adSelfAim) {
+            charImg.setTint(0x88ff88);
+            charImg.on('pointerdown', () => adAimClick(myIndex));
         }
 
         if (healSelfMode) {
@@ -2482,14 +2567,25 @@ function drawMyArea(ctx) {
                 } else if (adPaySourceOk(card.id)) {
                     tint = 0xffd27a; hover = 0xffe9b0;
                     onClick = () => adPayTake(card.id);
+                } else if (adFrankieCardOk(myIndex, card.id)) {
+                    // Frankie Canton smí vzít žeton i z vlastní Nebezpečné karty.
+                    tint = 0x88ff88; hover = 0x00ff00;
+                    onClick = () => adFrankieTake(myIndex, card.id);
+                } else if (selectedState.adUse && selectedState.adUse.cardId === card.id) {
+                    // Nabitý Paklíč / Bič: druhý klik na kartu = zrušit.
+                    tint = 0xffd27a; hover = 0xffe9b0;
+                    onClick = () => { selectedState = { cardIndex: null, action: null }; renderUI(); };
                 } else if (_adUseFree && adUseOk(state, myIndex, card)) {
                     hover = 0xddffdd;
-                    onClick = () => {
-                        selectedState = { cardIndex: null, action: null };
-                        socket.emit('ad_use', { cardId: card.id });
-                        App.blockInput = true;
-                        renderUI();
-                    };
+                    onClick = AD_USE_AIMED.includes(card.type)
+                        // Paklíč / Bič: klik kartu „nabije", cíl se vybere klikem na postavu.
+                        ? () => { selectedState = { cardIndex: null, action: null, adUse: { cardId: card.id } }; renderUI(); }
+                        : () => {
+                            selectedState = { cardIndex: null, action: null };
+                            socket.emit('ad_use', { cardId: card.id });
+                            App.blockInput = true;
+                            renderUI();
+                        };
                 }
                 if (!onClick) return;
                 if (tint != null) sprite.setTint(tint);
@@ -2997,6 +3093,17 @@ function drawMyArea(ctx) {
                     if (selectedState.jose) {
                         if (isBlueCard(card)) {
                             socket.emit('jose_delgado', { cardIdx: index });
+                            selectedState = { cardIndex: null, action: null };
+                            App.blockInput = true;
+                            renderUI();
+                        }
+                        return;
+                    }
+                    // Ozbrojení a nebezpeční – Bass Greeves: klik = odhoď tuhle kartu → 2 ⛁
+                    // na jedno místo (pak fáze AD_PLACE). Vynucenou kartu (Právo západu) ne.
+                    if (selectedState.adBass) {
+                        if (adBassCardOk(state, myIndex, card)) {
+                            socket.emit('ad_bass', { cardId: card.id });
                             selectedState = { cardIndex: null, action: null };
                             App.blockInput = true;
                             renderUI();
@@ -3851,6 +3958,57 @@ function drawMyArea(ctx) {
             selectedState.adPay = [];
         }
 
+        // ── Ozbrojení a nebezpeční – schopnosti postav fáze A3 (slot schopnosti) ────
+        // Bass Greeves: zapne výběr karty v ruce (odhodí ji → 2 ⛁ na jedno místo).
+        // Frankie Canton: zapne výběr zdroje (Nebezpečná karta kohokoli / cizí postava).
+        // Red Ringo: rovnou fáze AD_PLACE (až 2 ⛁ z postavy na své karty).
+        const _adAbil = adBassOk(state, myIndex) ? { key: 'adBass', label: '🃏 BASS: odhoď kartu → 2 ⛁' }
+            : adFrankieOk(state, myIndex) ? { key: 'adFrankie', label: '🤏 FRANKIE: vezmi 1 ⛁' }
+            : adRingoOk(state, myIndex) ? { key: 'adRingo', label: '➡ RED RINGO: ⛁ na karty' } : null;
+        if (_adAbil && selectedState.cardIndex == null) {
+            const _abOn = !!selectedState[_adAbil.key];
+            const { bg: _abBtn, txt: _abTxt } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH,
+                _abOn ? 'zrušit ↩' : _adAbil.label, {
+                ...themeToggleStyle(_abOn), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    if (_adAbil.key === 'adRingo') {
+                        socket.emit('ad_ringo', {});
+                        selectedState = { cardIndex: null, action: null };
+                        App.blockInput = true;
+                    } else {
+                        selectedState = _abOn ? { cardIndex: null, action: null }
+                                              : { cardIndex: null, action: null, [_adAbil.key]: true };
+                    }
+                    renderUI();
+                },
+            });
+            if (_abTxt.width > 320) _abTxt.setScale(320 / _abTxt.width);
+            if (App.blockInput) { _abBtn.setAlpha(0.45); _abBtn.disableInteractive(); }
+        }
+        if (selectedState.adBass && !adBassOk(state, myIndex)) delete selectedState.adBass;
+        if (selectedState.adFrankie && !adFrankieOk(state, myIndex)) delete selectedState.adFrankie;
+
+        // Nabitý Paklíč / Bič čeká na klik na postavu – tlačítko výběr ruší.
+        if (selectedState.adUse) {
+            const _auCard = adFindCard(me, selectedState.adUse.cardId);
+            if (!_auCard || !adUseOk(state, myIndex, _auCard)) {
+                delete selectedState.adUse;
+            } else {
+                const _auSlot = abilExtraSlot(L, _abilX);
+                const { bg: _auBtn, txt: _auTxt } = themeButton(gameScene, _auSlot.x, _auSlot.y, _auSlot.w, _auSlot.h,
+                    `${_auCard.name.toUpperCase()}: vyber hráče ↩`, {
+                    ...themeToggleStyle(true), fontSize: '20px',
+                    onClick: () => {
+                        if (App.blockInput) return;
+                        selectedState = { cardIndex: null, action: null };
+                        renderUI();
+                    },
+                });
+                if (_auTxt.width > _auSlot.w - 20) _auTxt.setScale((_auSlot.w - 20) / _auTxt.width);
+            }
+        }
+
         // ── Údolí stínů – Dvojitá rána: zrušit vybranou / připojenou ─────────────
         // Hraje se jako karta (bug U): vybírá se klikem na ni a na kartu BANG! v ruce
         // (decideCardClick), tohle tlačítko jen říká, na co se čeká, a výběr ruší. Sedí NAD
@@ -4495,7 +4653,11 @@ function drawPhaseOverlays(ctx) {
                 `⛁ Rozmísti ${_ap.left} ${_ap.left === 1 ? 'žeton' : (_ap.left < 5 ? 'žetony' : 'žetonů')} nabití${_apWhy ? ' (' + _apWhy + ')' : ''}`,
                 { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
             mAdd(l1, 206);
-            let l2 = gameScene.add.text(960, 112, 'Klikni na svou Nebezpečnou kartu nebo postavu – zbytek můžeš nechat v zásobě',
+            // Bass Greeves: obě na jedno místo, nechat nejde; Red Ringo: jen na karty.
+            const _apHint = _ap.oneTarget ? 'Klikni na svou Nebezpečnou kartu nebo postavu – oba žetony půjdou tam'
+                : _ap.from === 'CHAR' ? 'Klikni na svou Nebezpečnou kartu – zbytek může zůstat na postavě'
+                : 'Klikni na svou Nebezpečnou kartu nebo postavu – zbytek můžeš nechat v zásobě';
+            let l2 = gameScene.add.text(960, 112, _apHint,
                 { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
             mAdd(l2, 206);
         } else {
@@ -4519,7 +4681,9 @@ function drawPhaseOverlays(ctx) {
         const _quick = selectedState.adUp && adPaySelCard()?.type === 'Rychlopalba';
         const _done = selectedState.adMex ? 'Zaplaceno – klikni na cíl v dostřelu (Mexicali Kid)'
             : selectedState.adDuck ? 'Zaplaceno – klikni na Skrč se! v ruce'
-            : _quick ? `Zaplaceno – vyber ${1 + selectedState.adUp} různé cíle (${(selectedState.adTargets || []).length} vybráno)`
+            : (_quick || selectedState.action === 'Šíp')
+                ? `Zaplaceno – vyber ${1 + selectedState.adUp} různé cíle (${(selectedState.adTargets || []).length} vybráno)`
+            : selectedState.action === 'Squaw' ? 'Zaplaceno – klikni na hráče, jehož kartu ve hře si vezmeš'
             : selectedState.action === 'SHOOT' ? 'Zaplaceno – klikni na cíl'
             : 'Zaplaceno – zahraj kartu klikem na odhazovací balíček';
         let l2 = gameScene.add.text(960, 112, _paid >= _need
@@ -4527,6 +4691,26 @@ function drawPhaseOverlays(ctx) {
             : 'Klikni na svou postavu nebo Nebezpečnou kartu, odkud žeton vezmeš',
             { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
         mAdd(l2, 206);
+    }
+
+    // ── Ozbrojení a nebezpeční – fáze A3: na co se čeká (bez platby) ────────────
+    const _adHint = adPayNeed() > 0 ? null
+        : selectedState.adBass ? '🃏 Bass Greeves – klikni na kartu v ruce, kterou odhodíš (pak 2 ⛁ na jedno místo)'
+        : selectedState.adFrankie ? '🤏 Frankie Canton – klikni na Nebezpečnou kartu nebo cizí postavu se žetonem'
+        : selectedState.adUse ? '🎯 Klikni na hráče – ' + (adFindCard(state.players[myIndex], selectedState.adUse.cardId)?.type === 'Paklíč'
+            ? 'vezmeš mu náhodnou kartu z ruky (Paklíč)' : 'odhodíš mu kartu ve hře (Bič, i sobě)')
+        : (selectedState.action === 'Šíp' && selectedState.cardIndex != null)
+            ? `🏹 Šíp – vyber ${1 + (selectedState.adUp || 0)} ${(selectedState.adUp || 0) ? 'různé cíle' : 'cíl'} (bez ohledu na vzdálenost)`
+        : (selectedState.action === 'Squaw' && selectedState.cardIndex != null)
+            ? 'Squaw – klikni na hráče (i sebe), jehož kartu ve hře odhodíš'
+        : null;
+    if (_adHint && myIndex != null && state.phase === 'PLAY' && state.currentPlayerIndex === myIndex) {
+        let bg = gameScene.add.rectangle(960, 92, 1120, 64, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, 0xffcc44);
+        mAdd(bg, 205);
+        let l1 = gameScene.add.text(960, 92, _adHint, { fontSize: '24px', color: '#ffdd88' }).setOrigin(0.5);
+        if (l1.width > 1090) l1.setScale(1090 / l1.width);
+        mAdd(l1, 206);
     }
 
     // ── Údolí stínů – okno úniku: „vyhneš se kartě X?" ───────────────────────────

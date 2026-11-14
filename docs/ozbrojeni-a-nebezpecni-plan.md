@@ -99,6 +99,42 @@ Co se v A2 udělalo jinak / navíc proti textu níž:
   schopnosti (platba → klik na cíl), Rychlopalba sbírá cíle do `selectedState.adTargets`.
   Platební model klienta (`adPayNeed`) zná kromě vylepšení i `adDuck` a `adMex`.
 
+**Stav (2026-11-14): hotová fáze A3 (ruce a stoly).** Do balíčku jde 26 karet (+ Šíp, Paklíč,
+Bič, Squaw, Rez), do výběru postav navíc Bass Greeves, Frankie Canton a Red Ringo (`AD_READY`).
+Mimo balíček zbývají Bomba (A4) a Stepní běžec (A5). Testy: `test/ad.hands.test.js` (20)
+a zátěž `test/ad.load.test.js` rozšířená o A3 (tři nové postavy jako jediná nabídka výběru,
+dvě partie navíc); `npm test` = 2094.
+
+Co se v A3 udělalo jinak / navíc proti textu níž:
+- **Šíp jede po cestě Indiánů**: `pendingResponse` s `sourceCard: INDIANS`, `requiredCard:
+  BANG!`, `sourceCardName: 'Šíp'` a `adArrow: true`; seznam cílů drží `_adArrow.queue`
+  a `_advanceMassAttack` se na něj na prvním řádku ptá (`_adArrowNext`). Obrana, záchrana
+  posledního života, brána Obětavého skoku, Molly i klient/bot tak fungují beze změny. Jediný
+  cíl má okno úniku (`resume.kind === 'AD_ARROW'` v `_evadeContinue`). Šíp nejde na sebe ani
+  na Ducha (`adArrowTargets`); Apache Kid se přeskočí (♦).
+- **Paklíč** = výběr karty cesty Paniky s `ignoreDistance` a oblastí danou předem (`pick:
+  hand`) – Útěk/Mick i Henry Block fungují samy. Animaci (`ragtime_steal` se `stolenIndex`)
+  posílá handler `ad_use`, po odmítnutém úniku ji pošle existující `vos_evade`.
+- **Bič a Squaw** = výběr karty cíle s `adNoHand` (`resolveCardSelection` ruku odmítne),
+  Squaw s vylepšením jako Panika (karta do ruky). Na sebe okno úniku nevzniká. Squaw je 3♦,
+  takže Apache Kid je imunní (jako na Cat Balou). Animují se obyčejnou cestou výběru karty.
+- **Akce:** `ad_use { cardId, targetIdx }` (Paklíč, Bič), `play_special { up, pay, extra }`
+  (Šíp, Squaw), `ad_bass { cardId }`, `ad_frankie { seat, cardId }`, `ad_ringo` – žádné
+  obecné `ad_ability` (vzor `ad_mexicali`).
+- **`AD_PLACE`** dostal `oneTarget` (Bass: jeden klik položí obě, „nechat v zásobě" nejde),
+  `from: 'CHAR'` (Red Ringo: `_adMove` z postavy, cílem jen jeho karty) a `direct` (fáze
+  založená ze schopnosti, konec → PLAY + fronta). `adPlaceTargets` čte `pendingAdPlace.from`
+  sám (`adPlaceTargetsFrom`), takže klient i bot se ptají pořád jedním dotazem.
+- Red Ringo dostane 4 žetony v `_adDealRingo` (oba body „všichni si vybrali" v setup.js).
+- Doroty smí poručit Paklíč, Bič a Rez, Lee Van Kliff smí zopakovat Rez. **Šíp a Squaw
+  zatím ani jedno** (cíle bez vzdálenosti by potřebovaly nové větve v `dorothyTargets`
+  a `lvkTargetOk`) – na A7.
+- Lety kostiček (`ad_move`) zatím nejsou – žetony se jen objeví/zmizí se stavem.
+- Klient: Šíp/Squaw jako vlastní akce karty (klik na postavu, Šíp s vylepšením sbírá 1 + N
+  cílů), Paklíč/Bič se klikem na kartu „nabijí" (`selectedState.adUse`) a míří klikem na
+  postavu, schopnosti tlačítkem ve slotu schopnosti (`selectedState.adBass` / `adFrankie`,
+  Red Ringo rovnou), banner nahoře říká, na co se čeká.
+
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho
 >    bere. Automaticky běží jen to, kde pravidla volbu nedávají (cena Nebezpečné karty se

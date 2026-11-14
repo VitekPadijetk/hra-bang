@@ -318,7 +318,7 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A2 hotové)
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A3 hotové)
 
 Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
 (texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
@@ -348,3 +348,9 @@ trychtýřem `_adShotCanceled`** (Barel, Vedle!, Útěk, Bedna) a **Big Fifty dr
 na cíli** – `hasAbility` pak nic nepovolí; každý nový konec obrany musí volat `_adShotEnd()`
 (konec `handleResponse` je vytažený do `_respondAdvance`). Buntline odhazuje fází Brokovnice
 (`SHOTGUN_DISCARD` s `label`).
+
+Hotová je i fáze **A3 (ruce a stoly)** – 26 karet, postavy Bass Greeves, Frankie Canton
+a Red Ringo. **Šíp jede po cestě Indiánů** (`sourceCard: INDIANS` + `_adArrow.queue`, na které
+se ptá `_advanceMassAttack`), Paklíč/Bič/Squaw po cestě Paniky/Cat Balou s `ignoreDistance`
+(Bič a Squaw navíc `adNoHand` – z ruky ne). **`adPlaceTargets` čte `pendingAdPlace.from`**
+(Red Ringo rozmisťuje z postavy jen na karty), Bass má `oneTarget`.
