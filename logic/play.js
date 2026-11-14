@@ -147,6 +147,8 @@ const PlayMixin = {
                 if (adUp) this._adPay(this.currentPlayerIndex, opts.pay);
                 return this._adBrownEffect(this.currentPlayerIndex, card.type, adUp);
             },
+            // Rez: žetony ostatních na postavu (nehratelný, když nikdo jiný nic nemá).
+            [CardType.AD_RUST]: () => this._adBrownEffect(this.currentPlayerIndex, card.type),
         };
 
         const effect = cardEffects[card.type];
@@ -409,7 +411,10 @@ const PlayMixin = {
         }
     },
 
-    playSpecialCard(attIdx, tarIdx, cardIdx) {
+    // `adOpts` = Ozbrojení a nebezpeční: `{ up, pay, extra }` – vylepšení Šípu (další cíle
+    // `extra`, jeden za vylepšení) a Squaw (karta do ruky). Ověří se dřív, než karta
+    // opustí ruku; platí se až těsně před efektem. Zuřivá Doroty a LVK hrají bez nich.
+    playSpecialCard(attIdx, tarIdx, cardIdx, adOpts = null) {
         if (this.currentPlayerIndex !== attIdx) return;
         const attacker = this.players[attIdx];
         if (!attacker || !attacker.hand[cardIdx]) return;
@@ -429,6 +434,18 @@ const PlayMixin = {
         const target = tarIdx !== null ? this.players[tarIdx] : null;
         // Údolí stínů – Duel s Duchem nemá smysl: prohrát (ztratit život) nemůže.
         if (cardType === CardType.DUEL && isVosGhost(target)) return;
+        // Ozbrojení a nebezpeční – Šíp (na kohokoli, další cíle za vylepšení) a Squaw
+        // (karta ve hře kohokoli, i vlastní). Cíle i platba se ověří PŘED zahráním (R18).
+        const _adUp = (adOpts && adOpts.up) || 0;
+        const _adPayArr = (adOpts && adOpts.pay) || [];
+        if (cardType === CardType.AD_ARROW || cardType === CardType.AD_SQUAW) {
+            const c0 = attacker.hand[cardIdx];
+            if (!adUpgradeOk(this, attIdx, c0, _adUp, _adPayArr)) return;
+            if (cardType === CardType.AD_ARROW) {
+                const extra = (adOpts && adOpts.extra) || [];
+                if (extra.length !== _adUp || !adArrowOk(this, attIdx, tarIdx, extra)) return;
+            } else if (!adBoardTargets(this, attIdx).includes(tarIdx)) return;
+        } else if (_adUp || _adPayArr.length) return;
         const card = attacker.hand.splice(cardIdx, 1)[0];
 
         if (card) this._trackCard(attIdx, card.type);
@@ -492,6 +509,27 @@ const PlayMixin = {
                 targetIdx: tarIdx,
                 sourceCardType: card.type,
             }, { evade: card.name });
+            return;
+        }
+        else if (card.type === CardType.AD_ARROW) {
+            // Šíp: platba vylepšení, pak obrana cíl po cíli (logic/armed.js).
+            this.deck.discard(card);
+            if (_adUp) this._adPay(attIdx, _adPayArr);
+            this.checkSuzyLafayette(attacker);
+            this._adArrowStart(attIdx, [tarIdx].concat((adOpts && adOpts.extra) || []), card);
+            return;
+        }
+        else if (card.type === CardType.AD_SQUAW) {
+            // Squaw: jako Bič z ruky; s vylepšením jde odhozená karta do ruky hráče.
+            this.deck.discard(card);
+            if (_adUp) this._adPay(attIdx, _adPayArr);
+            // Apache Kid: kárová karta (Squaw je 3♦) na něj nemá efekt – jako Cat Balou.
+            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
+                this.checkSuzyLafayette(attacker);
+                this._processSpecialQueue();
+                return;
+            }
+            this._adBoardDiscard(attIdx, tarIdx, card.name, _adUp > 0);
             return;
         }
         else if (card.type === CardType.DUEL) {
@@ -590,6 +628,8 @@ const PlayMixin = {
         // pravidlo jako ve startDiscardExtra, kde se cíl volí předem – tady se cílová
         // karta vybírá až po zahrání (Lee Van Kliff opakuje efekt, ne aktivaci).
         if (sel.ignoreDistance && sel.attackerIdx === sel.targetIdx && targetCardArea === 'hand') return;
+        // Ozbrojení a nebezpeční – Bič a Squaw: „má vliv pouze na karty ve hře".
+        if (sel.adNoHand && targetCardArea === 'hand') return;
 
         const attacker = this.players[sel.attackerIdx];
         const target = this.players[sel.targetIdx];
@@ -682,6 +722,8 @@ const PlayMixin = {
     },
 
     _advanceMassAttack(currentPlayerIdx, originatorIdx, sourceCard) {
+        // Ozbrojení a nebezpeční – Šíp jede po cestě Indiánů, jen se svým seznamem cílů.
+        if (sourceCard === CardType.INDIANS && this._adArrow) { this._adArrowNext(originatorIdx); return; }
         let nextTarget = (currentPlayerIdx + 1) % this.players.length;
         let loopCount = 0;
 

@@ -63,6 +63,8 @@ module.exports = function installActionGuard(ctx) {
         'ad_place', 'ad_place_done', 'ad_use',
         // Fáze A2: Bedna (obránce v RESPOND / BARREL_DRAW) a Mexicali Kid (hráč na tahu).
         'ad_crate', 'ad_mexicali',
+        // Fáze A3: schopnosti Bass Greeves, Frankie Canton a Red Ringo (hráč na tahu).
+        'ad_bass', 'ad_frankie', 'ad_ringo',
     ]);
 
     // Akce mimo pořadí (Sid Ketchum léčí kdykoli, i v cizím tahu) – tady nelze

@@ -38,10 +38,10 @@ function checkLoads(gs, tag) {
 // Fáze A1: karty jdou do HLAVNÍHO balíčku – data se namnoží (hotové druhy × 5), ať se
 // rozmisťování, použití Nebezpečných karet, Bandalír i vylepšení v každé hře opravdu
 // dostanou ke slovu. Hlídá, že se hra jen botů na fázi AD_PLACE nezasekne.
-test('Ozbrojení a nebezpeční (A1–A2): hra jen botů doběhne 3–8 hráčů, samo i se vším', () => {
+test('Ozbrojení a nebezpeční (A1–A3): hra jen botů doběhne 3–8 hráčů, samo i se vším', () => {
     const READY = ['Eso v rukávu', 'Bečka piva', 'Zvonice', 'Bandalír', 'Nabíjení', 'Kolona', 'Malý doušek',
                    'Big Fifty', 'Buntline Special', 'Dvouhlavňovka', 'Thunderer', 'Bedna', 'Skrč se!',
-                   'Křesadlovka', 'Rychlopalba'];
+                   'Křesadlovka', 'Rychlopalba', 'Šíp', 'Paklíč', 'Bič', 'Squaw', 'Rez'];
     let nid = 60000;
     const rich = [];
     for (let copy = 0; copy < 5; copy++) {
@@ -54,6 +54,8 @@ test('Ozbrojení a nebezpeční (A1–A2): hra jen botů doběhne 3–8 hráčů
     const COMBOS = [];
     for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
     COMBOS.push({ n: 4, all: true }, { n: 6, all: true }, { n: 8, all: true });
+    // Fáze A3 naředila balíček – dvě partie navíc, ať se každý efekt v sadě objeví.
+    COMBOS.push({ n: 5, all: false }, { n: 7, all: true });
 
     const seen = new Set();
     try {
@@ -77,13 +79,19 @@ test('Ozbrojení a nebezpeční (A1–A2): hra jen botů doběhne 3–8 hráčů
                 if ((e.ev === 'play' || e.ev === 'bang' || e.ev === 'special') && READY.includes(e.card)) seen.add(e.card);
                 if (e.ev === 'play' && e.up) seen.add('vylepšení');
                 if (e.ev === 'ad_use') seen.add('použití ' + e.card);
-                if ((e.ev === 'bang' || e.ev === 'special') && (e.card === 'Mexicali Kid' || e.card === 'Bloody Mary')) seen.add(e.card);
+                if ((e.ev === 'bang' || e.ev === 'special') && ['Mexicali Kid', 'Bloody Mary', 'Bass Greeves',
+                    'Frankie Canton'].includes(e.card)) seen.add(e.card);
                 if (e.ev === 'ad_place') seen.add('rozmístění ' + e.reason);
             };
             gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
             // Fáze A2: postavy Mexicali Kid a Bloody Mary dostanou dva boti natvrdo.
             if (gs.players[1]) gs.players[1].character = 'Mexicali Kid';
             if (gs.players[2]) gs.players[2].character = 'Bloody Mary';
+            // Fáze A3: Frankie Canton, Bass Greeves a Red Ringo jako jediná nabídka výběru –
+            // vyberou si je sami, takže Red Ringo dostane 4 žetony při rozdání postav.
+            [[0, 'Frankie Canton'], [3, 'Bass Greeves'], [4, 'Red Ringo']].forEach(([k, name]) => {
+                if (gs.players[k] && !gs.players[k].character) gs.players[k].charChoices = [name];
+            });
             gs.players.forEach(p => ctx.createBot(room, p.name));
             const guard = pumpToWinner(ctx, room, (st) => checkLoads(st, tag));
             assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
@@ -94,7 +102,8 @@ test('Ozbrojení a nebezpeční (A1–A2): hra jen botů doběhne 3–8 hráčů
     for (const what of [...READY, 'vylepšení', 'použití Eso v rukávu', 'použití Bečka piva',
                         'použití Bandalír', 'rozmístění BLUE', 'rozmístění DISCARD', 'rozmístění RELOAD',
                         'použití Bedna', 'použití Thunderer', 'použití Buntline Special', 'použití Big Fifty',
-                        'Mexicali Kid', 'Bloody Mary']) {
+                        'Mexicali Kid', 'Bloody Mary', 'použití Paklíč', 'použití Bič',
+                        'Bass Greeves', 'Frankie Canton', 'rozmístění BASS', 'rozmístění RINGO']) {
         assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
     }
 });

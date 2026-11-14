@@ -137,27 +137,47 @@ const ArmedMixin = {
 
     // Založ fázi rozmisťování. Volá se jen tehdy, když je kam žetony dát (fronta
     // neplatné položky vyhází v _pruneSuzyQueue, odhoz se ptá sám).
-    _adStartPlace(playerIdx, n, reason) {
-        this.pendingAdPlace = { playerIdx, left: n, reason };
+    // `opts` (fáze A3): `oneTarget` – všechny žetony na jedno místo jedním klikem (Bass
+    // Greeves), `from: 'CHAR'` – žetony jdou z postavy, ne ze zásoby (Red Ringo),
+    // `direct` – fáze se zakládá přímo z PLAY (schopnost), ne z fronty odložených akcí.
+    _adStartPlace(playerIdx, n, reason, opts = {}) {
+        this.pendingAdPlace = { playerIdx, left: n, reason,
+                                ...(opts.oneTarget ? { oneTarget: true } : {}),
+                                ...(opts.from ? { from: opts.from } : {}),
+                                ...(opts.direct ? { direct: true } : {}) };
         this.phase = "AD_PLACE";
         this.logEvent('ad_place', { who: this.players[playerIdx]?.name, n, reason });
     },
 
-    // Klik na kartu / postavu: položí se 1 žeton ze zásoby. Vrací true, když prošel.
+    // Klik na kartu / postavu: položí se 1 žeton ze zásoby (Red Ringo: z postavy; Bass
+    // Greeves: všechny naráz). Vrací true, když prošel.
     adPlace(playerIdx, seat, cardId) {
         const pa = this.pendingAdPlace;
         if (this.phase !== "AD_PLACE" || !pa || pa.playerIdx !== playerIdx) return false;
         if (!adPlaceOk(this, playerIdx, seat, cardId)) return false;
-        if (this._adAdd(this._adAt(seat, cardId), 1) <= 0) return false;
+        const dst = this._adAt(seat, cardId);
+        if (pa.oneTarget) {
+            // Bass Greeves: „nemůžete dát po jednom žetonu na dvě různé karty". Co se nad
+            // strop nevejde, propadá (pokyn se ignoruje).
+            if (this._adAdd(dst, pa.left) <= 0) return false;
+            this._adFinishPlace();
+            return true;
+        }
+        const got = pa.from === 'CHAR' ? this._adMove(this.players[playerIdx], dst, 1)
+                                       : this._adAdd(dst, 1);
+        if (got <= 0) return false;
         pa.left--;
         if (pa.left <= 0 || adPlaceTargets(this, playerIdx).length === 0) this._adFinishPlace();
         return true;
     },
 
-    // „Nechat v zásobě": zbytek žetonů hráč nerozmístí.
+    // „Nechat v zásobě": zbytek žetonů hráč nerozmístí. Bass Greeves ne – kartu už
+    // odhodil a žetony dát musí (aspoň jeden klik); fáze se pro něj zakládá, jen když
+    // je kam, a končí, jakmile místo dojde.
     adPlaceDone(playerIdx) {
         const pa = this.pendingAdPlace;
         if (this.phase !== "AD_PLACE" || !pa || pa.playerIdx !== playerIdx) return false;
+        if (pa.oneTarget && adPlaceTargets(this, playerIdx).length > 0) return false;
         this._adFinishPlace();
         return true;
     },
@@ -169,6 +189,13 @@ const ArmedMixin = {
             // Odhoz nad limit byl poslední krok tahu – teprve teď se tah posune.
             this.phase = "DISCARD";
             this.nextTurn();
+            return;
+        }
+        if (pa && pa.direct) {
+            // Schopnost postavy (Bass, Red Ringo) – zpátky do PLAY; Suzy, která odhozem
+            // vyprázdnila ruku, si lízne teď (fronta).
+            this.phase = "PLAY";
+            this._processSpecialQueue();
             return;
         }
         this._resumeAfterSpecial();
@@ -202,11 +229,13 @@ const ArmedMixin = {
     // Klik na vlastní oranžovou kartu ve fázi PLAY. Cena se platí z té karty (volba
     // není); když ji vyprázdní, karta odejde PŘED efektem. Co je klikací, říká adUseOk
     // (core/armed.js) – tentýž dotaz má klient i bot. Vrací true, když se použila.
-    adUse(playerIdx, cardId) {
+    // `targetIdx` = cíl Paklíče / Biče (adUseTargetOk – posuzuje se před platbou).
+    adUse(playerIdx, cardId, targetIdx = null) {
         const p = this.players[playerIdx];
         const card = p ? adFindCard(p, cardId) : null;
         if (!card || !adUseOk(this, playerIdx, card)) return false;
         const type = card.type;
+        if (AD_USE_AIMED.includes(type) && !adUseTargetOk(this, playerIdx, card, targetIdx)) return false;
         this._adTake(card, adCardCost(card));
         this.logEvent('ad_use', { who: p.name, card: card.name });
         if (type === CardType.AD_ACE) {
@@ -222,8 +251,29 @@ const ArmedMixin = {
         } else if (type === CardType.AD_BELL_TOWER) {
             // Zvonice: příští zahraná karta vidí všechny ve vzdálenosti 1 (adBellActive).
             p._adBell = { turn: this.turnId, at: p._playedThisTurn || 0 };
+        } else if (type === CardType.AD_LOCK_PICK) {
+            // Paklíč: náhodná karta z ruky libovolného hráče – cesta Paniky jen pro ruku,
+            // bez vzdálenosti. Útěk / Mick Defender se smí vyhnout (jediný cíl), Henry
+            // Block střílí (resolveCardSelection). Oblast je daná předem (`pick`).
+            this._enterTargetSelection({ attackerIdx: playerIdx, targetIdx,
+                                         sourceCardType: CardType.PANIC, ignoreDistance: true,
+                                         adSource: card.name },
+                                       { evade: card.name, pick: { area: 'hand', boardIdx: null } });
+        } else if (type === CardType.AD_WHIP) {
+            // Bič: odhoď libovolnou kartu ve hře – i u sebe (R6), bez vzdálenosti, ne z ruky.
+            this._adBoardDiscard(playerIdx, targetIdx, card.name, false);
         }
         return true;
+    },
+
+    // Bič a Squaw: výběr karty ve hře cíle (cesta Cat Balou, u Squaw s vylepšením cesta
+    // Paniky – karta do ruky), bez vzdálenosti a bez ruky (`adNoHand`). Cizímu hráči se
+    // smí vyhnout (Útěk, Mick); na sebe okno úniku nevzniká (vosEvadable).
+    _adBoardDiscard(attackerIdx, targetIdx, name, take) {
+        this._enterTargetSelection({ attackerIdx, targetIdx,
+                                     sourceCardType: take ? CardType.PANIC : CardType.CAT_BALOU,
+                                     ignoreDistance: true, adNoHand: true, adSource: name },
+                                   { evade: name });
     },
 
     // Bandalír: BANG! nad limit projde, když Bandalír v tomhle tahu ještě nepomohl
@@ -262,7 +312,121 @@ const ArmedMixin = {
             // Malý doušek: +1 život (+1 za vylepšení). Není to karta Pivo (R11).
             return this._heal(p, 1 + up) > 0;
         }
+        if (type === CardType.AD_RUST) return this._adRust(playerIdx);
         return false;
+    },
+
+    // ── Fáze A3: ruce a stoly (§4, §5) ──────────────────────────────────────────
+
+    // Rez: „Všichni ostatní hráči musí odstranit po 1 ⛁ z každé své Nebezpečné karty
+    // a z postavy. Všechny takto odstraněné ⛁ položte na svou postavu (do limitu 4)
+    // a zbytek vraťte do zásoby." Po směru od hráče; vyčerpané karty se odhodí
+    // (_adMove → _adDeplete). Henry Block nestřílí – žetony nejsou karty (R22).
+    _adRust(playerIdx) {
+        if (!adRustOk(this, playerIdx)) return false;
+        const me = this.players[playerIdx];
+        const n = this.players.length;
+        let moved = 0;
+        for (let k = 1; k < n; k++) {
+            const q = this.players[(playerIdx + k) % n];
+            if (!isInPlay(q)) continue;
+            adCardsInPlay(q).slice().forEach(c => {
+                if ((c.adLoads || 0) > 0) { this._adMove(c, me, 1); moved++; }
+            });
+            if ((q.adLoads || 0) > 0) { this._adMove(q, me, 1); moved++; }
+        }
+        this.logEvent('special', { who: me.name, card: 'Rez', msg: `sebral ${moved} ⛁ (na postavě ${me.adLoads || 0})` });
+        return true;
+    },
+
+    // Šíp: každý cíl odhodí kartu BANG! (co bere obrana proti Indiánům – playsAsBang),
+    // nebo ztratí 1 život. Jede po cestě Indiánů (RESPOND s requiredCard BANG!), jen se
+    // seznamem cílů: `_adArrow.queue` čte _advanceMassAttack. Apache Kid je imunní (♦).
+    // Jediný cíl se smí vyhnout (Útěk, Mick Defender) – víc cílů ne.
+    _adArrowStart(attackerIdx, targets, card) {
+        this.missesRequired = 1;
+        this.missesPlayed = 0;
+        this._massAttackSuit = this._effSuit(card);
+        this._massAttackName = card.name;
+        this._adArrow = { queue: targets.slice() };
+        this.currentAttacker = attackerIdx;
+        if (targets.length === 1 &&
+            this._vosEvadeGate(attackerIdx, targets[0], card.name, { kind: 'AD_ARROW' })) return;
+        this._adArrowNext(attackerIdx);
+    },
+
+    // Další cíl Šípu (volá _advanceMassAttack i okno úniku). Přeskočí, kdo mezitím
+    // vypadl, Ducha a Apache Kida; po posledním se vrací do PLAY.
+    _adArrowNext(originatorIdx) {
+        const a = this._adArrow;
+        while (a && a.queue.length) {
+            const t = a.queue.shift();
+            const tp = this.players[t];
+            if (!isInPlay(tp) || isVosGhost(tp) || this._apacheImmune(t, this._massAttackSuit, originatorIdx)) continue;
+            this.pendingResponse = {
+                active: true, originatorIdx, targetIdx: t,
+                requiredCard: CardType.BANG, sourceCard: CardType.INDIANS,
+                sourceCardName: this._massAttackName || 'Šíp', responded: [], adArrow: true
+            };
+            this.missesRequired = 1;
+            this.missesPlayed = 0;
+            this.phase = "RESPOND";
+            return;
+        }
+        this._adArrow = null;
+        if (this.pendingResponse) this.pendingResponse.active = false;
+        this.phase = "PLAY";
+        this._processSpecialQueue();
+    },
+
+    // ── Postavy A3 ──────────────────────────────────────────────────────────────
+
+    // Red Ringo: „Začínáš se 4 ⛁" – jen při rozdání postav (R14), ne Vera Custer ani Nová
+    // identita. Volá se, když si všichni vyberou (nová i navazující hra).
+    _adDealRingo() {
+        if (!this._adOn()) return;
+        this.players.forEach(p => {
+            if (p && p.character === 'Red Ringo') this._adAdd(p, AD_RINGO_START, { fresh: true });
+        });
+    },
+
+    // Bass Greeves: odhoď 1 kartu z ruky → 2 ⛁ ze zásoby na JEDNO své místo (fáze
+    // AD_PLACE s `oneTarget`). Vrací odhozenou kartu (animace) nebo null.
+    adBass(playerIdx, cardId) {
+        if (!adBassOk(this, playerIdx)) return null;
+        const p = this.players[playerIdx];
+        const i = p.hand.findIndex(c => c && c.id === cardId);
+        if (i === -1 || !adBassCardOk(this, playerIdx, p.hand[i])) return null;
+        p._adBassTurn = this.turnId;
+        const card = p.hand.splice(i, 1)[0];
+        this.deck.discard(card);
+        this.logEvent('special', { who: p.name, card: 'Bass Greeves', taken: card.name, msg: 'odhazuje za 2 ⛁' });
+        this.checkSuzyLafayette(p);
+        this._adStartPlace(playerIdx, 2, 'BASS', { oneTarget: true, direct: true });
+        return card;
+    },
+
+    // Frankie Canton: 1 ⛁ z libovolné Nebezpečné karty ve hře nebo z cizí postavy na
+    // Frankieho. Vyčerpaná karta se odhodí (_adMove → _adDeplete). Vrací true.
+    adFrankie(playerIdx, seat, cardId) {
+        if (!adFrankieOk(this, playerIdx) || !adFrankieSourceOk(this, playerIdx, seat, cardId)) return false;
+        const p = this.players[playerIdx];
+        const src = this._adAt(seat, cardId);
+        p._adFrankieTurn = this.turnId;
+        this.logEvent('special', { who: p.name, card: 'Frankie Canton', target: this.players[seat]?.name,
+                                   taken: cardId == null ? 'postava' : src.name, msg: 'bere 1 ⛁' });
+        this._adMove(src, p, 1);
+        return true;
+    },
+
+    // Red Ringo: až 2 ⛁ z postavy na své Nebezpečné karty (fáze AD_PLACE s `from: 'CHAR'`;
+    // obě na jednu kartu, nebo po jedné; zbytek smí nechat na postavě).
+    adRingo(playerIdx) {
+        if (!adRingoOk(this, playerIdx)) return false;
+        const p = this.players[playerIdx];
+        p._adRingoTurn = this.turnId;
+        this._adStartPlace(playerIdx, Math.min(AD_RINGO_MOVE, p.adLoads || 0), 'RINGO', { from: 'CHAR', direct: true });
+        return true;
     },
 
     // ── Fáze A2: zbraně a výstřely (§2.10) ──────────────────────────────────────

@@ -660,7 +660,7 @@ test('debug_start s Ozbrojením a nebezpečnými: options, postavy a katalog kar
     const names = new Set(ctx.roomPayload(room, 0).gameState._cardData.map(c => c.name));
     assert.ok(names.has('Big Fifty') && names.has('Bedna') && names.has('Stepní běžec'));
     assert.ok(!names.has('Bomba'), 'Bomba přijde až s fází A4');
-    assert.ok(!names.has('Šíp'), 'hnědé karty bez efektu do katalogu nejdou');
+    assert.ok(names.has('Šíp') && names.has('Squaw'), 'hotové hnědé karty (A3) jsou v katalogu');
     const env2 = mkEnv();
     env2.mkSocket('s2').fire('debug_start', { playerCount: 3, roles: [] });
     assert.equal([...env2.ctx.rooms.values()][0].gameState.options.expansions.ozbrojeni, false);

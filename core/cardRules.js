@@ -42,7 +42,9 @@ function getActionForCard(card, character) {
     if (card.type === "Roztříštěná kulka") return "FANNING";
     // Údolí stínů: Chřestýš a Odměna se vykládají před cíl (libovolného hráče, i sebe),
     // Duch před vyřazeného hráče (vosPlaceTargetOk, core/valley.js).
-    if (["Panika!", "Cat Balou", "Duel", "Vězení", "Chřestýš", "Odměna", "Duch"].includes(card.type)) {
+    // Ozbrojení a nebezpeční: Šíp (cíle bez vzdálenosti) a Squaw (karta ve hře kohokoli).
+    if (["Panika!", "Cat Balou", "Duel", "Vězení", "Chřestýš", "Odměna", "Duch",
+         "Šíp", "Squaw"].includes(card.type)) {
         return card.type;
     }
     if (["Zbraň", "Barel", "Vybavení", "Dynamit"].includes(card.type)) {

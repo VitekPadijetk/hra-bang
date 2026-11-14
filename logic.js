@@ -113,6 +113,24 @@ if (typeof adOn === 'undefined' && typeof require === 'function') {
     globalThis.AD_MEXICALI_COST = __ad.AD_MEXICALI_COST;
     globalThis.adMexicaliOk = __ad.adMexicaliOk;
 }
+// Ozbrojení a nebezpeční – fáze A3 (ruce a stoly). Samostatný guard: blok výš se
+// přeskočí, kdyby adOn natáhl dřív někdo jiný.
+if (typeof adArrowOk === 'undefined' && typeof require === 'function') {
+    const __ad3 = require('./core/armed.js');
+    globalThis.adUseTargetOk = __ad3.adUseTargetOk;
+    globalThis.AD_USE_AIMED = __ad3.AD_USE_AIMED;
+    globalThis.adArrowTargets = __ad3.adArrowTargets;
+    globalThis.adArrowOk = __ad3.adArrowOk;
+    globalThis.adBoardTargets = __ad3.adBoardTargets;
+    globalThis.adRustOk = __ad3.adRustOk;
+    globalThis.adBassOk = __ad3.adBassOk;
+    globalThis.adBassCardOk = __ad3.adBassCardOk;
+    globalThis.adFrankieOk = __ad3.adFrankieOk;
+    globalThis.adFrankieSourceOk = __ad3.adFrankieSourceOk;
+    globalThis.adRingoOk = __ad3.adRingoOk;
+    globalThis.AD_RINGO_START = __ad3.AD_RINGO_START;
+    globalThis.AD_RINGO_MOVE = __ad3.AD_RINGO_MOVE;
+}
 // Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
 // globálů, takže by blok výš tyhle přeskočil.
 if (typeof shotgunActive === 'undefined' && typeof require === 'function') {

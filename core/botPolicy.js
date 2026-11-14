@@ -221,6 +221,20 @@ if (typeof require === 'function') {
         globalThis.adSources = __ad.adSources;
         globalThis.AD_MEXICALI_COST = __ad.AD_MEXICALI_COST;
     }
+    if (typeof adFrankieSources === 'undefined') {
+        const __ad3 = require('./armed.js');
+        globalThis.adArrowTargets = __ad3.adArrowTargets;
+        globalThis.adBoardTargets = __ad3.adBoardTargets;
+        globalThis.adLockPickTargets = __ad3.adLockPickTargets;
+        globalThis.adUseTargets = __ad3.adUseTargets;
+        globalThis.adRustOk = __ad3.adRustOk;
+        globalThis.adBassOk = __ad3.adBassOk;
+        globalThis.adBassCardOk = __ad3.adBassCardOk;
+        globalThis.adFrankieOk = __ad3.adFrankieOk;
+        globalThis.adFrankieSources = __ad3.adFrankieSources;
+        globalThis.adRingoOk = __ad3.adRingoOk;
+        globalThis.adPlaceTargetsFrom = __ad3.adPlaceTargetsFrom;
+    }
     // Zlatá horečka – obchod: „smí se koupit / donutit odhodit / vyměnit Pivo za valoun".
     // Stejné predikáty, jaké vynucuje server i klient (core/goldRush.js).
     if (typeof gearBuyOk === 'undefined') {
@@ -387,6 +401,80 @@ function adBotPay(state, myIndex, n) {
         for (let k = 0; k < s.loads && pay.length < n; k++) pay.push({ seat: myIndex, cardId: s.cardId });
     }
     return pay.length === n ? pay : null;
+}
+
+// ── Fáze A3: ruce a stoly (plán §6) ───────────────────────────────────────────
+// Žetony na postavě, které bot smí utratit za vylepšení: jen přebytek ze SVÉ postavy
+// (Nebezpečné karty si šetří na vlastní použití). Platba = adresy postavy.
+function adBotCharPay(myIndex, n) {
+    return Array.from({ length: n }, () => ({ seat: myIndex, cardId: null }));
+}
+
+// Smí bot cíli `idx` něco odhodit / vzít Bičem či Squaw a co (oblast + slot)? Cizímu
+// nepříteli nejcennější kartu, sobě (a spojenci) jen škodící kartu (Vězení, Dynamit…).
+// null = nic, co by stálo za to.
+function adBotBoardPick(state, myIndex, idx, friendly) {
+    const p = state.players[idx];
+    if (!p) return null;
+    const board = p.board || [];
+    if (friendly) {
+        const bad = board.findIndex(c => boardCardValue(c) < 0);
+        return bad !== -1 ? { area: 'board', cardIdx: bad, value: -boardCardValue(board[bad]) } : null;
+    }
+    let best = null;
+    if (p.weapon && p.weapon.id !== -1) best = { area: 'weapon', cardIdx: null, value: weaponValue(p.weapon) };
+    board.forEach((c, i) => {
+        const v = boardCardValue(c);
+        if (v > 0 && (!best || v > best.value)) best = { area: 'board', cardIdx: i, value: v };
+    });
+    return best && best.value > 1 ? best : null;
+}
+
+// Komu bot Bičem/Squaw sáhne na stůl: nejdřív sobě pro vlastní Vězení/Dynamit, pak
+// nepříteli na cennou kartu (bez ohledu na vzdálenost). Vrací { idx, pick } nebo null.
+function adBotBoardTarget(state, myIndex, beliefs) {
+    const ok = adBoardTargets(state, myIndex);
+    if (ok.includes(myIndex)) {
+        const own = adBotBoardPick(state, myIndex, myIndex, true);
+        if (own) return { idx: myIndex, pick: own };
+    }
+    const e = henryAwarePick(state, myIndex, rankEnemies(state, myIndex, beliefs, false),
+        x => ok.includes(x.idx) && !!adBotBoardPick(state, myIndex, x.idx, false));
+    return e ? { idx: e.idx, pick: adBotBoardPick(state, myIndex, e.idx, false) } : null;
+}
+
+// Šíp: nepřátelé, na které má smysl mířit (ne Apache Kid – Šíp je kárový).
+function adBotArrowTargets(state, myIndex, beliefs) {
+    const ok = adArrowTargets(state, myIndex);
+    return shootTargets(state, myIndex, beliefs).filter(e => ok.includes(e.idx) &&
+        !hasAbility(state.players[e.idx], 'Apache Kid'));
+}
+
+// Frankie Canton: odkud vzít žeton. Nejlépe z nepřítelovy karty na 1 žetonu (vybije
+// ji), pak z nepřítelovy karty / postavy s nejvíc žetony. Ze své karty ani od spojence ne.
+function adBotFrankiePick(state, myIndex, beliefs) {
+    let best = null;
+    adFrankieSources(state, myIndex).forEach(s => {
+        if (s.seat === myIndex) return;
+        if (hostilityOf(state, myIndex, s.seat, beliefs) <= ENEMY_EPS) return;
+        const p = state.players[s.seat];
+        const holder = s.cardId == null ? p : (adCardsInPlay(p).find(c => c.id === s.cardId) || null);
+        const n = (holder && holder.adLoads) || 0;
+        const score = s.cardId != null && n === 1 ? 10 : n;
+        if (!best || score > best.score) best = { seat: s.seat, cardId: s.cardId, score };
+    });
+    return best;
+}
+
+// Bass Greeves: kterou kartu odhodí (nejnižší keepScore, ne vynucenou Právem západu).
+function adBotBassCard(state, myIndex) {
+    const me = state.players[myIndex];
+    let best = null;
+    (me.hand || []).forEach(c => {
+        if (!adBassCardOk(state, myIndex, c)) return;
+        if (!best || keepScore(c) < keepScore(best)) best = c;
+    });
+    return best && keepScore(best) <= 4 ? best : null;
 }
 
 // Kolik má vybavení cenu pro KONKRÉTNÍHO hráče (fáze 8). Tabulka výš je cena „pro
@@ -1099,6 +1187,18 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
             const t = pick(i => inPlay(i) && hasCards(state.players[i]) && computeDistance(state, myIndex, i) <= maxDist);
             return t === -1 ? null : special(t);
         }
+        // Ozbrojení a nebezpeční – Šíp a Squaw (bez vzdálenosti, bez vylepšení).
+        case 'Šíp': {
+            const ok = adArrowTargets(state, myIndex);
+            const t = pick(i => ok.includes(i));
+            return t === -1 ? null : special(t);
+        }
+        case 'Squaw': {
+            const ok = adBoardTargets(state, myIndex);
+            const t = pick(i => ok.includes(i));
+            const tgt = t !== -1 ? t : (ok.includes(myIndex) ? myIndex : -1);
+            return tgt === -1 ? null : special(tgt);
+        }
         case 'DE_BANG': {
             const t = pick(alive);
             return t === -1 ? null : { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t } };
@@ -1305,6 +1405,32 @@ function decidePlay(state, myIndex, beliefs) {
             return;
         }
 
+        // ── Ozbrojení a nebezpeční (fáze A3) ─────────────────────────────────
+        // Šíp: nepřítel bez ohledu na vzdálenost; za každý žeton na postavě navíc další
+        // nepřítel (vylepšení 1 ⛁ = další, jiný cíl).
+        if (action === 'Šíp') {
+            const ts = adBotArrowTargets(state, myIndex, beliefs);
+            if (!ts.length) return;
+            const up = Math.min(ts.length - 1, adUpgradeMax(state, myIndex, card), me.adLoads || 0);
+            const extra = ts.slice(1, 1 + Math.max(0, up)).map(e => e.idx);
+            consider(27 + 3 * extra.length, { event: 'play_special', payload: {
+                attackerIdx: myIndex, targetIdx: ts[0].idx, cardIdx: i,
+                ...(extra.length ? { up: extra.length, extra, pay: adBotCharPay(myIndex, extra.length) } : {}) } });
+            return;
+        }
+        // Squaw: jako Cat Balou bez vzdálenosti (i vlastní Vězení); s vylepšením si cennou
+        // kartu nepřítele vezme do ruky, když má 2 žetony na postavě.
+        if (action === 'Squaw') {
+            const bt = adBotBoardTarget(state, myIndex, beliefs);
+            if (!bt) return;
+            const take = bt.idx !== myIndex && bt.pick.value >= 3 &&
+                adUpgradeMax(state, myIndex, card) >= 1 && (me.adLoads || 0) >= adUpgradeCost(card);
+            consider(bt.idx === myIndex ? 30 : 21 + bt.pick.value, { event: 'play_special', payload: {
+                attackerIdx: myIndex, targetIdx: bt.idx, cardIdx: i,
+                ...(take ? { up: 1, pay: adBotCharPay(myIndex, adUpgradeCost(card)) } : {}) } });
+            return;
+        }
+
         // ── Dodge City „odhoď další kartu" (cena = jedna postradatelná karta navíc) ──
         if (action === 'DE_BANG') { // Springfield: bang-efekt na libovolného nepřítele
             const tgt = shootTargets(state, myIndex, beliefs)[0];
@@ -1435,7 +1561,7 @@ function decidePlay(state, myIndex, beliefs) {
         if (card.dangerous && card.type !== T.WEAPON) {
             const hasBang = me.hand.some(c => c && c.id !== card.id && bangCardFromHand(state, me, myIndex, c));
             const v = { 'Eso v rukávu': 24, 'Bečka piva': 18, 'Zvonice': 12, 'Bandalír': hasBang ? 22 : 14,
-                        'Bedna': 26 }[card.type];
+                        'Bedna': 26, 'Paklíč': 16, 'Bič': 16 }[card.type];
             if (v) consider(v, intent);
             return;
         }
@@ -1449,6 +1575,17 @@ function decidePlay(state, myIndex, beliefs) {
         // Malý doušek: jako Poslední pivo (léčí jen ve svém tahu), s vylepšením.
         if (card.type === 'Malý doušek') {
             if (canHeal(me)) consider(me.health <= 2 ? 32 : 9, adBotUpgrade(state, myIndex, card, i, 2));
+            return;
+        }
+        // Rez: vyplatí se, když od nepřátel přiteče aspoň 2 žetony víc než od spojenců.
+        if (card.type === 'Rez') {
+            let gain = 0;
+            state.players.forEach((p, j) => {
+                if (j === myIndex || !isInPlay(p)) return;
+                const n = (p.adLoads ? 1 : 0) + adCardsInPlay(p).filter(c => (c.adLoads || 0) > 0).length;
+                gain += hostilityOf(state, myIndex, j, beliefs) > ENEMY_EPS ? n : -n;
+            });
+            if (gain >= 2 && (me.adLoads || 0) < 4) consider(14 + gain, intent);
             return;
         }
     });
@@ -1476,8 +1613,35 @@ function decidePlay(state, myIndex, beliefs) {
             if (!hasBang) return;
             const tg = shootTargets(state, myIndex, beliefs);
             if (tg.length && !tg.some(e => computeCanHit(state, myIndex, e.idx))) consider(48, use);
+            return;
+        }
+        // Paklíč: nepříteli s nejvíc kartami v ruce (bez vzdálenosti).
+        if (card.type === 'Paklíč') {
+            const ok = adUseTargets(state, myIndex, card);
+            const e = henryAwarePick(state, myIndex,
+                rankEnemies(state, myIndex, beliefs, false).slice().sort((a, b) => b.hand - a.hand),
+                x => ok.includes(x.idx));
+            if (e) consider(20 + Math.min(e.hand, 5), { event: 'ad_use', payload: { cardId: card.id, targetIdx: e.idx } });
+            return;
+        }
+        // Bič: jako Squaw bez vylepšení (vlastní Vězení/Dynamit, nebo cenná karta nepřítele).
+        if (card.type === 'Bič') {
+            const bt = adBotBoardTarget(state, myIndex, beliefs);
+            if (bt) consider(bt.idx === myIndex ? 30 : 21 + bt.pick.value,
+                { event: 'ad_use', payload: { cardId: card.id, targetIdx: bt.idx } });
         }
     });
+
+    // ── Ozbrojení a nebezpeční – schopnosti postav A3 (1× za tah) ───────────
+    if (adFrankieOk(state, myIndex)) {
+        const fp = adBotFrankiePick(state, myIndex, beliefs);
+        if (fp) consider(40 + fp.score, { event: 'ad_frankie', payload: { seat: fp.seat, cardId: fp.cardId } });
+    }
+    if (adRingoOk(state, myIndex)) consider(38, { event: 'ad_ringo', payload: {} });
+    if (adBassOk(state, myIndex)) {
+        const bc = adBotBassCard(state, myIndex);
+        if (bc) consider(12, { event: 'ad_bass', payload: { cardId: bc.id } });
+    }
 
     _showdownShot();   // Divoký západ – Zúčtování (viz výš)
 
@@ -2390,6 +2554,17 @@ function decideBotAction(state, myIndex, beliefs) {
             // Sam) je vždy „ber to nejlepší", tam se na nepřátelskost neohlížíme.
             const friendly = !sel.isVultureSplit && isInPlay(target)   // i Duch (Údolí stínů)
                 && hostilityOf(state, myIndex, sel.targetIdx, beliefs) < -ENEMY_EPS;
+            // Ozbrojení a nebezpeční – Bič a Squaw: jen karty ve hře, ruka ne (adNoHand).
+            // Sobě (vlastní Vězení, Dynamit) bot vybírá jako spojenci.
+            if (sel.adNoHand) {
+                const fr = friendly || sel.targetIdx === myIndex;
+                const pk = adBotBoardPick(state, myIndex, sel.targetIdx, fr)
+                    || adBotBoardPick(state, myIndex, sel.targetIdx, !fr)
+                    || ((target.weapon && target.weapon.id !== -1) ? { area: 'weapon', cardIdx: null }
+                        : { area: 'board', cardIdx: 0 });
+                return { event: 'select_target_card', payload: { attackerIdx: myIndex, targetIdx: sel.targetIdx,
+                                                                 area: pk.area, cardIdx: pk.cardIdx } };
+            }
             const { area, cardIdx } = chooseTargetCardArea(target, sel.sourceCardType, friendly);
             // targetIdx = pro koho se vybírá (guard tím pozná klik do starého stavu).
             return { event: 'select_target_card', payload: { attackerIdx: myIndex, targetIdx: sel.targetIdx, area, cardIdx } };

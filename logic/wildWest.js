@@ -1125,6 +1125,7 @@ const WildWestMixin = {
             case CardType.AD_CARAVAN:  return { effect: 'AD_CARAVAN',  aim: null };
             case CardType.AD_RELOAD:   return { effect: 'AD_RELOAD',   aim: null };
             case CardType.AD_NIP:      return { effect: 'AD_NIP',      aim: null };
+            case CardType.AD_RUST:     return { effect: 'AD_RUST',     aim: null };
             case CardType.BEER:        return { effect: 'BEER',        aim: null };
             // Údolí stínů – Poslední pivo: efekt = +1 život (není to karta Pivo).
             case CardType.LAST_CALL:   return { effect: 'LAST_CALL',   aim: null };
@@ -1286,9 +1287,10 @@ const WildWestMixin = {
             // jako Dostavník, Nabíjení jde do fronty (rozmístění 3 žetonů), Doušek +1 život.
             case 'AD_CARAVAN':
             case 'AD_RELOAD':
-            case 'AD_NIP': {
+            case 'AD_NIP':
+            case 'AD_RUST': {
                 const type = { AD_CARAVAN: CardType.AD_CARAVAN, AD_RELOAD: CardType.AD_RELOAD,
-                               AD_NIP: CardType.AD_NIP }[lb.effect];
+                               AD_NIP: CardType.AD_NIP, AD_RUST: CardType.AD_RUST }[lb.effect];
                 const ok = this._adBrownEffect(playerIdx, type, 0);
                 if (ok && lb.effect === 'AD_CARAVAN') { this._processSpecialQueue(); return; }
                 done();

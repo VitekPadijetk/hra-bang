@@ -17,6 +17,7 @@ if (typeof require === 'function') {
     if (typeof effSuit === 'undefined') globalThis.effSuit = require('./highNoon.js').effSuit;
     if (typeof hasAbility === 'undefined') globalThis.hasAbility = require('./distance.js').hasAbility;
     if (typeof computeCanHit === 'undefined') globalThis.computeCanHit = require('./distance.js').computeCanHit;
+    if (typeof isVosGhost === 'undefined') globalThis.isVosGhost = require('./distance.js').isVosGhost;
 }
 
 // Zapnuté rozšíření? (Klíč drží menu i server: options.expansions.ozbrojeni.)
@@ -37,6 +38,8 @@ const AD_CARDS_READY = [
     // A2 – zbraně a výstřely
     'Big Fifty', 'Buntline Special', 'Dvouhlavňovka', 'Thunderer',
     'Bedna', 'Skrč se!', 'Křesadlovka', 'Rychlopalba',
+    // A3 – ruce a stoly
+    'Šíp', 'Paklíč', 'Bič', 'Squaw', 'Rez',
 ];
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
@@ -120,15 +123,25 @@ function adFindCard(p, cardId) {
 // Kam smí hráč dát žeton ze zásoby: na své Nebezpečné karty pod stropem a na svou
 // postavu pod stropem. Prázdná zásoba = nikam. Vrací seznam adres { seat, cardId }
 // (`cardId: null` = postava). Prázdný seznam = do fáze se vůbec nevstupuje.
+// Red Ringo (fáze A3) nebere ze zásoby, ale ze SVÉ POSTAVY a jen na své karty: když
+// právě rozmisťuje on (`pendingAdPlace.from === 'CHAR'`), platí `adPlaceTargetsFrom`
+// s 'CHAR' – klient, server i bot se tak ptají pořád jedním dotazem.
 function adPlaceTargets(state, idx) {
+    const pa = state && state.pendingAdPlace;
+    const from = (pa && pa.playerIdx === idx && pa.from) || 'SUPPLY';
+    return adPlaceTargetsFrom(state, idx, from);
+}
+
+function adPlaceTargetsFrom(state, idx, from) {
     if (!adOn(state)) return [];
     const p = state.players && state.players[idx];
-    if (!p || !isInPlay(p) || adSupply(state) <= 0) return [];
+    if (!p || !isInPlay(p)) return [];
+    if (from === 'CHAR' ? adLoadsOf(p) <= 0 : adSupply(state) <= 0) return [];
     const out = [];
     adCardsInPlay(p).forEach(c => {
         if (adLoadsOf(c) < AD_LOAD_CAP) out.push({ seat: idx, cardId: c.id });
     });
-    if (adLoadsOf(p) < AD_LOAD_CAP) out.push({ seat: idx, cardId: null });
+    if (from !== 'CHAR' && adLoadsOf(p) < AD_LOAD_CAP) out.push({ seat: idx, cardId: null });
     return out;
 }
 
@@ -142,6 +155,8 @@ const AD_PLACE_REASON = {
     BLUE: 'za modrou kartu',
     DISCARD: 'za odhozené karty',
     RELOAD: 'Nabíjení',
+    BASS: 'Bass Greeves – obě na jedno místo',
+    RINGO: 'Red Ringo – z postavy na karty',
 };
 
 // ── Platba (§2.8) ────────────────────────────────────────────────────────────
@@ -201,6 +216,10 @@ function adUpgradeMax(state, idx, card) {
     else if (card.type === 'Skrč se!' || card.type === 'Křesadlovka') max = Math.min(max, 1);
     // Rychlopalba: každé vylepšení = další, jiný cíl v dostřelu.
     else if (card.type === 'Rychlopalba') max = Math.min(max, Math.max(0, adQuickTargets(state, idx).length - 1));
+    // Šíp: každé vylepšení = další, jiný cíl (bez ohledu na vzdálenost).
+    else if (card.type === 'Šíp') max = Math.min(max, Math.max(0, adArrowTargets(state, idx).length - 1));
+    // Squaw: jediné vylepšení = odhozená karta jde do ruky.
+    else if (card.type === 'Squaw') max = Math.min(max, 1);
     else if (card.type !== 'Kolona') max = 0;
     return Math.max(0, max);
 }
@@ -227,8 +246,10 @@ function _adLawLocks(state, p, idx, opts) {
     return !!_adLawFn(state, p, idx, null, opts);
 }
 
-// Které Nebezpečné karty se používají klikem (ve svém tahu, ve fázi PLAY).
-const AD_USE_KINDS = ['Eso v rukávu', 'Bečka piva', 'Zvonice'];
+// Které Nebezpečné karty se používají klikem (ve svém tahu, ve fázi PLAY). Paklíč a Bič
+// navíc chtějí cíl (adUseTargets) – klik na kartu je „nabije", druhý klik vybere hráče.
+const AD_USE_KINDS = ['Eso v rukávu', 'Bečka piva', 'Zvonice', 'Paklíč', 'Bič'];
+const AD_USE_AIMED = ['Paklíč', 'Bič'];
 
 // Smí hráč tu svou Nebezpečnou kartu teď použít? Ptá se server (adUse), klient
 // (klikatelná karta) i bot – kdyby se rozešli, hra botů by se zasekla.
@@ -246,7 +267,22 @@ function adUseOk(state, idx, card) {
     }
     // Zvonice: znovu ji použít, dokud platí, nemá smysl (žeton by propadl).
     if (card.type === 'Zvonice') return !adBellLive(state, p);
+    // Paklíč a Bič: jen když je na koho.
+    if (AD_USE_AIMED.includes(card.type)) return adUseTargets(state, idx, card).length > 0;
     return false;
+}
+
+// Na koho smí Paklíč / Bič mířit (bez ohledu na vzdálenost). Paklíč: jiný hráč ve hře
+// s kartou v ruce („má vliv pouze na karty v ruce"; na sebe ne – R6). Bič: kdokoli ve
+// hře, i sám hráč, s kartou ve hře (vlastní Vězení, Dynamit – R6, precedens Cat Balou).
+function adUseTargets(state, idx, card) {
+    if (!card) return [];
+    if (card.type === 'Paklíč') return adLockPickTargets(state, idx);
+    if (card.type === 'Bič') return adBoardTargets(state, idx);
+    return [];
+}
+function adUseTargetOk(state, idx, card, targetIdx) {
+    return adUseTargets(state, idx, card).includes(targetIdx);
 }
 
 // Zvonice: „pro příští kartu, kterou zahraješ, vidíš všechny ve vzdálenosti 1".
@@ -393,6 +429,129 @@ function adMexicaliOk(state, idx) {
     return adPayable(state, idx) >= AD_MEXICALI_COST && adQuickTargets(state, idx).length > 0;
 }
 
+// ── Fáze A3: ruce a stoly (§4, §5) ──────────────────────────────────────────
+// Má hráč kartu „ve hře" (zbraň mimo Colt, karta na stole)? Vybavení Zlaté horečky
+// leží ve vlastním poli `gear` a ve hře pro Bič/Squaw není (jako pro Cat Balou).
+function _adHasPlayCard(p) {
+    return !!p && ((p.weapon && p.weapon.id !== -1) || (p.board || []).length > 0);
+}
+
+// Paklíč: kdo má co v ruce (jiný hráč ve hře, bez ohledu na vzdálenost).
+function adLockPickTargets(state, idx) {
+    const out = [];
+    ((state && state.players) || []).forEach((p, i) => {
+        if (i !== idx && isInPlay(p) && (p.hand || []).length > 0) out.push(i);
+    });
+    return out;
+}
+
+// Bič a Squaw: „odhoď libovolnou kartu ve hře" – kdokoli ve hře včetně hráče samého,
+// kdo nějakou kartu ve hře má. Bez ohledu na vzdálenost.
+function adBoardTargets(state, idx) {
+    const out = [];
+    ((state && state.players) || []).forEach((p, i) => {
+        if (isInPlay(p) && _adHasPlayCard(p)) out.push(i);
+    });
+    return out;
+}
+
+// Šíp: „cílový hráč odhodí kartu BANG!, nebo ztratí 1 život" – na kohokoli bez ohledu
+// na vzdálenost (R23), jen ne na sebe a ne na Ducha (Údolí stínů – život ztratit nemůže,
+// stejně jako se na něj nestřílí).
+function adArrowTargets(state, idx) {
+    const out = [];
+    ((state && state.players) || []).forEach((p, i) => {
+        if (i !== idx && isInPlay(p) && !isVosGhost(p)) out.push(i);
+    });
+    return out;
+}
+
+// Jsou cíle Šípu v pořádku? První + další (jeden za vylepšení), všechny různé a platné.
+function adArrowOk(state, idx, firstIdx, extra) {
+    const ok = adArrowTargets(state, idx);
+    if (!ok.includes(firstIdx) || !Array.isArray(extra)) return false;
+    const seen = new Set([firstIdx]);
+    for (const t of extra) {
+        if (!Number.isInteger(t) || seen.has(t) || !ok.includes(t)) return false;
+        seen.add(t);
+    }
+    return true;
+}
+
+// Rez: „všichni ostatní přesunou po 1 ⛁ z každé své Nebezpečné karty a ze své postavy
+// na tvou postavu". Hratelný, jen když má někdo jiný ve hře aspoň jeden žeton – jinak
+// by karta nic neudělala.
+function adRustOk(state, idx) {
+    if (!adOn(state)) return false;
+    return ((state && state.players) || []).some((p, i) => i !== idx && isInPlay(p) &&
+        (adLoadsOf(p) > 0 || adCardsInPlay(p).some(c => adLoadsOf(c) > 0)));
+}
+
+// Schopnost postavy „jednou ve svém tahu" (Bass Greeves, Frankie Canton, Red Ringo):
+// rozšíření, fáze PLAY, hráč na tahu, platná schopnost, v tomhle tahu ještě nepoužitá.
+function _adAbilityBase(state, idx, name, turnKey) {
+    if (!adOn(state) || state.phase !== 'PLAY' || state.currentPlayerIndex !== idx) return null;
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p) || !hasAbility(p, name)) return null;
+    if (p[turnKey] === state.turnId) return null;
+    return p;
+}
+
+// Fistful – Právo západu: vynucenou kartu schopnost odhodit nesmí (stejně jako Sid).
+let _adLawProtFn = null;
+function _adLawProtected(state, p, idx, card) {
+    if (!_adLawProtFn) {
+        _adLawProtFn = (typeof lawProtectedCard !== 'undefined') ? lawProtectedCard
+                     : (typeof require === 'function' ? require('./playability.js').lawProtectedCard : null);
+        if (!_adLawProtFn) _adLawProtFn = () => false;
+    }
+    return !!_adLawProtFn(state, p, idx, card);
+}
+
+// Bass Greeves: „Jednou ve svém tahu můžeš odhodit 1 kartu z ruky a přidat 2 ⛁ na jednu
+// svou kartu." Jen když je kam (Nebezpečná karta nebo postava pod stropem, zásoba)
+// a čím zaplatit (karta v ruce, kterou smí odhodit).
+function adBassOk(state, idx) {
+    const p = _adAbilityBase(state, idx, 'Bass Greeves', '_adBassTurn');
+    if (!p || adPlaceTargetsFrom(state, idx, 'SUPPLY').length === 0) return false;
+    return (p.hand || []).some(c => adBassCardOk(state, idx, c));
+}
+function adBassCardOk(state, idx, card) {
+    const p = state.players[idx];
+    return !!card && !card._placeholder && !_adLawProtected(state, p, idx, card);
+}
+
+// Frankie Canton: „Jednou ve svém tahu si můžeš vzít 1 ⛁ z libovolné karty a přesunout ho
+// sem." Zdroj = libovolná Nebezpečná karta ve hře (i vlastní, i Bomba – R22) nebo postava
+// JINÉHO hráče. Strop 4 platí – se 4 žetony schopnost nejde.
+function adFrankieSources(state, idx) {
+    const out = [];
+    ((state && state.players) || []).forEach((p, i) => {
+        if (!isInPlay(p)) return;
+        if (i !== idx && adLoadsOf(p) > 0) out.push({ seat: i, cardId: null });
+        adCardsInPlay(p).forEach(c => { if (adLoadsOf(c) > 0) out.push({ seat: i, cardId: c.id }); });
+    });
+    return out;
+}
+function adFrankieOk(state, idx) {
+    const p = _adAbilityBase(state, idx, 'Frankie Canton', '_adFrankieTurn');
+    if (!p || adLoadsOf(p) >= AD_LOAD_CAP) return false;
+    return adFrankieSources(state, idx).length > 0;
+}
+function adFrankieSourceOk(state, idx, seat, cardId) {
+    const cid = cardId == null ? null : cardId;
+    return adFrankieSources(state, idx).some(s => s.seat === seat && s.cardId === cid);
+}
+
+// Red Ringo: „Začínáš se 4 ⛁. Jednou ve svém tahu můžeš přesunout až 2 ⛁ odsud na své
+// karty." Jen s žetonem na postavě a s vlastní Nebezpečnou kartou pod stropem.
+const AD_RINGO_START = 4;
+const AD_RINGO_MOVE = 2;
+function adRingoOk(state, idx) {
+    const p = _adAbilityBase(state, idx, 'Red Ringo', '_adRingoTurn');
+    return !!p && adPlaceTargetsFrom(state, idx, 'CHAR').length > 0;
+}
+
 // ── Zuřivá Doroty a Lee Van Kliff (R13, vzor VOS_KINDS) ─────────────────────
 // Co smí Doroty poručit a co si Lee Van Kliff zapamatuje. Oranžová karta není hnědá
 // (paměť LVK drží jen hnědé), poručená karta jde bez vylepšení. Druhy, jejichž efekt
@@ -405,22 +564,22 @@ const AD_KINDS = {
     'Zvonice':          { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Bomba':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A4' },
     'Bedna':            { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
-    'Paklíč':           { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Paklíč':           { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Stepní běžec':     { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A5' },
-    'Bič':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Bič':              { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Big Fifty':        { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Buntline Special': { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Dvouhlavňovka':    { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Thunderer':        { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Malý doušek':      { dorothy: true,  lvk: true,  why: 'efekt = +1 život, bez vylepšení' },
-    'Šíp':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Šíp':              { dorothy: false, lvk: false, why: 'cíle bez vzdálenosti a vylepšení – Doroty ani LVK zatím ne (A7)' },
     'Kolona':           { dorothy: true,  lvk: true,  why: 'lízni 2, bez vylepšení' },
     'Skrč se!':         { dorothy: false, lvk: false, why: 'hraje se jen jako reakce' },
     'Křesadlovka':      { dorothy: true,  lvk: true,  why: 'bang-efekt na dostřel, bez vylepšení' },
     'Rychlopalba':      { dorothy: true,  lvk: true,  why: 'bang-efekt na dostřel, jeden cíl (bez vylepšení)' },
     'Nabíjení':         { dorothy: true,  lvk: true,  why: 'rozmísti 3 žetony' },
-    'Rez':              { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
-    'Squaw':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A3' },
+    'Rez':              { dorothy: true,  lvk: true,  why: 'žetony ostatních na postavu toho, kdo kartu hraje' },
+    'Squaw':            { dorothy: false, lvk: false, why: 'cíl bez vzdálenosti (i sebe) – Doroty ani LVK zatím ne (A7)' },
 };
 const AD_BASE_NAMES = ['Bang!', 'Cat Balou', 'Vedle!'];
 
@@ -451,5 +610,9 @@ if (typeof module !== 'undefined' && module.exports) {
                        AD_WEAPON_EFFECTS, adWeaponOf, adWeaponSpecialOk, adMuted,
                        adCrateCard, adCrateOk, adQuickTargets, adQuickExtraOk,
                        AD_MEXICALI_COST, adMexicaliOk,
+                       adPlaceTargetsFrom, AD_USE_AIMED, adUseTargets, adUseTargetOk,
+                       adLockPickTargets, adBoardTargets, adArrowTargets, adArrowOk, adRustOk,
+                       adBassOk, adBassCardOk, adFrankieSources, adFrankieOk, adFrankieSourceOk,
+                       AD_RINGO_START, AD_RINGO_MOVE, adRingoOk,
                        AD_KINDS, adDorothyOk, adRepeatOk };
 }

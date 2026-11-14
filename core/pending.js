@@ -251,7 +251,8 @@ function waitingStatus(state) {
     // Ozbrojení a nebezpeční: kolik žetonů ještě rozmisťuje a proč (kopie AD_PLACE_REASON
     // z core/armed.js – pending.js nic nerequiruje).
     if (pa.kind === 'AD_PLACE' && state.pendingAdPlace) {
-        const why = { BLUE: 'za modrou kartu', DISCARD: 'za odhozené karty', RELOAD: 'Nabíjení' }[state.pendingAdPlace.reason];
+        const why = { BLUE: 'za modrou kartu', DISCARD: 'za odhozené karty', RELOAD: 'Nabíjení',
+                      BASS: 'Bass Greeves', RINGO: 'Red Ringo' }[state.pendingAdPlace.reason];
         text = `rozmisťuje žetony nabití (${state.pendingAdPlace.left})${why ? ' – ' + why : ''}`;
     }
     // Zlatá horečka – Podkova: „odkryj o kartu navíc a vyber výsledek." Jede po TÉŽE

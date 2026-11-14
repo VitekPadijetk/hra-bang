@@ -734,6 +734,8 @@ const ValleyMixin = {
                 this.deck.discard(placed.card);
             }
         }
+        // Šíp: cíl se vyhnul – žádný další cíl nebyl (únik jde jen u jediného cíle).
+        if (pe.resume.kind === 'AD_ARROW') this._adArrow = null;
         // Mick zahrál Úhyb jako kartu Vedle! – líznutí k němu patří (jako v obraně).
         if (card.draw) for (let k = 0; k < card.draw; k++) this.specialActionQueue.push({ type: 'UHYB_DRAW', playerIdx });
         this.logEvent('special', { who: p.name, card: card.name, target: this.players[pe.attackerIdx]?.name,
@@ -768,6 +770,11 @@ const ValleyMixin = {
             this.pendingResponse = r.pr;
             this.phase = "RESPOND";
             this._processSpecialQueue();
+            return;
+        }
+        // Ozbrojení a nebezpeční – Šíp na jediný cíl: cíl se nevyhnul, jede obrana.
+        if (r.kind === 'AD_ARROW') {
+            this._adArrowNext(pe.attackerIdx);
             return;
         }
         this.phase = "PLAY";

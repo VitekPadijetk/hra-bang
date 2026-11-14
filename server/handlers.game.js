@@ -318,7 +318,15 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const isPanicCB = card?.type === 'Panika!' || card?.type === 'Cat Balou';
             // Slot Vězení se počítá PŘED zahráním (po něm už karta na stole leží).
             const jailBoardIdx = 1 + (tar?.board?.length || 0);
-            gs.playSpecialCard(d.attackerIdx, d.targetIdx, d.cardIdx);
+            // Ozbrojení a nebezpeční – vylepšení Šípu (další cíle) a Squaw (karta do ruky).
+            const _adBefore = adSnapshot(gs);
+            const adOpts = (d.up || (Array.isArray(d.pay) && d.pay.length) || (Array.isArray(d.extra) && d.extra.length))
+                ? { up: d.up || 0, pay: Array.isArray(d.pay) ? d.pay : [], extra: Array.isArray(d.extra) ? d.extra : [] }
+                : null;
+            gs.playSpecialCard(d.attackerIdx, d.targetIdx, d.cardIdx, adOpts);
+            // Zdroj vylepšení zaplacený posledním žetonem odejde do odhozu.
+            adDepleted(gs, _adBefore).forEach(x => emitAnim(room, { type: 'board_to_discard',
+                fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
             // Odmítla-li pravidla kartu (Právo západu, Želízka, Soudce…), zůstala v ruce
             // a nesmí se animovat nic – dřív odletěla dřív, než se o ní rozhodlo, a
             // s dalším stavem se vrátila (bug 26).
@@ -338,6 +346,15 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             }
             // Údolí stínů: Chřestýš a Odměna před CIZÍHO hráče jsou nepřátelské (před sebe ne).
             if (d.targetIdx != null && d.targetIdx !== d.attackerIdx && ['Chřestýš', 'Odměna'].includes(card?.type)) {
+                ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
+            }
+            // Ozbrojení a nebezpeční: Šíp na všechny cíle, Squaw na cizího hráče.
+            if (card?.type === 'Šíp') {
+                [d.targetIdx].concat(adOpts?.extra || []).forEach(t => {
+                    if (t != null && t !== d.attackerIdx) ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: t, kind: 'hostile' });
+                });
+            }
+            if (card?.type === 'Squaw' && d.targetIdx != null && d.targetIdx !== d.attackerIdx) {
                 ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
             }
             // Údolí stínů: Duch vrací vyřazeného do hry – to je pomoc (jeho roli zná celý stůl).
@@ -1578,14 +1595,34 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
     });
     // Použití vlastní Nebezpečné karty ve fázi PLAY (Eso v rukávu, Bečka piva, Zvonice).
     // Cena jde z té karty; vyčerpaná karta odletí do odhozu.
+    // Paklíč a Bič nesou cíl (`targetIdx`): Paklíč vezme náhodnou kartu z ruky hned (pokud
+    // se cíl nevyhýbá a Henry Block nestřílí), Bič otevře výběr karty ve hře cíle.
     on('ad_use', (d) => {
         withRoom((room, p, gs) => {
             const idx = gs.currentPlayerIndex;
             const before = adSnapshot(gs);
-            if (!gs.adUse(idx, d && d.cardId)) { broadcastRoom(room); return; }
+            const tIdx = d && Number.isInteger(d.targetIdx) ? d.targetIdx : null;
+            const usedCard = (gs.players[idx]?.board || []).find(c => c && c.id === (d && d.cardId));
+            const victim = tIdx != null ? gs.players[tIdx] : null;
+            const victimHandBefore = victim ? victim.hand.map(c => c.id) : null;
+            if (!gs.adUse(idx, d && d.cardId, tIdx)) { broadcastRoom(room); return; }
             const gone = adDepleted(gs, before);
             gone.forEach(x => emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: x.playerIdx,
                                                cardId: x.cardId, boardIdx: x.boardIdx }));
+            if (tIdx != null && tIdx !== idx) ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: tIdx, kind: 'hostile' });
+            // Paklíč: krádež z ruky proběhla hned (oblast byla daná předem) – stejná
+            // animace jako Ragtime, se slotem ve vějíři (stolenIndex).
+            if (usedCard?.type === 'Paklíč' && gs.phase !== 'EVADE_OFFER' && !gs._vosSuspended &&
+                victim && victim.hand.length < victimHandBefore.length) {
+                const atkHand = gs.players[idx].hand;
+                const ownerId = atkHand[atkHand.length - 1]?.id ?? null;
+                const si = victimHandBefore.indexOf(ownerId);
+                const base = { type: 'ragtime_steal', attackerIdx: idx, targetIdx: tIdx, area: 'hand', boardIdx: null,
+                               stolenIndex: si === -1 ? null : si };
+                emitAnimPrivate(room, idx, { ...base, stolenCardId: ownerId }, { ...base, stolenCardId: null });
+                broadcastRoomDelayed(room, 420);
+                return;
+            }
             if (gone.length) broadcastRoomDelayed(room, 420); else broadcastRoom(room);
         });
     });
@@ -1615,6 +1652,37 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                                                                  cardId: x.cardId, boardIdx: x.boardIdx }));
             if (d.targetIdx !== idx) ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: d.targetIdx, kind: 'hostile' });
             broadcastRoomDelayed(room);
+        });
+    });
+
+    // Bass Greeves: odhodí kartu z ruky a pak (fáze AD_PLACE) dá 2 žetony na jedno místo.
+    on('ad_bass', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const card = gs.adBass(idx, d && d.cardId);
+            if (card) emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: idx, cardId: card.id });
+            broadcastRoom(room);
+        });
+    });
+    // Frankie Canton: 1 žeton z Nebezpečné karty ve hře / cizí postavy (`seat`, `cardId`)
+    // na sebe. Karta vyčerpaná posledním žetonem odletí do odhozu.
+    on('ad_frankie', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.currentPlayerIndex;
+            const before = adSnapshot(gs);
+            if (!gs.adFrankie(idx, d && d.seat, d ? (d.cardId ?? null) : null)) { broadcastRoom(room); return; }
+            const gone = adDepleted(gs, before);
+            gone.forEach(x => emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: x.playerIdx,
+                                               cardId: x.cardId, boardIdx: x.boardIdx }));
+            if (d.seat !== idx) ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: d.seat, kind: 'hostile' });
+            if (gone.length) broadcastRoomDelayed(room, 420); else broadcastRoom(room);
+        });
+    });
+    // Red Ringo: až 2 žetony z postavy na své karty (fáze AD_PLACE s `from: 'CHAR'`).
+    on('ad_ringo', () => {
+        withRoom((room, p, gs) => {
+            gs.adRingo(gs.currentPlayerIndex);
+            broadcastRoom(room);
         });
     });
 

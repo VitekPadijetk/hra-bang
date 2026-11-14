@@ -86,6 +86,13 @@ if (typeof require === 'function') {
     if (typeof adDorothyOk === 'undefined') {
         globalThis.adDorothyOk = require('./armed.js').adDorothyOk;
     }
+    // Fáze A3: Šíp, Squaw, Rez – hratelné, jen když je na koho / od koho.
+    if (typeof adArrowTargets === 'undefined') {
+        const __ad3 = require('./armed.js');
+        globalThis.adArrowTargets = __ad3.adArrowTargets;
+        globalThis.adBoardTargets = __ad3.adBoardTargets;
+        globalThis.adRustOk = __ad3.adRustOk;
+    }
     // Údolí stínů – které druhy karet smí Zuřivá Doroty poručit (plán §2.17).
     if (typeof vosDorothyOk === 'undefined') {
         globalThis.vosDorothyOk = require('./valley.js').vosDorothyOk;
@@ -394,6 +401,11 @@ function nativePlayInTurn(state, me, myIndex, card) {
     // životě), Malý doušek jen se ztraceným životem. Kolona jde vždycky (jako Dostavník).
     if (card.type === "Nabíjení") return adReloadOk(state, myIndex);
     if (card.type === "Malý doušek") return canHeal(me);
+    // Fáze A3: Šíp na kohokoli jiného (ne Ducha), Squaw na kartu ve hře kohokoli (i svou),
+    // Rez jen když má někdo jiný žeton – jinak by karta nic neudělala.
+    if (card.type === "Šíp") return adArrowTargets(state, myIndex).length > 0;
+    if (card.type === "Squaw") return adBoardTargets(state, myIndex).length > 0;
+    if (card.type === "Rez") return adRustOk(state, myIndex);
     // Ozbrojení a nebezpeční: Nebezpečná karta se vykládá jako modrá, jen potřebuje 3 žetony
     // v zásobě (adArmOk, core/armed.js – tentýž dotaz jako server).
     if (card.dangerous) return adArmOk(state, me, card);

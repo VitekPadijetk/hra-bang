@@ -228,6 +228,7 @@ const SetupMixin = {
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
             this._greygoryDealAll();        // Divoký západ: Greygory má dvojici už na začátku hry
+            this._adDealRingo();            // Ozbrojení a nebezpeční: Red Ringo začíná se 4 žetony
             this.currentPlayerIndex = firstIdx;
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;
@@ -375,6 +376,7 @@ const SetupMixin = {
             });
             this._dealSecondIdentities();   // High Noon (přibalené): druhá postava lícem dolů
             this._greygoryDealAll();        // Divoký západ: Greygory má dvojici už na začátku hry
+            this._adDealRingo();            // Ozbrojení a nebezpeční: Red Ringo začíná se 4 žetony
             this.currentPlayerIndex = this._firstPlayerIndex();
             // První tah hry nejde přes nextTurn – start tahu (High Noon) proto ručně.
             if (this._beginTurn()) return;

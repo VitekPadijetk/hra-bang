@@ -158,6 +158,7 @@ const ARMED_CHARACTERS = [
 // zbytek se do té doby dá vybrat jen v debug hře.
 const AD_READY = [
     "Bloody Mary", "Mexicali Kid",       // A2
+    "Bass Greeves", "Frankie Canton", "Red Ringo",   // A3
 ];
 
 class Card {

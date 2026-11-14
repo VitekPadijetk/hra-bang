@@ -10,6 +10,7 @@
 
 const { pendingActor, decideBotAction } = require('../core/botPolicy.js');
 const { pendingActors } = require('../core/pending.js');
+const { adPlaceTargets } = require('../core/armed.js');
 const { computeBeliefs } = require('../core/beliefs.js');
 const { botQuip, quipEvents, quipSnapshot } = require('../core/botChat.js');
 const registerGameHandlers = require('./handlers.game.js');
@@ -193,6 +194,8 @@ module.exports = function installBotService(ctx) {
             gs.pendingAdPlace ? `${gs.pendingAdPlace.playerIdx}:${gs.pendingAdPlace.left}` : '-',
             (gs.players || []).reduce((s, p) => s + (p?.adLoads || 0) + (p?.weapon?.adLoads || 0) +
                 (p?.board || []).reduce((t, c) => t + (c?.adLoads || 0), 0), 0),
+            // …a přesun mezi hráči (Frankie Canton, Red Ringo) součet nezmění – po hráčích.
+            (gs.players || []).map(p => p?.adLoads || 0).join(','),
         ].join('|');
     }
 
@@ -242,7 +245,14 @@ module.exports = function installBotService(ctx) {
             // Údolí stínů – Limonádový Jim: nabídku jde vždycky odmítnout.
             case 'LEMONADE_OFFER': return { event: 'vos_lemonade', payload: { cardId: null, playerIdx: idx } };
             // Ozbrojení a nebezpeční – rozmístění žetonů: zbytek jde vždycky nechat v zásobě.
-            case 'AD_PLACE': return { event: 'ad_place_done' };
+            // Bass Greeves (`oneTarget`) žetony nechat nesmí – položí je na první platné místo.
+            case 'AD_PLACE': {
+                if (gs.pendingAdPlace?.oneTarget) {
+                    const t = adPlaceTargets(gs, idx)[0];
+                    if (t) return { event: 'ad_place', payload: { seat: t.seat, cardId: t.cardId } };
+                }
+                return { event: 'ad_place_done' };
+            }
             // Údolí stínů – okno úniku: nevyhnout se jde vždycky.
             case 'EVADE_OFFER': return { event: 'vos_evade', payload: { cardId: null, playerIdx: idx } };
             // Údolí stínů – okno záchrany: nezachraňovat jde vždycky; odměna z balíčku taky.
