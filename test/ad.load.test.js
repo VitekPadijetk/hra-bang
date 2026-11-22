@@ -107,3 +107,66 @@ test('Ozbrojení a nebezpeční (A1–A3): hra jen botů doběhne 3–8 hráčů
         assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
     }
 });
+
+// Fáze A4: Bomba – „balíček samých Bomb" (plán §7) s Rezem a Frankiem Cantonem, aby se
+// v každé partii sejmulo, předávalo i vybuchovalo, a to i uprostřed cizího tahu (Rez,
+// Frankie – zásahy frontou, resume 'QUEUE'). V reálném balíčku je Bomba jedna, tady jich
+// leží víc – před jedním hráčem ale nikdy dvě (adBombTargets, adBombPassTargets).
+test('Ozbrojení a nebezpeční (A4): balíček samých Bomb – hra jen botů doběhne 3–8 hráčů', () => {
+    const MIX = { 'Bomba': 8, 'Rez': 3, 'Nabíjení': 2 };
+    let nid = 70000;
+    const rich = [];
+    Object.entries(MIX).forEach(([name, k]) => {
+        const row = adCardData.find(c => c.name === name);
+        for (let i = 0; i < k; i++) rich.push({ ...row, id: nid++ });
+    });
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
+    COMBOS.push({ n: 5, all: true }, { n: 7, all: true });
+
+    const seen = new Set();
+    try {
+        COMBOS.forEach(({ n, all }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = vosCardData;
+            gs.adCardData = rich;
+            const opts = { expansions: { dodge_city: all, high_noon: all, fistful: all, divoky_zapad: all,
+                                         zlata_horecka: all, udoli_stinu: all, ozbrojeni: true } };
+            const tag = `Bomba ${all ? 'vše' : 'jen O&N'} (${n}p)`;
+            const room = { id: `adb${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e) return;
+                if (e.ev === 'special' && e.card === 'Bomba' && e.target && !e.msg) seen.add('zahrání');
+                if (e.ev === 'check' && e.kind === 'AD_BOMB') seen.add('sejmutí');
+                if (e.ev === 'special' && e.card === 'Bomba' && /posílá dál/.test(e.msg || '')) seen.add('předání');
+                if (e.ev === 'special' && e.card === 'Bomba' && e.msg === 'vybuchla') seen.add('výbuch');
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            if (gs.players[0] && !gs.players[0].character) gs.players[0].charChoices = ['Frankie Canton'];
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room, (st) => {
+                checkLoads(st, tag);
+                if (st.pendingDynamiteDamage?.resume === 'QUEUE') seen.add('výbuch cizí rukou');
+                assert.ok(st.players.every(p => (p.board || []).filter(c => c.type === 'Bomba').length <= 1),
+                    `${tag}: dvě Bomby před jedním hráčem`);
+            });
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci s Bombou');
+    for (const what of ['zahrání', 'sejmutí', 'předání', 'výbuch', 'výbuch cizí rukou']) {
+        assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
+    }
+});

@@ -87,11 +87,16 @@ const ArmedMixin = {
     },
 
     // „Když jsou z Nebezpečné karty odebrány všechny žetony, kartu ihned odhoďte."
-    // Zbraň se tím vrací na Colt .45. (Bomba místo odhozu vybuchne – fáze A4; do té doby
-    // se do hry nedostane, adArmOk ji nepustí.)
+    // Zbraň se tím vrací na Colt .45. Bomba místo odhozu vybuchne (fáze A4) – sem se
+    // dostane jen cizí rukou (Rez, Frankie Canton); sejmutí na začátku tahu si výbuch
+    // dělá samo (_adBombCheckResult).
     _adDeplete(card) {
         const h = this._adHolderOf(card);
         if (!h) return;
+        if (card.type === CardType.AD_BOMB && h.area === 'board') {
+            this._adBombBlast(h.playerIdx, card, { queue: true });
+            return;
+        }
         const p = this.players[h.playerIdx];
         if (h.area === 'weapon') {
             p.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
@@ -416,6 +421,8 @@ const ArmedMixin = {
         this.logEvent('special', { who: p.name, card: 'Frankie Canton', target: this.players[seat]?.name,
                                    taken: cardId == null ? 'postava' : src.name, msg: 'bere 1 ⛁' });
         this._adMove(src, p, 1);
+        // Bomba vyčerpaná posledním žetonem vybuchla – zásahy jdou frontou (_adBombBlast).
+        this._processSpecialQueue();
         return true;
     },
 
@@ -426,6 +433,107 @@ const ArmedMixin = {
         const p = this.players[playerIdx];
         p._adRingoTurn = this.turnId;
         this._adStartPlace(playerIdx, Math.min(AD_RINGO_MOVE, p.adLoads || 0), 'RINGO', { from: 'CHAR', direct: true });
+        return true;
+    },
+
+    // ── Fáze A4: Bomba (§4) ─────────────────────────────────────────────────────
+    // Bomba se zahrává cestou Chřestýše (playSpecialCard → _placeOnTarget, které jí dá
+    // 3 žetony a pustí okno úniku). Na začátku tahu toho, před kým leží, se „sejme" až
+    // po Dynamitu, Vězení a Chřestýši (logic/checks.js – `pendingCheckDraw.bombIdx`).
+
+    // Má se teď snímat na Bombu? Vrací index karty na stole, nebo -1. Laso (karty na
+    // stole nemají efekt) ji vypíná; sejmutí je jedno za tah – sem se vrací i klikané
+    // zásahy výbuchu, Chřestýše a Dynamitu (handleStartOfTurnChecks).
+    _adBombPending(p) {
+        if (!this._adOn() || !p || this._boardDead() || p._adBombTurn === this.turnId) return -1;
+        return (p.board || []).findIndex(c => c && c.type === CardType.AD_BOMB);
+    },
+
+    // Po Chřestýši: Bomba, nebo rovnou fáze lízání.
+    _adBombOrDraw(playerIdx) {
+        const bombIdx = this._adBombPending(this.players[playerIdx]);
+        if (bombIdx !== -1) {
+            this.pendingCheckDraw = { active: true, playerIdx, dynamiteIdx: null, jailIdx: null, bombIdx };
+            this.phase = "CHECK_DRAW";
+            return;
+        }
+        this.startDrawPhase();
+    },
+
+    // Výsledek sejmutí (volá _applyCheckResult s platnou barvou): ♥♦ = předání (fáze
+    // AD_BOMB_PASS – vybírá majitel), ♣♠ = odhoď 2 ⛁; když dojdou, vybuchne.
+    _adBombCheckResult(check, suit) {
+        const p = this.players[check.playerIdx];
+        const bomb = adBombCard(p);
+        if (!bomb) { this.startDrawPhase(); return; }
+        if (suit === Suits.HEARTS || suit === Suits.DIAMONDS) {
+            if (adBombPassTargets(this, check.playerIdx).length === 0) {
+                // Není komu – Bomba zůstává ležet a tah pokračuje.
+                this.logEvent('special', { who: p.name, card: 'Bomba', msg: 'není komu ji poslat – zůstává' });
+                this.startDrawPhase();
+                return;
+            }
+            this.pendingAdBombPass = { playerIdx: check.playerIdx, cardId: bomb.id };
+            this.phase = "AD_BOMB_PASS";
+            return;
+        }
+        if (adLoadsOf(bomb) > AD_BOMB_TAKE) {
+            this._adTake(bomb, AD_BOMB_TAKE);
+            this.startDrawPhase();
+            return;
+        }
+        // Poslední žetony – výbuch hned (bez fronty: tah čeká jen na zásahy). Zásahy jsou
+        // klikané jako u Dynamitu a po nich se vrací do kontrol startu tahu, které už ví,
+        // že je Bomba v tomhle tahu odbavená (a stejně je pryč) → fáze lízání.
+        this._adBombBlast(check.playerIdx, bomb, { queue: false });
+        if (!this.pendingDynamiteDamage) this.startDrawPhase();
+    },
+
+    // Výbuch: Bomba do odhozu, 2 klikané zásahy tomu, před kým leží – BEZ útočníka (jako
+    // Dynamit a Chřestýš: valoun, El Gringo, Julie Cutter ani odměna za banditu nikomu).
+    // `queue: true` = výbuch uprostřed cizí akce (Rez, Frankie Canton) – zásahy počkají
+    // frontou odložených akcí, až ta akce doběhne, a pak se vrací do fáze PLAY.
+    // Duch (Údolí stínů) život ztratit nemůže – Bomba se jen odhodí.
+    _adBombBlast(playerIdx, card, opts = {}) {
+        const p = this.players[playerIdx];
+        const i = p ? p.board.indexOf(card) : -1;
+        if (i !== -1) p.board.splice(i, 1);
+        this.deck.discard(card);
+        this.logEvent('special', { who: p?.name, card: 'Bomba', msg: 'vybuchla' });
+        if (!opts.queue) {
+            // Start tahu: let ze stolu do odhozu jako výbuch Dynamitu (slot 0 = zbraň).
+            this.lastAnimEvent = { type: 'dynamite_explode', playerIdx, cardId: card.id, boardIdx: 1 + i };
+        }
+        if (!p || !isInPlay(p) || isVosGhost(p)) {
+            if (p && isVosGhost(p)) this.logEvent('special', { who: p.name, card: 'Duch', msg: 'Bomba mu nic neudělá' });
+            return;
+        }
+        if (opts.queue) {
+            this.specialActionQueue.push({ type: 'AD_BOMB_BLAST', playerIdx });
+            return;
+        }
+        this.pendingDynamiteDamage = { playerIdx, hitsLeft: AD_BOMB_DAMAGE, source: 'AD_BOMB' };
+        this.phase = "DYNAMITE_DAMAGE";
+    },
+
+    // Majitel vybral, komu Bombu pošle (♥♦). Předání není zahrání: příjemce se nebrání,
+    // žeton za modrou kartu nikdo nedostává a žetony jdou s kartou (tentýž objekt).
+    // Vrací true, když prošlo.
+    adBombPass(playerIdx, targetIdx) {
+        const pb = this.pendingAdBombPass;
+        if (this.phase !== "AD_BOMB_PASS" || !pb || pb.playerIdx !== playerIdx) return false;
+        if (!adBombPassTargets(this, playerIdx).includes(targetIdx)) return false;
+        const p = this.players[playerIdx];
+        const i = p.board.findIndex(c => c && c.id === pb.cardId);
+        if (i === -1) return false;
+        const bomb = p.board.splice(i, 1)[0];
+        const np = this.players[targetIdx];
+        np.board.push(bomb);
+        this.pendingAdBombPass = null;
+        this.lastAnimEvent = { type: 'dynamite_pass', fromIdx: playerIdx, toIdx: targetIdx, cardId: bomb.id,
+                               fromBoardIdx: 1 + i, toBoardIdx: np.board.length };
+        this.logEvent('special', { who: p.name, card: 'Bomba', target: np.name, msg: `posílá dál (${adLoadsOf(bomb)} ⛁)` });
+        this.startDrawPhase();
         return true;
     },
 

@@ -135,6 +135,38 @@ Co se v A3 udělalo jinak / navíc proti textu níž:
   postavu, schopnosti tlačítkem ve slotu schopnosti (`selectedState.adBass` / `adFrankie`,
   Red Ringo rovnou), banner nahoře říká, na co se čeká.
 
+**Stav (2026-11-22): hotová fáze A4 (Bomba)** a dodaný art. Do balíčku jde 27 karet (+ Bomba);
+mimo balíček zbývá jen Stepní běžec (A5). Testy: `test/ad.bomb.test.js` (17) a v zátěži
+`test/ad.load.test.js` nová partie „balíček samých Bomb" s Rezem a Frankiem (3–8 hráčů,
+hlídá zahrání, sejmutí, předání, výbuch i výbuch cizí rukou); `npm test` = 2112.
+
+Co se v A4 udělalo jinak / navíc proti textu níž:
+- **Zahrání** jde vlastní větví v `playSpecialCard` (vzor Chřestýše) a `_placeOnTarget` dává
+  každé Nebezpečné kartě 3 žetony PŘED oknem úniku – když se cíl vyhne, karta odletí i se
+  žetony a zásoba je dostane zpátky sama. Akce klienta je `getActionForCard` → `'Bomba'`
+  (klik na postavu přes `adAimRole`, i vlastní). Cíle `adBombTargets` (kdokoli ve hře, kdo
+  Bombu nemá, a 3 žetony v zásobě).
+- **Sejmutí**: `pendingCheckDraw.bombIdx` (v `NOT_SEAT_KEYS`), `p._adBombTurn` (jedno za tah,
+  vzor `_vosSnakeTurn`), `_adBombOrDraw` za Chřestýšem (`_rattlesnakeOrDraw` i výsledek
+  Chřestýše ho volají). Důvod sejmutí `AD_BOMB`, vyhodnocení `_adBombCheckResult`.
+- **Předání**: fáze `AD_BOMB_PASS` (`pendingAdBombPass = { playerIdx, cardId }`), akce
+  `ad_bomb_pass { targetIdx }`, cíle `adBombPassTargets`; let `dynamite_pass`. Když není komu,
+  Bomba zůstává.
+- **Výbuch na začátku tahu** (černá na ≤ 2 žetonech) se dělá rovnou, ne přes `_adTake`:
+  `dynamite_explode` + `pendingDynamiteDamage { hitsLeft: 2, source: 'AD_BOMB' }` bez resume
+  → po zásazích `handleStartOfTurnChecks` → lízání.
+- **Výbuch cizí rukou** (Rez, Frankie): `_adDeplete` → `_adBombBlast(…, { queue: true })` →
+  fronta `AD_BOMB_BLAST` (pročišťuje ji `_pruneSuzyQueue`) → klikané zásahy s
+  **`resume: 'QUEUE'`**. `_afterDamageClicks` pro něj obnoví PLAY (ne přes `interruptedPhase`,
+  tu může líznutí Barta mezi zásahy přepsat na `DYNAMITE_DAMAGE`) a smrt oběti tah
+  neposouvá – jen když umřel hráč na tahu (Frankie z vlastní Bomby), dorovná to
+  `_turnOwnerGone`. Let karty do odhozu posílá handler obecným `adDepleted`.
+- Doroty Bombu poručit zatím nesmí (cíl bez vzdálenosti – A7, jako Šíp a Squaw).
+- **Art**: všech 22 vlastních karet (`assets/card_art/ozbrojeni/*.webp`), 8 portrétů
+  (`assets/characters/055–062.webp`) a značka (`assets/card_marks/ozbrojeni.webp`,
+  `AD_MARK_READY = true`) – převedeno z PNG `tools/webp.js --quality=70`. Kostička
+  `nabiti.webp` dodaná není, kreslí se dál.
+
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho
 >    bere. Automaticky běží jen to, kde pravidla volbu nedávají (cena Nebezpečné karty se

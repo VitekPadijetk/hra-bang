@@ -40,6 +40,8 @@ const AD_CARDS_READY = [
     'Bedna', 'Skrč se!', 'Křesadlovka', 'Rychlopalba',
     // A3 – ruce a stoly
     'Šíp', 'Paklíč', 'Bič', 'Squaw', 'Rez',
+    // A4 – Bomba
+    'Bomba',
 ];
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
@@ -49,8 +51,7 @@ function adReadyCards(data) {
 }
 
 // Katalog karet debug hry: hotové druhy + Nebezpečné karty, které už jde VYLOŽIT (fáze A0
-// – vyložení se 3 žetony a kostičky na stole), i když jejich efekt ještě nefunguje. Bomba
-// ne: ta se hraje na libovolného hráče a přijde až s fází A4.
+// – vyložení se 3 žetony a kostičky na stole), i když jejich efekt ještě nefunguje.
 function adDebugCards(data) {
     return (data || []).filter(c => c && (AD_CARDS_READY.includes(c.name) ||
         (c.props && c.props.dangerous && c.props.dangerous.cost != null)));
@@ -58,7 +59,7 @@ function adDebugCards(data) {
 
 // Je dodaná značka rozšíření (pistole s dynamitem, assets/card_marks/ozbrojeni.webp)?
 // Dokud soubor není, loader ho nestahuje (žádné 404) a karty se pečou bez značky.
-const AD_MARK_READY = false;
+const AD_MARK_READY = true;
 
 // ── Žetony nabití (§2.5) ─────────────────────────────────────────────────────
 // 32 dřevěných kostiček ve společné zásobě. Na kartě i na postavě nejvýš 4. Nová
@@ -98,7 +99,8 @@ function adSupply(state) {
 
 // Smí hráč Nebezpečnou kartu z ruky vyložit? Jako modrá (ne dvě stejného jména, zbraň
 // ne tutéž znovu) a navíc „pokud v zásobě není požadovaný počet žetonů, kartu nemůžete
-// zahrát". Bomba (cena null, hraje se na libovolného hráče) zatím ne – fáze A4.
+// zahrát". Bomba (cena null) se před sebe nevykládá – hraje se na libovolného hráče
+// (adBombTargets, fáze A4).
 function adArmOk(state, me, card) {
     if (!me || !isDangerousCard(card)) return false;
     if (card.dangerous.cost == null) return false;
@@ -552,6 +554,44 @@ function adRingoOk(state, idx) {
     return !!p && adPlaceTargetsFrom(state, idx, 'CHAR').length > 0;
 }
 
+// ── Fáze A4: Bomba (§4) ──────────────────────────────────────────────────────
+// „Zahraj na libovolného hráče." Leží před ním se 3 žetony; na začátku tahu toho, před
+// kým leží, se po Dynamitu, Vězení a Chřestýši „sejme": ♥♦ = majitel ji pošle jinému
+// hráči (i se žetony), ♣♠ = odhodí z ní 2 ⛁. Když dojdou – jakoukoli cestou, i Rezem
+// nebo Frankiem Cantonem – vybuchne: 2 životy tomu, před kým leží.
+const AD_BOMB_DAMAGE = 2;
+const AD_BOMB_TAKE = 2;
+
+// Bomba ležící před hráčem (nebo null).
+function adBombCard(p) {
+    return ((p && p.board) || []).find(c => c && c.type === 'Bomba') || null;
+}
+
+// Na koho smí hráč Bombu zahrát: kdokoli ve hře (i on sám, i šerif), kdo ji ještě nemá
+// („žádné dvě karty stejného jména"). Jako každá Nebezpečná karta potřebuje 3 žetony
+// v zásobě. Apache Kid cílem je (károvou Bombu ale server odhodí naprázdno – jako Vězení).
+function adBombTargets(state, idx) {
+    if (!adOn(state) || adSupply(state) < AD_ARM_LOADS) return [];
+    const out = [];
+    ((state && state.players) || []).forEach((p, i) => {
+        if (isInPlay(p) && !adBombCard(p)) out.push(i);
+    });
+    return out;
+}
+function adBombTargetOk(state, idx, targetIdx) {
+    return adBombTargets(state, idx).includes(targetIdx);
+}
+
+// Komu smí majitel Bombu po ♥♦ poslat: jinému hráči ve hře. Předání není zahrání –
+// bránit se nejde (Útěk, Apache Kid) a žeton za modrou kartu nikdo nedostává.
+function adBombPassTargets(state, idx) {
+    const out = [];
+    ((state && state.players) || []).forEach((p, i) => {
+        if (i !== idx && isInPlay(p) && !adBombCard(p)) out.push(i);
+    });
+    return out;
+}
+
 // ── Zuřivá Doroty a Lee Van Kliff (R13, vzor VOS_KINDS) ─────────────────────
 // Co smí Doroty poručit a co si Lee Van Kliff zapamatuje. Oranžová karta není hnědá
 // (paměť LVK drží jen hnědé), poručená karta jde bez vylepšení. Druhy, jejichž efekt
@@ -562,7 +602,7 @@ const AD_KINDS = {
     'Bandalír':         { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Bečka piva':       { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Zvonice':          { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
-    'Bomba':            { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A4' },
+    'Bomba':            { dorothy: false, lvk: false, why: 'cíl bez vzdálenosti (i sebe) – Doroty zatím ne (A7)' },
     'Bedna':            { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Paklíč':           { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Stepní běžec':     { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A5' },
@@ -614,5 +654,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        adLockPickTargets, adBoardTargets, adArrowTargets, adArrowOk, adRustOk,
                        adBassOk, adBassCardOk, adFrankieSources, adFrankieOk, adFrankieSourceOk,
                        AD_RINGO_START, AD_RINGO_MOVE, adRingoOk,
+                       AD_BOMB_DAMAGE, AD_BOMB_TAKE, adBombCard, adBombTargets, adBombTargetOk,
+                       adBombPassTargets,
                        AD_KINDS, adDorothyOk, adRepeatOk };
 }

@@ -93,6 +93,10 @@ if (typeof require === 'function') {
         globalThis.adBoardTargets = __ad3.adBoardTargets;
         globalThis.adRustOk = __ad3.adRustOk;
     }
+    // Fáze A4: Bomba – hratelná, jen když je na koho (a v zásobě jsou 3 žetony).
+    if (typeof adBombTargets === 'undefined') {
+        globalThis.adBombTargets = require('./armed.js').adBombTargets;
+    }
     // Údolí stínů – které druhy karet smí Zuřivá Doroty poručit (plán §2.17).
     if (typeof vosDorothyOk === 'undefined') {
         globalThis.vosDorothyOk = require('./valley.js').vosDorothyOk;
@@ -406,6 +410,9 @@ function nativePlayInTurn(state, me, myIndex, card) {
     if (card.type === "Šíp") return adArrowTargets(state, myIndex).length > 0;
     if (card.type === "Squaw") return adBoardTargets(state, myIndex).length > 0;
     if (card.type === "Rez") return adRustOk(state, myIndex);
+    // Fáze A4: Bomba jde na libovolného hráče (i sebe), jen ne na toho, kdo ji už má,
+    // a jen se 3 žetony v zásobě (adBombTargets, core/armed.js).
+    if (card.type === "Bomba") return adBombTargets(state, myIndex).length > 0;
     // Ozbrojení a nebezpeční: Nebezpečná karta se vykládá jako modrá, jen potřebuje 3 žetony
     // v zásobě (adArmOk, core/armed.js – tentýž dotaz jako server).
     if (card.dangerous) return adArmOk(state, me, card);

@@ -235,6 +235,12 @@ if (typeof require === 'function') {
         globalThis.adRingoOk = __ad3.adRingoOk;
         globalThis.adPlaceTargetsFrom = __ad3.adPlaceTargetsFrom;
     }
+    if (typeof adBombTargets === 'undefined' || typeof adBombPassTargets === 'undefined') {
+        const __ad4 = require('./armed.js');
+        globalThis.adBombCard = __ad4.adBombCard;
+        globalThis.adBombTargets = __ad4.adBombTargets;
+        globalThis.adBombPassTargets = __ad4.adBombPassTargets;
+    }
     // Zlatá horečka – obchod: „smí se koupit / donutit odhodit / vyměnit Pivo za valoun".
     // Stejné predikáty, jaké vynucuje server i klient (core/goldRush.js).
     if (typeof gearBuyOk === 'undefined') {
@@ -356,6 +362,8 @@ function adBotPlaceTarget(state, myIndex) {
             const cost = (c && c.dangerous && c.dangerous.cost) || 0;
             s = { 'Bandalír': 6, 'Eso v rukávu': 5, 'Bečka piva': canHeal(me) ? 5 : 2, 'Zvonice': 2 }[c && c.type] || 1;
             if (c && (c.adLoads || 0) < cost) s += 2;
+            // Bomba přede mnou: žeton jí oddálí výbuch – na 2 a méně žetonech hned (R5).
+            if (c && c.type === 'Bomba') s = (c.adLoads || 0) <= 2 ? 8 : 0;
         }
         if (s > bestScore) { bestScore = s; best = t; }
     });
@@ -709,6 +717,9 @@ function boardCardValue(card) {
     // Údolí stínů: Chřestýš kouše majitele, Odměna láká střelce – obojí mu škodí.
     if (card.type === T.RATTLESNAKE) return -2;
     if (card.type === T.BOUNTY) return -1;
+    // Ozbrojení a nebezpeční – Bomba: polovinu sejmutí posílá dál, jinak doutná k výbuchu
+    // za 2 životy. Majiteli škodí skoro jako Dynamit.
+    if (card.type === 'Bomba') return -2;
     // Duch drží vyřazeného hráče ve hře – bez něj vypadne. Nejcennější karta vůbec:
     // nepříteli ji bot sebere první, spojenci ji nesundá (ani Daltony, ani Rvačkou).
     if (card.type === T.DUCH) return 10;
@@ -904,6 +915,8 @@ function keepScore(card) {
         // Ozbrojení a nebezpeční (A2)
         case 'Bedna': return 5;                   // dvakrát Vedle! za žetony
         case 'Skrč se!': return 6;                // účinkuje jako Vedle!
+        // Ozbrojení a nebezpeční (A4)
+        case 'Bomba': return 3;                   // útok jako Chřestýš
         default: return 1;
     }
 }
@@ -1199,6 +1212,13 @@ function forcedLawIntent(state, myIndex, beliefs, card, cardIdx) {
             const tgt = t !== -1 ? t : (ok.includes(myIndex) ? myIndex : -1);
             return tgt === -1 ? null : special(tgt);
         }
+        // Bomba: „na libovolného hráče" – nouzově i před sebe (vynucené zahrání).
+        case 'Bomba': {
+            const ok = adBombTargets(state, myIndex);
+            const t = pick(i => i !== myIndex && ok.includes(i));
+            const tgt = t !== -1 ? t : (ok.includes(myIndex) ? myIndex : -1);
+            return tgt === -1 ? null : special(tgt);
+        }
         case 'DE_BANG': {
             const t = pick(alive);
             return t === -1 ? null : { event: 'discard_extra_choose', payload: { cardIdx, targetIdx: t } };
@@ -1351,6 +1371,16 @@ function decidePlay(state, myIndex, beliefs) {
         // dřív leží před nepřítelem, tím víc kousne. Odměna je slabší (líže jen ten, kdo
         // cíl kartou BANG! trefí), takže až za ním a jen na nepřítele, na kterého bot
         // sám dostřelí.
+        // Ozbrojení a nebezpeční – Bomba: na nepřítele (nikdy na sebe). Výbuch bere 2 životy,
+        // ale nejdřív se musí třikrát černě sejmout – proto o kousek níž než Chřestýš.
+        if (action === 'Bomba') {
+            const ok = adBombTargets(state, myIndex);
+            const tgt = rankEnemies(state, myIndex, beliefs, false).find(e => ok.includes(e.idx));
+            if (tgt) consider(25,
+                { event: 'play_special', payload: { attackerIdx: myIndex, targetIdx: tgt.idx, cardIdx: i } });
+            return;
+        }
+
         if (action === T.RATTLESNAKE || action === T.BOUNTY) {
             const tgt = rankEnemies(state, myIndex, beliefs, false).find(e =>
                 vosPlaceTargetOk(state, e.idx, card) &&
@@ -2358,6 +2388,16 @@ function decideBotAction(state, myIndex, beliefs) {
 
         // Ozbrojení a nebezpeční – rozmístění žetonů ze zásoby: žeton je vždycky k užitku,
         // takže bot rozmístí všechny (adBotPlaceTarget); když není kam, nechá je v zásobě.
+        // Bomba po červeném sejmutí: nejpravděpodobnějšímu nepříteli, radši zraněnému
+        // (rankEnemies řadí podle nepřátelskosti a zranění). Když nikdo nepřítelem není,
+        // komukoli – předat ji musí.
+        case 'AD_BOMB_PASS': {
+            const ok = adBombPassTargets(state, myIndex);
+            const e = rankEnemies(state, myIndex, beliefs, false).find(x => ok.includes(x.idx));
+            const t = e ? e.idx : ok[0];
+            return t == null ? null : { event: 'ad_bomb_pass', payload: { targetIdx: t } };
+        }
+
         case 'AD_PLACE': {
             const t = adBotPlaceTarget(state, myIndex);
             return t ? { event: 'ad_place', payload: { seat: t.seat, cardId: t.cardId } }

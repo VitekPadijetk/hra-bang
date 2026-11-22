@@ -495,6 +495,25 @@ const PlayMixin = {
             this._placeOnTarget(card, attIdx, tarIdx);
             return;
         }
+        else if (card.type === CardType.AD_BOMB) {
+            // Ozbrojení a nebezpeční – Bomba: „zahraj na libovolného hráče" (i sebe), se 3
+            // žetony ze zásoby (adBombTargetOk, core/armed.js). Apache Kid: károvou Bombu
+            // na něj zahrát nejde (karta se odhodí naprázdno, jako Vězení) – předat mu ji
+            // ale jde, předání není zahrání. Vyložení a okno úniku jdou přes _placeOnTarget.
+            if (!adBombTargetOk(this, attIdx, tarIdx)) {
+                attacker.hand.splice(cardIdx, 0, card);
+                this.checkSuzyLafayette(attacker);
+                return;
+            }
+            if (this._apacheImmune(tarIdx, this._effSuit(card), attIdx)) {
+                this.deck.discard(card);
+                this.checkSuzyLafayette(attacker);
+                this._processSpecialQueue();
+                return;
+            }
+            this._placeOnTarget(card, attIdx, tarIdx);
+            return;
+        }
         else if (card.type === CardType.CAT_BALOU || card.type === CardType.PANIC) {
             this.deck.discard(card);
             // Apache Kid: kárová Panika!/Cat Balou na něj nemá efekt (žádný výběr karty).

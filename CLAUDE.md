@@ -318,7 +318,7 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A3 hotové)
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A4 hotové)
 
 Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
 (texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
@@ -354,3 +354,8 @@ a Red Ringo. **Šíp jede po cestě Indiánů** (`sourceCard: INDIANS` + `_adArr
 se ptá `_advanceMassAttack`), Paklíč/Bič/Squaw po cestě Paniky/Cat Balou s `ignoreDistance`
 (Bič a Squaw navíc `adNoHand` – z ruky ne). **`adPlaceTargets` čte `pendingAdPlace.from`**
 (Red Ringo rozmisťuje z postavy jen na karty), Bass má `oneTarget`.
+
+Hotová je i fáze **A4 (Bomba)** – 27 karet a dodaný art (karty, portréty, značka). Bomba se
+snímá za Chřestýšem (`pendingCheckDraw.bombIdx`, `_adBombTurn`), předává se fází
+`AD_BOMB_PASS`. **Výbuch cizí rukou (Rez, Frankie) jde frontou `AD_BOMB_BLAST` a zásahy
+nesou `resume: 'QUEUE'`** – po nich se vrací do PLAY a smrt oběti tah neposouvá.

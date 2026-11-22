@@ -671,6 +671,10 @@ const ValleyMixin = {
     _placeOnTarget(card, attIdx, tarIdx) {
         const target = this.players[tarIdx];
         target.board.push(card);
+        // Ozbrojení a nebezpeční – Bomba (Nebezpečná karta) přichází se 3 žetony ze zásoby.
+        // PŘED oknem úniku: když se jí cíl vyhne, odletí ze stolu i se žetony a ty se
+        // zásobě vrátí samy (zásoba se počítá z karet ve hře).
+        if (isDangerousCard(card)) this._adArm(card);
         // Ozbrojení a nebezpeční: zahraná modrá karta (Vězení, Chřestýš, Odměna, Duch – i na
         // jiného hráče) = 1 žeton tomu, kdo ji zahrál. Do fronty, a to PŘED oknem úniku:
         // zahraná byla, i kdyby se jí cíl vyhnul (fronta se odbaví po rozhodnutí).

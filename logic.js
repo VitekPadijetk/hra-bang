@@ -131,6 +131,16 @@ if (typeof adArrowOk === 'undefined' && typeof require === 'function') {
     globalThis.AD_RINGO_START = __ad3.AD_RINGO_START;
     globalThis.AD_RINGO_MOVE = __ad3.AD_RINGO_MOVE;
 }
+// Ozbrojení a nebezpeční – fáze A4 (Bomba). Samostatný guard ze stejného důvodu.
+if (typeof adBombTargetOk === 'undefined' && typeof require === 'function') {
+    const __ad4 = require('./core/armed.js');
+    globalThis.adBombCard = __ad4.adBombCard;
+    if (typeof adLoadsOf === "undefined") globalThis.adLoadsOf = __ad4.adLoadsOf;
+    globalThis.adBombTargetOk = __ad4.adBombTargetOk;
+    globalThis.adBombPassTargets = __ad4.adBombPassTargets;
+    globalThis.AD_BOMB_DAMAGE = __ad4.AD_BOMB_DAMAGE;
+    globalThis.AD_BOMB_TAKE = __ad4.AD_BOMB_TAKE;
+}
 // Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
 // globálů, takže by blok výš tyhle přeskočil.
 if (typeof shotgunActive === 'undefined' && typeof require === 'function') {

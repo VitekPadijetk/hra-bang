@@ -65,6 +65,8 @@ module.exports = function installActionGuard(ctx) {
         'ad_crate', 'ad_mexicali',
         // Fáze A3: schopnosti Bass Greeves, Frankie Canton a Red Ringo (hráč na tahu).
         'ad_bass', 'ad_frankie', 'ad_ringo',
+        // Fáze A4: předání Bomby (majitel po červeném sejmutí, fáze AD_BOMB_PASS).
+        'ad_bomb_pass',
     ]);
 
     // Akce mimo pořadí (Sid Ketchum léčí kdykoli, i v cizím tahu) – tady nelze

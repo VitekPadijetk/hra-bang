@@ -28,8 +28,8 @@ function getActionForCard(card, character) {
     // Zelené karty se z ruky jen vyloží na stůl (jako modré); aktivují se pak ze stolu.
     if (card.green) return "PLAY_BLUE";
     // Ozbrojení a nebezpeční: Nebezpečná karta se vykládá před sebe jako modrá (zbraň
-    // i objekt). Výjimkou je Bomba – ta jde na libovolného hráče (fáze A4, zatím nic).
-    if (card.dangerous) return card.type === "Bomba" ? "PLAY_CARD" : "PLAY_BLUE";
+    // i objekt). Výjimkou je Bomba – ta jde na libovolného hráče (klik na cíl, akce „Bomba").
+    if (card.dangerous) return card.type === "Bomba" ? "Bomba" : "PLAY_BLUE";
     // Karty s bang-efektem (Úder, …) se míří jako Bang!. (Zelené sem nedojdou – výše.)
     if (card.bangEffect && !card.green) return "SHOOT";
     // Údolí stínů – Opětovná palba se počítá jako karta Vedle!, takže ji Calamity Janet

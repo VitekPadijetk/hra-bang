@@ -334,8 +334,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (isPanicCB) {
                 room._pendingPanicCard = { type: card.type === 'Panika!' ? 'panic_sequence' : 'catbalou_sequence',
                     attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id };
-            } else if (card?.type === 'Vězení' || card?.type === 'Chřestýš' || card?.type === 'Odměna' || card?.type === 'Duch') {
+            } else if (card?.type === 'Vězení' || card?.type === 'Chřestýš' || card?.type === 'Odměna' || card?.type === 'Duch' || card?.type === 'Bomba') {
                 // Údolí stínů: Chřestýš, Odměna a Duch letí před cíl stejně jako Vězení.
+                // Ozbrojení a nebezpeční: Bomba taky.
                 emitAnim(room, { type: 'jail_sequence', attackerIdx: d.attackerIdx, targetIdx: d.targetIdx, cardId: card?.id, boardIdx: jailBoardIdx });
             } else {
                 emitAnim(room, { type: 'hand_to_discard', fromPlayerIdx: d.attackerIdx, cardId: card?.id });
@@ -345,7 +346,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                 ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
             }
             // Údolí stínů: Chřestýš a Odměna před CIZÍHO hráče jsou nepřátelské (před sebe ne).
-            if (d.targetIdx != null && d.targetIdx !== d.attackerIdx && ['Chřestýš', 'Odměna'].includes(card?.type)) {
+            if (d.targetIdx != null && d.targetIdx !== d.attackerIdx && ['Chřestýš', 'Odměna', 'Bomba'].includes(card?.type)) {
                 ctx.recordBehavior?.(room, { actorIdx: d.attackerIdx, targetIdx: d.targetIdx, kind: 'hostile' });
             }
             // Ozbrojení a nebezpeční: Šíp na všechny cíle, Squaw na cizího hráče.
@@ -1676,6 +1677,20 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
                                                cardId: x.cardId, boardIdx: x.boardIdx }));
             if (d.seat !== idx) ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: d.seat, kind: 'hostile' });
             if (gone.length) broadcastRoomDelayed(room, 420); else broadcastRoom(room);
+        });
+    });
+    // Bomba: majitel po červeném sejmutí vybral, komu ji pošle (fáze AD_BOMB_PASS).
+    // Let karty jako předání Dynamitu (dynamite_pass přes lastAnimEvent). Poslat Bombu
+    // někomu je nepřátelské (ledger chování).
+    on('ad_bomb_pass', (d) => {
+        withRoom((room, p, gs) => {
+            const idx = gs.pendingAdBombPass?.playerIdx;
+            if (idx === undefined || idx === null) return;
+            const tIdx = d && Number.isInteger(d.targetIdx) ? d.targetIdx : null;
+            if (!gs.adBombPass(idx, tIdx)) { broadcastRoom(room); return; }
+            if (gs.lastAnimEvent) { emitAnim(room, gs.lastAnimEvent); gs.lastAnimEvent = null; }
+            ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: tIdx, kind: 'hostile' });
+            handleReshuffleAndBroadcast(room, gs);
         });
     });
     // Red Ringo: až 2 žetony z postavy na své karty (fáze AD_PLACE s `from: 'CHAR'`).

@@ -57,7 +57,7 @@ const SEAT_LIST_KEYS = new Set([
 // nabídka postav) a přemapovat se nesmí:
 const NOT_SEAT_KEYS = new Set([
     'boardIdx', 'fromBoardIdx', 'toBoardIdx', 'visBoardIdx', 'visualBoardIdx',
-    'dynamiteIdx', 'jailIdx', 'rattlesnakeIdx', 'handIdx', 'cardIdx', 'cardIndex', 'cardIndices',
+    'dynamiteIdx', 'jailIdx', 'rattlesnakeIdx', 'bombIdx', 'handIdx', 'cardIdx', 'cardIndex', 'cardIndices',
     'targetCardIdx', 'extraCardIdx', 'charSelectIndex', 'stolenIndex', 'revealIdx',
     'keptIdxs', 'randomIdx', 'randomIndex',
     // Zlatá horečka: index do obchodu (gearRow) a do vybavení hráče (player.gear) –

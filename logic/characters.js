@@ -193,6 +193,13 @@ const CharactersMixin = {
                 if (adPlaceTargets(this, a.playerIdx).length === 0) this.specialActionQueue.splice(i, 1);
                 continue;
             }
+            // Ozbrojení a nebezpeční – zásahy výbuchu Bomby: fáze čeká na klik oběti, ta
+            // mezitím mohla odejít ze hry (jiný zásah z téže akce).
+            if (a.type === 'AD_BOMB_BLAST') {
+                const t = this.players[a.playerIdx];
+                if (!isInPlay(t) || isVosGhost(t)) this.specialActionQueue.splice(i, 1);
+                continue;
+            }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
             if (!p || !isInPlay(p) || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
@@ -316,6 +323,12 @@ const CharactersMixin = {
             // Ozbrojení a nebezpeční: rozmístění žetonů (modrá karta, Nabíjení). Že je kam,
             // zaručilo pročištění fronty výš (_pruneSuzyQueue).
             this._adStartPlace(action.playerIdx, action.n, action.reason);
+        } else if (action.type === 'AD_BOMB_BLAST') {
+            // Ozbrojení a nebezpeční – Bomba vybuchla cizí rukou (Rez, Frankie Canton):
+            // 2 klikané zásahy bez útočníka, pak zpátky do PLAY (resume 'QUEUE').
+            this.pendingDynamiteDamage = { playerIdx: action.playerIdx, hitsLeft: AD_BOMB_DAMAGE,
+                                           source: 'AD_BOMB', resume: 'QUEUE' };
+            this.phase = "DYNAMITE_DAMAGE";
         } else if (action.type === 'VULTURE_SPLIT') {
             this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {

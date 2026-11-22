@@ -286,6 +286,18 @@ const CombatMixin = {
         // dohrává její konec (fronta odložených akcí, další výstřel). Ten frontu bere sám,
         // proto je jedno, jestli se na ni čekat mělo.
         if (resume === 'RESPOND_TAIL') { this._vosAimTail(); return; }
+        // Ozbrojení a nebezpeční – Bomba vybuchla uprostřed tahu (Rez, Frankie Canton):
+        // zásahy přišly z fronty odložených akcí ve fázi PLAY, takže se tam vrací. Fáze
+        // se obnoví hned (ne přes interruptedPhase – tu mohlo přepsat líznutí Barta
+        // Cassidyho mezi zásahy na DYNAMITE_DAMAGE); s `afterQueue` frontu dobere volající.
+        if (resume === 'QUEUE') {
+            const back = this.interruptedPhase && this.interruptedPhase !== 'DYNAMITE_DAMAGE'
+                ? this.interruptedPhase : 'PLAY';
+            this.phase = back;
+            this.interruptedPhase = null;
+            if (!afterQueue) this._resumeAfterSpecial();
+            return;
+        }
         if (afterQueue) {
             if (toBeginTurn) this._resumeBeginTurnAfterQueue = true;
             else if (toNextTurn) this._nextTurnAfterQueue = true;
@@ -353,6 +365,15 @@ const CombatMixin = {
             if (this.pendingTerenKill) {
                 this._afterDamageClicks(resume, true);
                 this._processSpecialQueue();
+                return;
+            }
+            // Ozbrojení a nebezpeční – výbuch Bomby uprostřed tahu (Rez, Frankie Canton):
+            // tah se neposouvá, vrací se do PLAY. Umřel-li hráč na tahu (Frankie si vzal
+            // poslední žeton z vlastní Bomby), tah dorovná _turnOwnerGone.
+            if (resume === 'QUEUE') {
+                this._afterDamageClicks(resume, true);
+                if (this._turnOwnerGone()) return;
+                this._resumeAfterSpecial();
                 return;
             }
             if (this.specialActionQueue.length > 0) {

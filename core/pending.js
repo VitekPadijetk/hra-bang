@@ -98,6 +98,9 @@ function pendingActor(state) {
         // Ozbrojení a nebezpeční – rozmístění žetonů nabití ze zásoby (klik na kartu/postavu).
         case 'AD_PLACE':         return state.pendingAdPlace
             ? { idx: state.pendingAdPlace.playerIdx, kind: 'AD_PLACE' } : null;
+        // …a předání Bomby po červeném sejmutí (majitel klikne na hráče, komu ji pošle).
+        case 'AD_BOMB_PASS':     return state.pendingAdBombPass
+            ? { idx: state.pendingAdBombPass.playerIdx, kind: 'AD_BOMB_PASS' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -171,6 +174,7 @@ const _WAIT_LABELS = {
     POKER_PICK:            'Poker – vykládá kartu lícem dolů',
     POKER_TAKE:            'Poker – bere si z vyložených karet',
     AD_PLACE:              'rozmisťuje žetony nabití',
+    AD_BOMB_PASS:          'Bomba – vybírá, komu ji pošle',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',
@@ -234,6 +238,11 @@ function waitingStatus(state) {
     // Klikaný zásah nese svůj zdroj – dynamit je jen jeden z nich (Údolí stínů: Chřestýš).
     if (pa.kind === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.source === 'RATTLESNAKE') {
         text = 'Chřestýš – ztrácí život';
+    }
+    // Ozbrojení a nebezpeční – výbuch Bomby: 2 životy, každý se kliká zvlášť.
+    if (pa.kind === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.source === 'AD_BOMB') {
+        const left = state.pendingDynamiteDamage.hitsLeft;
+        text = `výbuch Bomby – ztrácí ${left === 1 ? 'život' : left + ' životy'}`;
     }
     // Údolí stínů – Dvojitá rána: zásah za dva životy, každý se kliká zvlášť.
     if (pa.kind === 'DYNAMITE_DAMAGE' && state.pendingDynamiteDamage?.source === 'AIM') {
@@ -341,7 +350,7 @@ function describePendingResponse(state, viewerIdx) {
 // ── describePendingCheck — kontrolní líznutí (Barel/Jourdonnais, Dynamit, Vězení) ─
 // Vrací, CO se líže a PROČ, ať hráč u balíčku neklikne naslepo:
 //   { forMe, kind, playerIdx, title, detail, waitingName } | null
-// kind: 'BARREL' | 'JOURDONNAIS' | 'DYNAMITE' | 'JAIL' | 'RATTLESNAKE' | …
+// kind: 'BARREL' | 'JOURDONNAIS' | 'DYNAMITE' | 'JAIL' | 'RATTLESNAKE' | 'AD_BOMB' | …
 function describePendingCheck(state, viewerIdx) {
     const nameOf = (idx) => state.players[idx]?.name || '?';
 
@@ -429,6 +438,22 @@ function describePendingCheck(state, viewerIdx) {
         }
         const isDynamite = pcd.dynamiteIdx !== null && pcd.dynamiteIdx !== undefined;
         const isJail = pcd.jailIdx !== null && pcd.jailIdx !== undefined;
+        // Ozbrojení a nebezpeční – Bomba: snímá se až po Dynamitu, Vězení a Chřestýši.
+        if (!isDynamite && !isJail && pcd.rattlesnakeIdx == null && pcd.bombIdx != null) {
+            const bomb = (state.players[pcd.playerIdx]?.board || [])[pcd.bombIdx];
+            const loads = (bomb && bomb.adLoads) || 0;
+            return {
+                forMe: pcd.playerIdx === viewerIdx,
+                kind: 'AD_BOMB',
+                playerIdx: pcd.playerIdx,
+                waitingName: nameOf(pcd.playerIdx),
+                short: 'Bomba',
+                title: '💣 Bomba – lízni si kontrolní kartu',
+                detail: loads > 2
+                    ? `♥♦ = pošleš Bombu jinému hráči, ♣♠ = Bomba ztratí 2 ⛁ (má ${loads})`
+                    : `♥♦ = pošleš Bombu jinému hráči, ♣♠ = Bomba vybuchne (−2 životy)`,
+            };
+        }
         // Údolí stínů – Chřestýš: snímá se až po Dynamitu a Vězení (Dynamite Box).
         if (!isDynamite && !isJail && pcd.rattlesnakeIdx != null) {
             return {

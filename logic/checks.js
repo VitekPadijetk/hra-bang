@@ -24,14 +24,17 @@ const ChecksMixin = {
             : p.board.findIndex(c => c.type === CardType.DYNAMITE);
         const jailIdx = boardDead ? -1 : p.board.findIndex(c => c.type === CardType.JAIL);
         const rattlesnakeIdx = this._rattlesnakePending(p);
+        // Ozbrojení a nebezpeční – Bomba se snímá jako poslední (po Chřestýši).
+        const bombIdx = this._adBombPending(p);
 
-        if (dynamiteIdx !== -1 || jailIdx !== -1 || rattlesnakeIdx !== -1) {
+        if (dynamiteIdx !== -1 || jailIdx !== -1 || rattlesnakeIdx !== -1 || bombIdx !== -1) {
             this.pendingCheckDraw = {
                 active: true,
                 playerIdx: this.currentPlayerIndex,
                 dynamiteIdx: dynamiteIdx !== -1 ? dynamiteIdx : null,
                 jailIdx: jailIdx !== -1 ? jailIdx : null,
-                ...(rattlesnakeIdx !== -1 ? { rattlesnakeIdx } : {})
+                ...(rattlesnakeIdx !== -1 ? { rattlesnakeIdx } : {}),
+                ...(bombIdx !== -1 ? { bombIdx } : {})
             };
             this.phase = "CHECK_DRAW";
             return;
@@ -55,14 +58,17 @@ const ChecksMixin = {
 
     // Po Dynamitu a Vězení: Chřestýš, nebo rovnou fáze lízání. Neúspěšné Vězení sem
     // nevede (tah se přeskočí), takže se na Chřestýše pak už nesnímá (Dynamite Box).
+    // Ozbrojení a nebezpeční: po Chřestýši ještě Bomba (R5 – po neúspěšném Vězení taky ne).
     _rattlesnakeOrDraw(playerIdx) {
         const rattlesnakeIdx = this._rattlesnakePending(this.players[playerIdx]);
         if (rattlesnakeIdx !== -1) {
-            this.pendingCheckDraw = { active: true, playerIdx, dynamiteIdx: null, jailIdx: null, rattlesnakeIdx };
+            const bombIdx = this._adBombPending(this.players[playerIdx]);
+            this.pendingCheckDraw = { active: true, playerIdx, dynamiteIdx: null, jailIdx: null, rattlesnakeIdx,
+                                      ...(bombIdx !== -1 ? { bombIdx } : {}) };
             this.phase = "CHECK_DRAW";
             return;
         }
-        this.startDrawPhase();
+        this._adBombOrDraw(playerIdx);
     },
 
     triggerCheckDraw() {
@@ -146,6 +152,29 @@ const ChecksMixin = {
             return;
         }
 
+        if (pcd.jailIdx === null && pcd.rattlesnakeIdx == null && pcd.bombIdx != null) {
+            // Ozbrojení a nebezpeční – Bomba (až po Dynamitu, Vězení a Chřestýši). Od teď
+            // je v tomhle tahu odbavená, ať se po zásazích výbuchu nesnímá znovu.
+            p._adBombTurn = this.turnId;
+            if (this._checkRevealCount(p) > 1) {
+                this.startLuckyDukeCheck({ reason: "AD_BOMB", playerIdx: pcd.playerIdx, boardIdx: pcd.bombIdx, checksLeft: 1, active: false });
+                return;
+            }
+            const checkCard = this.deck.draw({ toDiscard: true });
+            this.deck.discard(checkCard);
+            const takerIdx = this._johnPainQueueCard(checkCard, pcd.playerIdx, { reveal: true });   // Divoký západ – John Pain
+            this.phase = "CHECKING";
+            this.currentCheck = {
+                active: true,
+                reason: "AD_BOMB",
+                playerIdx: pcd.playerIdx,
+                card: checkCard,
+                boardIdx: pcd.bombIdx,
+                johnPainIdx: takerIdx
+            };
+            return;
+        }
+
         if (pcd.jailIdx !== null) {
             if (this._checkRevealCount(p) > 1) {
                 this.startLuckyDukeCheck({ reason: "JAIL", playerIdx: pcd.playerIdx, boardIdx: pcd.jailIdx, checksLeft: 1, active: false });
@@ -200,6 +229,7 @@ const ChecksMixin = {
         else if (check.reason === "VENDETTA") checkResult = (suit === Suits.HEARTS) ? 'srdce → tah navíc' : 'konec tahu';
         else if (check.reason === "TEREN_KILL") checkResult = (suit === Suits.SPADES) ? 'pik → vyřazen' : 'zůstává na 1 životě';
         else if (check.reason === "RATTLESNAKE") checkResult = (suit === Suits.SPADES) ? 'pik → ztrácí život' : 'nic';
+        else if (check.reason === "AD_BOMB") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → posílá Bombu dál' : 'černá → Bomba ztrácí 2 ⛁';
         else if (check.reason === "COLORADO") checkResult = (suit === Suits.SPADES) ? 'pik → BANG! nejde zrušit' : 'BANG! jako obvykle';
         else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
         this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${suit}`, result: checkResult });
@@ -272,8 +302,13 @@ const ChecksMixin = {
                 this.pendingDynamiteDamage = { playerIdx: check.playerIdx, hitsLeft: 1, source: 'RATTLESNAKE' };
                 this.phase = "DYNAMITE_DAMAGE";
             } else {
-                this.startDrawPhase();
+                // Ozbrojení a nebezpeční: po Chřestýši ještě Bomba.
+                this._adBombOrDraw(check.playerIdx);
             }
+        } else if (check.reason === "AD_BOMB") {
+            // Ozbrojení a nebezpeční – Bomba: ♥♦ (podle _effSuit) = předej, ♣♠ = 2 ⛁ pryč,
+            // a když dojdou, výbuch (logic/armed.js).
+            this._adBombCheckResult(check, suit);
         } else if (check.reason === "COLORADO") {
             // Údolí stínů – Colorado Bill: ♠ (podle _effSuit – Požehnání nikdy, Prokletí
             // vždy) = rozehraný BANG! nejde zrušit. Viz _coloradoResult (logic/valley.js).

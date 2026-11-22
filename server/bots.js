@@ -10,7 +10,7 @@
 
 const { pendingActor, decideBotAction } = require('../core/botPolicy.js');
 const { pendingActors } = require('../core/pending.js');
-const { adPlaceTargets } = require('../core/armed.js');
+const { adPlaceTargets, adBombPassTargets } = require('../core/armed.js');
 const { computeBeliefs } = require('../core/beliefs.js');
 const { botQuip, quipEvents, quipSnapshot } = require('../core/botChat.js');
 const registerGameHandlers = require('./handlers.game.js');
@@ -252,6 +252,11 @@ module.exports = function installBotService(ctx) {
                     if (t) return { event: 'ad_place', payload: { seat: t.seat, cardId: t.cardId } };
                 }
                 return { event: 'ad_place_done' };
+            }
+            // Bomba po červeném sejmutí: předat ji musí – komukoli platnému.
+            case 'AD_BOMB_PASS': {
+                const t = adBombPassTargets(gs, idx)[0];
+                return t == null ? null : { event: 'ad_bomb_pass', payload: { targetIdx: t } };
             }
             // Údolí stínů – okno úniku: nevyhnout se jde vždycky.
             case 'EVADE_OFFER': return { event: 'vos_evade', payload: { cardId: null, playerIdx: idx } };

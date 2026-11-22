@@ -780,6 +780,10 @@ function adQuickPicked(idx) {
 // predikáty z core/armed.js – tytéž, kterými se ptá server i bot.
 function adAimRole(idx) {
     if (App.blockInput || !state || myIndex == null) return false;
+    // Fáze A4: předání Bomby po červeném sejmutí – klik na hráče, komu ji pošlu.
+    if (state.phase === 'AD_BOMB_PASS') {
+        return state.pendingAdBombPass?.playerIdx === myIndex && adBombPassTargets(state, myIndex).includes(idx);
+    }
     if (state.phase !== 'PLAY' || state.currentPlayerIndex !== myIndex) return false;
     const me = state.players[myIndex];
     if (selectedState.adUse) {
@@ -791,13 +795,17 @@ function adAimRole(idx) {
     if (!c || !adPayDone()) return false;
     if (selectedState.action === 'Šíp') return adArrowTargets(state, myIndex).includes(idx) && !adQuickPicked(idx);
     if (selectedState.action === 'Squaw') return adBoardTargets(state, myIndex).includes(idx);
+    // Bomba: na libovolného hráče (i na sebe), kdo ji ještě nemá.
+    if (selectedState.action === 'Bomba') return adBombTargetOk(state, myIndex, idx);
     return false;
 }
 // …a co klik udělá. Šíp s vylepšením sbírá 1 + N různých cílů (`selectedState.adTargets`)
 // a odejde až s posledním; Squaw pak pokračuje výběrem karty na stole cíle (řídí server).
 function adAimClick(idx) {
     if (!adAimRole(idx)) return;
-    if (selectedState.adUse) {
+    if (state.phase === 'AD_BOMB_PASS') {
+        socket.emit('ad_bomb_pass', { targetIdx: idx });
+    } else if (selectedState.adUse) {
         socket.emit('ad_use', { cardId: selectedState.adUse.cardId, targetIdx: idx });
     } else if (selectedState.adFrankie) {
         socket.emit('ad_frankie', { seat: idx, cardId: null });
@@ -2135,7 +2143,8 @@ function drawMyArea(ctx) {
             const pdd = state.pendingDynamiteDamage;
             // Klikaný zásah nemusí být dynamit (Údolí stínů – Chřestýš).
             const ddIcon = pdd.source === 'RATTLESNAKE' ? '🐍 Chřestýš –'
-                : pdd.source === 'AIM' ? '🎯 Dvojitá rána –' : '💥';
+                : pdd.source === 'AIM' ? '🎯 Dvojitá rána –'
+                : pdd.source === 'AD_BOMB' ? '💣 Bomba –' : '💥';
             const ddTxt = gameScene.add.text(livesX, myBaseY + L.myHintOffY,
                 `${ddIcon} ${pdd.hitsLeft}× klikni na Životy`,
                 { fontSize: '19px', color: '#ff8800', backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 8, y: 4 } })
@@ -4663,6 +4672,29 @@ function drawPhaseOverlays(ctx) {
         } else {
             let l1 = gameScene.add.text(960, 92,
                 `⏳ Čeká se na hráče ${_apName} – rozmisťuje žetony nabití${_apWhy ? ' (' + _apWhy + ')' : ''}`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+        }
+    }
+
+    // ── Ozbrojení a nebezpeční – předání Bomby (♥♦): „komu ji pošleš?" ──────────
+    if (state.phase === "AD_BOMB_PASS" && state.pendingAdBombPass) {
+        const _bp = state.pendingAdBombPass;
+        const _bpMine = _bp.playerIdx === myIndex;
+        const _bpName = state.players[_bp.playerIdx]?.name || '?';
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _bpMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_bpMine) {
+            let l1 = gameScene.add.text(960, 66, '💣 Bomba – pošli ji jinému hráči',
+                { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, 'Klikni na postavu hráče – Bomba k němu odejde i se žetony',
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 92,
+                `⏳ Čeká se na hráče ${_bpName} – vybírá, komu pošle Bombu`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }
