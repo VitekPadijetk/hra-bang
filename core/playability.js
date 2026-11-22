@@ -958,6 +958,11 @@ function lvkTargetOk(state, me, myIndex, targetIdx) {
             return lvkHasCard(state, myIndex, targetIdx);
         case 'heal':     // Tequila: kdokoli ve hře (i sám sebe)
             return true;
+        // Ozbrojení a nebezpeční – opakuje se jen základní efekt (jeden cíl, bez vylepšení).
+        case 'arrow':    // Šíp: kdokoli jiný bez ohledu na vzdálenost, ne Duch
+            return adArrowTargets(state, myIndex).includes(targetIdx);
+        case 'squaw':    // Squaw: karta ve hře kohokoli, i vlastní
+            return adBoardTargets(state, myIndex).includes(targetIdx);
         default:
             return false;
     }
@@ -1085,7 +1090,12 @@ function dorothyAsIf(state, commandedIdx) {
 
 // Jakou akci poručená karta spustí (z pohledu poručeného) a potřebuje-li cíl.
 // Údolí stínů: Chřestýš, Odměna a Duch se vykládají před cíl stejně jako Vězení.
-const DOROTHY_AIMED = ['SHOOT', 'Panika!', 'Cat Balou', 'Duel', 'Vězení', 'Chřestýš', 'Odměna', 'Duch'];
+// Ozbrojení a nebezpeční: Šíp (jeden cíl bez vzdálenosti, bez vylepšení), Squaw (karta ve hře
+// kohokoli, i poručeného) a Bomba (před kohokoli, i poručeného).
+const DOROTHY_AIMED = ['SHOOT', 'Panika!', 'Cat Balou', 'Duel', 'Vězení', 'Chřestýš', 'Odměna', 'Duch',
+                       'Šíp', 'Squaw', 'Bomba'];
+// Akce, jejichž cílem smí být i sám poručený (jeho vlastní stůl / on sám).
+const DOROTHY_SELF_OK = ['Squaw', 'Bomba'];
 
 function dorothyAction(state, commandedIdx, card) {
     const p = state.players[commandedIdx];
@@ -1109,7 +1119,7 @@ function dorothyTargets(state, commandedIdx, card) {
         (q.weapon && q.weapon.id !== -1) || (q.board || []).length > 0;
     const out = [];
     (state.players || []).forEach((q, i) => {
-        if (i === commandedIdx || !q) return;
+        if (!q || (i === commandedIdx && !DOROTHY_SELF_OK.includes(action))) return;
         // Údolí stínů – Duch: cílem je naopak vyřazený hráč (mimo hru).
         if (action === 'Duch') { if (vosPlaceTargetOk(sim, i, card)) out.push(i); return; }
         if (!isInPlay(q)) return;
@@ -1132,6 +1142,16 @@ function dorothyTargets(state, commandedIdx, card) {
             case 'Chřestýš':
             case 'Odměna':
                 if (vosPlaceTargetOk(sim, i, card)) out.push(i);
+                break;
+            // Ozbrojení a nebezpeční – tytéž dotazy, kterými se ptá vlastní zahrání (playSpecialCard).
+            case 'Šíp':
+                if (adArrowTargets(sim, commandedIdx).includes(i)) out.push(i);
+                break;
+            case 'Squaw':
+                if (adBoardTargets(sim, commandedIdx).includes(i)) out.push(i);
+                break;
+            case 'Bomba':
+                if (adBombTargets(sim, commandedIdx).includes(i)) out.push(i);
                 break;
             default:
                 break;

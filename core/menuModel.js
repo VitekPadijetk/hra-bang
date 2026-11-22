@@ -80,10 +80,10 @@ const MENU_EXPANSIONS = [
     // i postavy. Kdyby nějaký druh z VOS_CARDS_READY / VOS_READY vypadl, nápověda by
     // lhala – hlídá to test (test/vos.cards.test.js).
     { key: 'udoli_stinu', label: 'Údolí stínů', hint: '16 karet a 5 postav; karty hrané mimo tah a Duch' },
-    // Rozpracované (docs/ozbrojeni-a-nebezpecni-plan.md §8): od fáze A1 jde zapnout i v běžné
-    // hře, do balíčku jdou jen hotové druhy (AD_CARDS_READY) a postavy až s AD_READY.
-    // Nápověda říká, kolik toho je – s každou fází se upraví (na konci „28 karet a 8 postav").
-    { key: 'ozbrojeni', label: 'Ozbrojení a nebezpeční', hint: 'Žetony nabití a Nebezpečné karty; rozpracované – všech 28 karet a 8 postav (bez dokončení A7)' },
+    // Hotové od fáze A7 (docs/ozbrojeni-a-nebezpecni-plan.md §8): AD_CARDS_READY = všech 28
+    // karet, AD_READY = všech 8 postav. Kdyby některý druh vypadl, nápověda by lhala – hlídá
+    // to test (test/ad.finish.test.js).
+    { key: 'ozbrojeni', label: 'Ozbrojení a nebezpeční', hint: '28 karet a 8 postav; žetony nabití, vylepšení a Nebezpečné karty' },
 ];
 
 // Rozšíření, která se teprve chystají – v mřížce leží jako neklikatelná karta „již brzy".

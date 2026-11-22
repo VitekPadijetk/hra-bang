@@ -244,6 +244,26 @@ Co se v A6 udělalo jinak / navíc proti textu níž:
   po zaplacení „LÍZNOUT ✔", „NELÍZAT" ve slotu „Ukončit tah", banner pro ostatní; Abigail –
   „🙅 IGNOROVAT (Ms. Abigail)" ve slotu schopnosti v okně úniku i v obraně.
 
+**Stav (2026-11-22, nakonec): hotová fáze A7 (dokončení) – celé rozšíření.** Nápověda
+v menu už neříká „rozpracované" („28 karet a 8 postav…"). Podrobný popis mechanismů je
+v [docs/pravidla/ozbrojeni.md](pravidla/ozbrojeni.md), CLAUDE.md drží jen pojistky. Testy:
+`test/ad.finish.test.js` (7) a v zátěži `test/ad.load.test.js` dvě nové partie – skutečný
+balíček se skutečným výběrem postav (3–8 hráčů, v páru s každým rozšířením a se vším) a
+„balíček samých Rezů, Bičů a Paklíčů".
+
+Co se v A7 udělalo jinak / navíc proti textu níž:
+- **Doroty a LVK pro karty bez vzdálenosti**: `DOROTHY_AIMED` zná Šíp, Squaw a Bombu,
+  `dorothyTargets` se ptá `adArrowTargets`/`adBoardTargets`/`adBombTargets`; Squaw a Bomba
+  smí mířit i na poručeného (`DOROTHY_SELF_OK`). LVK opakuje Šíp (`aim: 'arrow'`) a Squaw
+  (`aim: 'squaw'`), bez vylepšení. Bombu LVK neopakuje (není hnědá).
+- **Matice `server.bots.test.js` se nerozšiřovala** (zdvojnásobila by běh) – místo ní
+  skutečný balíček v `ad.load` (vzor Divokého západu).
+- **Ladění bota nebylo potřeba**: 2500 partií skutečného balíčku bez nouzové akce,
+  úspěšnost postav rozšíření v mezích šumu.
+- **Mobilní profil** byl hotový už z A0–A1 (štítky ⛁, invarianty zásoby); A7 jen ověřilo.
+- **Lety kostiček** (§2.16 `ad_load`/`ad_pay`/`ad_move`, `core/armedAnim.js`) zůstávají
+  nehotové – čistě kosmetika, pravidla na nich nestojí.
+
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho
 >    bere. Automaticky běží jen to, kde pravidla volbu nedávají (cena Nebezpečné karty se

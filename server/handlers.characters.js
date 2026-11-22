@@ -267,7 +267,8 @@ module.exports = function registerCharacterHandlers(socket, ctx, withRoom) {
             return;
         }
         // Údolí stínů: Chřestýš, Odměna a Duch letí před cíl stejně jako Vězení.
-        if (card.type === 'Vězení' || card.type === 'Chřestýš' || card.type === 'Odměna' || card.type === 'Duch') {
+        // Ozbrojení a nebezpeční: Bomba taky (Šíp a Squaw jdou do odhozu jako každá hnědá).
+        if (card.type === 'Vězení' || card.type === 'Chřestýš' || card.type === 'Odměna' || card.type === 'Duch' || card.type === 'Bomba') {
             const jailBoardIdx = 1 + (gs.players[targetIdx]?.board?.length || 0);
             emitAnim(room, { type: 'jail_sequence', attackerIdx: commandedIdx, targetIdx,
                              cardId: card.id, boardIdx: jailBoardIdx });

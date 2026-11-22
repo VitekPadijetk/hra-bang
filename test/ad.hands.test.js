@@ -266,11 +266,12 @@ test('Rez: po 1 ⛁ z každé Nebezpečné karty a postavy ostatních na mou pos
     assert.equal(g.players[0].board[0].adLoads, 3, 'vlastní Bandalír netknutý');
 });
 
-test('Lee Van Kliff smí zopakovat Rez; Doroty ho smí poručit, Šíp a Squaw ne', () => {
+// Fáze A7: Šíp a Squaw (cíle bez vzdálenosti) jde poručit i zopakovat – test/ad.finish.test.js.
+test('Lee Van Kliff smí zopakovat Rez; Doroty ho smí poručit (od A7 i Šíp a Squaw)', () => {
     assert.equal(A.adRepeatOk(adCard('Rez')), true);
     assert.equal(A.adDorothyOk(adCard('Rez')), true);
-    assert.equal(A.adDorothyOk(adCard('Šíp')), false);
-    assert.equal(A.adDorothyOk(adCard('Squaw')), false);
+    assert.equal(A.adDorothyOk(adCard('Šíp')), true);
+    assert.equal(A.adDorothyOk(adCard('Squaw')), true);
     assert.equal(A.adDorothyOk(adCard('Paklíč')), true);
 });
 

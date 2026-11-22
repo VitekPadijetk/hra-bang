@@ -722,7 +722,7 @@ const AD_KINDS = {
     'Bandalír':         { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Bečka piva':       { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Zvonice':          { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
-    'Bomba':            { dorothy: false, lvk: false, why: 'cíl bez vzdálenosti (i sebe) – Doroty zatím ne (A7)' },
+    'Bomba':            { dorothy: true,  lvk: false, why: 'oranžová – poručený ji položí před kohokoli (i sebe, adBombTargets); cíl vybírá poroučející' },
     'Bedna':            { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Paklíč':           { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Stepní běžec':     { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
@@ -732,14 +732,14 @@ const AD_KINDS = {
     'Dvouhlavňovka':    { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Thunderer':        { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Malý doušek':      { dorothy: true,  lvk: true,  why: 'efekt = +1 život, bez vylepšení' },
-    'Šíp':              { dorothy: false, lvk: false, why: 'cíle bez vzdálenosti a vylepšení – Doroty ani LVK zatím ne (A7)' },
+    'Šíp':              { dorothy: true,  lvk: true,  why: 'jeden cíl bez vzdálenosti (adArrowTargets), bez vylepšení' },
     'Kolona':           { dorothy: true,  lvk: true,  why: 'lízni 2, bez vylepšení' },
     'Skrč se!':         { dorothy: false, lvk: false, why: 'hraje se jen jako reakce' },
     'Křesadlovka':      { dorothy: true,  lvk: true,  why: 'bang-efekt na dostřel, bez vylepšení' },
     'Rychlopalba':      { dorothy: true,  lvk: true,  why: 'bang-efekt na dostřel, jeden cíl (bez vylepšení)' },
     'Nabíjení':         { dorothy: true,  lvk: true,  why: 'rozmísti 3 žetony' },
     'Rez':              { dorothy: true,  lvk: true,  why: 'žetony ostatních na postavu toho, kdo kartu hraje' },
-    'Squaw':            { dorothy: false, lvk: false, why: 'cíl bez vzdálenosti (i sebe) – Doroty ani LVK zatím ne (A7)' },
+    'Squaw':            { dorothy: true,  lvk: true,  why: 'karta ve hře kohokoli (i sebe, adBoardTargets), bez vylepšení' },
 };
 const AD_BASE_NAMES = ['Bang!', 'Cat Balou', 'Vedle!'];
 

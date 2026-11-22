@@ -1866,6 +1866,18 @@ function decidePlay(state, myIndex, beliefs) {
                     if (canHeal(me)) { targetIdx = myIndex; score = me.health <= 2 ? 30 : 10; }
                     break;
                 }
+                // Ozbrojení a nebezpeční – Šíp a Squaw (jeden cíl, bez vylepšení); vybírá se
+                // stejně jako při zahrání z ruky.
+                case 'arrow': {
+                    const t = adBotArrowTargets(state, myIndex, beliefs).find(e => okTarget(e.idx));
+                    if (t) { targetIdx = t.idx; score = 24; }
+                    break;
+                }
+                case 'squaw': {
+                    const bt = adBotBoardTarget(state, myIndex, beliefs);
+                    if (bt && okTarget(bt.idx)) { targetIdx = bt.idx; score = bt.idx === myIndex ? 28 : 18 + bt.pick.value; }
+                    break;
+                }
                 default: {
                     // Efekty bez cíle. Karty za víc karet vrací zaplacený BANG! s úrokem,
                     // léčení má cenu jen se zraněním, hromadný útok jen s převahou nepřátel.

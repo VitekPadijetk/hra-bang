@@ -8,6 +8,7 @@ const { GameState } = require('../logic.js');
 const { buildCtx, pumpToWinner, cardData } = require('./_botHarness.js');
 const { adSupply, adCardsInPlay, AD_LOAD_CAP, AD_LOAD_TOTAL } = require('../core/armed.js');
 const { isInPlay } = require('../core/distance.js');
+const { ARMED_CHARACTERS } = require('../logic/entities.js');
 
 const rd = (f) => JSON.parse(fs.readFileSync(__dirname + '/../' + f, 'utf8'));
 const dodgeCityCardData = rd('cards.dodge_city.json');
@@ -299,6 +300,120 @@ test('Ozbrojení a nebezpeční (A6): Al Preacher a Ms. Abigail – hra jen bot�
     } finally { ctx.glog.system = origSystem; }
     assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci s Alem ani Abigail');
     for (const what of ['okno Ala', 'Al líže', 'okno úniku Abigail', 'výstřel J–A na Abigail', 'Abigail ignoruje']) {
+        assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
+    }
+});
+
+// Fáze A7: celé rozšíření tak, jak jde do ostré hry – skutečný balíček (každá karta jednou,
+// AD_CARDS_READY = všech 28) a skutečný výběr postav (AD_READY = všech 8), bez natvrdo
+// přidělených postav. Matice „rozšíření × 3–8 hráčů" (test/server.bots.test.js) se kvůli
+// délce běhu nezdvojnásobuje; místo toho tu jede O&N samo pro 3–8 hráčů, v páru s každým
+// ostatním rozšířením a se všemi naráz.
+test('Ozbrojení a nebezpeční (A7): skutečný balíček a výběr postav × ostatní rozšíření × 3–8 hráčů', () => {
+    const OTHERS = ['dodge_city', 'high_noon', 'fistful', 'divoky_zapad', 'zlata_horecka', 'udoli_stinu'];
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, with: [] });
+    OTHERS.forEach((k, i) => COMBOS.push({ n: 3 + i, with: [k] }));
+    COMBOS.push({ n: 4, with: OTHERS }, { n: 6, with: OTHERS }, { n: 8, with: OTHERS });
+
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const adNames = new Set(adCardData.map(c => c.name));
+    const seen = new Set();
+    let adChars = 0;
+    try {
+        COMBOS.forEach(({ n, with: w }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = vosCardData;
+            gs.adCardData = adCardData;
+            const exp = { ozbrojeni: true };
+            w.forEach(k => { exp[k] = true; });
+            const opts = { expansions: exp };
+            const tag = `O&N+${w.length === OTHERS.length ? 'vše' : (w[0] || 'nic')} (${n}p)`;
+            const room = { id: `ad7_${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e) return;
+                if ((e.ev === 'play' || e.ev === 'bang' || e.ev === 'special') && adNames.has(e.card)) seen.add(e.card);
+                if (e.ev === 'ad_use') seen.add('použití');
+                if (e.ev === 'ad_place') seen.add('rozmístění');
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            // Rozšíření doteklo do stavu: všech 28 karet je v balíčku nebo v rukou.
+            const inGame = gs.deck.cards.concat(...gs.players.map(p => p.hand)).filter(c => c.exp === 'ozbrojeni');
+            assert.equal(inGame.length, adCardData.length, `${tag}: karty O&N v balíčku`);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room, (st) => checkLoads(st, tag));
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+            adChars += gs.players.filter(p => ARMED_CHARACTERS.includes(p.character)).length;
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci se skutečným balíčkem O&N');
+    assert.ok(adChars > 0, 'postavy rozšíření se dostaly do výběru');
+    for (const what of ['použití', 'rozmístění', 'Bandalír', 'Šíp', 'Nabíjení']) {
+        assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
+    }
+});
+
+// Fáze A7: „balíček samých X" pro Rez, Bič a Paklíč (plán §7) – karty, které sahají na cizí
+// žetony a stoly mimo vzdálenost. S Bombami (výbuch cizí rukou přes Rez) a Nabíjením, aby
+// bylo co brát.
+test('Ozbrojení a nebezpeční (A7): balíček samých Rezů, Bičů a Paklíčů – hra jen botů doběhne 3–8 hráčů', () => {
+    const MIX = { 'Rez': 5, 'Bič': 4, 'Paklíč': 4, 'Nabíjení': 3, 'Bomba': 2 };
+    let nid = 80000;
+    const rich = [];
+    Object.entries(MIX).forEach(([name, k]) => {
+        const row = adCardData.find(c => c.name === name);
+        for (let i = 0; i < k; i++) rich.push({ ...row, id: nid++ });
+    });
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
+    COMBOS.push({ n: 5, all: true }, { n: 8, all: true });
+
+    const seen = new Set();
+    try {
+        COMBOS.forEach(({ n, all }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = vosCardData;
+            gs.adCardData = rich;
+            const opts = { expansions: { dodge_city: all, high_noon: all, fistful: all, divoky_zapad: all,
+                                         zlata_horecka: all, udoli_stinu: all, ozbrojeni: true } };
+            const tag = `Rez/Bič/Paklíč ${all ? 'vše' : 'jen O&N'} (${n}p)`;
+            const room = { id: `adr${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e) return;
+                if ((e.ev === 'play' || e.ev === 'special') && e.card === 'Rez') seen.add('Rez');
+                if (e.ev === 'ad_use' && (e.card === 'Bič' || e.card === 'Paklíč')) seen.add('použití ' + e.card);
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room, (st) => checkLoads(st, tag));
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci s Rezem, Bičem a Paklíčem');
+    for (const what of ['Rez', 'použití Bič', 'použití Paklíč']) {
         assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
     }
 });

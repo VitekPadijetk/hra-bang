@@ -36,6 +36,7 @@ něj se chyba zopakuje.
 | [rozlozeni.md](docs/pravidla/rozlozeni.md) | Mobilní profil (kompaktní soupeři) a pás vyložených karet |
 | [sit-a-assety.md](docs/pravidla/sit-a-assety.md) | Redakce stavu (co klient smí vidět) a bandwidth (WebP, komprese, cache) |
 | [udoli-stinu.md](docs/pravidla/udoli-stinu.md) | Údolí stínů: fronta výstřelů, kolečko voleb (Tornádo/Poker/Divoká banda), Duch (ve hře s nulou životů), okno úniku (Útěk, Mick), Henry Block (pozastavená akce), Obětavý skok, bot, zátěž a rozložení (řada Pokeru, přepínač Dvojité rány) |
+| [ozbrojeni.md](docs/pravidla/ozbrojeni.md) | Ozbrojení a nebezpeční: žetony nabití (zásoba, tři cesty, `AD_PLACE`, platba s akcí), zbraně a kontext výstřelu, Šíp/Paklíč/Bič/Squaw, Bomba, Stepní běžec, Julie Cutter, Al Preacher, Ms. Abigail, Doroty/LVK (`AD_KINDS`), zátěž a mobil |
 
 **Nová sekce patří do `docs/pravidla/`, ne sem** — sem jen řádek do téhle tabulky.
 Výjimka: pravidlo, na které musí člověk narazit, i když ho nehledá (jako redakce stavu
@@ -65,7 +66,7 @@ přečti si tam jeho řádek.
 | `logic/goldRush.js` | Zlatá horečka: valouny, obchod, vybavení (`player.gear`, `_gearOn`), `_afterLifeLost`, postavy. Viz [zlata-horecka.md](docs/pravidla/zlata-horecka.md). |
 | `logic/shadow.js` | Varianta Stínoví pistolníci. |
 | `logic/valley.js` | Údolí stínů. Viz [udoli-stinu.md](docs/pravidla/udoli-stinu.md). |
-| `logic/armed.js` | Ozbrojení a nebezpeční (rozpracované): žetony nabití. |
+| `logic/armed.js` | Ozbrojení a nebezpeční: žetony nabití, Nebezpečné karty, postavy. Viz [ozbrojeni.md](docs/pravidla/ozbrojeni.md). |
 | `server.js` | Socket.IO bootstrap; logika v `server/*`. |
 | `server/rooms.js` | Místnosti, `broadcastRoom`, **`redactState`**, `closeRoom`/`roomAlive` (nikdy holé `rooms.delete`), `leaveSpectate`, `swapRoomSeats`, `emitChat`. |
 | `server/intro.js` | Serverová intro sekvence (timeouty). |
@@ -318,61 +319,24 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A6 hotové)
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — hotové
 
-Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
-(texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
-[docs/ozbrojeni-a-nebezpecni-plan.md](docs/ozbrojeni-a-nebezpecni-plan.md) (žetony nabití,
-Nebezpečné karty, fáze A0–A7, rozhodnutí R-U1–R-U4 a R1–R23). **Přečti si plán, než na
-rozšíření sáhneš** – žetony se podle rozhodnutí uživatele rozmisťují i platí vždy ručně
-a zásoba se počítá, neukládá.
+**Hotové je celé rozšíření (fáze A0–A7)**: všech 28 karet i 8 postav má efekt, bot je umí
+hrát a rozšíření jde zapnout v menu. Podrobný popis mechanismů (žetony a platba, výstřel
+s kontextem `vos`, Šíp, Bomba, Stepní běžec, okna mimo tah, Doroty/LVK, zátěž, mobil) je
+v [docs/pravidla/ozbrojeni.md](docs/pravidla/ozbrojeni.md) – **přečti si ho, než na
+cokoli z rozšíření sáhneš**. Plán [docs/ozbrojeni-a-nebezpecni-plan.md](docs/ozbrojeni-a-nebezpecni-plan.md),
+pravidla [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md).
 
-Hotová je fáze **A0 (kostra)**: data `cards.ozbrojeni.json` (id 200–227), postavy 55–62,
-mixin `logic/armed.js` (zásoba a tři jediné cesty změny žetonů `_adAdd`/`_adTake`/`_adMove`,
-vyložení Nebezpečné karty se 3 žetony, vyčerpání), zrcadlo `core/armed.js` (`adOn`,
-`adSupply`, `adArmOk`, `AD_CARDS_READY`), predikáty `isDangerousCard`/`isBrownCard`
-(core/cardRules.js – **Nebezpečná zbraň má typ „Zbraň", ale `isBlueCard` ji nebere**),
-kostičky na kartách a pyramida zásoby (view/board.js).
+Pojistky, na které se narazí i bez hledání:
 
-Hotová je i fáze **A1 (dobíjení a placení)** a rozšíření jde zapnout v běžné hře (zatím
-13 karet, bez postav): fáze `AD_PLACE` (žeton za modrou kartu frontou, za odhoz nad limit,
-Nabíjení), platba za vylepšení posílaná s akcí (`adPayOk`/`adUpgradeOk`), použití
-Nebezpečných karet `ad_use` (`adUseOk`), Bandalír (`adBandolierExtra` v `bangLimitFree`),
-Kolona, Malý doušek. **Zvonice žije v core/distance.js** (`adBellActive`) – distance.js
-nesmí require-ovat armed.js. Co se odchýlilo od plánu, je v jeho záhlaví.
-
-Hotová je i fáze **A2 (zbraně a výstřely)** – 21 karet, postavy Bloody Mary a Mexicali Kid.
-**Výstřel nese kontext `vos` i bez Údolí stínů** (`_adShotStart`: `unavoidable`, `adBuntline`,
-`adReturn`, `adMary`); Colorado Bill se proto ptá na `vos.bangCard`. **Zrušení výstřelu jde
-trychtýřem `_adShotCanceled`** (Barel, Vedle!, Útěk, Bedna) a **Big Fifty drží `_adMuted`
-na cíli** – `hasAbility` pak nic nepovolí; každý nový konec obrany musí volat `_adShotEnd()`
-(konec `handleResponse` je vytažený do `_respondAdvance`). Buntline odhazuje fází Brokovnice
-(`SHOTGUN_DISCARD` s `label`).
-
-Hotová je i fáze **A3 (ruce a stoly)** – 26 karet, postavy Bass Greeves, Frankie Canton
-a Red Ringo. **Šíp jede po cestě Indiánů** (`sourceCard: INDIANS` + `_adArrow.queue`, na které
-se ptá `_advanceMassAttack`), Paklíč/Bič/Squaw po cestě Paniky/Cat Balou s `ignoreDistance`
-(Bič a Squaw navíc `adNoHand` – z ruky ne). **`adPlaceTargets` čte `pendingAdPlace.from`**
-(Red Ringo rozmisťuje z postavy jen na karty), Bass má `oneTarget`.
-
-Hotová je i fáze **A4 (Bomba)** – 27 karet a dodaný art (karty, portréty, značka). Bomba se
-snímá za Chřestýšem (`pendingCheckDraw.bombIdx`, `_adBombTurn`), předává se fází
-`AD_BOMB_PASS`. **Výbuch cizí rukou (Rez, Frankie) jde frontou `AD_BOMB_BLAST` a zásahy
-nesou `resume: 'QUEUE'`** – po nich se vrací do PLAY a smrt oběti tah neposouvá.
-
-Hotová je i fáze **A5 (sejmutí znovu)** – všech 28 karet, postava Julie Cutter. **Stepní běžec
-je brána `_adRedrawGate` před `_applyCheckResult`** v obou jeho volajících (`resolveCheck`,
-`luckyDukePick`) – nové sejmutí se musí vejít do `currentCheck` (nese celý kontext a po
-zopakování se z něj sejme znovu). Fáze `AD_REDRAW_OFFER`, akce `ad_redraw`, kdo smí =
-`adRedrawOwner`, jak sejmutí dopadlo = `adCheckVerdict`. **Julie Cutter** jde frontou
-`AD_JULIE_CHECK` → `CHECK_DRAW` s `reason: 'AD_JULIE'`; od téhož útočníka čeká ve frontě
-nejvýš jedno sejmutí (Dvojitá rána = jedno).
-
-Hotová je i fáze **A6 (okna mimo tah)** – všech 8 postav. **Al Preacher** visí na
-`_adQueueBlue` (`_adQueueAl`, za dobitím) → fronta/fáze `AD_AL_OFFER`, akce `ad_al { pay }`,
-líznutí jako `KILL_REWARD`. **Ms. Abigail** jde dvěma cestami: brána `_vosEvadeGate` bere
-zahranou kartu (`card`, stačí `{ value }`) a otevře okno úniku i bez Údolí stínů
-(`pendingEvade.abigail`); výstřel nese `vos.adAbby` (`_adAbbyVos`) a v obraně platí
-`adAbigailRespondOk`. **Nový vstup hnědé karty na jediný cíl musí kartu bráně předat**
-(`opts.card` v `_enterTargetSelection`, třetí parametr `_startDuel`, `_adAbbyVos` u výstřelu),
-jinak ji Abigail ignorovat nepůjde. Akce `ad_abigail` bez payloadu.
+- **Žetony se rozmisťují i platí vždy ručně a zásoba se počítá, neukládá** (`adSupply`).
+  `.adLoads` se mění jen přes `_adAdd`/`_adTake`/`_adMove` (hlídá strukturální test).
+- **Nebezpečná zbraň má typ „Zbraň", ale `isBlueCard` ji nebere** (`card.dangerous`).
+- **Zvonice žije v core/distance.js** (`adBellActive`) – distance.js nesmí require-ovat armed.js.
+- **Výstřel nese kontext `vos` i bez Údolí stínů**; zrušení výstřelu jde trychtýřem
+  `_adShotCanceled` a každý nový konec obrany musí volat `_adShotEnd()` (Big Fifty `_adMuted`).
+- **Nový vstup hnědé karty na jediný cíl musí kartu předat bráně úniku** (`opts.card`
+  v `_enterTargetSelection`, třetí parametr `_startDuel`, `_adAbbyVos`), jinak ji Ms. Abigail
+  ignorovat nepůjde.
+- **Co smí Doroty poručit a LVK zopakovat, říká jen tabulka `AD_KINDS`** (core/armed.js).

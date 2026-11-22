@@ -1130,6 +1130,8 @@ const WildWestMixin = {
             case CardType.AD_RELOAD:   return { effect: 'AD_RELOAD',   aim: null };
             case CardType.AD_NIP:      return { effect: 'AD_NIP',      aim: null };
             case CardType.AD_RUST:     return { effect: 'AD_RUST',     aim: null };
+            case CardType.AD_ARROW:    return { effect: 'AD_ARROW',    aim: 'arrow' };
+            case CardType.AD_SQUAW:    return { effect: 'AD_SQUAW',    aim: 'squaw' };
             case CardType.BEER:        return { effect: 'BEER',        aim: null };
             // Údolí stínů – Poslední pivo: efekt = +1 život (není to karta Pivo).
             case CardType.LAST_CALL:   return { effect: 'LAST_CALL',   aim: null };
@@ -1301,6 +1303,18 @@ const WildWestMixin = {
                 const ok = this._adBrownEffect(playerIdx, type, 0);
                 if (ok && lb.effect === 'AD_CARAVAN') { this._processSpecialQueue(); return; }
                 done();
+                return;
+            }
+            // Šíp: jeden cíl (bez vylepšení) po cestě Indiánů; Apache Kida rozhoduje barva
+            // PŮVODNÍ karty – přeskočí ho _adArrowNext přes _massAttackSuit.
+            case 'AD_ARROW': {
+                this._adArrowStart(playerIdx, [targetIdx], { suit: lb.suit, name: lb.name, value: lb.value });
+                return;
+            }
+            // Squaw: odhoz karty ve hře cíle (bez vylepšení = do odhozu, ne do ruky).
+            case 'AD_SQUAW': {
+                if (this._apacheImmune(targetIdx, this._effSuit(src), playerIdx)) { done(); return; }
+                this._adBoardDiscard(playerIdx, targetIdx, lb.name, false);
                 return;
             }
             case 'STAGECOACH':
