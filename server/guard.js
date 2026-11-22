@@ -67,6 +67,8 @@ module.exports = function installActionGuard(ctx) {
         'ad_bass', 'ad_frankie', 'ad_ringo',
         // Fáze A4: předání Bomby (majitel po červeném sejmutí, fáze AD_BOMB_PASS).
         'ad_bomb_pass',
+        // Fáze A5: okno Stepního běžce (majitel karty, i mimo svůj tah – je pendingActor).
+        'ad_redraw',
     ]);
 
     // Akce mimo pořadí (Sid Ketchum léčí kdykoli, i v cizím tahu) – tady nelze

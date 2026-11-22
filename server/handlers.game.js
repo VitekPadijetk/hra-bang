@@ -5,7 +5,7 @@ const { niResultMs } = require('../core/highNoonAnim.js');
 const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { rumRevealMs } = require('../core/goldRushAnim.js');
 const { pendingActor } = require('../core/pending.js');
-const { adArmOk, adUpgradeOk } = require('../core/armed.js');
+const { adArmOk, adUpgradeOk, adCheckVerdict } = require('../core/armed.js');
 
 // Odešla karta z ruky, tedy PROŠLA pravidly? Pravidla (logic/*) odmítnutou akci mlčky
 // ignorují – karta prostě zůstane v ruce. Animace se proto emitují AŽ podle výsledku:
@@ -1691,6 +1691,38 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (gs.lastAnimEvent) { emitAnim(room, gs.lastAnimEvent); gs.lastAnimEvent = null; }
             ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx: tIdx, kind: 'hostile' });
             handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+    // Stepní běžec: majitel karty rozhodl, jestli se právě provedené sejmutí zopakuje
+    // (fáze AD_REDRAW_OFFER). „Nechat" = výsledek se použije – stejné dohrávky jako
+    // resolve_check (let karty ze stolu, smrt, konec tahu). „Zopakovat" = 1 ⛁ pryč
+    // (poslední žeton → karta letí do odhozu) a nové sejmutí; jeho cinematiku si klient
+    // spustí sám přechodem do CHECKING (resp. LUCKY_DUKE). Ledger chování: zopakovat
+    // CIZÍ sejmutí, které dopadlo pro snímajícího dobře = nepřátelské, špatně = pomoc.
+    on('ad_redraw', (d) => {
+        withRoom((room, p, gs) => {
+            const pr = gs.pendingAdRedraw;
+            if (!pr) return;
+            const redo = !!(d && d.redo);
+            const verdict = redo ? adCheckVerdict(gs, gs.currentCheck) : null;
+            const _adBefore = adSnapshot(gs);
+            if (!gs.adRedraw(pr.ownerIdx, redo)) { broadcastRoom(room); return; }
+            adDepleted(gs, _adBefore).forEach(x => emitAnim(room, { type: 'board_to_discard',
+                fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
+            if (verdict && pr.checkerIdx !== pr.ownerIdx) {
+                ctx.recordBehavior?.(room, { actorIdx: pr.ownerIdx, targetIdx: pr.checkerIdx,
+                                             kind: verdict.good ? 'hostile' : 'support' });
+            }
+            if (gs.lastAnimEvent) {
+                emitAnim(room, gs.lastAnimEvent);
+                gs.lastAnimEvent = null;
+            }
+            handleAutoEndTurn(room, gs);
+            if (gs._deathAnimPlayerIdx !== undefined && gs._deathAnimPlayerIdx !== null) {
+                emitDeathAnim(room, gs, gs._deathAnimPlayerIdx);
+                gs._deathAnimPlayerIdx = null;
+            }
+            handleReshuffleAndBroadcast(room, gs, 0);
         });
     });
     // Red Ringo: až 2 žetony z postavy na své karty (fáze AD_PLACE s `from: 'CHAR'`).

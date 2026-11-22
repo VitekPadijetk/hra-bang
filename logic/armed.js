@@ -699,6 +699,106 @@ const ArmedMixin = {
         this._processSpecialQueue();
         return true;
     },
+
+    // ── Fáze A5: Stepní běžec (§2.11, R7) ───────────────────────────────────────
+    // Brána před `_applyCheckResult` – sedí na obou jeho volajících (`resolveCheck`
+    // a `luckyDukePick`). Když má někdo Stepního běžce s žetonem a smí reagovat
+    // (adRedrawOwner), výsledek se zatím NEPOUŽIJE: hra přejde do fáze AD_REDRAW_OFFER
+    // a čeká, jestli majitel sejmutí nechá zopakovat. `currentCheck` zůstává, jak je –
+    // nese celý kontext (důvod, hráče, kartu na stole, kontext výstřelu, Colorado,
+    // Julie), takže se dá sejmout znovu týmž postupem. Vrací true = okno se otevřelo.
+    _adRedrawGate(check) {
+        if (!check || !check.card || this.winner) return false;
+        const owner = adRedrawOwner(this, check.playerIdx);
+        if (owner == null) return false;
+        const card = adTumbleweedCard(this.players[owner]);
+        this.pendingAdRedraw = { ownerIdx: owner, checkerIdx: check.playerIdx, cardId: card.id };
+        this.phase = 'AD_REDRAW_OFFER';
+        return true;
+    },
+
+    // Majitel rozhodl: `redo` = zaplať 1 ⛁ a sejmi znovu (stará karta už leží v odhozu,
+    // „předchozí výsledek neplatí"), jinak se výsledek použije jako dřív. Po novém
+    // sejmutí se brána ptá znovu – opakovat jde, dokud jsou žetony. Lucky Duke (i Podkova)
+    // opakuje CELÉ sejmutí, tedy otočí znovu dvě karty a vybírá (upřesnění pravidel).
+    // Vrací false, když akce neplatí (nikdo na ni nečeká).
+    adRedraw(playerIdx, redo) {
+        const pr = this.pendingAdRedraw;
+        if (this.phase !== 'AD_REDRAW_OFFER' || !pr || pr.ownerIdx !== playerIdx) return false;
+        const check = this.currentCheck;
+        this.pendingAdRedraw = null;
+        this.phase = 'CHECKING';
+        const owner = this.players[playerIdx];
+        const card = adFindCard(owner, pr.cardId);
+        const canDraw = (this.deck._drawPile.length + this.deck.discardPile.length) > 0;
+        if (!redo || !check || !card || adLoadsOf(card) < 1 || !canDraw) {
+            if (check) this._applyCheckResult(check);
+            return true;
+        }
+        // Karta na stole, kvůli které se snímá (Dynamit, Vězení, Chřestýš, Bomba), se
+        // adresuje indexem – a ten se posune, když zaplacením odejde vyčerpaný Stepní běžec
+        // ze stolu téhož hráče. Proto se po platbě dohledá znovu.
+        const checker = this.players[check.playerIdx];
+        const boardRef = check.boardIdx != null ? checker?.board[check.boardIdx] : null;
+        this._adTake(card, Math.max(1, adCardCost(card)));
+        this.logEvent('special', { who: owner.name, card: 'Stepní běžec', target: checker?.name,
+                                   msg: `${AD_CHECK_LABEL[check.reason] || 'sejmutí'} se opakuje` });
+        const { card: _old, active: _a, johnPainIdx: _jp, ...ctx } = check;
+        if (boardRef) ctx.boardIdx = checker.board.indexOf(boardRef);
+        this._adRedrawStart(ctx);
+        return true;
+    },
+
+    // Nové sejmutí s tímtéž kontextem – stejně jako první (triggerCheckDraw /
+    // startBarrelCheck): víc odkrytých karet = výběr Lucky Duka, jinak jedna karta do
+    // odhozu, John Pain si ji ohlásí, fáze CHECKING (klient přehraje cinematiku sejmutí).
+    _adRedrawStart(ctx) {
+        const p = this.players[ctx.playerIdx];
+        if (this._checkRevealCount(p) > 1) {
+            this.startLuckyDukeCheck({ ...ctx, active: false });
+            if (this.phase === 'LUCKY_DUKE') return;
+        }
+        const c = this.deck.draw({ toDiscard: true });
+        this.deck.discard(c);
+        const takerIdx = this._johnPainQueueCard(c, ctx.playerIdx, { reveal: true });
+        this.phase = 'CHECKING';
+        this.currentCheck = { ...ctx, active: true, card: c, johnPainIdx: takerIdx };
+    },
+
+    // ── Fáze A5: Julie Cutter (§5, R15) ─────────────────────────────────────────
+    // „Kdykoli ti hráč způsobí ztrátu alespoň 1 života, sejmi: ♥♦ = stane se cílem efektu
+    // BANG!" Volá se z handleDamage, když Julie zásah přežila. Jedna UDÁLOST = jedno
+    // sejmutí, i když ztratila víc životů („je to vždy jen jeden BANG!") – Dvojitá rána
+    // jde přes dva klikané zásahy (_startAimHits), proto se druhé sejmutí od téhož
+    // útočníka do fronty nepřidá, dokud první ještě čeká. Sejmutí jde frontou odložených
+    // akcí (efekt karty, která Julii zranila, doběhne první) a cestou CHECK_DRAW →
+    // CHECKING, takže se veze Lucky Duke, Podkova, John Pain i Stepní běžec. Big Fifty
+    // schopnost vypíná sám (hasAbility čte `_adMuted`). Bez útočníka (Dynamit, Chřestýš,
+    // Bomba, události) nic.
+    _adJulieQueue(targetIdx, attackerIdx) {
+        if (!this._adOn() || attackerIdx == null || attackerIdx === targetIdx) return;
+        const t = this.players[targetIdx], a = this.players[attackerIdx];
+        if (!hasAbility(t, 'Julie Cutter') || !isInPlay(a)) return;
+        if (this.specialActionQueue.some(x => x.type === 'AD_JULIE_CHECK' &&
+                x.playerIdx === targetIdx && x.attackerIdx === attackerIdx)) return;
+        this.specialActionQueue.push({ type: 'AD_JULIE_CHECK', playerIdx: targetIdx, attackerIdx });
+    },
+
+    // Výsledek sejmutí (volá _applyCheckResult): ♥♦ podle _effSuit = výstřel na útočníka
+    // frontou výstřelů (odpálí se, až je klid – bez ohledu na vzdálenost, zrušitelný
+    // obvyklým způsobem; kdo jím zabije, je Julie). Pak se pokračuje frontou – fázi je
+    // nutné obnovit PŘED resume (jako u Teren Killa), jinak by si další položka fronty
+    // uložila přechodné „CHECKING" jako přerušenou fázi.
+    _adJulieResult(check, red) {
+        const j = check.adJulie || {};
+        const julie = this.players[check.playerIdx], att = this.players[j.attackerIdx];
+        if (red && isInPlay(julie) && isInPlay(att)) {
+            this._vosQueueShot(check.playerIdx, j.attackerIdx, 'AD_JULIE', 'Julie Cutter');
+            this.logEvent('special', { who: julie.name, card: 'Julie Cutter', target: att.name, msg: 'střílí zpět' });
+        }
+        this.phase = this.interruptedPhase || 'PLAY';
+        this._resumeAfterSpecial();
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = ArmedMixin;

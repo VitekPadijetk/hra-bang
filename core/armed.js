@@ -42,6 +42,8 @@ const AD_CARDS_READY = [
     'Šíp', 'Paklíč', 'Bič', 'Squaw', 'Rez',
     // A4 – Bomba
     'Bomba',
+    // A5 – opakování sejmutí
+    'Stepní běžec',
 ];
 
 // Data karet rozšíření zúžená na hotové druhy – tohle jde do balíčku (`_deckDataFor`,
@@ -592,6 +594,74 @@ function adBombPassTargets(state, idx) {
     return out;
 }
 
+// ── Fáze A5: Stepní běžec (§2.11, R7) ────────────────────────────────────────
+// „Zaplať 1 ⛁ z této karty: libovolný hráč musí zopakovat právě provedené sejmutí.
+// I mimo tvůj tah." Okno se otevírá po KAŽDÉM sejmutí, které jde cestou CHECKING
+// (Dynamit, Vězení, Chřestýš, Bomba, Barel/Jourdonnais, Vendeta, Teren Kill, Colorado
+// Bill, Don Bell, Julie Cutter) – podle rozhodnutí R-U3 ale jen tehdy, když majitel
+// karty reagovat MŮŽE.
+function adTumbleweedCard(p) {
+    return adCardsInPlay(p).find(c => c.type === 'Stepní běžec') || null;
+}
+
+// Kdo smí právě provedené sejmutí hráče `checkerIdx` nechat zopakovat (sedadlo, nebo
+// null). Karta je v balíčku jediná, ale kdyby jich bylo víc, rozhoduje první v pořadí od
+// snímajícího (včetně něj). Karta musí „žít": ne pod Lasem, ne v tahu Belle Star (cizí
+// karty na stole nemají efekt), ne u hráče, kterému ji Big Fifty právě vypnul.
+function adRedrawOwner(state, checkerIdx) {
+    if (!adOn(state) || boardDeadFor(state)) return null;
+    const players = (state && state.players) || [];
+    const n = players.length;
+    if (!n || checkerIdx == null) return null;
+    const cur = state.currentPlayerIndex;
+    const belle = hasAbility(players[cur], 'Belle Star');
+    for (let k = 0; k < n; k++) {
+        const i = (checkerIdx + k) % n;
+        const p = players[i];
+        if (!p || !isInPlay(p) || adMuted(p)) continue;
+        if (belle && i !== cur) continue;
+        const c = adTumbleweedCard(p);
+        if (c && adLoadsOf(c) >= Math.max(1, adCardCost(c))) return i;
+    }
+    return null;
+}
+
+// Názvy sejmutí pro okno a log (podle `currentCheck.reason`).
+const AD_CHECK_LABEL = {
+    DYNAMITE: 'Dynamit', JAIL: 'Vězení', RATTLESNAKE: 'Chřestýš', AD_BOMB: 'Bomba',
+    BARREL: 'Barel', JOURDONNAIS: 'Jourdonnais', VENDETTA: 'Vendeta',
+    TEREN_KILL: 'Teren Kill', COLORADO: 'Colorado Bill', DON_BELL: 'Don Bell',
+    AD_JULIE: 'Julie Cutter',
+};
+
+// Jak sejmutí dopadlo – z pohledu SNÍMAJÍCÍHO (`good`) a krátce slovy (`text`). Zrcadlí
+// větve `_applyCheckResult` (logic/checks.js); barva se čte přes effSuit (Požehnání /
+// Prokletí), hodnota zůstává vytištěná. Ptá se okno Stepního běžce (klient), bot
+// i ledger chování. null = není co posuzovat.
+function adCheckVerdict(state, check) {
+    if (!check || !check.card) return null;
+    const suit = effSuit(state, check.card);
+    const red = suit === '♥️' || suit === '♦️';
+    const hearts = suit === '♥️', spades = suit === '♠️';
+    const v = check.card.value;
+    const num = v === 'J' ? 11 : v === 'Q' ? 12 : v === 'K' ? 13 : v === 'A' ? 14 : parseInt(v, 10);
+    switch (check.reason) {
+        case 'DYNAMITE': {
+            const boom = spades && num >= 2 && num <= 9;
+            return { good: !boom, text: boom ? 'Dynamit vybuchne' : 'Dynamit nevybuchl' };
+        }
+        case 'JAIL':        return { good: hearts, text: hearts ? 'uteče z Vězení' : 'zůstává ve Vězení' };
+        case 'VENDETTA':    return { good: hearts, text: hearts ? 'hraje tah navíc' : 'bez tahu navíc' };
+        case 'DON_BELL':    return { good: red, text: red ? 'hraje tah navíc' : 'bez tahu navíc' };
+        case 'TEREN_KILL':  return { good: !spades, text: spades ? 'je vyřazen' : 'zůstává na 1 životě' };
+        case 'RATTLESNAKE': return { good: !spades, text: spades ? 'Chřestýš kousne' : 'Chřestýš nekousl' };
+        case 'AD_BOMB':     return { good: red, text: red ? 'pošle Bombu dál' : 'Bomba ztratí 2 ⛁' };
+        case 'COLORADO':    return { good: spades, text: spades ? 'BANG! nejde zrušit' : 'BANG! jako obvykle' };
+        case 'AD_JULIE':    return { good: red, text: red ? 'útočník je cílem BANG!' : 'nic se neděje' };
+        default:            return { good: hearts, text: hearts ? 'uhnul' : 'neuhnul' };
+    }
+}
+
 // ── Zuřivá Doroty a Lee Van Kliff (R13, vzor VOS_KINDS) ─────────────────────
 // Co smí Doroty poručit a co si Lee Van Kliff zapamatuje. Oranžová karta není hnědá
 // (paměť LVK drží jen hnědé), poručená karta jde bez vylepšení. Druhy, jejichž efekt
@@ -605,7 +675,7 @@ const AD_KINDS = {
     'Bomba':            { dorothy: false, lvk: false, why: 'cíl bez vzdálenosti (i sebe) – Doroty zatím ne (A7)' },
     'Bedna':            { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Paklíč':           { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
-    'Stepní běžec':     { dorothy: false, lvk: false, why: 'efekt přijde ve fázi A5' },
+    'Stepní běžec':     { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Bič':              { dorothy: true,  lvk: false, why: 'oranžová – poručený ji vyloží se 3 žetony' },
     'Big Fifty':        { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
     'Buntline Special': { dorothy: true,  lvk: false, why: 'zbraň – poručený ji vyloží se 3 žetony (efekt zbraně se platí jen u karty BANG!)' },
@@ -656,5 +726,6 @@ if (typeof module !== 'undefined' && module.exports) {
                        AD_RINGO_START, AD_RINGO_MOVE, adRingoOk,
                        AD_BOMB_DAMAGE, AD_BOMB_TAKE, adBombCard, adBombTargets, adBombTargetOk,
                        adBombPassTargets,
+                       adTumbleweedCard, adRedrawOwner, AD_CHECK_LABEL, adCheckVerdict,
                        AD_KINDS, adDorothyOk, adRepeatOk };
 }

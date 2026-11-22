@@ -101,6 +101,9 @@ function pendingActor(state) {
         // …a předání Bomby po červeném sejmutí (majitel klikne na hráče, komu ji pošle).
         case 'AD_BOMB_PASS':     return state.pendingAdBombPass
             ? { idx: state.pendingAdBombPass.playerIdx, kind: 'AD_BOMB_PASS' } : null;
+        // …a okno Stepního běžce: majitel karty rozhoduje, jestli se sejmutí zopakuje.
+        case 'AD_REDRAW_OFFER':  return state.pendingAdRedraw
+            ? { idx: state.pendingAdRedraw.ownerIdx, kind: 'AD_REDRAW_OFFER' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -175,6 +178,7 @@ const _WAIT_LABELS = {
     POKER_TAKE:            'Poker – bere si z vyložených karet',
     AD_PLACE:              'rozmisťuje žetony nabití',
     AD_BOMB_PASS:          'Bomba – vybírá, komu ji pošle',
+    AD_REDRAW_OFFER:       'Stepní běžec – zopakuje sejmutí?',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',
@@ -422,6 +426,19 @@ function describePendingCheck(state, viewerIdx) {
                 short: 'Don Bell',
                 title: '🔔 Don Bell – lízni si kontrolní kartu',
                 detail: '♥ nebo ♦ = hraješ ještě jeden tah, jinak tah končí',
+            };
+        }
+        // Ozbrojení a nebezpeční – Julie Cutter: sejmutí za zranění od jiného hráče.
+        if (pcd.reason === 'AD_JULIE') {
+            const aName = nameOf(pcd.adJulie?.attackerIdx);
+            return {
+                forMe: pcd.playerIdx === viewerIdx,
+                kind: 'AD_JULIE',
+                playerIdx: pcd.playerIdx,
+                waitingName: nameOf(pcd.playerIdx),
+                short: 'Julie Cutter',
+                title: '🔪 Julie Cutter – lízni si kontrolní kartu',
+                detail: `♥ nebo ♦ = hráč ${aName} je cílem efektu BANG!`,
             };
         }
         // Divoký západ – Teren Kill: sejmutí na vlastní vyřazení (taky bez karty na stole).

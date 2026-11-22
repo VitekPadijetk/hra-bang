@@ -318,7 +318,7 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A4 hotové)
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A5 hotové)
 
 Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
 (texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
@@ -359,3 +359,11 @@ Hotová je i fáze **A4 (Bomba)** – 27 karet a dodaný art (karty, portréty, 
 snímá za Chřestýšem (`pendingCheckDraw.bombIdx`, `_adBombTurn`), předává se fází
 `AD_BOMB_PASS`. **Výbuch cizí rukou (Rez, Frankie) jde frontou `AD_BOMB_BLAST` a zásahy
 nesou `resume: 'QUEUE'`** – po nich se vrací do PLAY a smrt oběti tah neposouvá.
+
+Hotová je i fáze **A5 (sejmutí znovu)** – všech 28 karet, postava Julie Cutter. **Stepní běžec
+je brána `_adRedrawGate` před `_applyCheckResult`** v obou jeho volajících (`resolveCheck`,
+`luckyDukePick`) – nové sejmutí se musí vejít do `currentCheck` (nese celý kontext a po
+zopakování se z něj sejme znovu). Fáze `AD_REDRAW_OFFER`, akce `ad_redraw`, kdo smí =
+`adRedrawOwner`, jak sejmutí dopadlo = `adCheckVerdict`. **Julie Cutter** jde frontou
+`AD_JULIE_CHECK` → `CHECK_DRAW` s `reason: 'AD_JULIE'`; od téhož útočníka čeká ve frontě
+nejvýš jedno sejmutí (Dvojitá rána = jedno).

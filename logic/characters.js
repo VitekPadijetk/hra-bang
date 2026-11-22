@@ -200,6 +200,16 @@ const CharactersMixin = {
                 if (!isInPlay(t) || isVosGhost(t)) this.specialActionQueue.splice(i, 1);
                 continue;
             }
+            // Ozbrojení a nebezpeční – sejmutí Julie Cutter: fáze CHECK_DRAW čeká na její
+            // klik a výstřel míří na útočníka. Odešel-li kdokoli z nich ze hry (nebo Julie
+            // přišla o schopnost – Nová identita), nemá se proč snímat.
+            if (a.type === 'AD_JULIE_CHECK') {
+                const j = this.players[a.playerIdx];
+                if (!isInPlay(j) || !isInPlay(this.players[a.attackerIdx]) || !hasAbility(j, 'Julie Cutter')) {
+                    this.specialActionQueue.splice(i, 1);
+                }
+                continue;
+            }
             if (a.type !== 'SUZY_DRAW') continue;
             const p = this.players[a.playerIdx];
             if (!p || !isInPlay(p) || p.hand.length > 0) this.specialActionQueue.splice(i, 1);
@@ -329,6 +339,14 @@ const CharactersMixin = {
             this.pendingDynamiteDamage = { playerIdx: action.playerIdx, hitsLeft: AD_BOMB_DAMAGE,
                                            source: 'AD_BOMB', resume: 'QUEUE' };
             this.phase = "DYNAMITE_DAMAGE";
+        } else if (action.type === 'AD_JULIE_CHECK') {
+            // Ozbrojení a nebezpeční – Julie Cutter: sejmutí za zranění (vzor TEREN_CHECK).
+            this.pendingCheckDraw = {
+                active: true, playerIdx: action.playerIdx,
+                dynamiteIdx: null, jailIdx: null, reason: 'AD_JULIE',
+                adJulie: { attackerIdx: action.attackerIdx },
+            };
+            this.phase = "CHECK_DRAW";
         } else if (action.type === 'VULTURE_SPLIT') {
             this._nextVultureSplitPick();
         } else if (action.type === 'KILL_REWARD') {
@@ -641,6 +659,8 @@ const CharactersMixin = {
         this.currentCheck = { ...ld.checkContext, card: chosen, active: false };
         this.luckyDukeState = null;
         this.phase = "CHECKING";
+        // Ozbrojení a nebezpeční – Stepní běžec: okno „zopakovat sejmutí?" (logic/armed.js).
+        if (this._adRedrawGate(this.currentCheck)) return;
         this._applyCheckResult(this.currentCheck);
     },
 

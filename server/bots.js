@@ -258,6 +258,8 @@ module.exports = function installBotService(ctx) {
                 const t = adBombPassTargets(gs, idx)[0];
                 return t == null ? null : { event: 'ad_bomb_pass', payload: { targetIdx: t } };
             }
+            // Stepní běžec: nechat výsledek platit jde vždycky.
+            case 'AD_REDRAW_OFFER': return { event: 'ad_redraw', payload: { redo: false } };
             // Údolí stínů – okno úniku: nevyhnout se jde vždycky.
             case 'EVADE_OFFER': return { event: 'vos_evade', payload: { cardId: null, playerIdx: idx } };
             // Údolí stínů – okno záchrany: nezachraňovat jde vždycky; odměna z balíčku taky.

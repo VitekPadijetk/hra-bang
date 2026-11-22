@@ -141,6 +141,15 @@ if (typeof adBombTargetOk === 'undefined' && typeof require === 'function') {
     globalThis.AD_BOMB_DAMAGE = __ad4.AD_BOMB_DAMAGE;
     globalThis.AD_BOMB_TAKE = __ad4.AD_BOMB_TAKE;
 }
+// Ozbrojení a nebezpeční – fáze A5 (Stepní běžec). Samostatný guard ze stejného důvodu.
+if (typeof adRedrawOwner === 'undefined' && typeof require === 'function') {
+    const __ad5 = require('./core/armed.js');
+    globalThis.adRedrawOwner = __ad5.adRedrawOwner;
+    globalThis.adTumbleweedCard = __ad5.adTumbleweedCard;
+    globalThis.AD_CHECK_LABEL = __ad5.AD_CHECK_LABEL;
+    if (typeof adFindCard === 'undefined') globalThis.adFindCard = __ad5.adFindCard;
+    if (typeof adCardCost === 'undefined') globalThis.adCardCost = __ad5.adCardCost;
+}
 // Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
 // globálů, takže by blok výš tyhle přeskočil.
 if (typeof shotgunActive === 'undefined' && typeof require === 'function') {

@@ -170,3 +170,71 @@ test('Ozbrojení a nebezpeční (A4): balíček samých Bomb – hra jen botů d
         assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
     }
 });
+
+// Fáze A5: Stepní běžec a Julie Cutter – „balíček samých Stepních běžců" (plán §7) s Bombami
+// (sejmutí v každém kole) a Julií Cutter + Lucky Dukem u stolu, aby se okno otevíralo nad
+// Vězením, Barelem, Bombou, sejmutím Julie i nad výběrem Lucky Duka. Stepní běžec leží
+// před hráčem nejvýš jeden (dvě karty stejného jména ne), takže je jich tu tolik, kolik
+// je hráčů. Hlídá, že okno nikdy neuvázne (končí nejpozději s posledním žetonem).
+test('Ozbrojení a nebezpeční (A5): Stepní běžec a Julie Cutter – hra jen botů doběhne 3–8 hráčů', () => {
+    const MIX = { 'Stepní běžec': 8, 'Bomba': 3, 'Nabíjení': 3 };
+    let nid = 71000;
+    const rich = [];
+    Object.entries(MIX).forEach(([name, k]) => {
+        const row = adCardData.find(c => c.name === name);
+        for (let i = 0; i < k; i++) rich.push({ ...row, id: nid++ });
+    });
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
+    COMBOS.push({ n: 5, all: true }, { n: 7, all: true });
+
+    const seen = new Set();
+    try {
+        COMBOS.forEach(({ n, all }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = vosCardData;
+            gs.adCardData = rich;
+            const opts = { expansions: { dodge_city: all, high_noon: all, fistful: all, divoky_zapad: all,
+                                         zlata_horecka: all, udoli_stinu: all, ozbrojeni: true } };
+            const tag = `Stepní běžec ${all ? 'vše' : 'jen O&N'} (${n}p)`;
+            const room = { id: `adr${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e) return;
+                if (e.ev === 'special' && e.card === 'Stepní běžec') seen.add('zopakování');
+                if (e.ev === 'check' && e.kind === 'AD_JULIE') seen.add('sejmutí Julie');
+                if (e.ev === 'special' && e.card === 'Julie Cutter') seen.add('výstřel Julie');
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            if (gs.players[0] && !gs.players[0].character) gs.players[0].charChoices = ['Julie Cutter'];
+            if (gs.players[1] && !gs.players[1].character) gs.players[1].charChoices = ['Lucky Duke'];
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room, (st) => {
+                checkLoads(st, tag);
+                if (st.phase === 'AD_REDRAW_OFFER') {
+                    seen.add('okno');
+                    const o = st.players[st.pendingAdRedraw?.ownerIdx];
+                    assert.ok(o && adCardsInPlay(o).some(c => c.type === 'Stepní běžec'),
+                        `${tag}: okno bez Stepního běžce`);
+                    if (st.currentCheck?.reason === 'AD_JULIE') seen.add('okno nad Julií');
+                }
+            });
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci se Stepním běžcem');
+    for (const what of ['okno', 'zopakování', 'sejmutí Julie', 'výstřel Julie']) {
+        assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
+    }
+});

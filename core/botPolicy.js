@@ -241,6 +241,9 @@ if (typeof require === 'function') {
         globalThis.adBombTargets = __ad4.adBombTargets;
         globalThis.adBombPassTargets = __ad4.adBombPassTargets;
     }
+    if (typeof adCheckVerdict === 'undefined') {
+        globalThis.adCheckVerdict = require('./armed.js').adCheckVerdict;
+    }
     // Zlatá horečka – obchod: „smí se koupit / donutit odhodit / vyměnit Pivo za valoun".
     // Stejné predikáty, jaké vynucuje server i klient (core/goldRush.js).
     if (typeof gearBuyOk === 'undefined') {
@@ -360,7 +363,8 @@ function adBotPlaceTarget(state, myIndex) {
         else {
             const c = cards.find(x => x.id === t.cardId);
             const cost = (c && c.dangerous && c.dangerous.cost) || 0;
-            s = { 'Bandalír': 6, 'Eso v rukávu': 5, 'Bečka piva': canHeal(me) ? 5 : 2, 'Zvonice': 2 }[c && c.type] || 1;
+            s = { 'Bandalír': 6, 'Eso v rukávu': 5, 'Bečka piva': canHeal(me) ? 5 : 2, 'Zvonice': 2,
+                  'Stepní běžec': 2 }[c && c.type] || 1;
             if (c && (c.adLoads || 0) < cost) s += 2;
             // Bomba přede mnou: žeton jí oddálí výbuch – na 2 a méně žetonech hned (R5).
             if (c && c.type === 'Bomba') s = (c.adLoads || 0) <= 2 ? 8 : 0;
@@ -917,6 +921,8 @@ function keepScore(card) {
         case 'Skrč se!': return 6;                // účinkuje jako Vedle!
         // Ozbrojení a nebezpeční (A4)
         case 'Bomba': return 3;                   // útok jako Chřestýš
+        // Ozbrojení a nebezpeční (A5)
+        case 'Stepní běžec': return 3;            // až 3× zopakované sejmutí
         default: return 1;
     }
 }
@@ -1591,7 +1597,7 @@ function decidePlay(state, myIndex, beliefs) {
         if (card.dangerous && card.type !== T.WEAPON) {
             const hasBang = me.hand.some(c => c && c.id !== card.id && bangCardFromHand(state, me, myIndex, c));
             const v = { 'Eso v rukávu': 24, 'Bečka piva': 18, 'Zvonice': 12, 'Bandalír': hasBang ? 22 : 14,
-                        'Bedna': 26, 'Paklíč': 16, 'Bič': 16 }[card.type];
+                        'Bedna': 26, 'Paklíč': 16, 'Bič': 16, 'Stepní běžec': 14 }[card.type];
             if (v) consider(v, intent);
             return;
         }
@@ -2396,6 +2402,25 @@ function decideBotAction(state, myIndex, beliefs) {
             const e = rankEnemies(state, myIndex, beliefs, false).find(x => ok.includes(x.idx));
             const t = e ? e.idx : ok[0];
             return t == null ? null : { event: 'ad_bomb_pass', payload: { targetIdx: t } };
+        }
+
+        // Stepní běžec: zopakovat sejmutí, které dopadlo špatně pro mou stranu (moje
+        // neúspěšné Vězení, spojencův výbuch) nebo dobře pro nepřítele (jeho úspěšný
+        // Barel). U hráče, o kterém nic nevím, žeton nepálí. Nechat jde vždycky a žetony
+        // dojdou, takže se okno nezacyklí.
+        case 'AD_REDRAW_OFFER': {
+            const pr = state.pendingAdRedraw;
+            const v = pr ? adCheckVerdict(state, state.currentCheck) : null;
+            if (!v) return { event: 'ad_redraw', payload: { redo: false } };
+            const ci = pr.checkerIdx;
+            let side = 0;   // +1 = moje strana, −1 = nepřítel, 0 = nevím
+            if (ci === myIndex) side = 1;
+            else if (beliefs && state.players[ci]) {
+                if (hostilityOf(state, myIndex, ci, beliefs) > ENEMY_EPS) side = -1;
+                else if (allyRisk(state, myIndex, ci, beliefs) >= 0.7) side = 1;
+            }
+            const redo = (side === 1 && !v.good) || (side === -1 && v.good);
+            return { event: 'ad_redraw', payload: { redo } };
         }
 
         case 'AD_PLACE': {

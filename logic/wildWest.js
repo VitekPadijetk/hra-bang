@@ -43,6 +43,9 @@ const SEAT_KEYS = new Set([
     'henryIdx', 'thiefIdx',
     // …a okno záchrany / odměna Obětavého skoku (oběť je `victimIdx`).
     'saverIdx',
+    // Ozbrojení a nebezpeční – okno Stepního běžce (`pendingAdRedraw`): kdo snímal
+    // (majitel karty je `ownerIdx`).
+    'checkerIdx',
 ]);
 // Klíč, jehož hodnota je POLE sedadel (fronty, pořadí, seznamy):
 const SEAT_LIST_KEYS = new Set([

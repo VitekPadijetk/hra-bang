@@ -49,6 +49,9 @@ const CombatMixin = {
                 this.specialActionQueue.push({ type: 'EL_GRINGO_STEAL', playerIdx: targetIdx, attackerIdx });
             }
         }
+        // Ozbrojení a nebezpeční – Julie Cutter: zásah od jiného hráče přežila → sejmutí
+        // (frontou, jedno za událost – viz _adJulieQueue v logic/armed.js).
+        this._adJulieQueue(targetIdx, attackerIdx);
     },
 
     sidSaveDiscard(playerIdx, cardIdx) {

@@ -159,6 +159,7 @@ const ARMED_CHARACTERS = [
 const AD_READY = [
     "Bloody Mary", "Mexicali Kid",       // A2
     "Bass Greeves", "Frankie Canton", "Red Ringo",   // A3
+    "Julie Cutter",                      // A5
 ];
 
 class Card {

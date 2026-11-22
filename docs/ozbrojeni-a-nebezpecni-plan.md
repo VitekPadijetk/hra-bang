@@ -167,6 +167,47 @@ Co se v A4 udělalo jinak / navíc proti textu níž:
   `AD_MARK_READY = true`) – převedeno z PNG `tools/webp.js --quality=70`. Kostička
   `nabiti.webp` dodaná není, kreslí se dál.
 
+**Stav (2026-11-22, později): hotová fáze A5 (sejmutí znovu).** Do balíčku jde všech 28 karet
+(+ Stepní běžec), do výběru postav navíc Julie Cutter (`AD_READY`); zbývají Al Preacher
+a Ms. Abigail (A6). Testy: `test/ad.redraw.test.js` (14) a v zátěži `test/ad.load.test.js`
+nová partie „balíček samých Stepních běžců" s Bombami, Julií Cutter a Lucky Dukem (3–8
+hráčů, hlídá okno, zopakování, sejmutí i výstřel Julie); `npm test` = 2127.
+
+Co se v A5 udělalo jinak / navíc proti textu níž:
+- **Brána `_adRedrawGate(check)`** (logic/armed.js) sedí v `resolveCheck` a `luckyDukePick`
+  těsně před `_applyCheckResult`. Fáze `AD_REDRAW_OFFER`, stav `pendingAdRedraw = { ownerIdx,
+  checkerIdx, cardId }` (`checkerIdx` přibyl do `SEAT_KEYS`). Karty se v něm nedrží –
+  `currentCheck` zůstává a nese celý kontext; stará karta už leží v odhozu.
+- **Kdo smí** = `adRedrawOwner(state, checkerIdx)` (core/armed.js): první od snímajícího
+  (včetně), kdo je ve hře, má Stepního běžce s žetonem a karta mu „žije" (ne Laso, ne cizí
+  karta v tahu Belle Star, ne `_adMuted`).
+- **Akce `ad_redraw { redo }`**: `adRedraw` zaplatí 1 ⛁ (`_adTake`, poslední žeton = karta
+  do odhozu) a `_adRedrawStart(ctx)` sejme týmž postupem jako první sejmutí (Lucky Duke /
+  Podkova = nový výběr, John Pain si ohlásí i novou kartu). **`boardIdx` se po platbě
+  dohledá znovu** – vyčerpaný Stepní běžec ze stolu téhož hráče by jinak posunul index
+  Vězení/Dynamitu. Handler dohrává totéž co `resolve_check` + let vyčerpané karty
+  (`adDepleted`) + ledger (zopakovat cizí sejmutí, které mu vyšlo = nepřátelské, jinak pomoc).
+- **Verdikt sejmutí** `adCheckVerdict(state, check)` → `{ good, text }` z pohledu
+  snímajícího (zrcadlí větve `_applyCheckResult`); ptá se banner okna, bot i ledger.
+  `AD_CHECK_LABEL` = české názvy sejmutí.
+- **Julie Cutter**: hák `_adJulieQueue` na konci `handleDamage` (přežila, útočník je jiný
+  hráč ve hře) → fronta `AD_JULIE_CHECK` → `CHECK_DRAW` s `reason: 'AD_JULIE'`, `adJulie:
+  { attackerIdx }` (vzor `TEREN_CHECK`) → `_adJulieResult` (♥♦ přes `_effSuit` →
+  `_vosQueueShot(…, 'AD_JULIE', 'Julie Cutter')`, pak fáze obnovená PŘED `_resumeAfterSpecial`
+  jako u Teren Killa). **„Jedna událost = jedno sejmutí"** se řeší tak, že se druhé
+  `AD_JULIE_CHECK` od téhož útočníka do fronty nepřidá, dokud první čeká – Dvojitá rána
+  (dva klikané zásahy) i jiné vícenásobné ztráty z jedné akce tak dají jedno sejmutí.
+  `_pruneSuzyQueue` ho zahodí, když Julie nebo útočník odešli ze hry nebo Julie přišla
+  o schopnost.
+- Bot: v okně opakuje, když je výsledek špatný pro jeho stranu (on sám, jistý spojenec –
+  `allyRisk ≥ 0.7`) nebo dobrý pro nepřítele (`hostilityOf > ENEMY_EPS`); u neznámého
+  žeton nepálí. Stepního běžce vykládá (hodnota 14), `keepScore` 3. Záchranná akce
+  v server/bots.js = nechat.
+- Klient: banner nahoře („🌵 Stepní běžec – zopakuješ sejmutí? (N ⛁)" + co a jak dopadlo)
+  a dvě tlačítka – ZOPAKOVAT (slot schopnosti) a NECHAT (slot „Ukončit tah"). Nové
+  sejmutí si klient přehraje sám přechodem do `CHECKING`/`LUCKY_DUKE`. Doroty Stepního
+  běžce poručit smí (vyloží se se 3 žetony), LVK ne.
+
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho
 >    bere. Automaticky běží jen to, kde pravidla volbu nedávají (cena Nebezpečné karty se

@@ -86,7 +86,9 @@ const ChecksMixin = {
         if (pcd.reason) {
             // Údolí stínů – Colorado Bill: sejmutí nese rozehraný BANG! (komu, čím, kontext
             // `vos`), aby ho výsledek mohl dohrát (viz _coloradoResult, logic/valley.js).
-            const extra = pcd.colorado ? { colorado: pcd.colorado } : {};
+            // Ozbrojení a nebezpeční – Julie Cutter: sejmutí nese útočníka (`adJulie`).
+            const extra = pcd.colorado ? { colorado: pcd.colorado }
+                        : pcd.adJulie ? { adJulie: pcd.adJulie } : {};
             if (this._checkRevealCount(p) > 1) {
                 this.startLuckyDukeCheck({ reason: pcd.reason, playerIdx: pcd.playerIdx, boardIdx: null, checksLeft: 1, active: false, ...extra });
                 return;
@@ -231,6 +233,8 @@ const ChecksMixin = {
         else if (check.reason === "RATTLESNAKE") checkResult = (suit === Suits.SPADES) ? 'pik → ztrácí život' : 'nic';
         else if (check.reason === "AD_BOMB") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → posílá Bombu dál' : 'černá → Bomba ztrácí 2 ⛁';
         else if (check.reason === "COLORADO") checkResult = (suit === Suits.SPADES) ? 'pik → BANG! nejde zrušit' : 'BANG! jako obvykle';
+        else if (check.reason === "AD_JULIE") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → útočník je cílem BANG!' : 'nic';
+        else if (check.reason === "DON_BELL") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → tah navíc' : 'konec tahu';
         else checkResult = (suit === Suits.HEARTS) ? 'srdce → uhnul' : 'neuhnul';
         this.logEvent('check', { who: p.name, kind: check.reason, card: `${check.card.value}${suit}`, result: checkResult });
 
@@ -309,6 +313,10 @@ const ChecksMixin = {
             // Ozbrojení a nebezpeční – Bomba: ♥♦ (podle _effSuit) = předej, ♣♠ = 2 ⛁ pryč,
             // a když dojdou, výbuch (logic/armed.js).
             this._adBombCheckResult(check, suit);
+        } else if (check.reason === "AD_JULIE") {
+            // Ozbrojení a nebezpeční – Julie Cutter: ♥♦ (podle _effSuit) = útočník je
+            // cílem efektu BANG! (fronta výstřelů, logic/armed.js).
+            this._adJulieResult(check, suit === Suits.HEARTS || suit === Suits.DIAMONDS);
         } else if (check.reason === "COLORADO") {
             // Údolí stínů – Colorado Bill: ♠ (podle _effSuit – Požehnání nikdy, Prokletí
             // vždy) = rozehraný BANG! nejde zrušit. Viz _coloradoResult (logic/valley.js).
@@ -401,6 +409,8 @@ const ChecksMixin = {
             return;
         }
 
+        // Ozbrojení a nebezpeční – Stepní běžec: okno „zopakovat sejmutí?" (logic/armed.js).
+        if (this._adRedrawGate(check)) return;
         this._applyCheckResult(check);
     }
 };

@@ -3477,7 +3477,8 @@ function drawMyArea(ctx) {
                  'NOON_DAMAGE', 'PEYOTE', 'RANCH', 'BLOOD_BROTHERS', 'ROULETTE_DISCARD',
                  'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE',
                  'SHOTGUN_DISCARD', 'LEMONADE_OFFER', 'EVADE_OFFER', 'SAVE_OFFER', 'SAVE_REWARD',
-                 'BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE'].includes(state.phase)
+                 'BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE',
+                 'AD_REDRAW_OFFER'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -3713,6 +3714,30 @@ function drawMyArea(ctx) {
                 },
             });
             if (App.blockInput) { _evSkip.setAlpha(0.45); _evSkip.disableInteractive(); }
+        }
+
+        // ── Ozbrojení a nebezpeční – okno Stepního běžce: zopakovat / nechat ─────────
+        // Dvě tlačítka ve slotu schopnosti a v místě „Ukončit tah" (fáze PLAY to není,
+        // takže jsou oba sloty volné). Sejmutá karta leží navrchu odhozu, výsledek říká
+        // banner nahoře (drawPhaseOverlays).
+        if (state.phase === "AD_REDRAW_OFFER" && state.pendingAdRedraw?.ownerIdx === myIndex) {
+            const _rdEmit = (redo) => {
+                if (App.blockInput) return;
+                App.blockInput = true;
+                socket.emit('ad_redraw', { redo });
+                renderUI();
+            };
+            const { bg: _rdYes } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH, '🌵 ZOPAKOVAT (1 ⛁)', {
+                ...themeToggleStyle(true), fontSize: '22px',
+                onClick: () => _rdEmit(true),
+            });
+            if (App.blockInput) { _rdYes.setAlpha(0.45); _rdYes.disableInteractive(); }
+            const { bg: _rdNo } = themeButton(gameScene, L.btnEndX, L.btnEndY, 280, L.btnH, 'NECHAT ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px',
+                onClick: () => _rdEmit(false),
+            });
+            if (App.blockInput) { _rdNo.setAlpha(0.45); _rdNo.disableInteractive(); }
         }
 
         // ── Údolí stínů – okno záchrany: nezachraňovat ───────────────────────────
@@ -4768,6 +4793,39 @@ function drawPhaseOverlays(ctx) {
                 `⏳ Čeká se na hráče ${_eName} – může se vyhnout kartě ${_pe.cardName}`,
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
+        }
+    }
+
+    // ── Ozbrojení a nebezpeční – okno Stepního běžce: „zopakuješ sejmutí?" ───────
+    // Výsledek sejmutí i jeho popis bere z core/armed.js (adCheckVerdict) – týž dotaz,
+    // podle kterého se rozhoduje bot.
+    if (state.phase === "AD_REDRAW_OFFER" && state.pendingAdRedraw && state.currentCheck?.card) {
+        const _rd = state.pendingAdRedraw;
+        const _rdMine = _rd.ownerIdx === myIndex;
+        const _rdOwner = state.players[_rd.ownerIdx]?.name || '?';
+        const _rdWho = _rd.checkerIdx === myIndex ? 'Ty' : (state.players[_rd.checkerIdx]?.name || '?');
+        const _rdCard = state.currentCheck.card;
+        const _rdWhat = AD_CHECK_LABEL[state.currentCheck.reason] || 'sejmutí';
+        const _rdV = adCheckVerdict(state, state.currentCheck);
+        const _rdLoads = (adFindCard(state.players[_rd.ownerIdx], _rd.cardId)?.adLoads) || 0;
+        const _rdLine = `${_rdWhat}: ${_rdWho} – ${_rdCard.value}${_rdCard.suit} → ${_rdV ? _rdV.text : '?'}`;
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _rdMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        if (_rdMine) {
+            let l1 = gameScene.add.text(960, 66, `🌵 Stepní běžec – zopakuješ sejmutí? (${_rdLoads} ⛁)`,
+                { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, _rdLine,
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
+        } else {
+            let l1 = gameScene.add.text(960, 66, `⏳ ${_rdOwner} může Stepním běžcem nechat sejmutí zopakovat`,
+                { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
+            mAdd(l1, 206);
+            let l2 = gameScene.add.text(960, 112, _rdLine,
+                { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            mAdd(l2, 206);
         }
     }
 
