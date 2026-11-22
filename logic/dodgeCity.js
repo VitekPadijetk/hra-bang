@@ -129,7 +129,9 @@ const DodgeCityMixin = {
             }
             this.players[playerIdx].stats.bangsFired++;
             this.currentAttacker = playerIdx;
-            this._beginBangResolution(playerIdx, targetIdx, true, mainName); // isEffect = true
+            // Ms. Abigail: Springfield J–A smí ignorovat (vos.adAbby, logic/armed.js).
+            this._beginBangResolution(playerIdx, targetIdx, true, mainName, null, null,
+                                      this._adAbbyVos(null, cards.main)); // isEffect = true
             this._processSpecialQueue();
         } else if (effect === 'steal_any') {
             // Ragtime: ukradni konkrétní kartu zvoleného hráče (Panika bez vzdálenosti).
@@ -145,7 +147,8 @@ const DodgeCityMixin = {
             // předem, takže se po odmítnutí rovnou vyřeší (`pick`).
             this._enterTargetSelection(
                 { attackerIdx: playerIdx, targetIdx, sourceCardType: CardType.PANIC, ignoreDistance: true },
-                { evade: mainName || 'Ragtime', pick: { area: target.area, boardIdx: target.boardIdx } });
+                { evade: mainName || 'Ragtime', pick: { area: target.area, boardIdx: target.boardIdx },
+                  card: cards.main || null });
         } else if (effect === 'sniper') {
             // Fistful – Odstřelovač: obě karty Bang! jsou zaplacené → útok, který jde
             // odrazit jen dvěma kartami Vedle! (viz _sniperAttack v logic/fistful.js).

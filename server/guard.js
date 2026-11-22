@@ -69,6 +69,8 @@ module.exports = function installActionGuard(ctx) {
         'ad_bomb_pass',
         // Fáze A5: okno Stepního běžce (majitel karty, i mimo svůj tah – je pendingActor).
         'ad_redraw',
+        // Fáze A6: okno Al Preachera (i mimo tah) a Ms. Abigail (okno úniku / obrana).
+        'ad_al', 'ad_abigail',
     ]);
 
     // Akce mimo pořadí (Sid Ketchum léčí kdykoli, i v cizím tahu) – tady nelze

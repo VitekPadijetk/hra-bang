@@ -134,10 +134,15 @@ const ArmedMixin = {
     // Zahrál hráč modrou kartu (i Vězení na jiného, i Ducha)? Dostane 1 žeton – ale až
     // doběhne efekt karty, proto fronta. Oranžová karta žeton nedostává (R-U2), předaný
     // Dynamit taky ne („ne ve chvíli, kdy modrou kartu od někoho dostanete").
+    // Volají ho všechny tři vstupy vyložení (větev zbraně v playCard, playBoardCard,
+    // _placeOnTarget) – i pro oranžovou kartu, protože na tomtéž místě se otevírá okno
+    // Al Preachera (fáze A6, `_adQueueAl`).
+    // Dobití jde do fronty PŘED okno Al Preachera (plán §2.12).
     _adQueueBlue(playerIdx, card) {
-        if (!this._adOn() || !isBlueCard(card)) return;
-        if (!isInPlay(this.players[playerIdx])) return;
-        this.specialActionQueue.push({ type: 'AD_PLACE', playerIdx, n: 1, reason: 'BLUE' });
+        if (this._adOn() && isBlueCard(card) && isInPlay(this.players[playerIdx])) {
+            this.specialActionQueue.push({ type: 'AD_PLACE', playerIdx, n: 1, reason: 'BLUE' });
+        }
+        this._adQueueAl(playerIdx, card);
     },
 
     // Založ fázi rozmisťování. Volá se jen tehdy, když je kam žetony dát (fronta
@@ -798,6 +803,93 @@ const ArmedMixin = {
         }
         this.phase = this.interruptedPhase || 'PLAY';
         this._resumeAfterSpecial();
+    },
+
+    // ── Fáze A6: Al Preacher (§2.12, R16) ───────────────────────────────────────
+    // Jiný hráč zahrál modrou nebo oranžovou kartu (vyložení, Vězení/Bomba/Duch na
+    // kohokoli). Okno jde frontou odložených akcí – otevře se, až efekt karty doběhne
+    // (dobití žetonem za modrou leží ve frontě před ním), a určitě dřív, než se zahraje
+    // další karta (fronta se odbavuje před návratem do PLAY). Jen když Al zaplatit může
+    // (R-U3, adAlOk); co se mezitím změnilo, pročistí _pruneSuzyQueue.
+    _adQueueAl(playerIdx, card) {
+        if (!this._adOn() || !(isBlueCard(card) || isDangerousCard(card))) return;
+        this.players.forEach((p, i) => {
+            if (adAlOk(this, i, playerIdx)) {
+                this.specialActionQueue.push({ type: 'AD_AL_OFFER', playerIdx: i, fromIdx: playerIdx,
+                                               cardName: card.name });
+            }
+        });
+    },
+
+    // Dá se ještě z balíčku líznout? (Al bez karty k líznutí by platil naprázdno.)
+    _adCanDraw() {
+        return (this.deck._drawPile.length + this.deck.discardPile.length) > 0;
+    },
+
+    // Al rozhodl: `pay` = 2 adresy žetonů (platební lišta) → zaplať a lízni 1 kartu
+    // (fronta KILL_REWARD hned na začátek – klik na balíček jako Molly Stark), prázdné =
+    // nechce. Vrací false, když akce neplatí (nikdo na ni nečeká, špatná platba).
+    adAl(playerIdx, pay) {
+        const pa = this.pendingAdAl;
+        if (this.phase !== 'AD_AL_OFFER' || !pa || pa.playerIdx !== playerIdx) return false;
+        const p = this.players[playerIdx];
+        if (pay && pay.length) {
+            if (!adPayOk(this, playerIdx, pay, AD_AL_COST)) return false;
+            this._adPay(playerIdx, pay);
+            this.specialActionQueue.unshift({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 1, label: 'Al Preacher' });
+            this.logEvent('special', { who: p.name, card: 'Al Preacher', msg: `platí ${AD_AL_COST} ⛁ a líže (${pa.cardName})` });
+        } else {
+            this.logEvent('special', { who: p.name, card: 'Al Preacher', msg: 'nelíže' });
+        }
+        this.pendingAdAl = null;
+        this._resumeAfterSpecial();
+        return true;
+    },
+
+    // ── Fáze A6: Ms. Abigail (§2.13, R10) ───────────────────────────────────────
+    // „Můžeš ignorovat efekty hnědých karet s hodnotou J, Q, K a A, pokud jsi jejich
+    // jediným cílem." Dvě cesty:
+    //   • karty bez výstřelu (Panika, Cat Balou, Duel, Ragtime, opakování LVK) se zastaví
+    //     v okně úniku (_vosEvadeGate) s příznakem `pendingEvade.abigail`,
+    //   • výstřel (karta BANG!, bang-efekt) si od zahrání veze `vos.adAbby` a Abigail ho
+    //     v obraně ignoruje (adAbigailRespondOk) – výstřel skončí bez zásahu i BEZ
+    //     zrušení (Buntline, Bloody Mary, Opětovná palba ani Křesadlovka se nespustí, R17).
+    // Volba se vždycky nabízí (spojenec jí může Panikou brát Vězení).
+
+    // Kontext výstřelu doplněný o `adAbby`, když ho zahraná karta nese (hnědá, J–A).
+    // `card` stačí { value } (opakování Lee Van Kliffem nese hodnotu PŮVODNÍ karty).
+    _adAbbyVos(vos, card) {
+        if (!this._adOn() || !adAbigailCard(card)) return vos;
+        return { ...(vos || {}), adAbby: true };
+    },
+
+    // Abigail ignoruje: v okně úniku (efekt nenastal – vyložená karta jde do odhozu,
+    // výběr karty ani duel se nezačnou), nebo v obraně (výstřel končí bez zásahu).
+    // Vrací { placed } pro animaci, nebo null u neplatné akce.
+    adAbigail(playerIdx) {
+        const p = this.players[playerIdx];
+        if (this.phase === 'EVADE_OFFER') {
+            const pe = this.pendingEvade;
+            if (!pe || pe.targetIdx !== playerIdx || !pe.abigail) return null;
+            this.pendingEvade = null;
+            const placed = this._evadeUndo(pe);
+            this.logEvent('special', { who: p.name, card: 'Ms. Abigail', target: this.players[pe.attackerIdx]?.name,
+                                       msg: `ignoruje: ${pe.cardName}` });
+            this.checkSuzyLafayette(this.players[pe.attackerIdx]);
+            this.phase = 'PLAY';
+            this._processSpecialQueue();
+            return { placed };
+        }
+        if (!adAbigailRespondOk(this, playerIdx)) return null;
+        const pr = this.pendingResponse;
+        this.logEvent('special', { who: p.name, card: 'Ms. Abigail', target: this.players[pr.originatorIdx]?.name,
+                                   msg: `ignoruje: ${pr.sourceCardName || 'BANG!'}` });
+        pr.partialMisses = [];
+        this.missesPlayed = 0;
+        this.missesRequired = 1;
+        pr.responded.push(playerIdx);
+        this._respondAdvance(playerIdx, true);
+        return { placed: null };
     },
 };
 

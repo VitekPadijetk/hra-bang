@@ -336,9 +336,11 @@ test('Mexicali Kid: za 2 žetony výstřel na dostřel, mimo limit, jednou za ta
     assert.equal(A.adMexicaliOk(g, 0), false, 'podruhé v tahu ne');
 });
 
-test('AD_READY: po A5 jdou do výběru Bloody Mary, Mexicali Kid, Bass Greeves, Frankie Canton, Red Ringo a Julie Cutter', () => {
-    const { AD_READY } = require('../logic/entities.js');
-    assert.deepEqual([...AD_READY].sort(), ['Bass Greeves', 'Bloody Mary', 'Frankie Canton', 'Julie Cutter', 'Mexicali Kid', 'Red Ringo']);
+test('AD_READY: po A6 jdou do výběru všech osm postav', () => {
+    const { AD_READY, ARMED_CHARACTERS } = require('../logic/entities.js');
+    assert.deepEqual([...AD_READY].sort(), ['Al Preacher', 'Bass Greeves', 'Bloody Mary', 'Frankie Canton',
+                                            'Julie Cutter', 'Mexicali Kid', 'Ms. Abigail', 'Red Ringo']);
+    if (ARMED_CHARACTERS) assert.equal(AD_READY.length, ARMED_CHARACTERS.length);
 });
 
 // ── Bot (§6) ─────────────────────────────────────────────────────────────────

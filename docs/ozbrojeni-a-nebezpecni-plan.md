@@ -208,6 +208,42 @@ Co se v A5 udělalo jinak / navíc proti textu níž:
   sejmutí si klient přehraje sám přechodem do `CHECKING`/`LUCKY_DUKE`. Doroty Stepního
   běžce poručit smí (vyloží se se 3 žetony), LVK ne.
 
+**Stav (2026-11-22, ještě později): hotová fáze A6 (okna mimo tah).** Do výběru postav jdou
+všech 8 (`AD_READY` = `ARMED_CHARACTERS`, + Al Preacher a Ms. Abigail); zbývá dokončení A7.
+Testy: `test/ad.chars.test.js` (16) a v zátěži `test/ad.load.test.js` nová partie s Alem
+a Abigail natvrdo (3–8 hráčů, samo i se vším, hlídá okno Ala, líznutí, okno úniku
+s IGNOROVAT i výstřel J–A); `npm test` = 2144.
+
+Co se v A6 udělalo jinak / navíc proti textu níž:
+- **Al Preacher**: hák `_adQueueAl` volá `_adQueueBlue` (všechny tři vstupy vyložení) – pro
+  modrou i oranžovou kartu, ZA dobitím žetonem (fronta: nejdřív `AD_PLACE` hráče, pak okno).
+  Fronta `AD_AL_OFFER { playerIdx, fromIdx, cardName }` → fáze `AD_AL_OFFER`
+  (`pendingAdAl`), pročištění v `_pruneSuzyQueue` (`adAlOk` + je co líznout), dokud okno
+  visí, fronta stojí (`pendingAdAl` v `_processSpecialQueue`). Akce **`ad_al { pay }`**
+  (prázdné = ne): platba `adPayOk` na `AD_AL_COST` = 2, líznutí jako `KILL_REWARD` s
+  `label: 'Al Preacher'` na začátek fronty (klik na balíček). Hnědá ani zelená karta okno
+  neotevře, vlastní karta taky ne.
+- **Ms. Abigail – karty bez výstřelu**: `_vosEvadeGate` dostal parametr `card` (stačí
+  `{ value }`) a otevře okno úniku i bez Údolí stínů, když `adAbigailOk` (hnědá J–A, jiný
+  hráč, schopnost platí) – `pendingEvade.abigail`. Kartu předávají Panika/Cat Balou, Duel
+  (`_startDuel(pr, evadable, card)`), Ragtime (`cards.main`) a opakování Lee Van Kliffem
+  (`_lastBrown.value` – nové pole). Úspěšný únik je vytažený do `_evadeUndo` (sdílí ho
+  `vosEvade` i `adAbigail`).
+- **Ms. Abigail – výstřel**: `vos.adAbby` zakládá `_adAbbyVos(vos, card)` v `playBang`,
+  Springfieldu (`cards.main`) a opakování LVK (ne Láhev). V obraně `adAbigailRespondOk`
+  (ne `noEscape` = víc cílů, ne Odražená střela, ne Duel/hromadné, ne výstřel bez karty).
+  **Ignorovat jde i nezrušitelný výstřel** (Dvouhlavňovka, Colorado – ignorovat ≠ zrušit)
+  a proti Slabovi stačí jednou. `_adShotCanceled` se nevolá (R17). V `BARREL_DRAW` volba
+  není – Barel se sejme jako dřív, IGNOROVAT přijde až v RESPOND (když Barel nevyšel).
+- **Akce `ad_abigail`** bez payloadu (aktér = cíl z `pendingEvade` / `pendingResponse`).
+- Bot: v obraně ignoruje vždy (zadarmo), v okně úniku taky – kromě výběru karty od jistého
+  spojence (`allyRisk ≥ 0.7`), když má na stole něco škodlivého (`boardCardValue < 0`).
+  Al líže, dokud má ruku pod limitem (`hand < health`), platí `adBotPay`. Záchranná akce
+  v server/bots.js = nelíznout.
+- Klient: Al – tlačítko ve slotu schopnosti zapne platební lištu (`selectedState.adAl`),
+  po zaplacení „LÍZNOUT ✔", „NELÍZAT" ve slotu „Ukončit tah", banner pro ostatní; Abigail –
+  „🙅 IGNOROVAT (Ms. Abigail)" ve slotu schopnosti v okně úniku i v obraně.
+
 > **Rozhodnutí uživatele (2026-11-06), viz §10:**
 > 1. **Žetony se vždy rozmisťují i platí RUČNĚ** – hráč kliká, kam žeton dá a odkud ho
 >    bere. Automaticky běží jen to, kde pravidla volbu nedávají (cena Nebezpečné karty se

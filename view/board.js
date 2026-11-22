@@ -653,7 +653,9 @@ function adPaySelCard() {
 }
 // Kolik se má zaplatit. Kromě vylepšení vybrané karty (fáze A2) ještě Skrč se! v obraně
 // (`selectedState.adDuck`, vylepšení 2 ⛁) a výstřel Mexicali Kida (`selectedState.adMex`).
+// Fáze A6: líznutí Al Preachera (`selectedState.adAl`, 2 ⛁ i mimo tah).
 function adPayNeed() {
+    if (selectedState.adAl) return AD_AL_COST;
     if (selectedState.adMex) return AD_MEXICALI_COST;
     if (selectedState.adDuck) return 2;
     const c = adPaySelCard();
@@ -3478,7 +3480,7 @@ function drawMyArea(ctx) {
                  'GRINNER_GIVE', 'VALENTINE_DISCARD', 'DUTCH_DISCARD', 'GEAR_MODE',
                  'SHOTGUN_DISCARD', 'LEMONADE_OFFER', 'EVADE_OFFER', 'SAVE_OFFER', 'SAVE_REWARD',
                  'BANDIDOS_DISCARD', 'TORNADO_PICK', 'POKER_PICK', 'POKER_TAKE',
-                 'AD_REDRAW_OFFER'].includes(state.phase)
+                 'AD_REDRAW_OFFER', 'AD_AL_OFFER'].includes(state.phase)
             // Fistful – Právo západu: dokud drží vynucenou kartu, nesmí hráč nic jiného
             // (server to odmítne, viz _lawLocked) – tlačítko by jen slibovalo.
             && !_lawForced && !_sniperCan && !_showdownCan
@@ -3738,6 +3740,64 @@ function drawMyArea(ctx) {
                 onClick: () => _rdEmit(false),
             });
             if (App.blockInput) { _rdNo.setAlpha(0.45); _rdNo.disableInteractive(); }
+        }
+
+        // ── Ozbrojení a nebezpeční – okno Al Preachera: zaplatit 2 ⛁ a líznout / ne ────
+        // První klik zapne platební lištu (banner nahoře, zdroje svítí), po zaplacení
+        // se z téhož tlačítka stane LÍZNOUT. „Ne" sedí v místě „Ukončit tah".
+        if (state.phase === "AD_AL_OFFER" && state.pendingAdAl?.playerIdx === myIndex) {
+            const _alOn = !!selectedState.adAl;
+            const _alPaid = _alOn && adPayDone();
+            const { bg: _alBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH,
+                _alPaid ? '📜 LÍZNOUT ✔' : _alOn ? 'AL PREACHER: zrušit ↩' : `📜 AL PREACHER: LÍZNI (${AD_AL_COST} ⛁)`, {
+                ...themeToggleStyle(_alOn), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    if (_alPaid) {
+                        App.blockInput = true;
+                        socket.emit('ad_al', { pay: selectedState.adPay || [] });
+                        selectedState = { cardIndex: null, action: null };
+                    } else {
+                        selectedState = _alOn ? { cardIndex: null, action: null }
+                                              : { cardIndex: null, action: null, adAl: true, adPay: [] };
+                    }
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _alBtn.setAlpha(0.45); _alBtn.disableInteractive(); }
+            const { bg: _alNo } = themeButton(gameScene, L.btnEndX, L.btnEndY, 280, L.btnH, 'NELÍZAT ↷', {
+                fill: THEME.color.dangerDarkNum, fillHover: 0x9a3030, stroke: THEME.color.dangerNum,
+                fontSize: '22px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    selectedState = { cardIndex: null, action: null };
+                    socket.emit('ad_al', { pay: null });
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _alNo.setAlpha(0.45); _alNo.disableInteractive(); }
+        } else if (selectedState.adAl) {
+            delete selectedState.adAl;   // okno skončilo – rozpracovaná platba propadá
+            selectedState.adPay = [];
+        }
+
+        // ── Ozbrojení a nebezpeční – Ms. Abigail: IGNOROVAT ────────────────────────
+        // V okně úniku (Panika, Cat Balou, Duel… J–A) i v obraně proti výstřelu J–A.
+        // Slot schopnosti je volný: v obraně i v okně úniku se jiná schopnost nekreslí.
+        const _abbyEvade = state.phase === "EVADE_OFFER" && state.pendingEvade?.targetIdx === myIndex &&
+                           !!state.pendingEvade.abigail;
+        if (_abbyEvade || adAbigailRespondOk(state, myIndex)) {
+            const { bg: _abBtn } = themeButton(gameScene, _abilX, L.btnAbilY, 340, L.btnH, '🙅 IGNOROVAT (Ms. Abigail)', {
+                ...themeToggleStyle(true), fontSize: '20px',
+                onClick: () => {
+                    if (App.blockInput) return;
+                    App.blockInput = true;
+                    socket.emit('ad_abigail');
+                    renderUI();
+                },
+            });
+            if (App.blockInput) { _abBtn.setAlpha(0.45); _abBtn.disableInteractive(); }
         }
 
         // ── Údolí stínů – okno záchrany: nezachraňovat ───────────────────────────
@@ -4736,7 +4796,8 @@ function drawPhaseOverlays(ctx) {
         mAdd(l1, 206);
         // Co se po zaplacení dělá (fáze A2: mířit, Skrč se!, Mexicali Kid).
         const _quick = selectedState.adUp && adPaySelCard()?.type === 'Rychlopalba';
-        const _done = selectedState.adMex ? 'Zaplaceno – klikni na cíl v dostřelu (Mexicali Kid)'
+        const _done = selectedState.adAl ? 'Zaplaceno – potvrď tlačítkem LÍZNOUT (Al Preacher)'
+            : selectedState.adMex ? 'Zaplaceno – klikni na cíl v dostřelu (Mexicali Kid)'
             : selectedState.adDuck ? 'Zaplaceno – klikni na Skrč se! v ruce'
             : (_quick || selectedState.action === 'Šíp')
                 ? `Zaplaceno – vyber ${1 + selectedState.adUp} různé cíle (${(selectedState.adTargets || []).length} vybráno)`
@@ -4777,6 +4838,9 @@ function drawPhaseOverlays(ctx) {
         const _eName = state.players[_pe.targetIdx]?.name || '?';
         const _eBy = state.players[_pe.attackerIdx]?.name || '?';
         const _eMick = _eMine && (evadeOptions(state, myIndex) || []).some(c => c.type !== 'Útěk');
+        // Ozbrojení a nebezpeční – Ms. Abigail: kartu J–A smí i ignorovat (tlačítko).
+        const _eAbby = !!_pe.abigail;
+        const _eHasEsc = _eMine && (evadeOptions(state, myIndex) || []).length > 0;
         let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
         bg.setStrokeStyle(3, _eMine ? 0xffcc44 : 0xffaa33);
         mAdd(bg, 205);
@@ -4784,9 +4848,14 @@ function drawPhaseOverlays(ctx) {
             let l1 = gameScene.add.text(960, 66, `🏃 ${_eBy} na tebe hraje ${_pe.cardName} – vyhneš se?`,
                 { fontSize: '32px', color: '#ffdd88', fontStyle: 'bold' }).setOrigin(0.5);
             mAdd(l1, 206);
-            let l2 = gameScene.add.text(960, 112,
-                `Klikni na ${_eMick ? 'Útěk nebo kartu Vedle! (Mick Defender)' : 'Útěk'}, nebo „Nevyhýbat se"`,
+            const _eHint = !_eAbby
+                ? `Klikni na ${_eMick ? 'Útěk nebo kartu Vedle! (Mick Defender)' : 'Útěk'}, nebo „Nevyhýbat se"`
+                : _eHasEsc
+                    ? `„Ignorovat" (Ms. Abigail), ${_eMick ? 'Útěk nebo karta Vedle!' : 'Útěk'}, nebo „Nevyhýbat se"`
+                    : '„Ignorovat" (Ms. Abigail), nebo „Nevyhýbat se"';
+            let l2 = gameScene.add.text(960, 112, _eHint,
                 { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+            if (l2.width > 1090) l2.setScale(1090 / l2.width);
             mAdd(l2, 206);
         } else {
             let l1 = gameScene.add.text(960, 92,
@@ -4794,6 +4863,27 @@ function drawPhaseOverlays(ctx) {
                 { fontSize: '24px', color: '#ffcc88' }).setOrigin(0.5);
             mAdd(l1, 206);
         }
+    }
+
+    // ── Ozbrojení a nebezpeční – okno Al Preachera ───────────────────────────────
+    // Al sám vidí po zapnutí platební lištu (níž, adPayNeed) – do té doby tenhle banner.
+    if (state.phase === "AD_AL_OFFER" && state.pendingAdAl && !selectedState.adAl) {
+        const _al = state.pendingAdAl;
+        const _alMine = _al.playerIdx === myIndex;
+        const _alName = state.players[_al.playerIdx]?.name || '?';
+        const _alBy = _al.fromIdx === myIndex ? 'Ty' : (state.players[_al.fromIdx]?.name || '?');
+        let bg = gameScene.add.rectangle(960, 92, 1120, 96, 0x000000, 0.8).setDepth(205);
+        bg.setStrokeStyle(3, _alMine ? 0xffcc44 : 0xffaa33);
+        mAdd(bg, 205);
+        let l1 = gameScene.add.text(960, 66, _alMine
+            ? `📜 Al Preacher – zaplatíš ${AD_AL_COST} ⛁ a lízneš si kartu?`
+            : `⏳ ${_alName} (Al Preacher) může za ${AD_AL_COST} ⛁ líznout kartu`,
+            { fontSize: _alMine ? '32px' : '24px', color: _alMine ? '#ffdd88' : '#ffcc88',
+              fontStyle: _alMine ? 'bold' : 'normal' }).setOrigin(0.5);
+        mAdd(l1, 206);
+        let l2 = gameScene.add.text(960, 112, `${_alBy} – zahraná karta: ${_al.cardName || '?'}`,
+            { fontSize: '22px', color: '#ffeedd' }).setOrigin(0.5);
+        mAdd(l2, 206);
     }
 
     // ── Ozbrojení a nebezpeční – okno Stepního běžce: „zopakuješ sejmutí?" ───────

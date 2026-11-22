@@ -275,6 +275,8 @@ const PlayMixin = {
         const _adCtx = this._adShotStart(attackerIdx, card,
             { weapon: adWeapon, up: adUp, pay: ao.pay, bangCard: _bangCardPlay, targetIdx });
         if (_adCtx) vos = { ...(vos || {}), ..._adCtx };
+        // Ms. Abigail: hnědou kartu J–A smí v obraně ignorovat (adAbigailRespondOk).
+        vos = this._adAbbyVos(vos, card);
 
         if (!isEffect) attacker.bangsPlayedThisTurn++;
         attacker.stats.bangsFired++;
@@ -527,7 +529,7 @@ const PlayMixin = {
                 attackerIdx: attIdx,
                 targetIdx: tarIdx,
                 sourceCardType: card.type,
-            }, { evade: card.name });
+            }, { evade: card.name, card });
             return;
         }
         else if (card.type === CardType.AD_ARROW) {
@@ -571,7 +573,7 @@ const PlayMixin = {
                 requiredCard: CardType.BANG,
                 sourceCard: CardType.DUEL,
                 responded: []
-            })) return;
+            }, true, card)) return;
             this._processSpecialQueue();
             return;
         }

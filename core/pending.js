@@ -104,6 +104,9 @@ function pendingActor(state) {
         // …a okno Stepního běžce: majitel karty rozhoduje, jestli se sejmutí zopakuje.
         case 'AD_REDRAW_OFFER':  return state.pendingAdRedraw
             ? { idx: state.pendingAdRedraw.ownerIdx, kind: 'AD_REDRAW_OFFER' } : null;
+        // …a okno Al Preachera: zaplatí 2 ⛁ a lízne si (i mimo svůj tah), nebo ne.
+        case 'AD_AL_OFFER':      return state.pendingAdAl
+            ? { idx: state.pendingAdAl.playerIdx, kind: 'AD_AL_OFFER' } : null;
         case 'SELECTING_TARGET_CARD': return state.pendingSelection ? { idx: state.pendingSelection.attackerIdx, kind: 'SELECTING_TARGET_CARD' } : null;
         case 'BART_DRAW':        return state.pendingBartDraw ? { idx: state.pendingBartDraw.playerIdx, kind: 'BART_DRAW' } : null;
         // Zlatá horečka – Boty: líznutí za ztracený život (klik na balíček, jako Bart).
@@ -179,6 +182,7 @@ const _WAIT_LABELS = {
     AD_PLACE:              'rozmisťuje žetony nabití',
     AD_BOMB_PASS:          'Bomba – vybírá, komu ji pošle',
     AD_REDRAW_OFFER:       'Stepní běžec – zopakuje sejmutí?',
+    AD_AL_OFFER:           'Al Preacher – lízne si za 2 ⛁?',
     SELECTING_TARGET_CARD: 'vybírá kartu soupeře',
     BART_DRAW:             'Bart Cassidy – líže za zranění',
     BOOTS_DRAW:            'Boty – líže za zranění',
@@ -226,7 +230,8 @@ function waitingStatus(state) {
         text = state.pendingShotgun.label + ' – odhazuje kartu';
     }
     if (pa.kind === 'EVADE_OFFER' && state.pendingEvade?.cardName) {
-        text = 'rozmýšlí, jestli se vyhne kartě ' + state.pendingEvade.cardName;
+        text = (state.pendingEvade.abigail ? 'Ms. Abigail – rozmýšlí, jestli ignoruje kartu '
+                                           : 'rozmýšlí, jestli se vyhne kartě ') + state.pendingEvade.cardName;
     }
     // Údolí stínů – Obětavý skok: komu zachránce brání ztratit život.
     if (pa.kind === 'SAVE_OFFER') {

@@ -12,6 +12,7 @@
 if (typeof require === 'function') {
     if (typeof isInPlay === 'undefined') globalThis.isInPlay = require('./distance.js').isInPlay;
     if (typeof isDangerousCard === 'undefined') globalThis.isDangerousCard = require('./cardRules.js').isDangerousCard;
+    if (typeof isBrownCard === 'undefined') globalThis.isBrownCard = require('./cardRules.js').isBrownCard;
     if (typeof canHeal === 'undefined') globalThis.canHeal = require('./distance.js').canHeal;
     if (typeof boardDeadFor === 'undefined') globalThis.boardDeadFor = require('./highNoon.js').boardDeadFor;
     if (typeof effSuit === 'undefined') globalThis.effSuit = require('./highNoon.js').effSuit;
@@ -662,6 +663,55 @@ function adCheckVerdict(state, check) {
     }
 }
 
+// ── Fáze A6: okna mimo tah – Al Preacher a Ms. Abigail (§2.12, §2.13) ────────
+// Al Preacher: „Když jiný hráč zahraje modrou nebo oranžovou kartu, můžeš zaplatit 2 ⛁
+// a líznout si 1 kartu z balíčku." Smí i mimo svůj tah, za jednu kartu nejvýš jedno
+// líznutí, a musí to stihnout dřív, než se zahraje další karta (okno jde frontou
+// odložených akcí, logic/armed.js). Podle R-U3 se okno otevře, jen když zaplatit MŮŽE.
+const AD_AL_COST = 2;
+function adAlOk(state, idx, fromIdx) {
+    if (!adOn(state) || idx == null || idx === fromIdx) return false;
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p) || !hasAbility(p, 'Al Preacher')) return false;
+    return adPayable(state, idx) >= AD_AL_COST;
+}
+
+// Ms. Abigail: „Můžeš ignorovat efekty hnědých karet s hodnotou J, Q, K a A, pokud jsi
+// jejich jediným cílem." Hodnota je VYTIŠTĚNÁ (Požehnání/Prokletí mění jen barvu),
+// hromadné karty se jí netýkají (jdou jinudy), vlastní karty taky ne (R10).
+const AD_ABIGAIL_VALUES = ['J', 'Q', 'K', 'A'];
+function adAbigailCard(card) {
+    return !!card && isBrownCard(card) && AD_ABIGAIL_VALUES.includes(card.value);
+}
+
+// Smí hráč `idx` ignorovat kartu `card`, kterou na něj (jediný cíl) zahrál `attackerIdx`?
+// Ptá se brána okna úniku (_vosEvadeGate) – karty bez výstřelu (Panika, Cat Balou, Duel,
+// Ragtime, opakování Lee Van Kliffem). Schopnost čte hasAbility, takže ji Kocovina
+// i Big Fifty vypnou samy.
+function adAbigailOk(state, idx, attackerIdx, card) {
+    if (!adOn(state) || attackerIdx == null || attackerIdx === idx) return false;
+    const p = state.players && state.players[idx];
+    if (!p || !isInPlay(p) || !hasAbility(p, 'Ms. Abigail')) return false;
+    return adAbigailCard(card);
+}
+
+// …a výstřel v obraně (RESPOND): karta BANG! nebo bang-efekt s hodnotou J–A na ni
+// samotnou. Že výstřel nese takovou kartu, si útok veze v kontextu (`vos.adAbby`, zakládá
+// ho `_adAbbyVos` při zahrání). Bez karty (Mexicali Kid, Julie Cutter, Henry Block…),
+// s víc cíli (Rychlopalba, Roztříštěná kulka – `noEscape`), Odražená střela, Duel ani
+// hromadné útoky ne. Ignorovat ≠ zrušit, takže to jde i proti nezrušitelnému výstřelu.
+function adAbigailRespondOk(state, idx) {
+    if (!adOn(state) || state.phase !== 'RESPOND') return false;
+    const pr = state.pendingResponse;
+    if (!pr || !pr.active || pr.targetIdx !== idx) return false;
+    if (pr.sourceCard !== 'Bang!' || pr.requiredCard !== 'Vedle!' || pr.ricochet) return false;
+    if (pr.originatorIdx == null || pr.originatorIdx === idx) return false;
+    const v = pr.vos || {};
+    if (!v.adAbby || v.noEscape) return false;
+    const p = state.players && state.players[idx];
+    return !!p && isInPlay(p) && hasAbility(p, 'Ms. Abigail');
+}
+
 // ── Zuřivá Doroty a Lee Van Kliff (R13, vzor VOS_KINDS) ─────────────────────
 // Co smí Doroty poručit a co si Lee Van Kliff zapamatuje. Oranžová karta není hnědá
 // (paměť LVK drží jen hnědé), poručená karta jde bez vylepšení. Druhy, jejichž efekt
@@ -727,5 +777,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        AD_BOMB_DAMAGE, AD_BOMB_TAKE, adBombCard, adBombTargets, adBombTargetOk,
                        adBombPassTargets,
                        adTumbleweedCard, adRedrawOwner, AD_CHECK_LABEL, adCheckVerdict,
+                       AD_AL_COST, adAlOk, AD_ABIGAIL_VALUES, adAbigailCard, adAbigailOk,
+                       adAbigailRespondOk,
                        AD_KINDS, adDorothyOk, adRepeatOk };
 }

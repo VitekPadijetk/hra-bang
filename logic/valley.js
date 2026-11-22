@@ -641,12 +641,16 @@ const ValleyMixin = {
     // nepřeruší (_gagCalm) – Suzy Lafayette, která zahrála poslední kartu, si lízne až
     // po rozhodnutí.
 
-    _vosEvadeGate(attackerIdx, targetIdx, cardName, resume) {
-        if (!vosEvadable(this, attackerIdx, targetIdx)) return false;
-        this.pendingEvade = { targetIdx, attackerIdx, cardName, resume };
+    // `card` = zahraná karta (stačí { value }) – Ozbrojení a nebezpeční: Ms. Abigail smí
+    // hnědou kartu J–A na jediný cíl ignorovat (adAbigailOk), okno se pak otevře i bez
+    // Útěku a nese `abigail: true` (akce ad_abigail, logic/armed.js).
+    _vosEvadeGate(attackerIdx, targetIdx, cardName, resume, card = null) {
+        const abby = adAbigailOk(this, targetIdx, attackerIdx, card);
+        if (!abby && !vosEvadable(this, attackerIdx, targetIdx)) return false;
+        this.pendingEvade = { targetIdx, attackerIdx, cardName, resume, ...(abby ? { abigail: true } : {}) };
         this.phase = "EVADE_OFFER";
         this.logEvent('special', { who: this.players[targetIdx]?.name, card: cardName,
-                                   msg: 'může se vyhnout (Útěk / Mick Defender)' });
+                                   msg: abby ? 'může efekt ignorovat (Ms. Abigail)' : 'může se vyhnout (Útěk / Mick Defender)' });
         return true;
     },
 
@@ -656,9 +660,10 @@ const ValleyMixin = {
     // `opts.evade` = jméno karty, když se jí smí cíl vyhnout (vybavení Zlaté horečky ne,
     // R11); `opts.pick` = { area, boardIdx } u karet, které oblast volí předem.
     // Vrací true, když se čeká na rozhodnutí cíle (volající pak na fázi nesahá).
+    // `opts.card` = zahraná karta (Ms. Abigail – hodnota J–A, viz _vosEvadeGate).
     _enterTargetSelection(sel, opts = {}) {
         if (opts.evade && this._vosEvadeGate(sel.attackerIdx, sel.targetIdx, opts.evade,
-                { kind: 'SELECTION', sel, pick: opts.pick || null })) return true;
+                { kind: 'SELECTION', sel, pick: opts.pick || null }, opts.card || null)) return true;
         this.pendingSelection = sel;
         this.phase = "SELECTING_TARGET_CARD";
         if (opts.pick) this.resolveCardSelection(sel.attackerIdx, opts.pick.area, opts.pick.boardIdx);
@@ -700,9 +705,10 @@ const ValleyMixin = {
     },
 
     // Začátek duelu. `evadable` = smí se cíl duelu vyhnout (Komplic ze Zlaté horečky ne).
-    _startDuel(pr, evadable = true) {
+    // `card` = karta Duel (Ms. Abigail ji smí ignorovat, je-li J–A – viz _vosEvadeGate).
+    _startDuel(pr, evadable = true, card = null) {
         if (evadable && this._vosEvadeGate(pr.originatorIdx, pr.targetIdx, 'Duel',
-                { kind: 'DUEL', pr })) return true;
+                { kind: 'DUEL', pr }, card)) return true;
         this.pendingResponse = pr;
         this.phase = "RESPOND";
         return false;
@@ -728,18 +734,7 @@ const ValleyMixin = {
         const card = p.hand.splice(i, 1)[0];
         this.deck.discard(card);
         this.pendingEvade = null;
-        // Vyložená karta jde ze stolu cíle do odhozu – efekt nenastal.
-        let placed = null;
-        if (pe.resume.kind === 'PLACE') {
-            const t = this.players[pe.targetIdx];
-            const bi = t.board.findIndex(c => c && c.id === pe.resume.cardId);
-            if (bi !== -1) {
-                placed = { card: t.board.splice(bi, 1)[0], boardIdx: bi };
-                this.deck.discard(placed.card);
-            }
-        }
-        // Šíp: cíl se vyhnul – žádný další cíl nebyl (únik jde jen u jediného cíle).
-        if (pe.resume.kind === 'AD_ARROW') this._adArrow = null;
+        const placed = this._evadeUndo(pe);
         // Mick zahrál Úhyb jako kartu Vedle! – líznutí k němu patří (jako v obraně).
         if (card.draw) for (let k = 0; k < card.draw; k++) this.specialActionQueue.push({ type: 'UHYB_DRAW', playerIdx });
         this.logEvent('special', { who: p.name, card: card.name, target: this.players[pe.attackerIdx]?.name,
@@ -751,6 +746,23 @@ const ValleyMixin = {
         this.phase = "PLAY";
         this._processSpecialQueue();
         return { card, handIdx: i, placed };
+    },
+
+    // Únik se povedl (Útěk, Mick – a Ms. Abigail, logic/armed.js): efekt nenastal.
+    // Vyložená karta jde ze stolu cíle do odhozu; vrací { card, boardIdx } pro animaci.
+    _evadeUndo(pe) {
+        let placed = null;
+        if (pe.resume.kind === 'PLACE') {
+            const t = this.players[pe.targetIdx];
+            const bi = t.board.findIndex(c => c && c.id === pe.resume.cardId);
+            if (bi !== -1) {
+                placed = { card: t.board.splice(bi, 1)[0], boardIdx: bi };
+                this.deck.discard(placed.card);
+            }
+        }
+        // Šíp: cíl se vyhnul – žádný další cíl nebyl (únik jde jen u jediného cíle).
+        if (pe.resume.kind === 'AD_ARROW') this._adArrow = null;
+        return placed;
     },
 
     // Odmítnutý únik: efekt pokračuje přesně tam, kde ho brána zastavila.

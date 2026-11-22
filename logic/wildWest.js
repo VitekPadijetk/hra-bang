@@ -1094,6 +1094,7 @@ const WildWestMixin = {
             playerIdx, turnId: this.turnId,
             cardId: card.id, name: card.name, type: card.type,
             suit: card.suit,        // VYTIŠTĚNÁ barva; _effSuit se na ni ptá až při opakování
+            value: card.value,      // hodnota (Ms. Abigail – opakování nese hodnotu PŮVODNÍ karty)
             repeated: false,
         }, spec);
     },
@@ -1210,8 +1211,11 @@ const WildWestMixin = {
                     // Limit 1× Bang!/tah nečerpá ani opakovaný pravý Bang! (viz výš),
                     // proto se `bangsPlayedThisTurn` nezvyšuje ani v jedné větvi.
                     // Údolí stínů: Láhev jako BANG! je vybavení – Útěk ji nezruší (R11).
+                    // Ozbrojení – Ms. Abigail: opakování J–A smí ignorovat (vos.adAbby);
+                    // Láhev je vybavení, hodnotu nemá.
                     this._beginBangResolution(playerIdx, targetIdx, lb.effect !== 'BANG', lb.name, null, null,
-                                              (lb.gear && this._vosOn()) ? { noEscape: true } : null);
+                                              lb.gear ? (this._vosOn() ? { noEscape: true } : null)
+                                                      : this._adAbbyVos(null, { value: lb.value }));
                 }
                 break;
             }
@@ -1223,7 +1227,7 @@ const WildWestMixin = {
                     active: true, originatorIdx: playerIdx, targetIdx,
                     initialTargetIdx: targetIdx,
                     requiredCard: CardType.BANG, sourceCard: CardType.DUEL, responded: []
-                }, !lb.gear)) return;
+                }, !lb.gear, lb.gear ? null : { value: lb.value })) return;
                 break;
             }
             case 'PANIC':
@@ -1234,14 +1238,14 @@ const WildWestMixin = {
                 // zahrání karty) – frontu proto nechej ležet, dobere ji resolveCardSelection.
                 // Údolí stínů: cíl se smí vyhnout (F6) – ne však vybavení Zlaté horečky.
                 this._enterTargetSelection({ attackerIdx: playerIdx, targetIdx, sourceCardType: type },
-                                           { evade: lb.gear ? null : lb.name });
+                                           { evade: lb.gear ? null : lb.name, card: { value: lb.value } });
                 return;
             }
             case 'steal_any': {
                 // Ragtime: krádež bez ohledu na vzdálenost, i z vlastního stolu.
                 this._enterTargetSelection({ attackerIdx: playerIdx, targetIdx,
                                              sourceCardType: CardType.PANIC, ignoreDistance: true },
-                                           { evade: lb.gear ? null : lb.name });
+                                           { evade: lb.gear ? null : lb.name, card: { value: lb.value } });
                 return;
             }
             case 'INDIANS':

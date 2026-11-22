@@ -244,6 +244,11 @@ if (typeof require === 'function') {
     if (typeof adCheckVerdict === 'undefined') {
         globalThis.adCheckVerdict = require('./armed.js').adCheckVerdict;
     }
+    if (typeof adAbigailRespondOk === 'undefined') {
+        const __ad6 = require('./armed.js');
+        globalThis.adAbigailRespondOk = __ad6.adAbigailRespondOk;
+        globalThis.AD_AL_COST = __ad6.AD_AL_COST;
+    }
     // Zlatá horečka – obchod: „smí se koupit / donutit odhodit / vyměnit Pivo za valoun".
     // Stejné predikáty, jaké vynucuje server i klient (core/goldRush.js).
     if (typeof gearBuyOk === 'undefined') {
@@ -2057,6 +2062,9 @@ function decideBotAction(state, myIndex, beliefs) {
             if (_rico && !ricochetWorthDefending(state, _rico)) {
                 return { event: 'respond_to_card', payload: { playerIdx: myIndex, cardIndex: null } };
             }
+            // Ozbrojení a nebezpeční – Ms. Abigail: výstřel kartou J–A ignoruje zadarmo
+            // (žádná karta z ruky, žádný žeton) – lepší obrana neexistuje.
+            if (adAbigailRespondOk(state, myIndex)) return { event: 'ad_abigail', payload: {} };
             // Kazatel (High Noon): ve svém tahu nesmí hráč zahrát Bang! ani jako odpověď
             // v duelu (FAQ H2) – server by kartu odmítl a bot by to zkoušel donekonečna.
             // Želízka (High Noon): ve vlastním tahu (duel) projde jen zvolená barva.
@@ -2423,6 +2431,14 @@ function decideBotAction(state, myIndex, beliefs) {
             return { event: 'ad_redraw', payload: { redo } };
         }
 
+        // Al Preacher: karta za 2 ⛁ se vyplatí, dokud ji nebude muset na konci tahu
+        // odhodit (ruka pod limitem). Platí jako vždycky: nejdřív postava, pak karty.
+        case 'AD_AL_OFFER': {
+            const pay = adBotPay(state, myIndex, AD_AL_COST);
+            const want = !!pay && me.hand.length < Math.max(1, me.health);
+            return { event: 'ad_al', payload: { pay: want ? pay : null } };
+        }
+
         case 'AD_PLACE': {
             const t = adBotPlaceTarget(state, myIndex);
             return t ? { event: 'ad_place', payload: { seat: t.seat, cardId: t.cardId } }
@@ -2454,6 +2470,16 @@ function decideBotAction(state, myIndex, beliefs) {
         case 'EVADE_OFFER': {
             const pe = state.pendingEvade;
             const decline = { event: 'vos_evade', payload: { cardId: null, playerIdx: myIndex } };
+            // Ozbrojení a nebezpeční – Ms. Abigail: ignoruje zadarmo. Nechá proběhnout jen
+            // výběr karty od jistého spojence, když má na stole něco, co jí škodí (Vězení,
+            // Dynamit, Bomba) – spojenec jí to nejspíš bere.
+            if (pe && pe.abigail) {
+                const r0 = pe.resume || {};
+                const friendly = r0.kind === 'SELECTION' && beliefs &&
+                    allyRisk(state, myIndex, pe.attackerIdx, beliefs) >= 0.7 &&
+                    (me.board || []).some(c => boardCardValue(c) < 0);
+                if (!friendly) return { event: 'ad_abigail', payload: {} };
+            }
             const opts = pe ? evadeOptions(state, myIndex) : [];
             if (!opts.length) return decline;
             const escapes = opts.filter(c => c.type === 'Útěk');

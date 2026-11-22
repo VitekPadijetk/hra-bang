@@ -318,7 +318,7 @@ Pojistky, na které se narazí i bez hledání:
 - **Smrt hráče na tahu mimo fázi PLAY/DRAW dorovnává `_turnOwnerGone`** (logic/combat.js) –
   `handlePlayerDeath` tah v RESPOND neposouvá.
 
-## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A5 hotové)
+## Rozšíření Ozbrojení a nebezpeční (Armed & Dangerous) — rozpracované (A0–A6 hotové)
 
 Pravidlový podklad je [docs/ozbrojeni-a-nebezpecni.md](docs/ozbrojeni-a-nebezpecni.md)
 (texty 28 karet a 8 postav, česká upřesnění Albi, nejasnosti), implementační plán
@@ -367,3 +367,12 @@ zopakování se z něj sejme znovu). Fáze `AD_REDRAW_OFFER`, akce `ad_redraw`, 
 `adRedrawOwner`, jak sejmutí dopadlo = `adCheckVerdict`. **Julie Cutter** jde frontou
 `AD_JULIE_CHECK` → `CHECK_DRAW` s `reason: 'AD_JULIE'`; od téhož útočníka čeká ve frontě
 nejvýš jedno sejmutí (Dvojitá rána = jedno).
+
+Hotová je i fáze **A6 (okna mimo tah)** – všech 8 postav. **Al Preacher** visí na
+`_adQueueBlue` (`_adQueueAl`, za dobitím) → fronta/fáze `AD_AL_OFFER`, akce `ad_al { pay }`,
+líznutí jako `KILL_REWARD`. **Ms. Abigail** jde dvěma cestami: brána `_vosEvadeGate` bere
+zahranou kartu (`card`, stačí `{ value }`) a otevře okno úniku i bez Údolí stínů
+(`pendingEvade.abigail`); výstřel nese `vos.adAbby` (`_adAbbyVos`) a v obraně platí
+`adAbigailRespondOk`. **Nový vstup hnědé karty na jediný cíl musí kartu bráně předat**
+(`opts.card` v `_enterTargetSelection`, třetí parametr `_startDuel`, `_adAbbyVos` u výstřelu),
+jinak ji Abigail ignorovat nepůjde. Akce `ad_abigail` bez payloadu.

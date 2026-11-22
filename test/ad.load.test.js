@@ -238,3 +238,67 @@ test('Ozbrojení a nebezpeční (A5): Stepní běžec a Julie Cutter – hra jen
         assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
     }
 });
+
+// Fáze A6: okna mimo tah – Al Preacher a Ms. Abigail natvrdo u stolu. Al potřebuje žetony
+// (Nabíjení, Eso v rukávu a Bečka piva jsou oranžové – jejich vyložení mu okno otevře),
+// Abigail stačí základní balíček (BANG!, Panika, Cat Balou, Duel s hodnotou J–A). Hlídá,
+// že okno Al Preachera ani okno úniku s IGNOROVAT nikdy neuváznou.
+test('Ozbrojení a nebezpeční (A6): Al Preacher a Ms. Abigail – hra jen botů doběhne 3–8 hráčů', () => {
+    const { adAbigailRespondOk } = require('../core/armed.js');
+    const MIX = { 'Nabíjení': 6, 'Eso v rukávu': 3, 'Bečka piva': 3, 'Bandalír': 3 };
+    let nid = 73000;
+    const rich = [];
+    Object.entries(MIX).forEach(([name, k]) => {
+        const row = adCardData.find(c => c.name === name);
+        for (let i = 0; i < k; i++) rich.push({ ...row, id: nid++ });
+    });
+    const ctx = buildCtx();
+    let stalls = 0;
+    const origSystem = ctx.glog.system;
+    ctx.glog.system = (...a) => { if (String(a[0]).includes('stall')) stalls++; };
+    const COMBOS = [];
+    for (let n = 3; n <= 8; n++) COMBOS.push({ n, all: false });
+    COMBOS.push({ n: 4, all: true }, { n: 6, all: true }, { n: 8, all: true });
+
+    const seen = new Set();
+    try {
+        COMBOS.forEach(({ n, all }, ci) => {
+            const gs = new GameState();
+            gs.cardData = cardData;
+            gs.dodgeCityCardData = dodgeCityCardData;
+            gs.highNoonCardData = highNoonCardData;
+            gs.fistfulCardData = fistfulCardData;
+            gs.wwsCardData = wwsCardData;
+            gs.gearCardData = gearCardData;
+            gs.vosCardData = vosCardData;
+            gs.adCardData = rich;
+            const opts = { expansions: { dodge_city: all, high_noon: all, fistful: all, divoky_zapad: all,
+                                         zlata_horecka: all, udoli_stinu: all, ozbrojeni: true } };
+            const tag = `Al + Abigail ${all ? 'vše' : 'jen O&N'} (${n}p)`;
+            const room = { id: `ada${ci}`, players: [], gameState: gs, maxPlayers: n, options: opts };
+            ctx.rooms.set(room.id, room);
+            gs._onEvent = (e) => {
+                if (!e || e.ev !== 'special') return;
+                if (e.card === 'Al Preacher' && /líže \(/.test(e.msg || '')) seen.add('Al líže');
+                if (e.card === 'Ms. Abigail') seen.add('Abigail ignoruje');
+            };
+            gs.setupGame(n, Array.from({ length: n }, (_, i) => 'B' + i), opts);
+            if (gs.players[0] && !gs.players[0].character) gs.players[0].charChoices = ['Al Preacher'];
+            if (gs.players[1] && !gs.players[1].character) gs.players[1].charChoices = ['Ms. Abigail'];
+            gs.players.forEach(p => ctx.createBot(room, p.name));
+            const guard = pumpToWinner(ctx, room, (st) => {
+                checkLoads(st, tag);
+                if (st.phase === 'AD_AL_OFFER') seen.add('okno Ala');
+                if (st.phase === 'EVADE_OFFER' && st.pendingEvade?.abigail) seen.add('okno úniku Abigail');
+                if (st.phase === 'RESPOND' && st.pendingResponse &&
+                    adAbigailRespondOk(st, st.pendingResponse.targetIdx)) seen.add('výstřel J–A na Abigail');
+            });
+            assert.ok(gs.winner, `${tag} doběhla (guard=${guard}, phase=${gs.phase})`);
+            assert.ok(guard < 8000, `${tag} nebyla patologicky dlouhá (guard=${guard})`);
+        });
+    } finally { ctx.glog.system = origSystem; }
+    assert.equal(stalls, 0, 'policy nikdy nepotřebovala nouzovou akci s Alem ani Abigail');
+    for (const what of ['okno Ala', 'Al líže', 'okno úniku Abigail', 'výstřel J–A na Abigail', 'Abigail ignoruje']) {
+        assert.ok(seen.has(what), `v zátěži se ani jednou neobjevilo: ${what}`);
+    }
+});

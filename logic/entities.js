@@ -160,6 +160,7 @@ const AD_READY = [
     "Bloody Mary", "Mexicali Kid",       // A2
     "Bass Greeves", "Frankie Canton", "Red Ringo",   // A3
     "Julie Cutter",                      // A5
+    "Al Preacher", "Ms. Abigail",        // A6
 ];
 
 class Card {

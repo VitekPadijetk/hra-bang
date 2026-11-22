@@ -260,6 +260,8 @@ module.exports = function installBotService(ctx) {
             }
             // Stepní běžec: nechat výsledek platit jde vždycky.
             case 'AD_REDRAW_OFFER': return { event: 'ad_redraw', payload: { redo: false } };
+            // Al Preacher: nelíznout si jde vždycky.
+            case 'AD_AL_OFFER': return { event: 'ad_al', payload: { pay: null } };
             // Údolí stínů – okno úniku: nevyhnout se jde vždycky.
             case 'EVADE_OFFER': return { event: 'vos_evade', payload: { cardId: null, playerIdx: idx } };
             // Údolí stínů – okno záchrany: nezachraňovat jde vždycky; odměna z balíčku taky.

@@ -150,6 +150,16 @@ if (typeof adRedrawOwner === 'undefined' && typeof require === 'function') {
     if (typeof adFindCard === 'undefined') globalThis.adFindCard = __ad5.adFindCard;
     if (typeof adCardCost === 'undefined') globalThis.adCardCost = __ad5.adCardCost;
 }
+// Ozbrojení a nebezpeční – fáze A6 (Al Preacher, Ms. Abigail). Samostatný guard ze
+// stejného důvodu.
+if (typeof adAlOk === 'undefined' && typeof require === 'function') {
+    const __ad6 = require('./core/armed.js');
+    globalThis.AD_AL_COST = __ad6.AD_AL_COST;
+    globalThis.adAlOk = __ad6.adAlOk;
+    globalThis.adAbigailCard = __ad6.adAbigailCard;
+    globalThis.adAbigailOk = __ad6.adAbigailOk;
+    globalThis.adAbigailRespondOk = __ad6.adAbigailRespondOk;
+}
 // Samostatný shim (F1): playability.js si valley.js natahuje sám a doplní jen část
 // globálů, takže by blok výš tyhle přeskočil.
 if (typeof shotgunActive === 'undefined' && typeof require === 'function') {

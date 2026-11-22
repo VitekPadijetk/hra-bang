@@ -203,6 +203,13 @@ const CharactersMixin = {
             // Ozbrojení a nebezpeční – sejmutí Julie Cutter: fáze CHECK_DRAW čeká na její
             // klik a výstřel míří na útočníka. Odešel-li kdokoli z nich ze hry (nebo Julie
             // přišla o schopnost – Nová identita), nemá se proč snímat.
+            // Ozbrojení a nebezpeční – okno Al Preachera: čeká na jeho rozhodnutí, takže se
+            // otevře, jen když pořád platí (je ve hře se schopností, má z čeho zaplatit 2 ⛁
+            // – mezitím mohl žetony utratit – a je co líznout).
+            if (a.type === 'AD_AL_OFFER') {
+                if (!adAlOk(this, a.playerIdx, a.fromIdx) || !this._adCanDraw()) this.specialActionQueue.splice(i, 1);
+                continue;
+            }
             if (a.type === 'AD_JULIE_CHECK') {
                 const j = this.players[a.playerIdx];
                 if (!isInPlay(j) || !isInPlay(this.players[a.attackerIdx]) || !hasAbility(j, 'Julie Cutter')) {
@@ -230,6 +237,9 @@ const CharactersMixin = {
         // Údolí stínů – okno záchrany (Obětavý skok, F8): zásah se ještě nevyhodnotil
         // a vosSave si ho po rozhodnutí dohraje samo. Volba odměny je taky rozdělaná.
         if (this.pendingSave || this.pendingSaveReward) return true;
+        // Ozbrojení a nebezpeční – okno Al Preachera je samo položka fronty: dokud
+        // nerozhodl, nic dalšího se nespouští (adAl si frontu zavolá samo).
+        if (this.pendingAdAl) return true;
         this._pruneSuzyQueue();
         // Údolí stínů – Henry Block (F7): výstřel na zloděje doběhl, takže se dokončí
         // pozastavená akce (krádež / odhoz). Je to pořád efekt zahrané karty, proto jde
@@ -258,7 +268,7 @@ const CharactersMixin = {
 
         // (Fáze, které samy patří frontě, se jako „přerušená" nepamatují – po jejich konci
         // by se hra vrátila do fáze, na kterou už nic nečeká.)
-        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW" && this.phase !== "SHOTGUN_DISCARD" && this.phase !== "LEMONADE_OFFER" && this.phase !== "AD_PLACE") {
+        if (this.phase !== "BART_DRAW" && this.phase !== "BOOTS_DRAW" && this.phase !== "YTO_DRAW" && this.phase !== "EL_GRINGO_STEAL" && this.phase !== "SUZY_DRAW" && this.phase !== "UHYB_DRAW" && this.phase !== "SHOTGUN_DISCARD" && this.phase !== "LEMONADE_OFFER" && this.phase !== "AD_PLACE" && this.phase !== "AD_AL_OFFER") {
             this.interruptedPhase = this.phase;
         }
 
@@ -339,6 +349,11 @@ const CharactersMixin = {
             this.pendingDynamiteDamage = { playerIdx: action.playerIdx, hitsLeft: AD_BOMB_DAMAGE,
                                            source: 'AD_BOMB', resume: 'QUEUE' };
             this.phase = "DYNAMITE_DAMAGE";
+        } else if (action.type === 'AD_AL_OFFER') {
+            // Ozbrojení a nebezpeční – Al Preacher: zaplatí 2 ⛁ a lízne, nebo ne (adAl,
+            // logic/armed.js). Že může, zaručilo pročištění fronty výš.
+            this.pendingAdAl = { playerIdx: action.playerIdx, fromIdx: action.fromIdx, cardName: action.cardName };
+            this.phase = "AD_AL_OFFER";
         } else if (action.type === 'AD_JULIE_CHECK') {
             // Ozbrojení a nebezpeční – Julie Cutter: sejmutí za zranění (vzor TEREN_CHECK).
             this.pendingCheckDraw = {

@@ -1725,6 +1725,39 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             handleReshuffleAndBroadcast(room, gs, 0);
         });
     });
+    // Al Preacher: zaplatí 2 ⛁ (`pay` z platební lišty) a lízne si 1 kartu – líznutí
+    // je běžná fáze lízání (klik na balíček), nebo nechce (`pay` prázdné). Karta vyčerpaná
+    // platbou letí do odhozu.
+    on('ad_al', (d) => {
+        withRoom((room, p, gs) => {
+            const pa = gs.pendingAdAl;
+            if (!pa) return;
+            const before = adSnapshot(gs);
+            const pay = d && Array.isArray(d.pay) ? d.pay : [];
+            if (!gs.adAl(pa.playerIdx, pay)) { broadcastRoom(room); return; }
+            adDepleted(gs, before).forEach(x => emitAnim(room, { type: 'board_to_discard',
+                fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
+    // Ms. Abigail: ignoruje hnědou kartu J–A, jejímž je jediným cílem – v okně úniku
+    // (vyložená karta letí ze stolu do odhozu) nebo v obraně proti výstřelu. Aktérem
+    // je cíl (pendingEvade / pendingResponse), guard to ověřil přes pendingActor.
+    on('ad_abigail', () => {
+        withRoom((room, p, gs) => {
+            const idx = gs.phase === 'EVADE_OFFER' ? gs.pendingEvade?.targetIdx
+                      : gs.phase === 'RESPOND' ? gs.pendingResponse?.targetIdx : null;
+            if (idx === undefined || idx === null) return;
+            const res = gs.adAbigail(idx);
+            if (!res) { broadcastRoom(room); return; }
+            if (res.placed) {
+                emitAnim(room, { type: 'board_to_discard', fromPlayerIdx: idx, cardId: res.placed.card.id,
+                                 boardIdx: 1 + res.placed.boardIdx });
+            }
+            handleAutoEndTurn(room, gs);
+            handleReshuffleAndBroadcast(room, gs);
+        });
+    });
     // Red Ringo: až 2 žetony z postavy na své karty (fáze AD_PLACE s `from: 'CHAR'`).
     on('ad_ringo', () => {
         withRoom((room, p, gs) => {
