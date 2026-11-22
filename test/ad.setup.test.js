@@ -134,15 +134,15 @@ test('isDangerousCard / isBlueCard / isBrownCard: oranžová není modrá ani hn
     assert.equal(isBrownCard(by('Pivo')), true);
 });
 
-test('getActionForCard: Nebezpečná karta se vykládá (PLAY_BLUE), Bomba zatím ne', () => {
+test('getActionForCard: Nebezpečná karta se vykládá (PLAY_BLUE), Bomba se míří na hráče', () => {
     assert.equal(getActionForCard(kind('Bedna'), []), 'PLAY_BLUE');
     assert.equal(getActionForCard(kind('Thunderer'), []), 'PLAY_BLUE');
-    assert.notEqual(getActionForCard(kind('Bomba'), []), 'PLAY_BLUE');
+    assert.equal(getActionForCard(kind('Bomba'), []), 'Bomba');
 });
 
 // ── Postavy ──────────────────────────────────────────────────────────────────
 
-test('postavy: osm jmen, id 55–62 abecedně, portréty zatím nedodané, Red Ringo 5 životů', () => {
+test('postavy: osm jmen, id 55–62 abecedně, portréty sedí se soubory, Red Ringo 5 životů', () => {
     assert.deepEqual(ARMED_CHARACTERS, ['Al Preacher', 'Bass Greeves', 'Bloody Mary', 'Frankie Canton',
                                         'Julie Cutter', 'Mexicali Kid', 'Ms. Abigail', 'Red Ringo']);
     const chars = rd('characters.json');
@@ -180,21 +180,21 @@ function mkSetup() {
     return g;
 }
 
-test('balíček: jdou do něj jen hotové druhy (AD_CARDS_READY) – po A3 dvacet šest karet', () => {
+test('balíček: jdou do něj jen hotové druhy (AD_CARDS_READY) – po A4 dvacet sedm karet', () => {
     const g = mkSetup();
     const data = g._deckDataFor(AD_ON);
     const ad = data.filter(c => c.exp === 'ozbrojeni');
     assert.deepEqual(ad.map(c => c.name).sort(),
         adData.filter(c => A.AD_CARDS_READY.includes(c.name)).map(c => c.name).sort());
-    assert.equal(ad.length, 26);
-    assert.equal(data.length, baseData.length + 26);
+    assert.equal(ad.length, 27);
+    assert.equal(data.length, baseData.length + 27);
     assert.equal(g._deckDataFor({ expansions: {} }), baseData, 'vypnuté rozšíření = beze změny');
 });
 
-test('katalog debug hry: hotové druhy + vykládatelné Nebezpečné karty, Bomba ne', () => {
+test('katalog debug hry: hotové druhy + vykládatelné Nebezpečné karty (po A4 i Bomba)', () => {
     const names = A.adDebugCards(adData).map(c => c.name);
     assert.ok(names.includes('Bang!') && names.includes('Big Fifty') && names.includes('Bič'));
-    assert.ok(!names.includes('Bomba'));
+    assert.ok(names.includes('Bomba'), 'Bomba je hotová (A4)');
     assert.ok(names.includes('Kolona'), 'hotová hnědá do katalogu jde');
     assert.ok(names.includes('Šíp') && names.includes('Rez'), 'hnědé karty A3 jsou hotové');
     assert.ok(names.includes('Stepní běžec'), 'vykládatelná Nebezpečná karta bez efektu (A5) jde jen do katalogu');
@@ -216,7 +216,7 @@ test('setupGame s rozšířením projde a nic bez efektu nerozdá; zásoba je pl
     g.setupGame(5, ['A', 'B', 'C', 'D', 'E'], AD_ON);
     const all = g.deck.cards.concat(...g.players.map(p => p.hand));
     assert.deepEqual(all.filter(c => c.exp === 'ozbrojeni' && !A.AD_CARDS_READY.includes(c.name)), []);
-    assert.equal(all.filter(c => c.exp === 'ozbrojeni').length, 26);
+    assert.equal(all.filter(c => c.exp === 'ozbrojeni').length, 27);
     assert.equal(g._adOn(), true);
     assert.equal(A.adOn(g), true);
     assert.equal(g._adSupply(), 32);
