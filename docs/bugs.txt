@@ -9,7 +9,7 @@ JAK S TÍMHLE SOUBOREM PRACOVAT
   a leží v soukromém repu VitekPadijetk/hra-bang-reports (naklonované do reports/,
   aktualizace `git -C reports pull`): reports/*.json = text + snímek stavu,
   logs/*.jsonl.gz = herní log k hlášení. Sem se zapisuje až HOTOVÝ bug – dostane
-  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 91
+  další volné číslo a odkaz na soubor hlášení. Další volné číslo: 101
 - Hotový bug se přesune do sekce HOTOVÉ i s hashem commitu (ne smaže — když se to
   za měsíc vrátí, je hned vidět, kde hledat).
 - Opravuje se po BATCHÍCH, ne po jednom. Batch = bugy, které sahají na stejné
@@ -146,7 +146,9 @@ Y — Stepní běžec: sejmutá karta zůstane zvětšená uprostřed, dokud maj
 Z — Zlatá horečka: koupená hnědá karta s volbou (cíl / co s ní) má viset v ruce, dokud
       hráč nevybere, a pod balíček se zasune až se zahráním; bez volby jako dnes
       [hlášení 2026-11-01T08-28-46-659Z_game1]. Dnes gear_acquire (showMs 350) ji hned
-      zasune pod balíček. core/goldRushAnim.js, net/handlers.js, server/anim.js
+      zasune pod balíček. core/goldRushAnim.js, net/handlers.js, server/anim.js   HOTOVO (100)
+      (+ core/goldRush.js – gearHeldCard, logic/goldRush.js – `held` v pending,
+      server/handlers.game.js – gear_target/gear_mode, state.js – App.gearHeld)
 
 
 OTEVŘENÉ
@@ -156,6 +158,8 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 100 Koupená hnědá karta Zlaté horečky, u které vybírám (na koho / co s ní), ať mi visí v ruce, dokud nevyberu, a pod balíček až se zahráním; bez volby jako dřív [hlášení 2026-11-01T08-28-46-659Z_game1] → oprava: 8c2f487 (gear_acquire dřív hnědou vždy po 350 ms zasunul pod balíček. Teď server pozná čekající volbu přes gearHeldCard (pendingGearTarget.held / pendingGearMode.card), pošle `to: 'hold'` a po volbě gear_release; klient kartu drží v App.gearHeld mimo desku, s pojistkou hlídáním stavu. Pravidla beze změny – karta je pod balíčkem hned)
 
 - 99 Stepní běžec – dokud se majitel nerozhodne, sejmutá karta zůstane zvětšená uprostřed, pak do odhozu; při opakování se odhalí nová; pozor na Lucky Duka [hlášení 2026-11-27T16-14-50-693Z_game1] → oprava: f2b6113 (karta dřív odletěla po pevných 3,45 s a okno se otevřelo až po ní. Klient ji po výdrži zaparkuje, když adRedrawOwner hlásí okno – parkCheckCard v game.js, hlídá i stav; u Lucky Duka/Podkovy pošle server `park` v lucky_duke_result. Rozhodnutí pošle jako první animaci check_park_release, za kterou fronta drží platbu, výsledek i nové sejmutí / nové rozdání Lucky Duka; boty posouvá room._checkParkUntil)
 
