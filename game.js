@@ -2630,6 +2630,49 @@ function buildAdCubeTexture(scene) {
     g.destroy();
 }
 
+// ── Ozbrojení a nebezpeční: symbol ⛁ v textech = kostička (bug W) ───────────
+// Žeton nabití se v textech (tlačítka, bannery, štítky, popisky čekání, texty karet
+// z cards.ozbrojeni.json) píše znakem ⛁, ale vidět má být kostička z artu karet.
+// Phaser Text obrázek neumí, proto se kostička peče přímo DO TEXTURY textu: updateText
+// na dobu kreslení vymění ⛁ za em mezeru (U+2003, široká 1 em – tolik místa kostička
+// zabere, a zalamování ji nerozdělí od slova) a podvržené fillText do mezer dokreslí
+// texturu `ad_cube`. Kostička tak sedí, ať je text kdekoli (zarovnání, zalomení,
+// padding, rozlišení), a jede s ním i při tweenech, průhlednosti a zničení. `.text`
+// dál vrací původní řetězec s ⛁. Dokud textura není (před create()), zůstane znak.
+const AD_CUBE_CHAR = '⛁', AD_CUBE_GAP = ' ';
+(function installAdCubeText() {
+    if (typeof Phaser === 'undefined' || !Phaser.GameObjects?.Text) return;
+    const proto = Phaser.GameObjects.Text.prototype;
+    const orig = proto.updateText;
+    proto.updateText = function () {
+        const src = this._text;
+        const tex = this.scene?.sys?.textures;
+        if (typeof src !== 'string' || src.indexOf(AD_CUBE_CHAR) < 0 || !tex || !tex.exists('ad_cube')) {
+            return orig.apply(this, arguments);
+        }
+        const img = tex.get('ad_cube').getSourceImage();
+        const ctx = this.context;
+        const fs = parseFloat(this.style.fontSize) || 16;
+        const fill = ctx.fillText;
+        ctx.fillText = function (line, x, y) {
+            fill.apply(this, arguments);
+            if (typeof line !== 'string' || line.indexOf(AD_CUBE_GAP) < 0) return;
+            const gapW = this.measureText(AD_CUBE_GAP).width;
+            const h = fs * 0.95, w = h * AD_CUBE_W / AD_CUBE_H;
+            const align = this.textAlign;   // Phaser kreslí vždy zleva (left/start)
+            for (let i = line.indexOf(AD_CUBE_GAP); i >= 0; i = line.indexOf(AD_CUBE_GAP, i + 1)) {
+                const left = align === 'right' || align === 'end'
+                    ? x - this.measureText(line.slice(i)).width
+                    : x + this.measureText(line.slice(0, i)).width;
+                this.drawImage(img, left + (gapW - w) / 2, y - fs * 0.36 - h / 2, w, h);
+            }
+        };
+        this._text = src.split(AD_CUBE_CHAR).join(AD_CUBE_GAP);
+        try { return orig.apply(this, arguments); }
+        finally { this._text = src; delete ctx.fillText; }
+    };
+})();
+
 // ── Zlatá horečka: textury karet vybavení ───────────────────────────────────
 // Karty vybavení nejsou karty hracího balíčku – nemají barvu ani hodnotu, takže se
 // nepečou přes buildCardTextures. Klíč textury je `zh_<effect>` – identita karty je

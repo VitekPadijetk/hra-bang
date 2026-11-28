@@ -120,7 +120,7 @@ V — vědomé použití Nebezpečných karet klikem na kartu   91, 92, 93, 94  
       view/board.js, core/playability.js, core/armed.js, logic/play.js, logic/armed.js,
       server/handlers.game.js, core/botPolicy.js
 
-W — žetony nabití: vzhled
+W — žetony nabití: vzhled   95, 96   HOTOVO
       * Žetony na MÉ postavě kreslit kostičkami jako na oranžových kartách, ne štítkem
         „⛁2" ve štítku valounů [hlášení 2026-11-27T16-02-07-805Z_game1] (drawNuggets / drawAdCubes).
       * Symbol ⛁ v textech (tlačítka, bannery, log, texty karet) nahradit hnědou 3D

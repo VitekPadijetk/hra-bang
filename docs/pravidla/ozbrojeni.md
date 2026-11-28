@@ -144,9 +144,19 @@ R13; každý druh tam musí být – hlídá strukturální test v `test/ad.load
 - **Bot** v 2500 partiích skutečného balíčku nepotřeboval nouzovou akci ani jednou;
   úspěšnost postav rozšíření (0,35–0,48 při průměru 0,39) je v mezích šumu a síly postav
   (nejvýš Red Ringo a Mexicali Kid), takže ladění nebylo třeba.
-- **Mobilní profil**: na kompaktním profilu stojí místo kostiček na kartě štítek „⛁3"
-  (`drawAdCubes`), žetony na postavě ve štítku valounů „💰3 ⛁2" (`drawNuggets`, všech šest
-  míst volání), pyramida zásoby `adSupplySlot` s invarianty pro oba profily
+- **Symbol ⛁ v textech se kreslí kostičkou** (bug W): `installAdCubeText` v game.js
+  obaluje `Phaser.GameObjects.Text.prototype.updateText` – na dobu kreslení vymění ⛁ za
+  em mezeru a do ní podvrženým `fillText` vpeče texturu `ad_cube`. Platí tedy pro KAŽDÝ
+  Phaser text (tlačítka, bannery, štítky, popisky z core/pending.js, texty karet) a nový
+  text nic dělat nemusí – stačí napsat ⛁. `.text` vrací původní řetězec. Výjimkou je
+  serverový log `logs/*.jsonl` (žádný Phaser) – tam se píše slovem „žeton/y".
+- **Žetony na MÉ postavě** jsou kostičky přímo na portrétu (`drawAdCubes(charImg, { id:
+  null, adLoads }, true)` – `id: null` = rezervace platby z postavy, `true` = kostičky
+  i na mobilu); během posunu životů se nekreslí, po dojezdu přijde renderUI. Soupeřům
+  zůstává štítek u jména „💰3 ⛁2" (`drawNuggets`), protože se jim portrét při reflow
+  posouvá animací a kostičky by za ním nejely.
+- **Mobilní profil**: na kompaktním profilu stojí místo kostiček na kartě soupeře štítek
+  „⛁3" (`drawAdCubes`), pyramida zásoby `adSupplySlot` s invarianty pro oba profily
   (`test/positions.test.js`). Bannery rozmístění/platby leží na `x = 960` jako u ostatních
   rozšíření – to je střed jeviště v obou profilech (jeviště roste symetricky).
 

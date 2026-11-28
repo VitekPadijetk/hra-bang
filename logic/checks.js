@@ -231,7 +231,7 @@ const ChecksMixin = {
         else if (check.reason === "VENDETTA") checkResult = (suit === Suits.HEARTS) ? 'srdce → tah navíc' : 'konec tahu';
         else if (check.reason === "TEREN_KILL") checkResult = (suit === Suits.SPADES) ? 'pik → vyřazen' : 'zůstává na 1 životě';
         else if (check.reason === "RATTLESNAKE") checkResult = (suit === Suits.SPADES) ? 'pik → ztrácí život' : 'nic';
-        else if (check.reason === "AD_BOMB") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → posílá Bombu dál' : 'černá → Bomba ztrácí 2 ⛁';
+        else if (check.reason === "AD_BOMB") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → posílá Bombu dál' : 'černá → Bomba ztrácí 2 žetony';
         else if (check.reason === "COLORADO") checkResult = (suit === Suits.SPADES) ? 'pik → BANG! nejde zrušit' : 'BANG! jako obvykle';
         else if (check.reason === "AD_JULIE") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → útočník je cílem BANG!' : 'nic';
         else if (check.reason === "DON_BELL") checkResult = (suit === Suits.HEARTS || suit === Suits.DIAMONDS) ? 'červená → tah navíc' : 'konec tahu';

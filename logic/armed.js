@@ -345,7 +345,7 @@ const ArmedMixin = {
             });
             if ((q.adLoads || 0) > 0) { this._adMove(q, me, 1); moved++; }
         }
-        this.logEvent('special', { who: me.name, card: 'Rez', msg: `sebral ${moved} ⛁ (na postavě ${me.adLoads || 0})` });
+        this.logEvent('special', { who: me.name, card: 'Rez', msg: `sebral žetonů: ${moved} (na postavě ${me.adLoads || 0})` });
         return true;
     },
 
@@ -410,7 +410,7 @@ const ArmedMixin = {
         p._adBassTurn = this.turnId;
         const card = p.hand.splice(i, 1)[0];
         this.deck.discard(card);
-        this.logEvent('special', { who: p.name, card: 'Bass Greeves', taken: card.name, msg: 'odhazuje za 2 ⛁' });
+        this.logEvent('special', { who: p.name, card: 'Bass Greeves', taken: card.name, msg: 'odhazuje za 2 žetony' });
         this.checkSuzyLafayette(p);
         this._adStartPlace(playerIdx, 2, 'BASS', { oneTarget: true, direct: true });
         return card;
@@ -424,7 +424,7 @@ const ArmedMixin = {
         const src = this._adAt(seat, cardId);
         p._adFrankieTurn = this.turnId;
         this.logEvent('special', { who: p.name, card: 'Frankie Canton', target: this.players[seat]?.name,
-                                   taken: cardId == null ? 'postava' : src.name, msg: 'bere 1 ⛁' });
+                                   taken: cardId == null ? 'postava' : src.name, msg: 'bere 1 žeton' });
         this._adMove(src, p, 1);
         // Bomba vyčerpaná posledním žetonem vybuchla – zásahy jdou frontou (_adBombBlast).
         this._processSpecialQueue();
@@ -537,7 +537,7 @@ const ArmedMixin = {
         this.pendingAdBombPass = null;
         this.lastAnimEvent = { type: 'dynamite_pass', fromIdx: playerIdx, toIdx: targetIdx, cardId: bomb.id,
                                fromBoardIdx: 1 + i, toBoardIdx: np.board.length };
-        this.logEvent('special', { who: p.name, card: 'Bomba', target: np.name, msg: `posílá dál (${adLoadsOf(bomb)} ⛁)` });
+        this.logEvent('special', { who: p.name, card: 'Bomba', target: np.name, msg: `posílá dál (žetonů: ${adLoadsOf(bomb)})` });
         this.startDrawPhase();
         return true;
     },
@@ -837,7 +837,7 @@ const ArmedMixin = {
             if (!adPayOk(this, playerIdx, pay, AD_AL_COST)) return false;
             this._adPay(playerIdx, pay);
             this.specialActionQueue.unshift({ type: 'KILL_REWARD', playerIdx, cardsNeeded: 1, label: 'Al Preacher' });
-            this.logEvent('special', { who: p.name, card: 'Al Preacher', msg: `platí ${AD_AL_COST} ⛁ a líže (${pa.cardName})` });
+            this.logEvent('special', { who: p.name, card: 'Al Preacher', msg: `platí ${AD_AL_COST} žetony a líže (${pa.cardName})` });
         } else {
             this.logEvent('special', { who: p.name, card: 'Al Preacher', msg: 'nelíže' });
         }

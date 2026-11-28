@@ -598,7 +598,11 @@ function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false, s
 // (`card.adLoads`), ne podle slotu, takže pás vyložených karet ani positions.js nemění
 // počet slotů. Na kompaktním profilu (mobil) je karta na kostičky moc malá – tam stojí
 // štítek „⛁3". Nula se nekreslí (karta s nulou žetonů ve hře neleží, hned se odhodí).
-function drawAdCubes(sprite, card) {
+// Bug W: stejně se kreslí i žetony na MÉ postavě (`card` = { id: null, adLoads }, id null
+// = rezervace platby z postavy) – `alwaysCubes`, protože moje postava je i na mobilu
+// dost velká. Soupeřům zůstává štítek u jména (portrét se jim při reflow posouvá
+// animací a kostičky by za ním nejely).
+function drawAdCubes(sprite, card, alwaysCubes = false) {
     // Žetony, které hráč právě naklikal do platby, na kartě vizuálně ubudou (odletí až
     // po potvrzení) – adPayReserved je čte z rozpracované platby (jen moje karty).
     const n = Math.min(4, Math.max(0, ((card && !card._pseudo && card.adLoads) || 0) - adPayReserved(card && card.id)));
@@ -607,7 +611,7 @@ function drawAdCubes(sprite, card) {
     const rot = sprite.rotation || 0, cos = Math.cos(rot), sin = Math.sin(rot);
     const at = (lx, ly) => ({ x: sprite.x + lx * cos - ly * sin, y: sprite.y + lx * sin + ly * cos });
     const depth = (sprite.depth || 0) + 1;
-    if (currentLayout().oppMode === 'compact') {
+    if (!alwaysCubes && currentLayout().oppMode === 'compact') {
         const p = at(w * 0.28, h * 0.36);
         const txt = gameScene.add.text(p.x, p.y, '⛁' + n,
             { fontFamily: THEME.fontUI, fontSize: '15px', color: '#ffd9a0', fontStyle: 'bold',
@@ -688,11 +692,6 @@ function adPayTake(cardId) {
     if (!adPaySourceOk(cardId)) return;
     selectedState.adPay = (selectedState.adPay || []).concat([{ seat: myIndex, cardId: cardId == null ? null : cardId }]);
     renderUI();
-}
-// Moje postava, jak má vypadat ve štítku – bez žetonů naklikaných do platby.
-function adPayView(me) {
-    const r = adPayReserved(null);
-    return r ? Object.assign({}, me, { adLoads: Math.max(0, (me.adLoads || 0) - r) }) : me;
 }
 
 // Pyramida zásoby mezi dobíracím balíčkem a odhozem: až 6 kostiček (3-2-1) a pod nimi
@@ -2091,12 +2090,13 @@ function drawMyArea(ctx) {
         // na desktopu POD kartou role, tedy za spodním okrajem jeviště 16:9, takže počet
         // valounů nebyl vidět nikde kromě obchodu. Leží proto v levém horním rohu karty
         // role (ta je vidět vždycky) a kreslí se i nula, dokud je rozšíření zapnuté.
-        // Ozbrojení a nebezpeční: ve stejném štítku i žetony nabití na mé postavě.
-        if (goldRushOn(state) || adOn(state)) {
+        // Žetony nabití na mé postavě tu nejsou – leží kostičkami přímo na ní (bug W,
+        // drawAdCubes u charImg).
+        if (goldRushOn(state)) {
             const _roleSrc = gameScene.textures.exists(roleTex)
                 ? gameScene.textures.get(roleTex).getSourceImage() : null;
             const _rw = (_roleSrc?.width || 250) * scaleMe, _rh = (_roleSrc?.height || 389) * scaleMe;
-            drawNuggets(adPayView(me), roleX - _rw / 2 + 4, myBaseY - _rh / 2 + 4, 0, 0, goldRushOn(state), adOn(state));
+            drawNuggets(Object.assign({}, me, { adLoads: 0 }), roleX - _rw / 2 + 4, myBaseY - _rh / 2 + 4, 0, 0, true);
         }
 
         {
@@ -2240,6 +2240,9 @@ function drawMyArea(ctx) {
         if (App.niHideChar) charImg.setVisible(false);
         gameScene.cardsSprites.add(charImg);
         if (runHealthSlide(myIndex, me.health, charImg.x, charImg.y, bulletH, 0, -1, 0, myLivesScale, getCharTex(me.character), null, myLivesT.slots)) charImg.setVisible(false);
+        // Ozbrojení a nebezpeční – žetony na mé postavě kostičkami jako na oranžových
+        // kartách (bug W). Během posunu životů se nekreslí – po dojezdu přijde renderUI.
+        if (charImg.visible) drawAdCubes(charImg, { id: null, adLoads: me.adLoads || 0 }, true);
         // Střílím zrovna na někoho? Červeně se útočník rozsvítí OSTATNÍM u stolu
         // (cíl musí vidět, kdo na něj míří) – sobě ne: já vím, že střílím já, a
         // vlastní portrét načervenalý jako terč jen mate (bug 5).
