@@ -6,6 +6,7 @@ const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistful
 const { rumRevealMs } = require('../core/goldRushAnim.js');
 const { pendingActor } = require('../core/pending.js');
 const { adArmOk, adUpgradeOk, adCheckVerdict } = require('../core/armed.js');
+const { AD_ANIM } = require('../core/armedAnim.js');
 
 // Odešla karta z ruky, tedy PROŠLA pravidly? Pravidla (logic/*) odmítnutou akci mlčky
 // ignorují – karta prostě zůstane v ruce. Animace se proto emitují AŽ podle výsledku:
@@ -977,7 +978,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const otherIds = (ld?.cards || []).filter((_, i) => i !== index).map(c => c.id);
             gs.luckyDukePick(index);
             if (chosenId !== null) {
-                emitAnim(room, { type: 'lucky_duke_result', chosenId, otherIds });
+                // Stepní běžec (bug 99): otevřelo-li se okno „zopakovat sejmutí?", vybraná
+                // karta zůstane uprostřed, dokud majitel nerozhodne (sjede s check_park_release).
+                const park = gs.phase === 'AD_REDRAW_OFFER';
+                emitAnim(room, { type: 'lucky_duke_result', chosenId, otherIds, park });
                 // Vybraná karta se ještě „sejme" uprostřed obrazovky – stejná cinematika
                 // (a stejně dlouhá) jako u běžného checku. Boti po tu dobu nehrají, jinak
                 // by hráli přes ni: klient do jejího konce drží stav ve frontě.
@@ -1705,8 +1709,16 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (!pr) return;
             const redo = !!(d && d.redo);
             const verdict = redo ? adCheckVerdict(gs, gs.currentCheck) : null;
+            const parkedId = gs.currentCheck?.card?.id ?? null;
             const _adBefore = adSnapshot(gs);
             if (!gs.adRedraw(pr.ownerIdx, redo)) { broadcastRoom(room); return; }
+            // Sejmutá karta čekala zvětšená uprostřed (bug 99) – teď sjede do odhozu, a to
+            // PRVNÍ: platba žetonem, výsledek sejmutí i nové sejmutí jdou až za ní (klient
+            // je drží ve frontě, boti o stejnou dobu – room._checkParkUntil v server/bots.js).
+            if (parkedId != null) {
+                emitAnim(room, { type: 'check_park_release', cardId: parkedId });
+                room._checkParkUntil = Date.now() + AD_ANIM.parkReleaseMs;
+            }
             adDepleted(gs, _adBefore).forEach(x => emitAnim(room, { type: 'board_to_discard',
                 fromPlayerIdx: x.playerIdx, cardId: x.cardId, boardIdx: x.boardIdx }));
             if (verdict && pr.checkerIdx !== pr.ownerIdx) {

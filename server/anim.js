@@ -685,9 +685,12 @@ module.exports = function installAnimService(ctx) {
         if (!ld || !ld.anim || room._luckyDealSeen === ld) return;
         room._luckyDealSeen = ld;
         const t = revealCinematicMs(ld.anim, (ld.cards || []).length, 'kit');
-        room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + t.pickReady);
+        // Zopakované sejmutí (Stepní běžec, bug 99): rozdání u klientů začne až po sestupu
+        // staré karty do odhozu (check_park_release ve frontě před stavem).
+        const t0 = Date.now() + Math.max(0, (room._checkParkUntil || 0) - Date.now());
+        room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, t0 + t.pickReady);
         if (t.shuffleEnd > 0) {
-            room._reshuffleBlockUntil = Math.max(room._reshuffleBlockUntil || 0, Date.now() + t.shuffleEnd);
+            room._reshuffleBlockUntil = Math.max(room._reshuffleBlockUntil || 0, t0 + t.shuffleEnd);
         }
     }
 

@@ -358,8 +358,11 @@ module.exports = function installBotService(ctx) {
         }
         // Sejmutí / Black Jack: bot drží odhalenou kartu jako reveal animace u lidí
         // (CHECK_REVEAL_MS), teprve pak ji vyhodnotí (resolve_check/resolve_black_jack).
+        // Stepní běžec (bug 99): zopakované sejmutí začne u klientů až po sestupu staré
+        // karty do odhozu (check_park_release) – o tu dobu se výdrž posune.
+        const parkWait = Math.max(0, (room._checkParkUntil || 0) - Date.now());
         if (pa && (pa.kind === 'CHECKING' || pa.kind === 'BLACK_JACK_CHECK')) {
-            delay = typeof ctx.checkRevealMs === 'number' ? ctx.checkRevealMs : 3850;
+            delay = (typeof ctx.checkRevealMs === 'number' ? ctx.checkRevealMs : 3850) + parkWait;
         }
         // Hokynářství: PRVNÍ výběr po otevření počká na klientskou cinematiku
         // (zvednutí/rozdání/míchání); další výběry už normální tempo.
@@ -377,7 +380,7 @@ module.exports = function installBotService(ctx) {
         if (pa && (pa.kind === 'KIT_CARLSON' || pa.kind === 'LUCKY_DUKE' || pa.kind === 'CLAUS_GIVE')) {
             if (!room._charPickSettled) {
                 room._charPickSettled = true;
-                delay = pa.kind === 'LUCKY_DUKE' ? 1700
+                delay = pa.kind === 'LUCKY_DUKE' ? 1700 + parkWait
                       : pa.kind === 'CLAUS_GIVE' ? clausDealMs(room.gameState)
                       : 1300;
             }
@@ -388,7 +391,7 @@ module.exports = function installBotService(ctx) {
         // Míchací cinematika a cinematika vyřazení mají přednost před vším ostatním
         // časováním – bot čeká, než doběhnou.
         delay = Math.max(delay, reshuffleWait, deathWait, hnWait, revealWait, niWait, mineWait, wwsWait, vosWait,
-                         storeWait);
+                         storeWait, parkWait);
         // Potvrzení role se řeší hned (runBotTickOnce ho vyřídí dřív než cokoli jiného),
         // ať ho nebrzdí čekačky odvozené z herní fáze (kontrola, hokynářství, míchání).
         if (introConfirmPending) delay = botThinkTime();

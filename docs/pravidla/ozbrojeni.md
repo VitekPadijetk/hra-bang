@@ -101,6 +101,14 @@ postavy 55–62 (`ARMED_CHARACTERS`).
   (`resolveCheck`, `luckyDukePick`). Nové sejmutí se musí vejít do `currentCheck` (nese celý
   kontext). Fáze `AD_REDRAW_OFFER`, akce `ad_redraw { redo }`, kdo smí `adRedrawOwner`,
   verdikt `adCheckVerdict`. `boardIdx` se po platbě dohledá znovu.
+- **Sejmutá karta čeká zvětšená uprostřed, dokud majitel nerozhodne** (bug 99). Klient
+  po výdrži sejmutí kartu zaparkuje (`parkCheckCard` v game.js), když `adRedrawOwner`
+  hlásí okno – stav je v tu chvíli pořád CHECKING s touž kartou, takže predikce sedí.
+  U Lucky Duka/Podkovy to ví server a pošle `park` v `lucky_duke_result` (fronta pak
+  drží jen nálet + výdrž). Rozhodnutí v `ad_redraw` pošle **jako první** animaci
+  `check_park_release` (`AD_ANIM.parkReleaseMs`) – výsledek, platba i nové sejmutí jdou
+  za ní; boty o tu dobu posouvá `room._checkParkUntil` (výdrž CHECKING i rozdání Lucky
+  Duka). Pojistka: zaparkovaná karta odletí sama, jakmile stav sejmutí té karty opustí.
 - **Julie Cutter** jde frontou `AD_JULIE_CHECK` → `CHECK_DRAW` s `reason: 'AD_JULIE'`;
   od téhož útočníka čeká ve frontě nejvýš jedno sejmutí (Dvojitá rána = jedno).
 

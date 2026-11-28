@@ -14,6 +14,9 @@
 //               `depleted` = [{ playerIdx, cardId }] – vyčerpané karty odletí do odhozu
 //               až PO posledním žetonu (hlášení 2026-11-27T15-53-18-892Z).
 //   discard_to_hand – karta z odhozu zpátky do ruky (Křesadlovka, Skrč se!), stará cesta.
+//   check_park_release – Stepní běžec rozhodnut: sejmutá karta, která čekala zvětšená
+//               uprostřed (bug 99, parkCheckCard v game.js), sjede do odhozu. Fronta
+//               za ní drží výsledek i nové sejmutí, boty drží room._checkParkUntil.
 const AD_ANIM = {
     flyMs: {
         load: 320,   // zásoba → karta/postava
@@ -24,6 +27,7 @@ const AD_ANIM = {
     departMs:   380,   // vyčerpaná karta ze stolu do odhozu (= board_to_discard)
     departStaggerMs: 90,
     bufMs:       60,
+    parkReleaseMs: 400,   // check_park_release: zaparkovaná sejmutá karta → odhoz
 };
 
 // Druh letu podle adres: ze zásoby = load, do zásoby = pay, jinak move.

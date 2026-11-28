@@ -3869,8 +3869,8 @@ function drawMyArea(ctx) {
 
         // ── Ozbrojení a nebezpeční – okno Stepního běžce: zopakovat / nechat ─────────
         // Dvě tlačítka ve slotu schopnosti a v místě „Ukončit tah" (fáze PLAY to není,
-        // takže jsou oba sloty volné). Sejmutá karta leží navrchu odhozu, výsledek říká
-        // banner nahoře (drawPhaseOverlays).
+        // takže jsou oba sloty volné). Sejmutá karta čeká zvětšená uprostřed (parkCheckCard
+        // v game.js, bug 99), výsledek říká banner nahoře (drawPhaseOverlays).
         if (state.phase === "AD_REDRAW_OFFER" && state.pendingAdRedraw?.ownerIdx === myIndex) {
             const _rdEmit = (redo) => {
                 if (App.blockInput) return;

@@ -1254,6 +1254,52 @@ const REVEAL_CX = 960, REVEAL_CY = 470, REVEAL_BIG = 0.7;
 // zanikl (čeká na broadcast). Pod hromádkou (depth 0) přitom zůstat nesmí.
 const REVEAL_PILE_DEPTH = 700;
 
+// ── Ozbrojení a nebezpeční – Stepní běžec: sejmutá karta čeká uprostřed (bug 99) ──
+// Sejmutí, které smí majitel Stepního běžce nechat zopakovat, NEodletí po pevné výdrži
+// do odhozu: karta zůstane zvětšená uprostřed, dokud majitel nerozhodne. Uvolní ji
+// animace `check_park_release` – server ji s rozhodnutím pošle PŘED výsledkem sejmutí
+// i před novým sejmutím, takže fronta obojí podrží za jejím doletem. Pojistkou je
+// hlídání stavu: kdyby se animace ztratila (zaostávající fronta) nebo okno vůbec
+// neotevřelo, karta odletí, jakmile stav sejmutí té karty opustí.
+// `fly` = zbytek cinematiky (let do odhozu / do ruky Johna Paina) bez prodlevy.
+function parkCheckCard(cardId, fly) {
+    releaseCheckPark();
+    // Karta už leží navrchu odhozu (server ji tam dal se sejmutím) – v hromádce ji
+    // neukazuj, dokud do ní vizuálně nedosedne. Uklízí ji let (`fly`).
+    App.discardFlyHideIds.add(cardId);
+    const park = { cardId, fly };
+    App.checkPark = park;
+    const still = () => {
+        const s = state;
+        if (!s || s.winner) return false;
+        if (s.phase === 'AD_REDRAW_OFFER' || s.phase === 'CHECKING') return s.currentCheck?.card?.id === cardId;
+        if (s.phase === 'LUCKY_DUKE') return (s.luckyDukeState?.cards || []).some(c => c.id === cardId);
+        return false;
+    };
+    const poll = () => {
+        if (App.checkPark !== park) return;
+        if (!gameScene || !still()) { releaseCheckPark(cardId); return; }
+        gameScene.time.delayedCall(120, poll);
+    };
+    if (gameScene) gameScene.time.delayedCall(120, poll);
+}
+// `cardId` = uvolni jen tuhle kartu (animace od serveru); bez něj kteroukoli.
+function releaseCheckPark(cardId) {
+    const park = App.checkPark;
+    if (!park || (cardId != null && park.cardId !== cardId)) return;
+    App.checkPark = null;
+    park.fly();
+}
+// Otevře se po tomhle sejmutí okno Stepního běžce? Týž dotaz, kterým se ptá brána
+// `_adRedrawGate` (logic/armed.js) – stav je v tu chvíli pořád CHECKING s touž kartou
+// (vyhodnocení přijde až po celé cinematice), takže predikce sedí. Kdyby ne, uvolní
+// kartu hlídání v parkCheckCard.
+function _checkWillPark(check) {
+    return !!state && !state.winner && typeof adRedrawOwner === 'function' &&
+           state.phase === 'CHECKING' && state.currentCheck?.card?.id === check.card.id &&
+           adRedrawOwner(state, check.playerIdx) != null;
+}
+
 // Záplata, která ZAKRYJE zapečené (malé) marky v levém dolním rohu karty. Bere výřez
 // z PŮVODNÍHO artu druhu – tam marky ještě nejsou – posazený přesně na místo karty a ve
 // stejném měřítku, takže je od okolí k nerozeznání. Bez ní pod pulzující zvětšenou markou
@@ -1352,6 +1398,17 @@ function startCheckReveal(check) {
             gameScene.tweens.add({ targets: sprite, scaleX: REVEAL_BIG, duration: 225, ease: 'Sine.easeOut',
                 onComplete: () => { pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, check.card); } }); } });
     }
+    // Výdrž uprostřed (450 nálet + 3000 s pulzem), pak let dál. Čeká-li se na Stepního
+    // běžce (bug 99), karta zůstane zaparkovaná uprostřed a let se pustí, až majitel
+    // rozhodne (parkCheckCard) – pak už bez prodlevy.
+    const _hold = 450 + 3000;
+    const holdThen = (fly) => {
+        gameScene.time.delayedCall(_hold, () => {
+            if (!sprite.active) return;
+            if (_checkWillPark(check)) parkCheckCard(check.card.id, () => fly(0));
+            else fly(0);
+        });
+    };
     // Divoký západ – John Pain: sejmutou kartu si bere, takže z odkrytí neletí do odhozu
     // a hned zase ven (dva lety místo jednoho, bug 28), ale rovnou do jeho ruky – přesně
     // jako druhá karta Black Jacka. Komu připadne, říká server v `johnPainIdx`
@@ -1366,7 +1423,12 @@ function startCheckReveal(check) {
         // soupeře 0.155, takže karta doletěla skoro dvakrát větší a zmenšila se až skokem.
         const jpScale = _renderHandScale(_jp);
         if (jpMine) App.pendingDrawIds.add(check.card.id);   // skryj v ruce do doletu (staging)
-        const jpDelay = 450 + 3000;
+        // Z odhozu karta odejde teprve až doběhne efekt, kvůli kterému se snímalo
+        // (u barelu klidně po celé obraně) – do té doby ji v hromádce neukazuj, vizuálně
+        // už leží v jeho ruce. Pojistka pro případ, že se predikce rozejde se skutečností
+        // (John Pain mezitím zemře / doplní ruku na 6): po chvíli se skrývání pustí.
+        App.discardFlyHideIds.add(check.card.id);
+        holdThen((jpDelay) => {
         gameScene.tweens.add({ targets: sprite, x: jpTo.x, y: jpTo.y, scaleY: jpScale,
             delay: jpDelay, duration: 400, ease: 'Cubic.easeIn',
             // Marka leží na PEVNÉ pozici uprostřed (nedrží se karty) – zhasni ji se startem letu.
@@ -1379,11 +1441,6 @@ function startCheckReveal(check) {
                     if (sprite.active) sprite.destroy();
                     renderUI();
                 }) });
-        // Z odhozu karta odejde teprve až doběhne efekt, kvůli kterému se snímalo
-        // (u barelu klidně po celé obraně) – do té doby ji v hromádce neukazuj, vizuálně
-        // už leží v jeho ruce. Pojistka pro případ, že se predikce rozejde se skutečností
-        // (John Pain mezitím zemře / doplní ruku na 6): po chvíli se skrývání pustí.
-        App.discardFlyHideIds.add(check.card.id);
         let jpWait = 0;
         const jpPoll = () => {
             if (!gameScene) return;
@@ -1402,6 +1459,7 @@ function startCheckReveal(check) {
         } else {
             gameScene.tweens.add({ targets: sprite, scaleX: jpScale, delay: jpDelay, duration: 400, ease: 'Cubic.easeIn' });
         }
+        });
         return;
     }
     // 2) po 3 s drhu se zmenší a odletí do odhozu. Sprite po dosednutí podrž na místě,
@@ -1410,9 +1468,12 @@ function startCheckReveal(check) {
     // Zmenšení PŘESNĚ na velikost karty v odhozu (PILE_SCALE) – ne na „nějakých" 0.28,
     // jinak karta dosedne menší než hromádka a než sprite zanikne (čeká na broadcast,
     // holdThenFinish), je ten rozdíl vidět.
+    // Cíl se bere až se startem letu – po parkování (Stepní běžec) mohl odhoz mezitím
+    // ujet (Hokynářství zvedá balíčky).
+    holdThen((flyDelay) => {
     const _checkDiscard = discardTopPos();   // vrch odhozu, ať kontrolní karta dosedne na hromádku
     gameScene.tweens.add({ targets: sprite, x: _checkDiscard.x, y: _checkDiscard.y, scaleX: PILE_SCALE, scaleY: PILE_SCALE,
-        delay: 450 + 3000, duration: 400, ease: 'Cubic.easeIn',
+        delay: flyDelay, duration: 400, ease: 'Cubic.easeIn',
         // Se začátkem sestupu do odhozu jde karta z „reveal" vrstvy do vrstvy hromádky –
         // výsledek sejmutí (vězení/dynamit) letí za ní a musí dosednout NAD ni.
         onStart: () => { stopPulse(); sprite.setDepth(REVEAL_PILE_DEPTH); },
@@ -1425,7 +1486,13 @@ function startCheckReveal(check) {
             const dp = state?.deck?.discardPile;
             return !!dp?.some(c => c.id === check.card.id) &&
                    !(state.phase === 'CHECKING' && state.currentCheck?.active);
-        }, () => { stopPulse(); if (sprite.active) sprite.destroy(); }) });
+        }, () => {
+            stopPulse();
+            if (sprite.active) sprite.destroy();
+            // Zaparkovaná karta (Stepní běžec) byla v odhozu skrytá – teď už v něm leží.
+            if (App.discardFlyHideIds.delete(check.card.id)) renderUI();
+        }) });
+    });
 }
 
 // Black Jack: 2. líznutá karta se zkoumá (stejný reveal jako sejmutí), ale pak
@@ -1896,11 +1963,14 @@ const LUCKY_TEMPO = { start: 0, stagger: 160, fly: 420 };
 // pořadí, v jakém dosedly (logika je tak i vkládá – viz luckyDukePick).
 // Kterou si vybral, říká server (`lucky_duke_result` nese chosenId); bez něj (fallback
 // z room_update) je to ta na vrcholu odhozu.
+// `park` (Stepní běžec, bug 99): po výběru se otevírá okno „zopakovat sejmutí?", takže
+// vybraná karta uprostřed zůstane, dokud majitel nerozhodne (parkCheckCard), a do
+// odhozu sjede až s animací check_park_release. Server to ví přesně (fáze po výběru).
 const LD_DROP_MS = 400;        // nevybraná ze slotu do odhozu
 const LD_TO_CENTER_MS = 450;   // vybraná ze slotu doprostřed (+ zvětšení)
 const LD_HOLD_MS = 3000;       // výdrž uprostřed s pulzující markou (jako startCheckReveal)
 const LD_TO_DISCARD_MS = 400;  // sestup do odhozu
-function playLuckyDukeResult(chosenId) {
+function playLuckyDukeResult(chosenId, park) {
     const reveal = App.luckyRevealCards || [];
     App.luckyRevealCards = null;
     App.dealDeckCount = null;    // konec rozdávání (dealRevealRow) → balíček zase podle stavu
@@ -1952,9 +2022,12 @@ function playLuckyDukeResult(chosenId) {
         duration: LD_TO_CENTER_MS, ease: 'Cubic.easeOut',
         onComplete: () => { if (sprite.active && card) pulse = pulseCheckMark(REVEAL_CX, REVEAL_CY, REVEAL_BIG, card); }
     });
+    const flyToDiscard = (flyDelay) => {
+    // Po parkování se cíl bere znovu – odhoz mohl mezitím ujet (Hokynářství).
+    const _to = park ? discardTopPos() : _luckyDiscard;
     gameScene.tweens.add({
-        targets: sprite, x: _luckyDiscard.x, y: _luckyDiscard.y, scaleX: PILE_SCALE, scaleY: PILE_SCALE,
-        delay: LD_TO_CENTER_MS + LD_HOLD_MS, duration: LD_TO_DISCARD_MS, ease: 'Cubic.easeIn',
+        targets: sprite, x: _to.x, y: _to.y, scaleX: PILE_SCALE, scaleY: PILE_SCALE,
+        delay: flyDelay, duration: LD_TO_DISCARD_MS, ease: 'Cubic.easeIn',
         // Se začátkem sestupu jde karta z „reveal" vrstvy do vrstvy hromádky – výsledek
         // sejmutí (vězení/dynamit) letí za ní a musí dosednout NAD ni.
         onStart: () => { stopPulse(); sprite.setDepth(REVEAL_PILE_DEPTH); },
@@ -1964,6 +2037,11 @@ function playLuckyDukeResult(chosenId) {
             App.discardFlyHideIds.delete(picked.id);
             renderUI();
         })
+    });
+    };
+    if (!park) { flyToDiscard(LD_TO_CENTER_MS + LD_HOLD_MS); return; }
+    gameScene.time.delayedCall(LD_TO_CENTER_MS + LD_HOLD_MS, () => {
+        if (sprite.active) parkCheckCard(picked.id, () => flyToDiscard(0));
     });
 }
 

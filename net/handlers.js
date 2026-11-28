@@ -2195,7 +2195,14 @@ function _playCardAnim(data) {
         // Teprve pak jde ve frontě výsledek checku (vězení/dynamit) – tak, jak karty
         // ve skutečnosti leží na hromádce odhozu.
         case 'lucky_duke_result':
-            playLuckyDukeResult(data.chosenId);
+            playLuckyDukeResult(data.chosenId, !!data.park);
+            break;
+        // Ozbrojení a nebezpeční – Stepní běžec rozhodnut: sejmutá karta zaparkovaná
+        // uprostřed (parkCheckCard v game.js) sjede do odhozu. Fronta za ní drží výsledek
+        // sejmutí i nové sejmutí (bug 99). Bez zaparkované karty (pozdní připojení,
+        // zahozená animace) nic – trvá ale stejně u všech, ať se fronty nerozejdou.
+        case 'check_park_release':
+            releaseCheckPark(data.cardId);
             break;
         // Rozšíření High Noon: šerif odkrývá kartu události. Rub z balíčku vyletí
         // doprostřed obrazovky, zvětší se, překlopí na líc, chvíli tam vydrží (ať ji
@@ -3750,6 +3757,11 @@ const ANIM_MS = {
 };
 
 function _animDurationMs(data) {
+    // Lucky Duke před oknem Stepního běžce: vybraná karta uprostřed zůstane (bug 99),
+    // sestup do odhozu jde až s check_park_release – fronta drží jen nálet a výdrž.
+    if (data.type === 'lucky_duke_result' && data.park) return LD_TO_CENTER_MS + LD_HOLD_MS;
+    // …a sestup zaparkované karty do odhozu po rozhodnutí (core/armedAnim.js).
+    if (data.type === 'check_park_release') return AD_ANIM.parkReleaseMs;
     // Smrt: celá cinematika vyřazení (pokles na nulu → odhoz karet → odhalení role).
     // Počet položek odhozu = modré + zbraň/Colt (vždy jedna) + ruka + vybavení (Zlatá
     // horečka), viz _deathCardSeq; stejný vzorec počítá server (server/anim.js), aby
