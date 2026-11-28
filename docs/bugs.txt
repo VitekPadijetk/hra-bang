@@ -116,21 +116,9 @@ U — Dvojitá rána               90   HOTOVO
 
 ČTVRTÁ VLNA (hlášení z 1.–27. 11.) — čísla dostanou až hotové, tady jen plán a příčiny
 
-V — vědomé použití Nebezpečných karet klikem na kartu
-      * Bandalír se má zapnout klikem na něj a teprve pak zahrát BANG! nad limit; bez
-        zapnutí (nebo bez BANG! v ruce) nesmí jít ani zapnout [hlášení 2026-11-22T20-47-37-737Z_game1,
-        2026-11-27T15-47-02-241Z_game1]. Příčina: R21 – _adBandolierPay platí sám při BANG!
-        nad limit, adBandolierExtra počítá nabitý Bandalír jako +1 automaticky.
-        → nové selectedState.adBand + `band: true` v play_bang; adBandolierExtra jen
-        pro _adBandTurn (nebo zapnutý přepínač), bot posílá band sám.
-      * Bedna se má použít klikem na kartu Bedny na stole, ne tlačítkem
-        [hlášení 2026-11-27T15-40-06-171Z_game1]. Příčina: view/board.js ~3990 kreslí
-        tlačítko „📦 BEDNA"; adCrateOk už existuje → klik na kartu v drawMyArea, tlačítko pryč.
-      * Squaw (a tentýž tok Biče ze stolu) má mířit jako Panika/Cat Balou – klik rovnou
-        na kartu na stole cíle, ne napřed na hráče a pak výběr karty
-        [hlášení 2026-11-25T16-14-51-817Z_game1]. Příčina: adAimClick → play_special
-        s targetIdx a výběr karty dělá serverová fáze SELECTING_TARGET_CARD (adNoHand).
-      view/board.js, core/armed.js, logic/play.js, logic/armed.js, server/handlers.game.js, core/botPolicy.js
+V — vědomé použití Nebezpečných karet klikem na kartu   91, 92, 93, 94   HOTOVO
+      view/board.js, core/playability.js, core/armed.js, logic/play.js, logic/armed.js,
+      server/handlers.game.js, core/botPolicy.js
 
 W — žetony nabití: vzhled
       * Žetony na MÉ postavě kreslit kostičkami jako na oranžových kartách, ne štítkem
@@ -138,6 +126,7 @@ W — žetony nabití: vzhled
       * Symbol ⛁ v textech (tlačítka, bannery, log, texty karet) nahradit hnědou 3D
         kostičkou z artu karet (textura ad_cube) [hlášení 2026-11-27T16-11-32-228Z_game1].
         Phaser text obrázek neumí → helper, který text rozdělí na ⛁ a vloží obrázek.
+        Rozhodnutí uživatele: symbol ⛁ zmizí ÚPLNĚ VŠUDE (tlačítka, bannery, log, texty karet).
       view/board.js, game.js (+ DOM log / zvětšená karta, kde text karty leží)
 
 X — žetony nabití: animace (z ozbrojeni.md „Co zůstává" – lety kostiček zatím nejsou)
@@ -167,6 +156,11 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 91 Bandalír bych měl moci vědomě použít, ne automaticky když dám další bang – nejdřív klik na bandalír, pak bang (pokud ho tedy mám, jinak by mě to nemělo dovolit ani zapnout) [hlášení 2026-11-22T20-47-37-737Z_game1, 2026-11-27T15-47-02-241Z_game1] → oprava: b0d4ddb (klik na Bandalír ho zapne a pak jde jen karta BANG! nad limit – adBandCards/adBandArmOk v core/playability.js; play_bang nese `band` a žeton se zaplatí s ním. Zapnutí je dočasný příznak _adBandArm, který čte adBandolierExtra – server ho drží jen po dobu playBang, bot po dobu rozhodování, klient každý render podle výběru. Druhý klik na Bandalír ho vypne)
+- 92 Bednu ať můžu použít kliknutím na tu kartu, ne tlačítkem [hlášení 2026-11-27T15-40-06-171Z_game1] → oprava: b0d4ddb (Bedna na stole svítí zeleně, kdykoli ji adCrateOk pustí, a klik pošle ad_crate; tlačítko zmizelo a přepínač Skrč se! se posunul na jeho místo)
+- 93 Squaw ať je tam stejný systém výběru karet jako panika/cb [hlášení 2026-11-25T16-14-51-817Z_game1] → oprava: b0d4ddb (po výběru Squaw – a zaplacení vylepšení – svítí karty ve hře platných cílů i vlastní stůl, klik pošle play_special a hned select_target_card stejně jako handlePanicCBClick; na postavu se už nemíří. Server beze změny)
+- 94 Bič jako Cat Balou, jen ze stolu (dovětek k 93) → oprava: b0d4ddb (nabitý Bič míří rovnou na kartu ve hře přes ad_use + select_target_card; Paklíč dál na postavu, bere náhodně z ruky)
 
 - 90 Dvojitou ránu prosím uprav, aby se střílelo jakoby tou kartou dvojitá rána a k tomu se vybral libovolný bang ne naopak, že u bangu je možnost použít dvojitou ránu [hlášení 2026-10-26T17-00-03-525Z_game1] → oprava: c1a4b4a (klik na Dvojitou ránu ji vybere a v ruce rozsvítí karty BANG!, se kterými jde – nové aimPartners v core/playability.js hlídá i Želízka, Kazatele a limit; klik na kartu BANG! ji připojí a míří se jako obvykle, jde i opačné pořadí. Přepínač „+ DVOJITÁ RÁNA“ u Bangu zmizel, nad slotem schopností zůstalo jen tlačítko pro zrušení. Server ani bot se neměnily)
 
