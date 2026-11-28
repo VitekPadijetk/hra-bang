@@ -114,6 +114,52 @@ U — Dvojitá rána               90   HOTOVO
       Server (playBang s aimCardId) ani bot nepotřebovaly nic – šlo jen o klientský tok výběru.
 
 
+ČTVRTÁ VLNA (hlášení z 1.–27. 11.) — čísla dostanou až hotové, tady jen plán a příčiny
+
+V — vědomé použití Nebezpečných karet klikem na kartu
+      * Bandalír se má zapnout klikem na něj a teprve pak zahrát BANG! nad limit; bez
+        zapnutí (nebo bez BANG! v ruce) nesmí jít ani zapnout [hlášení 2026-11-22T20-47-37-737Z_game1,
+        2026-11-27T15-47-02-241Z_game1]. Příčina: R21 – _adBandolierPay platí sám při BANG!
+        nad limit, adBandolierExtra počítá nabitý Bandalír jako +1 automaticky.
+        → nové selectedState.adBand + `band: true` v play_bang; adBandolierExtra jen
+        pro _adBandTurn (nebo zapnutý přepínač), bot posílá band sám.
+      * Bedna se má použít klikem na kartu Bedny na stole, ne tlačítkem
+        [hlášení 2026-11-27T15-40-06-171Z_game1]. Příčina: view/board.js ~3990 kreslí
+        tlačítko „📦 BEDNA"; adCrateOk už existuje → klik na kartu v drawMyArea, tlačítko pryč.
+      * Squaw (a tentýž tok Biče ze stolu) má mířit jako Panika/Cat Balou – klik rovnou
+        na kartu na stole cíle, ne napřed na hráče a pak výběr karty
+        [hlášení 2026-11-25T16-14-51-817Z_game1]. Příčina: adAimClick → play_special
+        s targetIdx a výběr karty dělá serverová fáze SELECTING_TARGET_CARD (adNoHand).
+      view/board.js, core/armed.js, logic/play.js, logic/armed.js, server/handlers.game.js, core/botPolicy.js
+
+W — žetony nabití: vzhled
+      * Žetony na MÉ postavě kreslit kostičkami jako na oranžových kartách, ne štítkem
+        „⛁2" ve štítku valounů [hlášení 2026-11-27T16-02-07-805Z_game1] (drawNuggets / drawAdCubes).
+      * Symbol ⛁ v textech (tlačítka, bannery, log, texty karet) nahradit hnědou 3D
+        kostičkou z artu karet (textura ad_cube) [hlášení 2026-11-27T16-11-32-228Z_game1].
+        Phaser text obrázek neumí → helper, který text rozdělí na ⛁ a vloží obrázek.
+      view/board.js, game.js (+ DOM log / zvětšená karta, kde text karty leží)
+
+X — žetony nabití: animace (z ozbrojeni.md „Co zůstává" – lety kostiček zatím nejsou)
+      * Přesun žetonů (rozmístění, platba, Rez, Frankie, Red Ringo, vrácení při odchodu)
+        animovat letem kostiček; další události na ně čekají (fronta + držení botů)
+        [hlášení 2026-11-27T15-42-28-011Z_game1]. Nový core/armedAnim.js (plán §2.16).
+      * Vyčerpaná karta: nejdřív odletí poslední žetony, teprve pak karta do odhozu
+        [hlášení 2026-11-27T15-53-18-892Z_game1] – _adDeplete.
+      logic/armed.js, server/anim.js, net/handlers.js, core/armedAnim.js, core/animQueue.js
+
+Y — Stepní běžec: sejmutá karta zůstane zvětšená uprostřed, dokud majitel nerozhodne;
+      pak teprve let do odhozu, při opakování odkrytí nové karty; pozor na Lucky Duka
+      (dvě karty, volba) [hlášení 2026-11-27T16-14-50-693Z_game1]. Dnes jen banner
+      s textem výsledku (board.js ~4892) a cinematika sejmutí doběhne dřív.
+      server/anim.js, core/checkAnim (cinematika sejmutí), net/handlers.js, view/board.js
+
+Z — Zlatá horečka: koupená hnědá karta s volbou (cíl / co s ní) má viset v ruce, dokud
+      hráč nevybere, a pod balíček se zasune až se zahráním; bez volby jako dnes
+      [hlášení 2026-11-01T08-28-46-659Z_game1]. Dnes gear_acquire (showMs 350) ji hned
+      zasune pod balíček. core/goldRushAnim.js, net/handlers.js, server/anim.js
+
+
 OTEVŘENÉ
 --------
 
