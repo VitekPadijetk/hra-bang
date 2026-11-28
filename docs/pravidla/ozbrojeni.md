@@ -48,14 +48,22 @@ postavy 55–62 (`ARMED_CHARACTERS`).
   ověří `adPayOk`/`adUpgradeOk` dřív, než cokoli animuje; odmítnutá akce nic nezaplatí.
   Klient drží rozpracovanou platbu v `selectedState.adUp`/`adPay`, model `adPayNeed`.
 - **Zvonice žije v core/distance.js** (`adBellActive`) – distance.js nesmí require-ovat armed.js.
-- **Bandalír**: `adBandolierExtra` se přičítá v `bangLimitFree` i `playBang`, +1 drží do
-  konce tahu (`_adBandTurn`), i když se vyčerpal.
+- **Bandalír se používá vědomě** (bug V, ruší R21): klik na Bandalír ho zapne
+  (`selectedState.adBand`), pak smí jít jen karta BANG! nad limit (`adBandCards`,
+  core/playability.js) a `play_bang` nese `band: true`. Zapnutí je dočasný příznak
+  `_adBandArm` na hráči, který `adBandolierExtra` čte: server ho drží jen po dobu
+  `playBang` (obal kolem `_playBangRun`), bot po dobu rozhodování (obal `decideBotAction`
+  přes `adBandWith`), klient ho na svou kopii stavu nastavuje každý render (`adBandSync`).
+  Ve stavu nikdy nezůstane. Zapnout jde jen s vyčerpaným limitem a kartou BANG!, kterou
+  jde vystřelit (`adBandArmOk`). Zaplacený Bandalír drží +1 do konce tahu (`_adBandTurn`),
+  i když se vyčerpal.
 
 ## Zbraně a výstřely (A2)
 
 - **Výstřel nese kontext `vos` i bez Údolí stínů** (`_adShotStart`: `unavoidable`,
   `adBuntline`, `adReturn`, `adMary`, `adAbby`). Colorado Bill se proto ptá na `vos.bangCard`.
 - **Zrušení výstřelu jde trychtýřem `_adShotCanceled`** (Barel, Vedle!, Útěk, Bedna).
+  Bedna se v obraně používá klikem na kartu na stole (bug V), tlačítko není.
 - **Big Fifty drží `_adMuted` na cíli** – `hasAbility` pak nic nepovolí. Každý nový konec
   obrany musí volat `_adShotEnd()` (konec `handleResponse` je vytažený do `_respondAdvance`).
 - **Buntline** odhazuje fází Brokovnice (`SHOTGUN_DISCARD` s `label`), žádné `AD_DISCARD`.
@@ -70,6 +78,10 @@ postavy 55–62 (`ARMED_CHARACTERS`).
   Jediný cíl má okno úniku (`resume.kind === 'AD_ARROW'`). Ne na sebe, ne na Ducha.
 - **Paklíč** = cesta Paniky s `ignoreDistance` a `pick: hand`; **Bič a Squaw** = cesta
   Cat Balou s `adNoHand` (Squaw s vylepšením jako Panika – karta do ruky).
+- **Squaw z ruky a Bič ze stolu se míří rovnou na kartu ve hře** (bug V, jako Panika/CB):
+  `adBoardPick`/`adBoardPickClick` (view/board.js) pošle `play_special` / `ad_use`
+  a hned `select_target_card`. Server se neměnil – když napřed otevře okno úniku, hráč
+  klikne kartu znovu ve fázi výběru. Paklíč míří dál na postavu (bere náhodně z ruky).
 - Akce bez obecného `ad_ability`: `ad_use`, `play_special { up, pay, extra }`, `ad_bass`,
   `ad_frankie`, `ad_ringo`, `ad_mexicali`.
 

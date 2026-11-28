@@ -186,7 +186,18 @@ const PlayMixin = {
     // zvláštní efekt Nebezpečné zbraně (jen ke kartě BANG!, adWeaponSpecialOk), vylepšení
     // Křesadlovky/Rychlopalby a další cíle Rychlopalby (`extra`, jeden za vylepšení).
     // Všechno se ověří dřív, než se cokoli změní; platí se až těsně před efektem.
+    // `adOpts.band` = hráč zapnul Bandalír (bug V): po dobu zahrání zvedá limit karet
+    // BANG! (příznak `_adBandArm`, viz adBandolierExtra) a za BANG! nad limit se z něj
+    // zaplatí žeton. Příznak se uklidí v každém případě – ve stavu nikdy nezůstane.
     playBang(attackerIdx, targetIdx, cardIdx, aimCardId = null, adOpts = null) {
+        const p = this.players[attackerIdx];
+        const arm = !!(adOpts && adOpts.band && p);
+        if (arm) p._adBandArm = this.turnId;
+        try { return this._playBangRun(attackerIdx, targetIdx, cardIdx, aimCardId, adOpts); }
+        finally { if (arm) delete p._adBandArm; }
+    },
+
+    _playBangRun(attackerIdx, targetIdx, cardIdx, aimCardId = null, adOpts = null) {
         const attacker = this.players[attackerIdx];
         const target = this.players[targetIdx];
         const card = attacker?.hand[cardIdx];

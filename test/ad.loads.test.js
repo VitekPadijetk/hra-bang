@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { GameState, CardType, Suits, Card } = require('../logic.js');
 const { distinctCardKinds } = require('../logic/entities.js');
-const { cardPlayability } = require('../core/playability.js');
+const { cardPlayability, adBandCards, adBandArmOk } = require('../core/playability.js');
 const { pendingActor, waitingStatus } = require('../core/pending.js');
 const { computeDistance } = require('../core/distance.js');
 const { decideBotAction } = require('../core/botPolicy.js');
@@ -324,24 +324,30 @@ test('Zvonice: všichni ve vzdálenosti 1 pro příští kartu; pak ani v dalš�
     assert.equal(computeDistance(g, 0, 2), 3);
 });
 
-test('Bandalír: druhý BANG! projde za žeton, třetí ne; s Volcanicem se žeton nebere', () => {
+test('Bandalír: druhý BANG! projde jen se zapnutým Bandalírem a stojí žeton, třetí ne; s Volcanicem se žeton nebere', () => {
     const g = mkAd([{}, {}]);
     fillDeck(g);
     const band = armed(g, 0, 'Bandalír', 3);
-    for (let k = 0; k < 3; k++) give(g, 0, CardType.BANG, { name: 'Bang!' });
-    const shoot = () => {
+    for (let k = 0; k < 4; k++) give(g, 0, CardType.BANG, { name: 'Bang!' });
+    const shoot = (b) => {
         const before = g.players[0].hand.length;
-        g.playBang(0, 1, 0);
+        g.playBang(0, 1, 0, null, b ? { band: true } : null);
         // Obránce nic nemá → zásah; vrať hru do PLAY.
         if (g.phase === 'RESPOND') g.handleResponse(1, null);
         g.phase = 'PLAY';
         return g.players[0].hand.length < before;
     };
-    assert.equal(shoot(), true);
-    assert.equal(band.adLoads, 3, 'první BANG! je v limitu');
-    assert.equal(shoot(), true);
+    assert.equal(adBandArmOk(g, 0), false, 'limit je volný – Bandalír zapnout netřeba');
+    assert.equal(shoot(true), true);
+    assert.equal(band.adLoads, 3, 'první BANG! je v limitu, žeton se nebere ani se zapnutým');
+    assert.equal(adBandArmOk(g, 0), true, 'limit vyčerpaný – Bandalír jde zapnout');
+    assert.equal(shoot(false), false, 'bez zapnutí BANG! nad limit neprojde (bug V)');
+    assert.equal(band.adLoads, 3);
+    assert.equal(shoot(true), true);
     assert.equal(band.adLoads, 2, 'druhý stál žeton');
-    assert.equal(shoot(), false, 'Bandalír jen jednou za tah');
+    assert.ok(!('_adBandArm' in g.players[0]), 'příznak zapnutí ve stavu nezůstal');
+    assert.equal(adBandArmOk(g, 0), false, 'Bandalír jen jednou za tah');
+    assert.equal(shoot(true), false, 'Bandalír jen jednou za tah');
     assert.equal(band.adLoads, 2);
 
     const h = mkAd([{}, {}]);
@@ -350,8 +356,44 @@ test('Bandalír: druhý BANG! projde za žeton, třetí ne; s Volcanicem se žet
     h.players[0].weapon = mkCard(CardType.WEAPON, { name: 'Volcanic', props: { range: 1 } });
     for (let k = 0; k < 2; k++) give(h, 0, CardType.BANG, { name: 'Bang!' });
     h.playBang(0, 1, 0); if (h.phase === 'RESPOND') h.handleResponse(1, null); h.phase = 'PLAY';
-    h.playBang(0, 1, 0);
+    assert.equal(adBandArmOk(h, 0), false, 's Volcanicem Bandalír zapnout nejde');
+    h.playBang(0, 1, 0, null, { band: true });
     assert.equal(b2.adLoads, 3, 'Volcanic Bandalír nepotřebuje');
+});
+
+test('Bandalír: zapnout jde jen s kartou BANG! v ruce, kterou jde vystřelit (bug V)', () => {
+    const g = mkAd([{}, {}]);
+    fillDeck(g);
+    armed(g, 0, 'Bandalír', 3);
+    g.players[0].bangsPlayedThisTurn = 1;
+    give(g, 0, CardType.BEER, { name: 'Pivo' });
+    assert.deepEqual(adBandCards(g, 0), [], 'bez karty BANG! nic');
+    assert.equal(adBandArmOk(g, 0), false);
+    give(g, 0, CardType.BANG, { name: 'Bang!' });
+    assert.deepEqual(adBandCards(g, 0).map(c => c.type), ['Bang!'], 'jen karta BANG!, ne Pivo');
+    assert.ok(!('_adBandArm' in g.players[0]), 'dotaz příznak uklidil');
+    // Bez žetonu (cena 1) nejde.
+    const g2 = mkAd([{}, {}]);
+    fillDeck(g2);
+    const b = armed(g2, 0, 'Bandalír', 1);
+    g2._adTake(b, 1);
+    g2.players[0].bangsPlayedThisTurn = 1;
+    give(g2, 0, CardType.BANG, { name: 'Bang!' });
+    assert.equal(adBandArmOk(g2, 0), false, 'nenabitý Bandalír zapnout nejde');
+});
+
+test('bot: s vyčerpaným limitem zapne Bandalír a BANG! pošle s `band` (bug V)', () => {
+    const g = mkAd([{ role: 'Outlaw' }, { role: 'Sheriff' }]);
+    fillDeck(g);
+    const band = armed(g, 0, 'Bandalír', 3);
+    g.players[0].bangsPlayedThisTurn = 1;
+    give(g, 0, CardType.BANG, { name: 'Bang!' });
+    const a = decideBotAction(g, 0);
+    assert.equal(a?.event, 'play_bang');
+    assert.equal(a.payload.band, true);
+    assert.ok(!('_adBandArm' in g.players[0]), 'rozhodování příznak uklidilo');
+    g.playBang(a.payload.attackerIdx, a.payload.targetIdx, a.payload.cardIdx, null, { band: a.payload.band });
+    assert.equal(band.adLoads, 2);
 });
 
 test('Bandalír zaplacený posledním žetonem odejde, limit +1 ale do konce tahu drží', () => {
@@ -359,9 +401,9 @@ test('Bandalír zaplacený posledním žetonem odejde, limit +1 ale do konce tah
     fillDeck(g);
     const band = armed(g, 0, 'Bandalír', 1);
     g.players[0].bangsPlayedThisTurn = 1;
-    assert.equal(A.adBandolierExtra(g, g.players[0]), 1);
+    assert.equal(A.adBandolierExtra(g, g.players[0]), 0, 'nezapnutý Bandalír limit nezvedá');
     give(g, 0, CardType.BANG, { name: 'Bang!' });
-    g.playBang(0, 1, 0);
+    g.playBang(0, 1, 0, null, { band: true });
     assert.ok(!g.players[0].board.includes(band));
     assert.equal(A.adBandolierExtra(g, g.players[0]), 1, 'použitý v tomhle tahu');
     g.turnId++;

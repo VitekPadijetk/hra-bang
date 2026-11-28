@@ -286,12 +286,12 @@ const ArmedMixin = {
                                    { evade: name });
     },
 
-    // Bandalír: BANG! nad limit projde, když Bandalír v tomhle tahu ještě nepomohl
-    // a má žeton – zaplatí se 1 z něj (R21). Volá playBang, až je jisté, že výstřel
-    // projde; `base` = limit bez Bandalíru.
+    // Bandalír: BANG! nad limit projde, když ho hráč zapnul (play_bang `band`, bug V),
+    // v tomhle tahu ještě nepomohl a má žeton – zaplatí se 1 z něj. Volá playBang, až je
+    // jisté, že výstřel projde; `base` = limit bez Bandalíru.
     _adBandolierPay(p, base) {
         if (!this._adOn() || !p || (p.bangsPlayedThisTurn || 0) < base) return;
-        if (p._adBandTurn === this.turnId) return;
+        if (p._adBandTurn === this.turnId || p._adBandArm !== this.turnId) return;
         const b = adCardsInPlay(p).find(c => c.type === CardType.AD_BANDOLIER);
         if (!b) return;
         p._adBandTurn = this.turnId;

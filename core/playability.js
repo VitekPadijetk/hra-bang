@@ -826,6 +826,50 @@ function bangLimitFree(state, me) {
     return me.bangsPlayedThisTurn < bangLimitFor(state) + _jackyExtra(state, me) + adBandolierExtra(state, me);
 }
 
+// ── Ozbrojení a nebezpeční – Bandalír se používá VĚDOMĚ (bug V) ─────────────────
+// Klik na Bandalír ho „zapne" a pak smí jít jen karta BANG! nad limit; cena (1 žeton)
+// se zaplatí s ní (play_bang `band: true`). Zapnutí je dočasný příznak `_adBandArm`
+// na hráči (adBandolierExtra) – tady se nastaví jen na dobu dotazu a zase uklidí.
+function _adMod() {
+    return (typeof adCardsInPlay !== 'undefined')
+        ? { adOn, adCardsInPlay, adLoadsOf, adCardCost }
+        : require('./armed.js');
+}
+// Zavolá fn(me) s Bandalírem zapnutým (on = true) / vypnutým (on = false) a vrátí příznak,
+// jak byl. Klient příznak drží po dobu výběru, proto i „vypnuto" musí jít nastavit.
+function adBandWith(state, idx, on, fn) {
+    const me = state.players[idx];
+    const had = Object.prototype.hasOwnProperty.call(me, '_adBandArm');
+    const old = me._adBandArm;
+    if (on) me._adBandArm = state.turnId; else delete me._adBandArm;
+    try { return fn(me); }
+    finally { if (had) me._adBandArm = old; else delete me._adBandArm; }
+}
+// Smí TAHLE karta letět jako BANG! nad limit (s už zapnutým Bandalírem)? Karta BANG!
+// (i Vedle! u Calamity) svým vlastním zahráním, ostatní přepínačem „jako BANG!"
+// (Zúčtování, Lemat). Úder a spol. limit nečerpají, Bandalír s nimi nemá smysl.
+function _adBandCardOk(state, me, idx, card) {
+    if (!card || card._placeholder || card.bangEffect) return false;
+    if (card.type === "Bang!" || (hasAbility(me, "Calamity Janet") && isMissedCard(card))) {
+        return cardPlayability(state, me, idx, card) === true && bangAtPlayerOk(state, me, idx, card);
+    }
+    return altBangOk(state, me, idx, card);
+}
+// Které karty z ruky jde se zapnutým Bandalírem zahrát? Prázdné = zapnout ho nejde:
+// není nabitý, už v tomhle tahu pomohl, limit je ještě volný (Willy, Volcanic, první
+// BANG!), Laso – nebo v ruce není karta BANG!, kterou by šlo vystřelit.
+function adBandCards(state, idx) {
+    const A = _adMod();
+    if (!A.adOn(state) || !isPlayTurn(state, idx)) return [];
+    const me = state.players[idx];
+    if (!me || me._adBandTurn === state.turnId || boardDeadFor(state)) return [];
+    const b = A.adCardsInPlay(me).find(c => c.type === "Bandalír");
+    if (!b || A.adLoadsOf(b) < A.adCardCost(b)) return [];
+    if (adBandWith(state, idx, false, m => bangLimitFree(state, m))) return [];
+    return adBandWith(state, idx, true, m => (m.hand || []).filter(c => _adBandCardOk(state, m, idx, c)));
+}
+function adBandArmOk(state, idx) { return adBandCards(state, idx).length > 0; }
+
 // Smí vybraná karta letět na POSTAVU (klasický výstřel)? Odražená střela se do limitu
 // nepočítá (R2), takže karta Bang! může být hratelná i s vyčerpaným limitem – tehdy jde
 // zamířit jen na vyloženou kartu. Klient se tím řídí při zvýrazňování postav, server
@@ -1211,6 +1255,7 @@ if (typeof module !== 'undefined' && module.exports) {
                        aimOk, aimCardFor, aimPartnerOk, aimPartners, fanningOk,
                        turnActionForCard,
                        bangCardFromHand, bangLimitFree, bangAtPlayerOk,
+                       adBandWith, adBandCards, adBandArmOk,
                        ricochetOffer, ricochetTargetOk, ricochetAvailable, sniperOffer,
                        lvkRepeat, lvkPayOk, lvkReach, lvkTargetOk, lvkOffer,
                        roseRightNeighbor, roseSwapOffer,

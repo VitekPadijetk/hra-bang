@@ -283,7 +283,7 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             const aimCard = d.aimCardId != null ? attacker?.hand.find(c => c && c.id === d.aimCardId) : null;
             const _adBefore = adSnapshot(gs);
             // Ozbrojení a nebezpeční: efekt zbraně, vylepšení a další cíle Rychlopalby.
-            const adOpts = { adWeapon: !!d.adWeapon, up: d.up || 0,
+            const adOpts = { adWeapon: !!d.adWeapon, up: d.up || 0, band: !!d.band,
                              pay: Array.isArray(d.pay) ? d.pay : [], extra: Array.isArray(d.extra) ? d.extra : [] };
             gs.playBang(d.attackerIdx, d.targetIdx, d.cardIdx, d.aimCardId ?? null, adOpts);
             // Bandalír / zbraň / zdroj vylepšení zaplacený posledním žetonem odejde do odhozu.

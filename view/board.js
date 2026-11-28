@@ -149,6 +149,7 @@ function renderGameBoard() {
     App.veraPortraits = [];
     // Blikající postava útočníka (Slab the Killer) – stejný princip jako veraPortraits.
     App.attackPulse = [];
+    adBandSync();
 
     const centerX = 1920 / 2;
     const centerY = 1080 / 2;
@@ -245,6 +246,8 @@ function renderGameBoard() {
             renderUI();
             return true;
         }
+        // Ozbrojení a nebezpeční – Squaw / Bič rovnou na kartu ve hře (bug V).
+        if (adBoardPick()) return adBoardPickClick(targetIdx, area, boardIdx);
         if (!['Panika!', 'Cat Balou'].includes(selectedState.action) || selectedState.cardIndex === null) return false;
 
         if (selectedState.action === 'Panika!' && targetIdx !== myIndex) {
@@ -733,6 +736,28 @@ function _vosAimFor(me, card) {
     return aim && aimOk(state, me, myIndex, card, aim) ? aim : null;
 }
 
+// ── Ozbrojení a nebezpeční – zapnutý Bandalír (bug V) ───────────────────────────
+// Klik na Bandalír na stole ho zapne (`selectedState.adBand`) a pak smí jít jen karta
+// BANG! nad limit (adBandCards) – play_bang ponese `band: true` a žeton se zaplatí s ní.
+// Pravidla poznají zapnutí podle příznaku `_adBandArm` na hráči (adBandolierExtra):
+// klient ho na svou kopii stavu nastaví každý render podle výběru, takže limit, zvýraznění
+// cílů i hratelnost karet počítají s Bandalírem stejnými dotazy jako server. Přestane-li
+// Bandalír platit (nový stav, vystřeleno), výběr se tu sám zruší.
+function adBandSync() {
+    if (!state || myIndex == null || !state.players?.[myIndex]) return;
+    const me = state.players[myIndex];
+    delete me._adBandArm;
+    if (!selectedState.adBand) return;
+    if (App.blockInput || !adBandArmOk(state, myIndex)) { delete selectedState.adBand; return; }
+    me._adBandArm = state.turnId;
+}
+// Smí se karta z ruky zahrát, když je Bandalír zapnutý? Jen ty z adBandCards.
+function adBandHandOk(card) {
+    if (!selectedState.adBand || !card) return true;
+    const ids = adBandWith(state, myIndex, false, () => adBandCards(state, myIndex)).map(c => c.id);
+    return ids.includes(card.id);
+}
+
 // Výstřel vybranou kartou z ruky (s Dvojitou ranou, je-li nabitá). Jediné místo, kudy
 // klient posílá play_bang z ruky – obě karty se z ruky odeberou optimisticky.
 function emitPlayBang(targetIdx, cardIdx) {
@@ -743,6 +768,7 @@ function emitPlayBang(targetIdx, cardIdx) {
     // (první cíl + další naklikané – `selectedState.adTargets`, viz adQuickClick).
     const ad = {};
     if (selectedState.adWeapon && adWeaponSpecialOk(state, myIndex, card)) ad.adWeapon = true;
+    if (selectedState.adBand) ad.band = true;   // zapnutý Bandalír (bug V)
     if (selectedState.adUp && adPaySelCard() === card) {
         ad.up = selectedState.adUp;
         ad.pay = selectedState.adPay || [];
@@ -790,13 +816,14 @@ function adAimRole(idx) {
     const me = state.players[myIndex];
     if (selectedState.adUse) {
         const c = adFindCard(me, selectedState.adUse.cardId);
+        if (c && c.type === 'Bič') return false;   // Bič míří rovnou na kartu (adBoardPick)
         return !!c && adUseOk(state, myIndex, c) && adUseTargetOk(state, myIndex, c, idx);
     }
     if (selectedState.adFrankie) return adFrankieOk(state, myIndex) && adFrankieSourceOk(state, myIndex, idx, null);
     const c = selectedState.cardIndex != null ? me?.hand?.[selectedState.cardIndex] : null;
     if (!c || !adPayDone()) return false;
     if (selectedState.action === 'Šíp') return adArrowTargets(state, myIndex).includes(idx) && !adQuickPicked(idx);
-    if (selectedState.action === 'Squaw') return adBoardTargets(state, myIndex).includes(idx);
+    // (Squaw míří rovnou na kartu ve hře – adBoardPick, bug V.)
     // Bomba: na libovolného hráče (i na sebe), kdo ji ještě nemá.
     if (selectedState.action === 'Bomba') return adBombTargetOk(state, myIndex, idx);
     return false;
@@ -842,6 +869,55 @@ function adFrankieTake(seat, cardId) {
     App.blockInput = true;
     renderUI();
 }
+// Squaw z ruky a Bič ze stolu míří jako Cat Balou (bug V): klik ROVNOU na kartu ve hře
+// (kohokoli, i na vlastním stole), žádný mezikrok přes postavu. Vrací 'squaw' | 'whip'
+// | null = jestli teď takové míření běží (Squaw až po zaplacení vylepšení).
+function adBoardPick() {
+    if (App.blockInput || !state || myIndex == null) return null;
+    if (state.phase !== 'PLAY' || state.currentPlayerIndex !== myIndex) return null;
+    const me = state.players[myIndex];
+    if (selectedState.adUse) {
+        const c = adFindCard(me, selectedState.adUse.cardId);
+        return c && c.type === 'Bič' && adUseOk(state, myIndex, c) ? 'whip' : null;
+    }
+    if (selectedState.action === 'Squaw' && selectedState.cardIndex != null &&
+        me?.hand?.[selectedState.cardIndex] && adPayDone()) return 'squaw';
+    return null;
+}
+// Smí se při tom míření kliknout na karty ve hře hráče `idx`?
+function adBoardPickOk(idx) {
+    const kind = adBoardPick();
+    if (kind === 'squaw') return adBoardTargets(state, myIndex).includes(idx);
+    if (kind === 'whip') {
+        const c = adFindCard(state.players[myIndex], selectedState.adUse.cardId);
+        return adUseTargetOk(state, myIndex, c, idx);
+    }
+    return false;
+}
+// Klik na kartu ve hře: zahraj Squaw / použij Bič na jejího majitele a hned pošli, kterou
+// kartu – stejně jako Panika/Cat Balou (handlePanicCBClick). Kdyby server napřed otevřel
+// okno úniku (Ms. Abigail), výběr karty se odmítne a hráč klikne znovu (adNoHand výběr).
+function adBoardPickClick(targetIdx, area, boardIdx) {
+    const kind = adBoardPick();
+    if (!kind || area === 'hand' || !adBoardPickOk(targetIdx)) return false;
+    if (kind === 'whip') {
+        socket.emit('ad_use', { cardId: selectedState.adUse.cardId, targetIdx });
+    } else {
+        const ci = selectedState.cardIndex;
+        const up = selectedState.adUp || 0;
+        socket.emit('play_special', { attackerIdx: myIndex, targetIdx, cardIdx: ci,
+                                      ...(up ? { up, pay: selectedState.adPay || [] } : {}) });
+        optimisticRemoveCard(ci);
+    }
+    setTimeout(() => {
+        socket.emit('select_target_card', { attackerIdx: myIndex, targetIdx, area, cardIdx: boardIdx });
+    }, 50);
+    selectedState = { cardIndex: null, action: null };
+    App.blockInput = true;
+    renderUI();
+    return true;
+}
+
 // Bič / Squaw: výběr karty cíle řídí server a ruka se ho netýká (`adNoHand`).
 function adNoHandSel() {
     return state?.phase === 'SELECTING_TARGET_CARD' && !!state.pendingSelection?.adNoHand;
@@ -948,9 +1024,11 @@ function drawOpponents(ctx) {
         // takže bez tohohle šlo klikat dál – u Rvačky/dělení mezi Vulture Samy se druhý klik
         // (do stále zvýrazněné ruky už vyřízeného hráče) vyhodnotil jako výběr karty DALŠÍHO
         // hráče v pořadí. Stejně to platí pro Paniku/Cat Balou/Ragtime/zelené krádeže.
+        // Squaw / Bič (bug V): jen karty ve hře, ruka ne (hlídá _adPickHere u ruky).
+        const _adPickHere = !!adBoardPick() && adBoardPickOk(actualIdx);
         const canTargetThisPlayer = !App.blockInput && (
             (isPanicCBActive && panicInRange && isInPlay(player)) ||      // i Duch (Údolí stínů)
-            (isDeSteal && isInPlay(player)) || isServerCardSelect);
+            (isDeSteal && isInPlay(player)) || isServerCardSelect || _adPickHere);
         // Fistful – Odražená střela: klikatelné jsou VYLOŽENÉ karty kteréhokoli soupeře
         // (vzdálenost nehraje roli, FAQ Q15).
         const isRicochetTarget = _ricoArmed && ricochetTargetOk(state, myIndex, actualIdx);
@@ -1564,7 +1642,7 @@ function drawOpponents(ctx) {
                     App.blockInput = true;
                     renderUI();
                 });
-            } else if (canTargetThisPlayer && !adNoHandSel()) {
+            } else if (canTargetThisPlayer && !adNoHandSel() && !_adPickHere) {
                 // (Bič a Squaw z ruky nevybírají – adNoHandSel.)
                 hCard.setTint(0xffff44);
                 hCard.setInteractive({ useHandCursor: true });
@@ -2368,7 +2446,9 @@ function drawMyArea(ctx) {
         const _myGear = me?.gear || [];
         const myBand = boardBand(myBoardCards.length + _myGrey.length + _myGear.length,
                                  L.myBoardRows, L.boardMaxPerRow, myCardW, L.boardGap);
-        const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action);
+        // Squaw / Bič (bug V) smí i na vlastní stůl – klik jde stejnou cestou jako Panika/CB.
+        const isPanicCBMyTurn = ['Panika!', 'Cat Balou'].includes(selectedState.action) ||
+            (!!adBoardPick() && adBoardPickOk(myIndex));
         // Na SEBE: klik na vlastní kartu na stole (výzbroj/modrá/zelená) zacílí efekt na mě.
         // Tři případy: Krytý vůz (DE_STEAL + greenCardId) / Kankán (GREEN_DISCARD) – zelené;
         // Ragtime (DE_STEAL + cardIndex, bez greenCardId) – hnědá „odhoď další kartu".
@@ -2564,11 +2644,29 @@ function drawMyArea(ctx) {
         // horečky. Co je klikací, říkají predikáty z core/armed.js.
         if (adOn(state)) {
             const _adUseFree = !App.blockInput && selectedState.cardIndex === null &&
-                selectedState.sidKetchum === undefined && !selectedState.gearForce;
+                selectedState.sidKetchum === undefined && !selectedState.gearForce && !selectedState.adBand;
             myBoardSprites.forEach(({ sprite, card }) => {
                 if (card._isColt || !card.dangerous) return;
                 let tint = null, hover = null, onClick = null;
-                if (adPlaceTargetOk(card.id)) {
+                if (selectedState.adBand && card.type === 'Bandalír') {
+                    // Zapnutý Bandalír: svítí, druhý klik ho vypne (i s vybranou kartou BANG!).
+                    tint = 0xffd27a; hover = 0xffe9b0;
+                    onClick = () => { selectedState = { cardIndex: null, action: null }; renderUI(); };
+                } else if (!App.blockInput && card.type === 'Bedna' && adCrateOk(state, myIndex)) {
+                    // Bedna (bug V): v obraně se použije klikem na ni („jako Vedle!" za 2 ⛁),
+                    // v RESPOND i ještě ve fázi BARREL_DRAW – kdy smí, říká adCrateOk.
+                    tint = 0x88ff88; hover = 0x00ff00;
+                    onClick = () => {
+                        socket.emit('ad_crate');
+                        selectedState = { cardIndex: null, action: null };
+                        App.blockInput = true;
+                        renderUI();
+                    };
+                } else if (_adUseFree && card.type === 'Bandalír' && adBandArmOk(state, myIndex)) {
+                    // Bandalír se používá vědomě (bug V): klik ho zapne, pak se zahraje BANG!.
+                    hover = 0xddffdd;
+                    onClick = () => { selectedState = { cardIndex: null, action: null, adBand: true }; renderUI(); };
+                } else if (adPlaceTargetOk(card.id)) {
                     tint = 0x88ff88; hover = 0x00ff00;
                     onClick = () => {
                         socket.emit('ad_place', { seat: myIndex, cardId: card.id });
@@ -2610,6 +2708,8 @@ function drawMyArea(ctx) {
         if (isPanicCBMyTurn) {
             myBoardSprites.forEach(({ sprite, card, i }) => {
                 if (card._isColt) return;
+                // Bič, kterým se právě míří, má vlastní klik (druhý klik = zrušit).
+                if (selectedState.adUse && card.id === selectedState.adUse.cardId) return;
                 sprite.setTint(0xffff44);
                 sprite.on('pointerdown', () => {
                     const hasRealWeapon = me.weapon && me.weapon.id !== -1;
@@ -2722,7 +2822,7 @@ function drawMyArea(ctx) {
                     return;
                 }
 
-                if (!greenTurn || selectedState.greenCardId != null) return;
+                if (!greenTurn || selectedState.greenCardId != null || selectedState.adBand) return;
                 if (card.activate === 'miss') return;             // Vedle!-zelené jen jako reakce
                 if (card._playedTurn === state.turnId) return;    // položená tento tah
 
@@ -2797,6 +2897,8 @@ function drawMyArea(ctx) {
         // hratelná není (cardPlayability – server ji bez karty BANG! nepustí), ale dokud je
         // v ruce karta BANG!, se kterou jde (aimPartners), svítí jako hratelná.
         const getCardPlayability = (card) => {
+            // Zapnutý Bandalír (bug V): hrát jde jen karta BANG! nad limit, nic jiného.
+            if (selectedState.adBand) return adBandHandOk(card);
             const p = cardPlayability(state, me, myIndex, card);
             if (p === false && card && card.type === "Pivo" && beerNuggetOk(state, myIndex, card)) return true;
             if (p === false && card && card.type === "Dvojitá rána" && state.phase === "PLAY" &&
@@ -3144,7 +3246,9 @@ function drawMyArea(ctx) {
                             renderUI();
                             return;
                         case 'DESELECT':
-                            selectedState = { cardIndex: null, action: null };
+                            // Zapnutý Bandalír zrušení výběru karty přežije (vypíná se klikem na něj).
+                            selectedState = { cardIndex: null, action: null,
+                                              ...(selectedState.adBand ? { adBand: true } : {}) };
                             renderUI();
                             return;
                         // Údolí stínů – Dvojitá rána (bug U): vybrat ji (čeká na kartu BANG!)…
@@ -3419,6 +3523,8 @@ function drawMyArea(ctx) {
                 willOffer(state, me, myIndex) ||
                 // Ozbrojení a nebezpeční – Mexicali Kid: výstřel za 2 ⛁ (tlačítko schopnosti).
                 adMexicaliOk(state, myIndex) ||
+                // …a Bandalír, který jde zapnout (bug V) – BANG! nad limit bez něj nesvítí.
+                adBandArmOk(state, myIndex) ||
                 // Divoký západ – Flint Westwood (výměna karty za dvě) a Lee Van Kliff
                 // (zopakování efektu hnědé karty); obojí je tlačítko ve slotu schopnosti.
                 (hasAbility(me, "Flint Westwood") && me._flintUsedTurn !== state.turnId && me.hand.length > 0 &&
@@ -3986,28 +4092,11 @@ function drawMyArea(ctx) {
             if (App.blockInput) { _wBtn.setAlpha(0.45); _wBtn.disableInteractive(); }
         }
 
-        // ── Ozbrojení a nebezpeční – Bedna: v obraně „jako Vedle!" za 2 ⛁ z Bedny ───
-        // V RESPOND i ještě ve fázi BARREL_DRAW (místo snímání). Kdy smí, říká adCrateOk.
-        if (!App.blockInput && adCrateOk(state, myIndex)) {
-            const _crSlot = abilExtraSlot(L, _abilX);
-            const { bg: _crBtn, txt: _crTxt } = themeButton(gameScene, _crSlot.x, _crSlot.y, _crSlot.w, _crSlot.h,
-                `📦 BEDNA – jako Vedle! (${adCardCost(adCrateCard(me))} ⛁)`, {
-                fill: 0x4a3a12, fillHover: 0x5c4915, stroke: THEME.color.goldNum, textColor: THEME.color.gold,
-                fontSize: '20px',
-                onClick: () => {
-                    if (App.blockInput) return;
-                    socket.emit('ad_crate');
-                    selectedState = { cardIndex: null, action: null };
-                    App.blockInput = true;
-                    renderUI();
-                },
-            });
-            if (_crTxt.width > _crSlot.w - 20) _crTxt.setScale((_crSlot.w - 20) / _crTxt.width);
-        }
+        // Bedna se v obraně používá klikem na kartu na stole (bug V, drawMyArea).
 
         // ── Ozbrojení a nebezpeční – Skrč se! s vylepšením (karta zpátky do ruky) ────
         // Přepínač zapne platbu 2 ⛁ (banner); po zaplacení se Skrč se! zahraje klikem
-        // na ni v ruce. Sedí o řádek nad slotem Bedny.
+        // na ni v ruce. Slot po tlačítku Bedny je volný (Bedna se kliká na stole, bug V).
         const _adDuckCard = (state.phase === 'RESPOND' && state.pendingResponse?.active &&
             state.pendingResponse.targetIdx === myIndex && state.pendingResponse.requiredCard === 'Vedle!' &&
             !vosUnavoidable(state))
@@ -4015,7 +4104,7 @@ function drawMyArea(ctx) {
         if (_adDuckCard && adUpgradeMax(state, myIndex, _adDuckCard) >= 1) {
             const _dkSlot = abilExtraSlot(L, _abilX);
             const _dkOn = !!selectedState.adDuck;
-            const { bg: _dkBtn, txt: _dkTxt } = themeButton(gameScene, _dkSlot.x, _dkSlot.y - (L.btnH + 12), _dkSlot.w, _dkSlot.h,
+            const { bg: _dkBtn, txt: _dkTxt } = themeButton(gameScene, _dkSlot.x, _dkSlot.y, _dkSlot.w, _dkSlot.h,
                 _dkOn ? 'SKRČ SE! + ZPĚT DO RUKY: zrušit ↩' : '⛁ SKRČ SE! + ZPĚT DO RUKY (2 ⛁)', {
                 ...themeToggleStyle(_dkOn), fontSize: '20px',
                 onClick: () => {
@@ -4801,7 +4890,7 @@ function drawPhaseOverlays(ctx) {
             : selectedState.adDuck ? 'Zaplaceno – klikni na Skrč se! v ruce'
             : (_quick || selectedState.action === 'Šíp')
                 ? `Zaplaceno – vyber ${1 + selectedState.adUp} různé cíle (${(selectedState.adTargets || []).length} vybráno)`
-            : selectedState.action === 'Squaw' ? 'Zaplaceno – klikni na hráče, jehož kartu ve hře si vezmeš'
+            : selectedState.action === 'Squaw' ? 'Zaplaceno – klikni na kartu ve hře, kterou si vezmeš'
             : selectedState.action === 'SHOOT' ? 'Zaplaceno – klikni na cíl'
             : 'Zaplaceno – zahraj kartu klikem na odhazovací balíček';
         let l2 = gameScene.add.text(960, 112, _paid >= _need
@@ -4814,13 +4903,17 @@ function drawPhaseOverlays(ctx) {
     // ── Ozbrojení a nebezpeční – fáze A3: na co se čeká (bez platby) ────────────
     const _adHint = adPayNeed() > 0 ? null
         : selectedState.adBass ? '🃏 Bass Greeves – klikni na kartu v ruce, kterou odhodíš (pak 2 ⛁ na jedno místo)'
+        : selectedState.adBand ? (selectedState.cardIndex != null
+            ? '🎯 Bandalír – klikni na hráče, na kterého vystřelíš BANG! navíc (1 ⛁ z Bandalíru)'
+            : 'Bandalír zapnutý – vyber kartu BANG! (druhý klik na Bandalír ho vypne)')
         : selectedState.adFrankie ? '🤏 Frankie Canton – klikni na Nebezpečnou kartu nebo cizí postavu se žetonem'
-        : selectedState.adUse ? '🎯 Klikni na hráče – ' + (adFindCard(state.players[myIndex], selectedState.adUse.cardId)?.type === 'Paklíč'
-            ? 'vezmeš mu náhodnou kartu z ruky (Paklíč)' : 'odhodíš mu kartu ve hře (Bič, i sobě)')
+        : selectedState.adUse ? (adFindCard(state.players[myIndex], selectedState.adUse.cardId)?.type === 'Paklíč'
+            ? '🎯 Klikni na hráče – vezmeš mu náhodnou kartu z ruky (Paklíč)'
+            : '🎯 Bič – klikni na kartu ve hře (i svou), kterou odhodíš')
         : (selectedState.action === 'Šíp' && selectedState.cardIndex != null)
             ? `🏹 Šíp – vyber ${1 + (selectedState.adUp || 0)} ${(selectedState.adUp || 0) ? 'různé cíle' : 'cíl'} (bez ohledu na vzdálenost)`
         : (selectedState.action === 'Squaw' && selectedState.cardIndex != null)
-            ? 'Squaw – klikni na hráče (i sebe), jehož kartu ve hře odhodíš'
+            ? 'Squaw – klikni na kartu ve hře (i svou), kterou odhodíš'
         : null;
     if (_adHint && myIndex != null && state.phase === 'PLAY' && state.currentPlayerIndex === myIndex) {
         let bg = gameScene.add.rectangle(960, 92, 1120, 64, 0x000000, 0.8).setDepth(205);

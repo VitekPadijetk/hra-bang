@@ -84,6 +84,13 @@ if (typeof require === 'function') {
         globalThis.bangLimitFree = __pl2.bangLimitFree;
         globalThis.bangAtPlayerOk = __pl2.bangAtPlayerOk;
     }
+    // Ozbrojení a nebezpeční – Bandalír (bug V). Vlastní guard: logic.js si bere jen část.
+    if (typeof adBandArmOk === 'undefined') {
+        const __plB = require('./playability.js');
+        globalThis.adBandArmOk = __plB.adBandArmOk;
+        globalThis.adBandWith = __plB.adBandWith;
+        globalThis.adBandCards = __plB.adBandCards;
+    }
     // Divoký západ – Zúčtování: „co se počítá za kartu Bang! / Vedle!" a „smí se karta
     // zahrát ve své VLASTNÍ roli". Samostatný guard ze stejného důvodu jako výš.
     // Každý svůj guard: logic.js si z playability.js bere jen playsAsBang/playsAsMissed,
@@ -2031,7 +2038,18 @@ function decidePlay(state, myIndex, beliefs) {
 }
 
 // ── Hlavní vstup ─────────────────────────────────────────────────────────────
+// Ozbrojení a nebezpeční – Bandalír se zapíná vědomě (bug V): když ho bot zapnout smí,
+// rozhoduje se se zapnutým (limit BANG! +1) a zvolený BANG! nese `band: true` – cenu
+// server zaplatí jen za BANG! opravdu nad limit. Příznak na hráči jen po dobu dotazu.
 function decideBotAction(state, myIndex, beliefs) {
+    const me = state.players?.[myIndex];
+    if (!me || !adBandArmOk(state, myIndex)) return _decideBotActionRun(state, myIndex, beliefs);
+    const intent = adBandWith(state, myIndex, true, () => _decideBotActionRun(state, myIndex, beliefs));
+    if (intent && intent.event === 'play_bang') intent.payload = { ...intent.payload, band: true };
+    return intent;
+}
+
+function _decideBotActionRun(state, myIndex, beliefs) {
     const me = state.players[myIndex];
     if (!me) return null;
 

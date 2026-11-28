@@ -302,10 +302,15 @@ function adBellLive(state, p) {
 
 // Bandalír: „Jednou ve svém tahu smíš zahrát jednu kartu BANG! navíc." O kolik zvedá
 // limit karet BANG! (0/1). Použitý Bandalír drží limit +1 do konce tahu, i když se tím
-// vyčerpal a odešel. Žádné tlačítko – cena se zaplatí sama při BANG! nad limit (R21).
+// vyčerpal a odešel. Hráč ho používá VĚDOMĚ (bug V): klikne na Bandalír a teprve pak
+// zahraje BANG! – akce play_bang nese `band: true` a cena se zaplatí s ní. Než zaplatí,
+// zvedá Bandalír limit jen „zapnutý" (`p._adBandArm === turnId`): na serveru po dobu
+// playBang s `band`, u klienta podle selectedState.adBand, u bota při rozhodování
+// (adBandArmed). Trvale ve stavu `_adBandArm` nikdy neleží.
 function adBandolierExtra(state, p) {
     if (!adOn(state) || !p) return 0;
     if (p._adBandTurn === state.turnId) return 1;
+    if (p._adBandArm !== state.turnId) return 0;
     if (boardDeadFor(state)) return 0;
     const b = adCardsInPlay(p).find(c => c.type === 'Bandalír');
     return b && adLoadsOf(b) >= adCardCost(b) ? 1 : 0;
