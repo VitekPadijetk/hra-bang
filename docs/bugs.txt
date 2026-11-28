@@ -139,9 +139,9 @@ X — žetony nabití: animace (z ozbrojeni.md „Co zůstává" – lety kosti�
 
 Y — Stepní běžec: sejmutá karta zůstane zvětšená uprostřed, dokud majitel nerozhodne;
       pak teprve let do odhozu, při opakování odkrytí nové karty; pozor na Lucky Duka
-      (dvě karty, volba) [hlášení 2026-11-27T16-14-50-693Z_game1]. Dnes jen banner
-      s textem výsledku (board.js ~4892) a cinematika sejmutí doběhne dřív.
-      server/anim.js, core/checkAnim (cinematika sejmutí), net/handlers.js, view/board.js
+      (dvě karty, volba) [hlášení 2026-11-27T16-14-50-693Z_game1]   HOTOVO (99)
+      game.js, state.js, net/handlers.js, core/armedAnim.js, server/handlers.game.js,
+      server/bots.js, server/anim.js (+ komentář ve view/board.js)
 
 Z — Zlatá horečka: koupená hnědá karta s volbou (cíl / co s ní) má viset v ruce, dokud
       hráč nevybere, a pod balíček se zasune až se zahráním; bez volby jako dnes
@@ -156,6 +156,8 @@ HOTOVÉ
 ------
 
 (formát: "- 17 text bugu … → oprava: <hash>")
+
+- 99 Stepní běžec – dokud se majitel nerozhodne, sejmutá karta zůstane zvětšená uprostřed, pak do odhozu; při opakování se odhalí nová; pozor na Lucky Duka [hlášení 2026-11-27T16-14-50-693Z_game1] → oprava: f2b6113 (karta dřív odletěla po pevných 3,45 s a okno se otevřelo až po ní. Klient ji po výdrži zaparkuje, když adRedrawOwner hlásí okno – parkCheckCard v game.js, hlídá i stav; u Lucky Duka/Podkovy pošle server `park` v lucky_duke_result. Rozhodnutí pošle jako první animaci check_park_release, za kterou fronta drží platbu, výsledek i nové sejmutí / nové rozdání Lucky Duka; boty posouvá room._checkParkUntil)
 
 - 97 Když se žetony nabití posouvají, přidej animace, na které budou čekat i další události [hlášení 2026-11-27T15-42-28-011Z_game1] → oprava: 1424bc0 (každá změna žetonů v _adAdd/_adTake/_adMove si zapíše let kostičky; jedna akce = dávka ad_tokens, kterou flushAdAnim pošle před stavem a o její dobu podrží boty – core/armedAnim.js. Klient kostičku vzlétne z místa, kde ji render kreslil, na zdroji hned zmizí, do zásoby se přičte. Rez letí naráz, přebytek nad strop do zásoby)
 - 98 Když dojdou žetony, odhodí se animací nejdřív žetony, pak teprve karta [hlášení 2026-11-27T15-53-18-892Z_game1] → oprava: 1424bc0 (_adDeplete kartu zapíše do `depleted` dávky; klient ji pošle board_to_discard až po poslední kostičce)
