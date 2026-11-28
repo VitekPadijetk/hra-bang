@@ -3071,6 +3071,10 @@ function _playCardAnim(data) {
         case 'gear_acquire':
             playGearAcquire(data);
             break;
+        // …a hnědá, která čekala na volbu, se s ní zasune pod balíček (bug Z).
+        case 'gear_release':
+            releaseGearHeld(data.card?.id, data);
+            break;
         // Ozbrojení a nebezpeční – lety kostiček žetonů nabití (bug X).
         case 'ad_tokens':
             playAdTokens(data, { getBoardPos, sideAngle, sideScale });
@@ -3206,6 +3210,15 @@ function playGearAcquire(data) {
     const tex = _gearFaceTex(card.effect);
     const geo = { flip: true, startAngle: 0, endAngle: ang, startScale: currentLayout().scaleDeck,
                   endScale: sc, duration: GEAR_ANIM.buyMs };
+    // Hnědá, která čeká na volbu (cíl Panáku / režimu, způsob u Joshe): dosedne a leží
+    // u hráče, dokud nevybere – viz holdGearCard.
+    if (data.to === 'hold') {
+        animateCardFlip(pile.x, fromY, dest.x, dest.y, gearBackTex(), tex, {
+            ...geo,
+            onComplete: () => holdGearCard(card, data.playerIdx, dest, nearestAngle360(0, ang), sc),
+        });
+        return;
+    }
     if (!under) {
         animateCardFlip(pile.x, fromY, dest.x, dest.y, gearBackTex(), tex, {
             ...geo,
@@ -3227,6 +3240,46 @@ function playGearAcquire(data) {
             });
         },
     });
+}
+
+// ── Zlatá horečka: hnědá karta čeká u hráče na volbu (bug Z) ─────────────────
+// Koupená (nebo Joshem líznutá) hnědá karta, u které se ještě vybírá cíl nebo způsob,
+// leží na místě před hráčem, dokud nevybere – „visí v ruce" – a pod balíček se zasune
+// až se zahráním (`gear_release`). Statický sprite nepatří desce (ta se překresluje
+// s každým stavem), drží ho App.gearHeld. Pojistkou je hlídání stavu stejně jako
+// u parkCheckCard: kdyby se uvolnění ztratilo, karta odjede, jakmile ji stav přestane
+// držet (gearHeldCard) a fronta už nic nedrží – během letu ještě stav kartu držet
+// nemusí, proto ta fronta.
+function holdGearCard(card, playerIdx, pos, ang, sc) {
+    if (!gameScene) return;
+    releaseGearHeld(null, null, true);
+    const sprite = gameScene.add.image(pos.x, pos.y, _gearFaceTex(card.effect)).setScale(sc)
+        .setAngle(ang).setDepth(800).setAlpha(0.97);
+    const held = { cardId: card.id, effect: card.effect, playerIdx, sprite, pos, ang, sc };
+    App.gearHeld = held;
+    const poll = () => {
+        if (App.gearHeld !== held || !gameScene) return;
+        const busy = (typeof animQueueBusy === 'function') && animQueueBusy();
+        if (!busy && gearHeldCard(state)?.id !== card.id) { releaseGearHeld(card.id); return; }
+        gameScene.time.delayedCall(120, poll);
+    };
+    gameScene.time.delayedCall(120, poll);
+}
+// `cardId` = uvolni jen tuhle kartu (null = kteroukoli). Bez držené karty (třeba po
+// znovupřipojení) letí karta z místa před hráčem podle animace. `silent` = jen uklidit.
+function releaseGearHeld(cardId, data, silent) {
+    const held = App.gearHeld;
+    if (held && (cardId == null || held.cardId === cardId)) {
+        App.gearHeld = null;
+        if (held.sprite?.active) held.sprite.destroy();
+        if (!silent) _flyGearUnderDeck({ effect: held.effect, from: held.pos }, { ang: held.ang, sc: held.sc });
+        return;
+    }
+    if (silent || !data || !gameScene || !state?.players?.[data.playerIdx]) return;
+    const idx = data.playerIdx;
+    const pos = getGearCardPos(idx, (state.players[idx].gear || []).length);
+    _flyGearUnderDeck({ effect: data.card?.effect, from: pos },
+                      { ang: nearestAngle360(0, _renderSideAngle(idx)), sc: _renderSideScale(idx) });
 }
 
 function playGearRum(data) {
@@ -3791,6 +3844,7 @@ function _animDurationMs(data) {
     if (data.type === 'gear_rum') return rumRevealMs((data.cards || []).length, data.shuffle);
     // Zlatá horečka – koupená karta z balíčku vybavení (hnědá pak ještě pod balíček).
     if (data.type === 'gear_acquire') return gearAcquireMs(data.to);
+    if (data.type === 'gear_release') return gearReleaseMs();
     // Údolí stínů – Tornádo (předání karet), Poker (odhalení vyložených karet, výběr).
     // Stejný vzorec drží boty na serveru (flushVosAnim v server/anim.js).
     if (data.type === 'tornado_pass' || data.type === 'poker_reveal' || data.type === 'poker_take') {

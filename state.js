@@ -215,6 +215,8 @@ const App = {
     // Ozbrojení a nebezpeční – Stepní běžec: sejmutá karta zaparkovaná uprostřed, dokud
     // majitel karty nerozhodne ({ cardId, fly }, viz parkCheckCard v game.js).
     checkPark: null,
+    // Zlatá horečka – hnědá karta čekající u hráče na volbu (holdGearCard, net/handlers.js).
+    gearHeld: null,
     // Claus "The Saint" (Fistful): odkrytá řada uprostřed stolu. clausPanel = geometrie
     // řady (clausPanelLayout – měřítko podle počtu karet), clausDealSlots = sloty, jejichž
     // karta ještě letí z balíčku, clausTakenSlots = sloty, ze kterých karta právě odlétá

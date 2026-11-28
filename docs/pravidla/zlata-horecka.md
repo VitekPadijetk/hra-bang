@@ -69,6 +69,15 @@ vybavení) uzavřela celé rozšíření.
   ukážou art samy. Rub se kreslí přes `gearBackTex()` (do dotažení rub hrací karty).
   **Nákup má animaci letu** z balíčku vybavení na místo před hráčem (`gear_acquire`,
   viz řádek core/goldRushAnim.js) – okno obchodu se proto po nákupu zavře, jinak by let zakrylo.
+  **Hnědá karta, u které se ještě vybírá** (cíl Panáku nebo cíleného režimu Láhve/Komplice
+  – GEAR_TARGET, způsob u Joshe – GEAR_MODE), **leží u hráče, dokud nevybere** (bug Z).
+  Pravidlově je už pod balíčkem (`_gearDiscard` hned při nákupu, kvůli Zlaté horečce),
+  pending ji jen nese (`pendingGearTarget.held` / `pendingGearMode.card`) a ptá se na ni
+  `gearHeldCard` (core/goldRush.js). Server pošle `gear_acquire` s `to: 'hold'` a po volbě
+  `gear_release` (`emitGearRelease`, handlery `gear_target`/`gear_mode`); klient drží sprite
+  v `App.gearHeld` mimo desku (`holdGearCard`/`releaseGearHeld` v net/handlers.js),
+  s pojistkou hlídáním stavu jako u Stepního běžce. Karta bez volby (Pivo, Hokynářství,
+  Union Pacific…) letí jako dřív – chvíli leží a hned pod balíček.
 - **Obchod se na desku nevešel.** Po zapnutí tří balíčků událostí zabírá vodorovné pásmo
   balíčků x 420–1330 a nad ním leží druhá řada karet horních soupeřů; 3 karty lícem vzhůru
   + rub tam místo nemají. Na stole proto leží jen **rub balíčku vybavení**

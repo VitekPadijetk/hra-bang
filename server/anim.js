@@ -8,7 +8,8 @@ const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs,
         seatSwapMs, greygoryDealMs } = require('../core/wwsAnim.js');
 const { vosAnimMs } = require('../core/vosAnim.js');
 const { adAnimMs } = require('../core/armedAnim.js');
-const { gearAcquireMs } = require('../core/goldRushAnim.js');
+const { gearAcquireMs, gearReleaseMs } = require('../core/goldRushAnim.js');
+const { gearHeldCard } = require('../core/goldRush.js');
 const { eventActive } = require('../core/highNoon.js');
 const { hasAbility, isInPlay } = require('../core/distance.js');
 
@@ -608,11 +609,14 @@ module.exports = function installAnimService(ctx) {
     // a jde pod balíček ('under'). Wanted, který teprve čeká na cíl (GEAR_TARGET),
     // nikde neleží – poletí až s výběrem cíle. Emituje se HNED po akci, ať let předběhne
     // cinematiky efektu karty (Rum, Hokynářství).
+    // Hnědá karta, která ještě čeká na volbu (cíl / způsob – gearHeldCard), dosedne
+    // ('hold') a zůstane ležet u hráče; pod balíček ji pošle až emitGearRelease (bug Z).
     function emitGearAcquire(room, gs, playerIdx, card) {
         if (!card || !gs) return;
         if (gs.pendingGearTarget?.card?.id === card.id) return;
         const owner = (gs.players || []).findIndex(p => (p?.gear || []).some(c => c.id === card.id));
-        const to = owner === -1 ? 'under' : 'gear';
+        const held = gearHeldCard(gs)?.id === card.id;
+        const to = owner !== -1 ? 'gear' : (held ? 'hold' : 'under');
         emitAnim(room, {
             type: 'gear_acquire', playerIdx, to,
             card: { id: card.id, effect: card.effect },
@@ -620,6 +624,18 @@ module.exports = function installAnimService(ctx) {
             slot: owner === -1 ? null : gs.players[owner].gear.findIndex(c => c.id === card.id),
         });
         room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + gearAcquireMs(to));
+    }
+
+    // Držená hnědá karta (viz výš) se s volbou zahrála – teprve teď se zasune pod balíček.
+    // `before` = gearHeldCard(gs) PŘED akcí; když pořád čeká (GEAR_MODE → cílený režim
+    // přejde do GEAR_TARGET s touž kartou), neletí nic. Emituje se hned po akci, PŘED
+    // cinematikami efektu (Hokynářství, Panika…), ať jdou v pořadí, jak se to stalo.
+    function emitGearRelease(room, gs, before, playerIdx) {
+        if (!before || !gs) return;
+        if (gearHeldCard(gs)?.id === before.id) return;
+        emitAnim(room, { type: 'gear_release', playerIdx,
+                         card: { id: before.id, effect: before.effect } });
+        room._revealBlockUntil = Math.max(room._revealBlockUntil || 0, Date.now() + gearReleaseMs());
     }
 
     // ── Johnny Kisch: stejnojmenné karty odcházejí ze stolu do odhozu ────────
@@ -814,7 +830,7 @@ module.exports = function installAnimService(ctx) {
         flushAdAnim(room);
     }
 
-    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, emitGearAcquire,
+    Object.assign(ctx, { emitAnim, emitAnimPrivate, emitDeathAnim, emitPendingDeathReveal, emitGearAcquire, emitGearRelease,
                          handleAutoEndTurn, handleReshuffleAndBroadcast, storeCinematicMs,
                          storeCloseUntil, applyGagPenalty,
                          revealCinematicMs, confirmRolePeek,

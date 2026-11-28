@@ -353,6 +353,10 @@ const GoldRushMixin = {
         }
         // Na spodek balíčku jde karta HNED: efekt Zlaté horečky ukončí tah a rovnou
         // rozjede další, takže „potom" by znamenalo až uprostřed nového tahu.
+        // Čeká-li karta na volbu (cíl Panáku / režimu, způsob u Joshe), nese ji pending
+        // jako `held` (u GEAR_MODE `card`) – pravidlům je to jedno, karta už leží pod
+        // balíčkem, ale klient ji podle toho nechá ležet u hráče, dokud nevybere
+        // (gearHeldCard v core/goldRush.js, bug Z).
         this._gearDiscard(card);
         if (!mode && gearModesOf(card)) { this._gearModeChoice(playerIdx, card); return; }
         this._gearApplyBrown(playerIdx, card, mode);
@@ -420,7 +424,8 @@ const GoldRushMixin = {
                     this.logEvent('gear', { act: 'panak', who: this.players[playerIdx].name, target: null });
                     return;
                 }
-                this.pendingGearTarget = { playerIdx, effect: card.effect, cardName: card.name, targets };
+                this.pendingGearTarget = { playerIdx, effect: card.effect, cardName: card.name, targets,
+                                           held: card };
                 this.phase = "GEAR_TARGET";
                 return;
             }
@@ -483,6 +488,7 @@ const GoldRushMixin = {
                 this.pendingGearTarget = {
                     playerIdx, effect: card.effect, cardName: card.name, mode,
                     targets: gearModeTargets(this, playerIdx, mode),
+                    held: card,
                 };
                 this.phase = "GEAR_TARGET";
                 return;

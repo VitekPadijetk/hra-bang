@@ -186,6 +186,22 @@ test('Láhev ani Komplic nejsou zahraná karta: Madam Zuzana ani Lee Van Kliff j
     assert.equal(g._lastBrown, null, 'paměť poslední hnědé karty zůstala prázdná');
 });
 
+// Bug Z: karta, u které se ještě vybírá, „visí" u hráče do zahrání – prezentace se ptá
+// gearHeldCard; karta s volbou daným nákupem (Pivo, Hokynářství) nic nedrží.
+test('gearHeldCard: Láhev jako BANG! čeká na cíl, jako Pivo nic nedrží', () => {
+    const g = mkZH();
+    shop(g, ['ZH_LAHEV', 'ZH_LAHEV']);
+    g.players[0].nuggets = 9;
+    g.players[0].health = 3;
+    const bought = g.gearBuy(0, 0, { mode: 'BANG' });
+    assert.equal(GR.gearHeldCard(g)?.id, bought.id);
+    g.resolveGearTarget(0, 1);
+    assert.equal(GR.gearHeldCard(g), null, 'po výběru cíle karta odchází');
+    g.handleResponse(1, null);
+    g.gearBuy(0, 1, { mode: 'BEER' });
+    assert.equal(GR.gearHeldCard(g), null, 'bez volby se nedrží');
+});
+
 // ── KOMPLIC ──────────────────────────────────────────────────────────────────
 
 test('Komplic jako Hokynářství: rozdá se stejně jako kartou (fáze STORE)', () => {

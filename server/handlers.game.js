@@ -4,6 +4,7 @@
 const { niResultMs } = require('../core/highNoonAnim.js');
 const { peyoteRevealMs, lawRevealMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { rumRevealMs } = require('../core/goldRushAnim.js');
+const { gearHeldCard } = require('../core/goldRush.js');
 const { pendingActor } = require('../core/pending.js');
 const { adArmOk, adUpgradeOk, adCheckVerdict } = require('../core/armed.js');
 const { AD_ANIM } = require('../core/armedAnim.js');
@@ -1516,8 +1517,10 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
             if (idx === undefined || idx === null) return;
             const targetIdx = d && d.targetIdx;
             const wanted = pg.card || null;   // Wanted: karta teprve teď dosedne před cíl
+            const held = gearHeldCard(gs);    // hnědá čekající na cíl – teď pod balíček
             const ok = gs.resolveGearTarget(idx, targetIdx);
             if (ok && wanted) ctx.emitGearAcquire?.(room, gs, idx, wanted);
+            if (ok) ctx.emitGearRelease?.(room, gs, held, idx);
             if (ok && targetIdx != null && targetIdx !== idx) {
                 ctx.recordBehavior?.(room, { actorIdx: idx, targetIdx,
                                              kind: (pg.mode || pg.card) ? 'hostile' : 'support' });
@@ -1801,7 +1804,9 @@ module.exports = function registerGameHandlers(socket, ctx, withRoom) {
         withRoom((room, p, gs) => {
             const idx = gs.pendingGearMode?.playerIdx;
             if (idx === undefined || idx === null) return;
-            gs.chooseGearMode(idx, d && d.mode);
+            // Karta ležela u Joshe, dokud nevybral; cílený režim ji drží dál (GEAR_TARGET).
+            const held = gearHeldCard(gs);
+            if (gs.chooseGearMode(idx, d && d.mode)) ctx.emitGearRelease?.(room, gs, held, idx);
             if (gs.phase === 'STORE') {
                 const t = ctx.storeCinematicMs?.(gs);
                 room._storeShuffleUntil = t?.shuffleEnd > 0 ? Date.now() + t.shuffleEnd : 0;

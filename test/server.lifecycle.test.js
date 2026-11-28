@@ -174,6 +174,42 @@ test('emitGearAcquire: černé vybavení letí před majitele, hnědé pod balí
     assert.equal(anims()[2].to, 'gear');
 });
 
+// Hlášení 2026-11-01T08-28-46-659Z_game1 (bug Z): hnědá karta, u které se ještě vybírá
+// (cíl / způsob), leží u hráče, dokud nevybere – pod balíček až se zahráním.
+test('emitGearAcquire/emitGearRelease: hnědá čekající na volbu leží u hráče do zahrání', () => {
+    const { io, emits } = mkIo();
+    const ctx = { io, broadcastRoomDelayed() {} };
+    installAnimService(ctx);
+    const { gearAcquireMs, gearReleaseMs } = require('../core/goldRushAnim.js');
+    const panak = { id: 6001, effect: 'ZH_PANAK' };
+    const gs = { phase: 'GEAR_TARGET', players: [{ gear: [] }, { gear: [] }],
+                 pendingGearTarget: { playerIdx: 0, targets: [0, 1], held: panak } };
+    const room = { id: 'g1', players: [] };
+    const anims = () => emits.filter(e => e.ev === 'card_animation' && e.scope === 'to:g1_spectators')
+        .map(e => e.payload);
+
+    const t0 = Date.now();
+    ctx.emitGearAcquire(room, gs, 0, panak);
+    assert.equal(anims()[0].to, 'hold');
+    assert.ok(room._revealBlockUntil >= t0 + gearAcquireMs('hold'));
+    assert.ok(gearAcquireMs('hold') < gearAcquireMs('under'), 'bez výdrže a zasunutí');
+
+    // Josh: GEAR_MODE → cílený režim drží touž kartu dál, nic neletí.
+    const before = { ...panak };
+    ctx.emitGearRelease(room, gs, before, 0);
+    assert.equal(anims().length, 1, 'pořád čeká na cíl');
+
+    // Cíl vybrán – karta se zasune pod balíček.
+    gs.phase = 'PLAY'; gs.pendingGearTarget = null;
+    ctx.emitGearRelease(room, gs, before, 0);
+    assert.deepEqual(anims()[1], { type: 'gear_release', playerIdx: 0, card: { id: 6001, effect: 'ZH_PANAK' } });
+    assert.ok(room._revealBlockUntil >= Date.now() + gearReleaseMs() - 5);
+
+    // Bez držené karty se nic neposílá.
+    ctx.emitGearRelease(room, gs, null, 0);
+    assert.equal(anims().length, 2);
+});
+
 test('handleAutoEndTurn zavolá nextTurn jen když je pending a není vítěz', () => {
     const { io } = mkIo();
     const ctx = { io, broadcastRoomDelayed() {} };

@@ -96,13 +96,19 @@ function gearUnderMs() {
 }
 
 // Celý let koupené karty. `to` = 'gear' (zůstane ležet před hráčem) | 'under' (jde pod
-// balíček – hnědý rám, nebo černý, který už Josh McCloud má).
+// balíček – hnědý rám, nebo černý, který už Josh McCloud má) | 'hold' (hnědá, která
+// čeká na volbu: dosedne a leží u hráče, pod balíček ji pošle až gear_release).
 function gearAcquireMs(to) {
     const D = GEAR_ANIM;
     return D.buyMs + (to === 'under' ? D.showMs + gearUnderMs() : 0) + D.bufMs;
 }
 
+// Držená hnědá karta se s volbou zasune pod balíček (gear_release).
+function gearReleaseMs() {
+    return gearUnderMs() + GEAR_ANIM.bufMs;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { RUM_ANIM, rumLandStartMs, rumRevealMs, rumSlotX, rumFlipAtMs, rumShuffleAtMs,
-                       GEAR_ANIM, gearUnderMs, gearAcquireMs };
+                       GEAR_ANIM, gearUnderMs, gearAcquireMs, gearReleaseMs };
 }

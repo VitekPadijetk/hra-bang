@@ -446,8 +446,21 @@ function gearRucksackSaveOk(state, playerIdx) {
     }
 }
 
+// Hnědá karta vybavení, která po nákupu (nebo líznutí Joshem McCloudem) čeká na volbu
+// – cíl Panáku nebo cíleného režimu Láhve / Komplice (GEAR_TARGET, `held`), způsob
+// zahrání u Joshe (GEAR_MODE, `card`). Pravidlově už leží pod balíčkem vybavení; jen
+// se na ni ptá prezentace: klient ji nechá ležet u hráče a pod balíček ji zasune až
+// s volbou (gear_acquire `to: 'hold'` → gear_release, server/anim.js). Wanted (černý
+// rám, `pendingGearTarget.card`) sem nepatří – ten nikde neleží, letí až s cílem.
+function gearHeldCard(state) {
+    if (!state) return null;
+    if (state.phase === 'GEAR_TARGET') return state.pendingGearTarget?.held || null;
+    if (state.phase === 'GEAR_MODE') return state.pendingGearMode?.card || null;
+    return null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { goldRushOn, gearOf, hasGearFor, gearOnFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
+    module.exports = { gearHeldCard, goldRushOn, gearOf, hasGearFor, gearOnFor, gearCostFor, gearJudgeBlocks, gearLawOpts,
                        LUZENA_DISCOUNT, luzenaFree, JACKY_COST, jackyExtraBangs, jackyMurietaOk,
                        JOSH_COST, joshMcCloudOk, joshUsesThisTurn,
                        RADDIE_USES, raddieUsesLeft, raddieSnakeOk,
