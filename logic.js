@@ -150,6 +150,10 @@ if (typeof adRedrawOwner === 'undefined' && typeof require === 'function') {
     if (typeof adFindCard === 'undefined') globalThis.adFindCard = __ad5.adFindCard;
     if (typeof adCardCost === 'undefined') globalThis.adCardCost = __ad5.adCardCost;
 }
+// Ozbrojení a nebezpeční – lety kostiček žetonů (bug X): časování dávky ad_tokens.
+if (typeof AD_ANIM === 'undefined' && typeof require === 'function') {
+    globalThis.AD_ANIM = require('./core/armedAnim.js').AD_ANIM;
+}
 // Ozbrojení a nebezpeční – fáze A6 (Al Preacher, Ms. Abigail). Samostatný guard ze
 // stejného důvodu.
 if (typeof adAlOk === 'undefined' && typeof require === 'function') {

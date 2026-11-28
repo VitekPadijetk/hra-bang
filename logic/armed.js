@@ -46,6 +46,7 @@ const ArmedMixin = {
         const got = Math.max(0, Math.min(n, AD_LOAD_CAP - have, this._adSupply()));
         if (got <= 0) return 0;
         dst.adLoads = have + got;
+        if (!opts.quiet) this._adTokFly(null, this._adAddr(dst), got);
         this.logEvent('ad_loads', { op: 'add', card: dst.name || null, n: got,
                                     now: dst.adLoads, supply: this._adSupply() });
         return got;
@@ -57,7 +58,9 @@ const ArmedMixin = {
         if (!src) return 0;
         const got = Math.max(0, Math.min(n, src.adLoads || 0));
         if (got <= 0) return 0;
+        const from = this._adAddr(src);
         src.adLoads -= got;
+        this._adTokFly(from, null, got);
         this.logEvent('ad_loads', { op: 'take', card: src.name || null, n: got,
                                     now: src.adLoads, supply: this._adSupply() });
         if (isDangerousCard(src) && src.adLoads === 0) this._adDeplete(src);
@@ -67,17 +70,64 @@ const ArmedMixin = {
     // Přesun z karty/postavy na jinou (Frankie Canton, Red Ringo, Rez). Co se nad strop
     // cíle nevejde, je prostě v zásobě (zásoba se počítá, nikam se nevrací). Vrací, kolik
     // doletělo na cíl.
-    _adMove(src, dst, n) {
+    // `opts.together` = kostičky letí všechny naráz (Rez), ne jedna po druhé.
+    _adMove(src, dst, n, opts = {}) {
         if (!src || !dst || src === dst) return 0;
         const got = Math.max(0, Math.min(n, src.adLoads || 0));
         if (got <= 0) return 0;
+        const from = this._adAddr(src);
         src.adLoads -= got;
         const put = Math.min(got, AD_LOAD_CAP - (dst.adLoads || 0));
         if (put > 0) dst.adLoads = (dst.adLoads || 0) + put;
+        // Co se na cíl nevejde, letí rovnou do zásoby (plán §2.16).
+        this._adTokFly(from, this._adAddr(dst), put, opts.together);
+        this._adTokFly(from, null, got - put, opts.together);
         this.logEvent('ad_loads', { op: 'move', from: src.name || null, to: dst.name || null,
                                     n: got, landed: put, supply: this._adSupply() });
         if (isDangerousCard(src) && src.adLoads === 0) this._adDeplete(src);
         return put;
+    },
+
+    // ── Lety kostiček (bug X, plán §2.16, časování core/armedAnim.js) ────────────
+    // Každá změna žetonů ve třech cestách výš si zapíše let kostičky do `_adAnim`; hák
+    // před broadcastem (flushAdAnim, server/anim.js) ho pošle těsně před stavem, klient
+    // ho přehraje a stav podrží ve frontě, boti počkají. Všechno, co se pohnulo v jedné
+    // akci, tvoří jednu dávku `ad_tokens` (kostičky s odstupem), dokud mezi ně nevstoupí
+    // jiná animace (karta z odhozu do ruky) – pak začne nová dávka, ať pořadí sedí.
+
+    // Adresa pro animaci: { seat, cardId, slot } (cardId null = postava, slot = vizuální
+    // slot „0 = zbraň, 1+k = k-tá karta"). undefined = objekt není ve hře – nic neletí.
+    _adAddr(obj) {
+        if (!obj) return undefined;
+        const seat = this.players.indexOf(obj);
+        if (seat !== -1) return { seat, cardId: null, slot: null };
+        const h = this._adHolderOf(obj);
+        if (!h) return undefined;
+        return { seat: h.playerIdx, cardId: obj.id, slot: h.area === 'weapon' ? 0 : 1 + h.idx };
+    },
+
+    // Otevřená dávka ad_tokens na konci `_adAnim` (nebo nová).
+    _adTokGroup() {
+        if (!this._adAnim) this._adAnim = [];
+        const last = this._adAnim[this._adAnim.length - 1];
+        if (last && last.type === 'ad_tokens') return last;
+        const g = { type: 'ad_tokens', flights: [], depleted: [] };
+        this._adAnim.push(g);
+        return g;
+    },
+
+    // `n` kostiček z `from` do `to` (null = zásoba). `together` = start naráz s předchozí.
+    _adTokFly(from, to, n, together = false) {
+        if (n <= 0 || from === undefined || to === undefined) return;
+        const g = this._adTokGroup();
+        const kind = !from ? 'load' : (!to ? 'pay' : 'move');
+        for (let i = 0; i < n; i++) {
+            const prev = g.flights[g.flights.length - 1];
+            const delay = !prev ? 0 : (together && prev.together ? prev.delay : prev.delay + AD_ANIM.staggerMs);
+            const f = { from, to, kind, delay };
+            if (together) f.together = true;
+            g.flights.push(f);
+        }
     },
 
     // Vyložení Nebezpečné karty: 3 žetony ze zásoby. `adArmOk` (core/armed.js) předem
@@ -98,6 +148,9 @@ const ArmedMixin = {
             return;
         }
         const p = this.players[h.playerIdx];
+        // Karta odletí do odhozu až PO svých posledních žetonech (bug X) – klient ji pošle
+        // za lety kostiček téže dávky.
+        this._adTokGroup().depleted.push({ playerIdx: h.playerIdx, cardId: card.id });
         if (h.area === 'weapon') {
             p.weapon = { id: -1, name: "Colt .45", type: CardType.WEAPON, props: { range: 1 } };
         } else {
@@ -341,9 +394,9 @@ const ArmedMixin = {
             const q = this.players[(playerIdx + k) % n];
             if (!isInPlay(q)) continue;
             adCardsInPlay(q).slice().forEach(c => {
-                if ((c.adLoads || 0) > 0) { this._adMove(c, me, 1); moved++; }
+                if ((c.adLoads || 0) > 0) { this._adMove(c, me, 1, { together: true }); moved++; }
             });
-            if ((q.adLoads || 0) > 0) { this._adMove(q, me, 1); moved++; }
+            if ((q.adLoads || 0) > 0) { this._adMove(q, me, 1, { together: true }); moved++; }
         }
         this.logEvent('special', { who: me.name, card: 'Rez', msg: `sebral žetonů: ${moved} (na postavě ${me.adLoads || 0})` });
         return true;
@@ -396,7 +449,8 @@ const ArmedMixin = {
     _adDealRingo() {
         if (!this._adOn()) return;
         this.players.forEach(p => {
-            if (p && p.character === 'Red Ringo') this._adAdd(p, AD_RINGO_START, { fresh: true });
+            // Při rozdání postav nic neletí (`quiet`) – žetony leží na postavě od začátku.
+            if (p && p.character === 'Red Ringo') this._adAdd(p, AD_RINGO_START, { fresh: true, quiet: true });
         });
     },
 

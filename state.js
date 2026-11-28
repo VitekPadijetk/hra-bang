@@ -307,4 +307,11 @@ const App = {
     // desky; když se mezi tím ukazovalo intro/výběr postav/menu/vítěz, jsou pozice v
     // cardHome z JINÉ hry a musí se zahodit (viz resetBoardSlides v view/board.js).
     boardShown: false,
+    // Ozbrojení a nebezpeční – lety kostiček žetonů (bug X, playAdTokens v net/handlers.js).
+    // Platí jen do příštího commitu stavu (_adTokReset), pak už stav kreslí pravdu.
+    adSpots: {},        // kde render naposledy kreslil žetony: 'k'+cardId / 'c'+seat → geometrie
+    adTokOut: {},       // kolik kostiček z daného místa už odletělo (render je nekreslí); 'S' = zásoba
+    adTokIn: {},        // kolik jich doletělo do zásoby (počítadlo zásoby je přičte)
+    adTokSprites: [],   // letící / doletěné kostičky (zaniknou s commitem stavu)
+    adTokGen: 0,        // generace – zpožděný start letu ze staré dávky se po commitu nespustí
 };

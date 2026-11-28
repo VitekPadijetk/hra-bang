@@ -7,6 +7,7 @@ const { mineLandMs, ranchDiscardMs } = require('../core/fistfulAnim.js');
 const { sacaFlipMs, sacaStealExtraMs, helenaRevealMs, roleShuffleMs, rolePeekMs,
         seatSwapMs, greygoryDealMs } = require('../core/wwsAnim.js');
 const { vosAnimMs } = require('../core/vosAnim.js');
+const { adAnimMs } = require('../core/armedAnim.js');
 const { gearAcquireMs } = require('../core/goldRushAnim.js');
 const { eventActive } = require('../core/highNoon.js');
 const { hasAbility, isInPlay } = require('../core/distance.js');
@@ -705,17 +706,23 @@ module.exports = function installAnimService(ctx) {
         if (hold) room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + hold);
     }
 
-    // ── Ozbrojení a nebezpeční – karta z odhozu zpátky do ruky ─────────────────
-    // Zrušení výstřelu (Křesadlovka, Skrč se! s vylepšením) nastává v různých akcích
-    // (obrana, Barel, Bedna) – pravidla si let jen zapíšou (`_adAnim`) a tady se pošle
-    // těsně před stavem. Boti počkají, než karta doletí.
+    // ── Ozbrojení a nebezpeční – lety kostiček a karta z odhozu zpátky do ruky ──
+    // Žetony se mění skoro v každé akci (rozmístění, platba, Rez, Frankie, odchod ze hry)
+    // a zrušení výstřelu (Křesadlovka, Skrč se! s vylepšením) nastává v různých akcích
+    // (obrana, Barel, Bedna) – pravidla si animace jen zapíšou (`_adAnim`) a tady se
+    // pošlou těsně před stavem. Boti počkají, než doběhnou (core/armedAnim.js).
     function flushAdAnim(room) {
         const gs = room.gameState;
         const list = gs && gs._adAnim;
         if (!list || !list.length) return;
         gs._adAnim = null;
-        list.forEach(a => emitAnim(room, a));
-        room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + 400 * list.length);
+        let hold = 0;
+        list.forEach(a => {
+            if (a.type === 'ad_tokens' && !a.flights.length && !a.depleted.length) return;
+            emitAnim(room, a);
+            hold += adAnimMs(a);
+        });
+        if (hold) room._vosBlockUntil = Math.max(room._vosBlockUntil || 0, Date.now() + hold);
     }
 
     // ── Údolí stínů – Henry Block: karta se pohne až po jeho výstřelu ──────────

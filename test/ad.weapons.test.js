@@ -242,7 +242,9 @@ test('Skrč se!: účinkuje jako Vedle! (i Big Spencer), s vylepšením se vrát
     assert.equal(g.players[1].health, 4);
     assert.equal(g.players[1].adLoads || 0, 0);
     assert.ok(g.players[1].hand.some(c => c.id === duck.id), 'karta je zpátky v ruce');
-    assert.deepEqual(g._adAnim, [{ type: 'discard_to_hand', toPlayerIdx: 1, cardId: duck.id }]);
+    // Mezi animacemi jsou i lety kostiček zaplacených žetonů (bug X) – ty hlídá ad.anim.
+    assert.deepEqual(g._adAnim.filter(a => a.type !== 'ad_tokens'),
+                     [{ type: 'discard_to_hand', toPlayerIdx: 1, cardId: duck.id }]);
 });
 
 test('Skrč se!: neplatná platba = karta se nezahraje; bez vylepšení zůstane v odhozu', () => {

@@ -634,6 +634,8 @@ z ruky náhodně – animace nese `stolenIndex` (konvence krádeží). Kontrola 
 
 ### 2.16 Animace — `core/armedAnim.js`
 
+> **Hotovo (bug X):** lety kostiček jsou jedna dávka `ad_tokens` s `kind` load/pay/move místo tří typů – viz [pravidla/ozbrojeni.md](pravidla/ozbrojeni.md) „Lety kostiček“.
+
 **Žádné efekty navíc.** Animace jsou na úrovni dnešní hry: karty a žetony se jen
 **posouvají, otáčejí a překlápějí** – žádné částice, záblesky, razítka, tinty ani kreslené
 sprity (zvon, šíp, chomáč, doutnák). Co jde existující animací, jde jí; nové jsou jen lety

@@ -160,10 +160,27 @@ R13; každý druh tam musí být – hlídá strukturální test v `test/ad.load
   (`test/positions.test.js`). Bannery rozmístění/platby leží na `x = 960` jako u ostatních
   rozšíření – to je střed jeviště v obou profilech (jeviště roste symetricky).
 
-## Co zůstává (záměrně mimo A7)
+## Lety kostiček (bug X)
 
-- **Lety kostiček** (`ad_load`, `ad_pay`, `ad_move`, `core/armedAnim.js` z plánu §2.16)
-  zatím nejsou – žetony se jen objeví/zmizí se stavem. Pravidla na nich nestojí.
+- **Každá změna žetonů letí** – zapisují ji samy tři cesty `_adAdd`/`_adTake`/`_adMove`
+  (`_adTokFly` → `_adAnim`), takže nový spouštěč nic dělat nemusí. Jedna akce = jedna
+  dávka `ad_tokens` (`flights: [{ from, to, kind, delay }]`, adresa `null` = zásoba, jinak
+  `{ seat, cardId, slot }`); jiná animace v `_adAnim` (karta z odhozu do ruky) dávku
+  uzavře, ať pořadí sedí. Plán měl tři typy `ad_load`/`ad_pay`/`ad_move` – sloučené do
+  jedné dávky s `kind`.
+- **Vyčerpaná karta odletí až po posledním žetonu**: `_adDeplete` ji zapíše do
+  `depleted` téže dávky a klient ji po letech pošle jako `board_to_discard` (slot si
+  najde podle id). Bomba místo odhozu vybuchne – ta do `depleted` nejde.
+- **Rez** letí naráz (`_adMove(…, { together: true })`), co se nad strop nevejde, letí
+  rovnou do zásoby. **Red Ringo při rozdání** je `quiet` (nic neletí).
+- **Časování** `core/armedAnim.js` (`AD_ANIM`, `adTokensMs`, `adAnimMs`) – klient
+  (`_animDurationMs`), server drží boty (`flushAdAnim` → `room._vosBlockUntil`).
+- **Klient** (`playAdTokens`, net/handlers.js): pod animací leží STARÝ stav. Kde se
+  žetony kreslí, si pamatuje render (`App.adSpots` z `drawAdCubes`/`drawNuggets`, klíč
+  `'k'+cardId` / `'c'+seat`); odlétající kostička na zdroji hned zmizí (`App.adTokOut`),
+  doletěná do zásoby se přičte k počítadlu (`App.adTokIn.S`), na kartě/postavě leží jako
+  vlastní sprite. Všechno shodí commit stavu (`_adTokReset` v `room_update`). Právě
+  vyložená karta ve starém stavu není – místo se spočítá jako u `hand_to_board` (phantom).
 
 ## Testy
 

@@ -3064,6 +3064,10 @@ function _playCardAnim(data) {
         case 'gear_acquire':
             playGearAcquire(data);
             break;
+        // Ozbrojení a nebezpeční – lety kostiček žetonů nabití (bug X).
+        case 'ad_tokens':
+            playAdTokens(data, { getBoardPos, sideAngle, sideScale });
+            break;
         // Údolí stínů – kolečko voleb (core/vosAnim.js).
         case 'tornado_pass':
             playTornadoPass(data, { sideAngle, sideScale });
@@ -3305,6 +3309,128 @@ function playGearRum(data) {
             gameScene.tweens.add({ targets: spr, x: to.x, y: to.y, scaleX: pileSc, scaleY: pileSc,
                 duration: D.landMs, ease: 'Cubic.easeIn',
                 onComplete: () => holdThenFinish(spr, () => stateIn, () => { if (spr.active) spr.destroy(); }) });
+        });
+    });
+}
+
+// ── Ozbrojení a nebezpeční – lety kostiček žetonů (bug X, core/armedAnim.js) ────
+// Server pošle dávku `ad_tokens` (flushAdAnim) těsně před stavem, takže pod animací
+// leží ještě STARÝ stav: kostička vzlétne z místa, kde ji render naposledy kreslil
+// (App.adSpots z drawAdCubes / drawNuggets), a na zdroji hned zmizí (App.adTokOut).
+// Do zásoby dosedne a přičte se k počítadlu (App.adTokIn.S), na kartě/postavě zůstane
+// ležet jako vlastní sprite, dokud nedorazí stav – ten ji pak kreslí sám. Vyčerpané
+// karty odletí do odhozu (board_to_discard) až po poslední kostičce.
+
+// Commit stavu: všechno, co lety kostiček držely, padá – stav už kreslí pravdu.
+function _adTokReset() {
+    App.adTokGen++;
+    (App.adTokSprites || []).forEach(sp => {
+        try { gameScene?.tweens?.killTweensOf(sp); sp.destroy(); } catch (e) { /* scéna pryč */ }
+    });
+    App.adTokSprites = [];
+    App.adTokOut = {};
+    App.adTokIn = {};
+}
+
+function _adTokKey(addr) {
+    return !addr ? 'S' : (addr.cardId != null ? 'k' + addr.cardId : 'c' + addr.seat);
+}
+
+// Kolik kostiček na místě `addr` právě vidím (stav pod animací minus to, co odletělo).
+function _adTokShown(addr) {
+    if (!addr) return 0;
+    const p = state?.players?.[addr.seat];
+    if (!p) return 0;
+    let loads = 0;
+    if (addr.cardId == null) loads = p.adLoads || 0;
+    else {
+        const c = p.weapon?.id === addr.cardId ? p.weapon : (p.board || []).find(x => x.id === addr.cardId);
+        loads = (c && c.adLoads) || 0;
+    }
+    return Math.max(0, loads - (App.adTokOut[_adTokKey(addr)] || 0));
+}
+
+// Kde leží k-tá kostička místa `addr` → { x, y, scale, angle }.
+function _adTokPlace(addr, k, h) {
+    if (!addr) {
+        const slot = adSupplySlot(currentLayout());
+        const s = slot.cube;
+        return { x: slot.x, y: slot.y + slot.pyramidBottom - s * 0.62, scale: s / AD_CUBE_W, angle: 0 };
+    }
+    const key = _adTokKey(addr);
+    const view = myIndex === null ? 0 : myIndex;
+    const p = state?.players?.[addr.seat];
+    if (addr.cardId == null) {
+        if (App.adSpots[key]) return adCubePlace(App.adSpots[key], k);
+        const pp = getSeatPortraitPos(p, addr.seat, view);
+        return adCubePlace({ x: pp.x, y: pp.y, label: true }, k);
+    }
+    const there = !!p && (p.weapon?.id === addr.cardId || (p.board || []).some(c => c.id === addr.cardId));
+    if (there && App.adSpots[key]) return adCubePlace(App.adSpots[key], k);
+    // Karta pod animací ještě neleží (právě vyložená Nebezpečná karta – hand_to_board ji
+    // drží jako letící sprite): místo spočítej jako hand_to_board, s phantomem v pásu.
+    const slot = addr.slot ?? 0;
+    const board = p?.board;
+    let pos;
+    if (!there && board && slot > 0) {
+        board.push({ _phantom: true });
+        pos = h.getBoardPos(addr.seat, slot);
+        board.pop();
+    } else {
+        pos = h.getBoardPos(addr.seat, slot);
+    }
+    const sc = h.sideScale(addr.seat), ang = h.sideAngle(addr.seat);
+    return adCubePlace({ x: pos.x, y: pos.y, w: 325 * sc, h: 500 * sc, rot: ang * Math.PI / 180, angle: ang,
+                         compact: addr.seat !== view && currentLayout().oppMode === 'compact' }, k);
+}
+
+function playAdTokens(data, h) {
+    if (!gameScene || !state) return;
+    const gen = App.adTokGen;
+    const cubes = gameScene.textures.exists('ad_cube');
+    let end = 0;
+    (data.flights || []).forEach(f => {
+        const ms = AD_ANIM.flyMs[f.kind] || AD_ANIM.flyMs.move;
+        end = Math.max(end, (f.delay || 0) + ms);
+        if (!cubes) return;
+        gameScene.time.delayedCall(f.delay || 0, () => {
+            if (gen !== App.adTokGen || !gameScene || !state) return;
+            const fromKey = _adTokKey(f.from), toKey = _adTokKey(f.to);
+            const p0 = _adTokPlace(f.from, _adTokShown(f.from) - 1, h);
+            const p1 = _adTokPlace(f.to, _adTokShown(f.to) + (f.to ? (App.adTokIn[toKey] || 0) : 0), h);
+            App.adTokOut[fromKey] = (App.adTokOut[fromKey] || 0) + 1;
+            if (f.to) App.adTokIn[toKey] = (App.adTokIn[toKey] || 0) + 1;   // místo pro další kostičku
+            renderUI();
+            // Startuje ve velikosti zdroje, dosedá ve velikosti cíle (CLAUDE.md).
+            const cube = gameScene.add.image(p0.x, p0.y, 'ad_cube').setScale(p0.scale)
+                .setAngle(p0.angle).setDepth(950);
+            App.adTokSprites.push(cube);
+            gameScene.tweens.add({ targets: cube, x: p1.x, y: p1.y, scale: p1.scale, angle: p1.angle,
+                duration: ms, ease: 'Sine.easeInOut',
+                onComplete: () => {
+                    if (gen !== App.adTokGen) { if (cube.active) cube.destroy(); return; }
+                    if (f.to) return;   // na kartě/postavě leží, dokud nedorazí stav
+                    App.adTokIn.S = (App.adTokIn.S || 0) + 1;
+                    App.adTokSprites = App.adTokSprites.filter(x => x !== cube);
+                    cube.destroy();
+                    renderUI();
+                } });
+        });
+    });
+    // Vyčerpané karty až po posledním žetonu (hlášení 2026-11-27T15-53-18-892Z).
+    (data.depleted || []).forEach((d, i) => {
+        gameScene.time.delayedCall(end + i * AD_ANIM.departStaggerMs, () => {
+            if (gen !== App.adTokGen || !gameScene || !state) return;
+            const p = state.players?.[d.playerIdx];
+            if (!p) return;
+            let boardIdx = null;
+            if (p.weapon?.id === d.cardId) boardIdx = 0;
+            else {
+                const j = (p.board || []).findIndex(c => c.id === d.cardId);
+                if (j !== -1) boardIdx = 1 + j;
+            }
+            if (boardIdx == null) return;
+            _playCardAnim({ type: 'board_to_discard', fromPlayerIdx: d.playerIdx, cardId: d.cardId, boardIdx });
         });
     });
 }
@@ -3658,6 +3784,8 @@ function _animDurationMs(data) {
     if (data.type === 'tornado_pass' || data.type === 'poker_reveal' || data.type === 'poker_take') {
         return vosAnimMs(data);
     }
+    // Ozbrojení a nebezpeční – lety kostiček (stejný vzorec drží boty, flushAdAnim).
+    if (data.type === 'ad_tokens') return adTokensMs(data);
     // Divoký západ – Helena Zontero a obě půlky přerozdání rolí (Hřbitov i Helena).
     // `role_peek` trvá stejně u všech, i u těch, kdo si ho nepřehrají (role: null) –
     // jinak by se fronty klientů rozešly a stav by u každého dorazil jindy.
@@ -3731,7 +3859,8 @@ function _drainAfterState() {
 
 socket.on('room_update', (payload) => {
     if (!payload) return;
-    _animQ.pushState(() => { _applyRoomUpdate(payload); _drainAfterState(); });
+    // Lety kostiček žetonů (bug X) drží jen do commitu – pak kreslí pravdu stav.
+    _animQ.pushState(() => { _adTokReset(); _applyRoomUpdate(payload); _drainAfterState(); });
 });
 
 // Čeká ve frontě ještě něco (další animace nebo neaplikovaný stav)? Používá

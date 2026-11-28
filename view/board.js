@@ -579,16 +579,27 @@ function drawLivesCounter(track, player, x, y) {
 // se zapnutým rozšířením (kolik žetonů mám, potřebuju vědět i při nule).
 function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false, showZeroLoads = false) {
     const n = (player && player.nuggets) || 0;
-    const loads = (player && player.adLoads) || 0;
+    // Bug X: kostičky, které z postavy právě odletěly (playAdTokens), se už nepočítají.
+    const seat = (player && state?.players) ? state.players.indexOf(player) : -1;
+    const key = seat >= 0 ? 'c' + seat : null;
+    const loads = Math.max(0, ((player && player.adLoads) || 0) - ((key && App.adTokOut[key]) || 0));
     const parts = [];
     if (n || showZero) parts.push('💰' + n);
     if (loads || showZeroLoads) parts.push('⛁' + loads);
-    if (!parts.length) return null;
+    if (!parts.length) {
+        // Odkud/kam letí kostičky postavy, i když štítek zrovna není (nula žetonů).
+        if (key) App.adSpots[key] = { x: x + (0.5 - originX) * 34, y: y + (0.5 - originY) * 26, label: true };
+        return null;
+    }
     const txt = gameScene.add.text(x, y, parts.join(' '),
         { fontFamily: THEME.fontUI, fontSize: '17px', color: '#ffd24d', fontStyle: 'bold',
           backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 5, y: 3 } })
         .setOrigin(originX, originY).setDepth(STAR_DEPTH);
     gameScene.cardsSprites.add(txt);
+    if (key) {
+        const c = txt.getCenter();
+        App.adSpots[key] = { x: c.x, y: c.y, label: true };
+    }
     return txt;
 }
 
@@ -603,15 +614,26 @@ function drawNuggets(player, x, y, originX = 1, originY = 0, showZero = false, s
 // dost velká. Soupeřům zůstává štítek u jména (portrét se jim při reflow posouvá
 // animací a kostičky by za ním nejely).
 function drawAdCubes(sprite, card, alwaysCubes = false) {
+    // Bug X: kde se žetony kreslí, si render pamatuje pro lety kostiček (playAdTokens) –
+    // klíč 'k'+id karty, u mé postavy (id null) 'c'+moje sedadlo. Kostičky, které odsud
+    // právě odletěly, se už nekreslí (App.adTokOut).
+    const key = (!card || card._pseudo) ? null
+        : (card.id != null ? 'k' + card.id : (myIndex != null ? 'c' + myIndex : null));
+    const out = (key && App.adTokOut[key]) || 0;
     // Žetony, které hráč právě naklikal do platby, na kartě vizuálně ubudou (odletí až
     // po potvrzení) – adPayReserved je čte z rozpracované platby (jen moje karty).
-    const n = Math.min(4, Math.max(0, ((card && !card._pseudo && card.adLoads) || 0) - adPayReserved(card && card.id)));
+    const n = Math.min(4, Math.max(0, ((card && !card._pseudo && card.adLoads) || 0) - adPayReserved(card && card.id) - out));
+    const compact = !alwaysCubes && currentLayout().oppMode === 'compact';
+    if (key && sprite) {
+        App.adSpots[key] = { x: sprite.x, y: sprite.y, w: sprite.displayWidth, h: sprite.displayHeight,
+                             rot: sprite.rotation || 0, angle: sprite.angle || 0, compact };
+    }
     if (!n || !sprite) return;
     const w = sprite.displayWidth, h = sprite.displayHeight;
     const rot = sprite.rotation || 0, cos = Math.cos(rot), sin = Math.sin(rot);
     const at = (lx, ly) => ({ x: sprite.x + lx * cos - ly * sin, y: sprite.y + lx * sin + ly * cos });
     const depth = (sprite.depth || 0) + 1;
-    if (!alwaysCubes && currentLayout().oppMode === 'compact') {
+    if (compact) {
         const p = at(w * 0.28, h * 0.36);
         const txt = gameScene.add.text(p.x, p.y, '⛁' + n,
             { fontFamily: THEME.fontUI, fontSize: '15px', color: '#ffd9a0', fontStyle: 'bold',
@@ -631,6 +653,23 @@ function drawAdCubes(sprite, card, alwaysCubes = false) {
             .setAngle(sprite.angle || 0).setDepth(depth);
         gameScene.cardsSprites.add(cube);
     }
+}
+
+// Bug X: kam na zapamatovaném místě (App.adSpots) patří k-tá kostička – stejná mřížka
+// 2×2 jako v drawAdCubes, na štítku (soupeřova postava, kompaktní karta) střed štítku.
+// Vrací i měřítko a úhel, ve kterých tam kostička leží (lety vzlétají/dosedají v nich).
+function adCubePlace(spot, k) {
+    const angle = spot.angle || 0;
+    const w = spot.w || 0, h = spot.h || 0;
+    const rot = spot.rot || 0, cos = Math.cos(rot), sin = Math.sin(rot);
+    const at = (lx, ly) => ({ x: spot.x + lx * cos - ly * sin, y: spot.y + lx * sin + ly * cos });
+    if (spot.label) return { x: spot.x, y: spot.y, scale: 16 / AD_CUBE_W, angle: 0 };
+    if (spot.compact) return Object.assign(at(w * 0.28, h * 0.36), { scale: 14 / AD_CUBE_W, angle });
+    const s = w * 0.24;
+    const cx = w / 2 - s * 1.0, cy = h / 2 - s * 1.15;
+    const kk = Math.min(3, Math.max(0, k | 0));
+    const col = kk % 2, row = Math.floor(kk / 2);
+    return Object.assign(at(cx + (col - 0.5) * s * 0.95, cy + (row - 0.5) * s * 1.0), { scale: s / AD_CUBE_W, angle });
 }
 
 // ── Ozbrojení a nebezpeční: ovládání žetonů (fáze A1) ───────────────────────
@@ -700,7 +739,8 @@ function adPayTake(cardId) {
 function drawAdSupply(L, lift = 0) {
     if (!adOn(state) || !gameScene.textures.exists('ad_cube')) return;
     const slot = adSupplySlot(L);
-    const supply = Math.max(0, adSupply(state));
+    // Bug X: kostičky, které ze zásoby právě vyletěly / do ní doletěly (playAdTokens).
+    const supply = Math.max(0, adSupply(state) - (App.adTokOut.S || 0) + (App.adTokIn.S || 0));
     const s = slot.cube, scale = s / AD_CUBE_W;
     const rows = [3, 2, 1];
     let left = Math.min(6, supply);
